@@ -9,7 +9,7 @@ import ImportExcelButton from "@/components/ui/ImportExcelButton";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 const inputFilterClass =
-  "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0EA5E9] focus:outline-none";
+  "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#4FAEB2]/40 focus:border-[#4FAEB2] focus:outline-none";
 
 const metodoBadge: Record<MetodoValuacion, string> = {
   CPP: "bg-blue-100 text-blue-700",
@@ -127,37 +127,56 @@ export default function InventarioPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 pb-10">
 
-      <div>
-        <h1 className="text-3xl font-bold text-gray-800">Inventario</h1>
-        <p className="text-gray-600">Gestión de productos y control de stock</p>
+      {/* Header tipo Dashboard */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Operaciones · Stock
+            </p>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Inventario</h1>
+          <p className="mt-1 text-sm text-slate-500">Gestión de productos y control de stock</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton url="/api/inventario/productos/export" />
+          <ImportExcelButton
+            entidad="Productos"
+            previewUrl="/api/inventario/productos/import/preview"
+            commitUrl="/api/inventario/productos/import/commit"
+            templateUrl="/api/inventario/productos/import/template"
+            permiteCrearFaltantes
+            visible={isAdmin}
+            onCompleted={() => setRefreshKey((k) => k + 1)}
+          />
+        </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-        <div className="flex justify-between items-center mb-5">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold">Productos</h2>
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                Productos
+              </h2>
+            </div>
             <Link
               href="/inventario/nuevo"
-              className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
             >
-              Nuevo producto
+              + Nuevo producto
             </Link>
-            <ExportExcelButton url="/api/inventario/productos/export" />
-            <ImportExcelButton
-              entidad="Productos"
-              previewUrl="/api/inventario/productos/import/preview"
-              commitUrl="/api/inventario/productos/import/commit"
-              templateUrl="/api/inventario/productos/import/template"
-              permiteCrearFaltantes
-              visible={isAdmin}
-              onCompleted={() => setRefreshKey((k) => k + 1)}
-            />
           </div>
-          <p className="text-xs text-gray-400">
-            Los productos ingresan desde <span className="font-medium text-gray-500">Compras</span>
+          <p className="text-[11px] text-slate-400">
+            Los productos ingresan desde <span className="font-medium text-slate-500">Compras</span>
           </p>
         </div>
 
@@ -340,7 +359,7 @@ export default function InventarioPage() {
           </table>
         </div>
 
-      </div>
+      </section>
 
     </div>
   );

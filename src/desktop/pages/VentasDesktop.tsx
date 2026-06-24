@@ -28,7 +28,7 @@ function formatFecha(iso: string) {
 // ── Constantes de estilo ───────────────────────────────────────────────────────
 
 const inputFilterClass =
-  "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0EA5E9] focus:outline-none";
+  "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#4FAEB2] focus:outline-none";
 
 const tipoVentaBadge: Record<TipoVenta, string> = {
   CONTADO: "bg-blue-50 text-blue-700",
@@ -85,7 +85,7 @@ function MetricCard({
 }) {
   return (
     <div className={`rounded-xl border px-5 py-4 flex flex-col gap-1 ${
-      accent ? "bg-[#0EA5E9] border-[#0EA5E9]" : "bg-white border-slate-200"
+      accent ? "bg-[#4FAEB2] border-[#4FAEB2]" : "bg-white border-slate-200"
     }`}>
       <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
         {label}
@@ -188,8 +188,8 @@ export default function VentasPage() {
     <div className="space-y-8">
 
       <div>
-        <h1 className="text-3xl font-bold text-gray-800">Ventas</h1>
-        <p className="text-gray-600">Registro de ventas y salidas de inventario</p>
+        <h1 className="text-3xl font-bold text-gray-800">Caja</h1>
+        <p className="text-gray-600">Caja de ventas y despacho de productos</p>
       </div>
 
       {/* ── Métricas del día ──────────────────────────────────────────────────── */}
@@ -236,7 +236,7 @@ export default function VentasPage() {
           <h2 className="text-xl font-semibold">Órdenes de venta</h2>
           <Link
             href="/ventas/nueva"
-            className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+            className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
           >
             + Nueva venta
           </Link>

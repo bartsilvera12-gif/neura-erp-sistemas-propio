@@ -24,7 +24,7 @@ function calcIva(tipo: TipoIvaVenta, base: number) {
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
 const inputClass =
-  "w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:outline-none bg-white text-sm";
+  "w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#4FAEB2] focus:outline-none bg-white text-sm";
 const labelClass = "block text-sm font-medium text-slate-700 mb-1.5";
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ function SegmentedControl<T extends string>({
           onClick={() => onChange(opt.value)}
           className={`flex-1 py-2 text-sm font-medium transition-colors ${
             value === opt.value
-              ? "bg-[#0EA5E9] text-white"
+              ? "bg-[#4FAEB2] text-white"
               : "bg-white text-slate-600 hover:bg-slate-50"
           }`}
         >
@@ -116,8 +116,9 @@ export default function NuevaVentaPage() {
   const comboInputRef    = useRef<HTMLInputElement>(null);
   const comboContainerRef = useRef<HTMLDivElement>(null);
 
-  // ── Modal buscador (F3) ────────────────────────────────────────────────────
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // ── Modal buscador (F3) — abierto por defecto en caja vacía ───────────────
+  const [pickerOpen, setPickerOpen] = useState(true);
+  const autoOpenedRef = useRef(false);
 
   function pickerToProducto(p: ProductoPickerItem): Producto {
     return {
@@ -200,6 +201,17 @@ export default function NuevaVentaPage() {
     });
     return () => { cancelled = true; };
   }, []);
+
+  // Caja: arranca con el buscador abierto si todavía no se agregó nada.
+  // Si el usuario lo cierra y vuelve a entrar a la pantalla, lo respetamos
+  // hasta que recargue (autoOpenedRef evita re-abrir tras un close manual).
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (items.length === 0) {
+      setPickerOpen(true);
+      autoOpenedRef.current = true;
+    }
+  }, [items.length]);
 
   // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
@@ -383,7 +395,7 @@ export default function NuevaVentaPage() {
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Nueva venta</h1>
         <p className="text-gray-600">
-          Agregá uno o más productos. Al confirmar se generan las salidas de inventario.
+          Caja de ventas y despacho de productos — al confirmar se generan las salidas de inventario.
         </p>
       </div>
 
@@ -510,7 +522,7 @@ export default function NuevaVentaPage() {
                           onMouseEnter={() => !sinStock && setComboHighlight(idx)}
                           className={`px-3 py-2.5 text-sm cursor-pointer
                             ${sinStock ? "opacity-40 cursor-not-allowed" : ""}
-                            ${isActive && !sinStock ? "bg-[#0EA5E9] text-white" : "hover:bg-slate-50"}
+                            ${isActive && !sinStock ? "bg-[#4FAEB2] text-white" : "hover:bg-slate-50"}
                           `}
                         >
                           <span className="font-medium">{p.nombre}</span>
@@ -610,7 +622,7 @@ export default function NuevaVentaPage() {
                 type="button"
                 onClick={handleAgregarLinea}
                 disabled={!lineaValida}
-                className="flex items-center justify-center gap-1.5 w-full bg-[#0EA5E9] hover:bg-[#0284C7] text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                className="flex items-center justify-center gap-1.5 w-full bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
                   <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
@@ -808,7 +820,7 @@ export default function NuevaVentaPage() {
             <button
               type="submit"
               disabled={!ventaValida}
-              className="bg-[#0EA5E9] hover:bg-[#0284C7] text-white px-6 py-3 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-6 py-3 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
             >
               Confirmar venta
             </button>

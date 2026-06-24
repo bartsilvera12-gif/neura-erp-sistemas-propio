@@ -43,7 +43,7 @@ export default function VentasMobile() {
       <header className="mb-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Ventas</h1>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">Caja</h1>
             <p className="mt-0.5 text-xs text-slate-500">
               {metricasHoy.cantidad === 0
                 ? "Aún no hubo ventas hoy."
@@ -52,7 +52,7 @@ export default function VentasMobile() {
           </div>
           <Link
             href="/ventas/nueva"
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0EA5E9] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#0284C7]"
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#3F8E91]"
           >
             <Plus className="h-4 w-4" />
             Nueva
@@ -60,9 +60,9 @@ export default function VentasMobile() {
         </div>
 
         {/* Card de facturación del día */}
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-[#0EA5E9]/5 p-4">
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-[#4FAEB2]/5 p-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0EA5E9]/10 text-[#0EA5E9]">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#4FAEB2]/10 text-[#4FAEB2]">
               <TrendingUp className="h-4 w-4" />
             </div>
             <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
@@ -88,7 +88,7 @@ export default function VentasMobile() {
           placeholder="Buscar por número, producto o monto"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#0EA5E9]/40 focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/30"
+          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#4FAEB2]/40 focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30"
         />
       </div>
 
@@ -128,7 +128,7 @@ function VentaCard({ venta }: { venta: Venta }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#0EA5E9]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#4FAEB2]">
                 {venta.numero_control}
               </span>
               <TipoVentaBadge tipo={venta.tipo_venta} />

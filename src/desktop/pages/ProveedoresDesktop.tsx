@@ -4,16 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getProveedores } from "@/lib/proveedores/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
-import ImportExcelButton from "@/components/ui/ImportExcelButton";
-import { useIsAdmin } from "@/lib/auth/use-is-admin";
 import type { Proveedor } from "@/lib/proveedores/types";
 
 export default function ProveedoresPage() {
-  const { isAdmin } = useIsAdmin();
   const [lista, setLista] = useState<Proveedor[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancel = false;
@@ -27,7 +23,7 @@ export default function ProveedoresPage() {
     return () => {
       cancel = true;
     };
-  }, [refreshKey]);
+  }, []);
 
   const filtradas = useMemo(() => {
     const t = busqueda.trim().toLowerCase();
@@ -44,64 +40,82 @@ export default function ProveedoresPage() {
   }, [lista, busqueda]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 pb-10">
+
+      {/* Header tipo Dashboard */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Proveedores</h1>
-          <p className="text-gray-600">
-            Maestro de abastecimiento: categorías, condiciones de pago y vínculo futuro con compras.
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Operaciones · Proveedores
+            </p>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Proveedores</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Maestro de abastecimiento: categorías, condiciones de pago y vínculo con compras.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ExportExcelButton url="/api/proveedores/export" />
-          <ImportExcelButton
-            entidad="Proveedores"
-            previewUrl="/api/proveedores/import/preview"
-            commitUrl="/api/proveedores/import/commit"
-            templateUrl="/api/proveedores/import/template"
-            permiteCrearFaltantes
-            visible={isAdmin}
-            onCompleted={() => setRefreshKey((k) => k + 1)}
-          />
-          <Link
-            href="/proveedores/categorias"
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            Categorías
-          </Link>
-          <Link
-            href="/proveedores/nuevo"
-            className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#0284C7]"
-          >
-            + Nuevo proveedor
-          </Link>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <input
-            type="search"
-            placeholder="Buscar por nombre, RUC, email o categoría…"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className="min-w-[240px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-[#0EA5E9]"
-          />
-          <span className="text-sm text-slate-400">
-            {filtradas.length} de {lista.length}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
+        <div className="mb-5 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              Listado
+            </h2>
+          </div>
+          <Link
+            href="/proveedores/nuevo"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
+          >
+            + Nuevo proveedor
+          </Link>
+          <div className="relative min-w-[18rem] flex-1">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            >
+              <path
+                fillRule="evenodd"
+                d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <input
+              type="search"
+              placeholder="Buscar por nombre, RUC, email o categoría…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+            />
+          </div>
+          <span className="ml-auto text-[11px] text-slate-400">
+            {filtradas.length} de {lista.length} proveedor{lista.length === 1 ? "" : "es"}
           </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-slate-600">
-                <th className="py-3 pr-4 font-semibold">Proveedor</th>
-                <th className="py-3 pr-4 font-semibold">RUC</th>
-                <th className="py-3 pr-4 font-semibold">Contacto</th>
-                <th className="py-3 pr-4 font-semibold">Categorías</th>
-                <th className="py-3 pr-4 font-semibold">Estado</th>
-                <th className="py-3 font-semibold w-24" />
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="py-3 pr-4 text-[10px] font-semibold uppercase tracking-[0.1em] first:pl-4">Proveedor</th>
+                <th className="py-3 pr-4 text-[10px] font-semibold uppercase tracking-[0.1em]">RUC</th>
+                <th className="py-3 pr-4 text-[10px] font-semibold uppercase tracking-[0.1em]">Contacto</th>
+                <th className="py-3 pr-4 text-[10px] font-semibold uppercase tracking-[0.1em]">Categorías</th>
+                <th className="py-3 pr-4 text-[10px] font-semibold uppercase tracking-[0.1em]">Estado</th>
+                <th className="py-3 text-[10px] font-semibold uppercase tracking-[0.1em] w-24" />
               </tr>
             </thead>
             <tbody>
@@ -161,7 +175,7 @@ export default function ProveedoresPage() {
                     <td className="py-3">
                       <Link
                         href={`/proveedores/${p.id}/editar`}
-                        className="text-sm font-medium text-sky-600 hover:underline"
+                        className="text-[11px] font-semibold text-[#3F8E91] underline-offset-2 hover:underline"
                       >
                         Editar
                       </Link>
@@ -172,7 +186,7 @@ export default function ProveedoresPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

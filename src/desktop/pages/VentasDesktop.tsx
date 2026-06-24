@@ -83,19 +83,25 @@ function MetricCard({
 }: {
   label: string; value: string; sub?: string; accent?: boolean;
 }) {
+  const wrap = accent
+    ? "relative overflow-hidden rounded-2xl border border-[#4FAEB2]/55 bg-gradient-to-br from-white via-white to-[#4FAEB2]/8 px-5 py-4 shadow-[0_4px_18px_rgba(79,174,178,0.08)]"
+    : "rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  const valueCls = accent ? "text-[#3F8E91]" : "text-slate-900";
   return (
-    <div className={`rounded-xl border px-5 py-4 flex flex-col gap-1 ${
-      accent ? "bg-[#4FAEB2] border-[#4FAEB2]" : "bg-white border-slate-200"
-    }`}>
-      <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className={wrap}>
+      {accent ? (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/70 to-[#4FAEB2]/30"
+        />
+      ) : null}
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
         {label}
-      </span>
-      <span className={`text-2xl font-bold tabular-nums leading-tight ${
-        accent ? "text-white" : "text-gray-800"
-      }`}>
+      </p>
+      <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${valueCls}`}>
         {value}
-      </span>
-      {sub && <span className="text-xs text-gray-400">{sub}</span>}
+      </p>
+      {sub ? <p className="mt-1 text-[11px] text-slate-500">{sub}</p> : null}
     </div>
   );
 }
@@ -185,21 +191,36 @@ export default function VentasPage() {
   const hayFiltros = busqueda || filtroTipo || filtroIva;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 pb-10">
 
+      {/* Header al estilo del Dashboard */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-800">Caja</h1>
-        <p className="text-gray-600">Caja de ventas y despacho de productos</p>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+          />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+            Comercial
+          </p>
+        </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Caja</h1>
+        <p className="mt-1 text-sm text-slate-500">Caja de ventas y despacho de productos</p>
       </div>
 
       {/* ── Métricas del día ──────────────────────────────────────────────────── */}
-      <div>
-        <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-3">
-          Resumen de hoy —{" "}
-          {new Date().toLocaleDateString("es-PY", {
-            weekday: "long", day: "numeric", month: "long", year: "numeric",
-          })}
-        </p>
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center gap-2">
+          <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+            Resumen de hoy —{" "}
+            <span className="text-slate-500 font-medium normal-case tracking-normal">
+              {new Date().toLocaleDateString("es-PY", {
+                weekday: "long", day: "numeric", month: "long", year: "numeric",
+              })}
+            </span>
+          </h2>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard
             label="Facturación de hoy"
@@ -227,16 +248,21 @@ export default function VentasPage() {
             sub="Unidades despachadas"
           />
         </div>
-      </div>
+      </section>
 
       {/* ── Tabla de ventas ───────────────────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-        <div className="flex justify-between items-center mb-5">
-          <h2 className="text-xl font-semibold">Órdenes de venta</h2>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              Órdenes de venta
+            </h2>
+          </div>
           <Link
             href="/ventas/nueva"
-            className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
           >
             + Nueva venta
           </Link>
@@ -352,7 +378,7 @@ export default function VentasPage() {
           </table>
         </div>
 
-      </div>
+      </section>
 
     </div>
   );

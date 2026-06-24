@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 import { getMovimientos } from "@/lib/inventario/storage";
 import type { MovimientoInventario, TipoMovimiento, OrigenMovimiento } from "@/lib/inventario/types";
 
@@ -44,17 +45,14 @@ function formatFecha(iso: string) {
 }
 
 const inputFilterClass =
-  "border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors bg-white";
+  "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#4FAEB2]/40 focus:border-[#4FAEB2] focus:outline-none";
 
 export default function MovimientosPage() {
   const [todos, setTodos] = useState<MovimientoInventario[]>([]);
-
-  // Filtros
-  const [busqueda, setBusqueda] = useState("");
-  const [filtroTipo, setFiltroTipo] = useState<TipoMovimiento | "">("");
-  const [filtroOrigen, setFiltroOrigen] = useState<OrigenMovimiento | "">("");
-  const [fechaDesde, setFechaDesde] = useState("");  // "YYYY-MM-DD"
+  const [query, setQuery] = useState("");
+  const [fechaDesde, setFechaDesde] = useState(""); // "YYYY-MM-DD"
   const [fechaHasta, setFechaHasta] = useState(""); // "YYYY-MM-DD"
+  const [pageSize, setPageSize] = useState<25 | 50 | 100 | "all">(25);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,127 +62,210 @@ export default function MovimientosPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const filtrados = todos.filter((m) => {
-    const texto = busqueda.toLowerCase();
-    const coincideTexto =
-      texto === "" ||
-      m.producto_nombre.toLowerCase().includes(texto) ||
-      m.producto_sku.toLowerCase().includes(texto);
-    const coincideTipo = filtroTipo === "" || m.tipo === filtroTipo;
-    const coincideOrigen = filtroOrigen === "" || m.origen === filtroOrigen;
+  // Filtro unico: matchea contra cualquier dato visible del movimiento.
+  // Multiples palabras → AND, case-insensitive.
+  const filtradosTodos = useMemo(() => {
+    return todos.filter((m) => {
+      // Filtro de fecha (siempre aplica si seteado)
+      const fechaMov = m.fecha.slice(0, 10);
+      if (fechaDesde !== "" && fechaMov < fechaDesde) return false;
+      if (fechaHasta !== "" && fechaMov > fechaHasta) return false;
 
-    // Compara solo la parte de fecha (YYYY-MM-DD) del ISO string del movimiento
-    const fechaMov = m.fecha.slice(0, 10); // "YYYY-MM-DD"
-    const coincideDesde = fechaDesde === "" || fechaMov >= fechaDesde;
-    const coincideHasta = fechaHasta === "" || fechaMov <= fechaHasta;
+      const q = query.trim().toLowerCase();
+      if (q === "") return true;
+      const haystack = [
+        m.producto_nombre,
+        m.producto_sku,
+        m.tipo,
+        origenLabel[m.origen],
+        m.origen,
+        String(m.cantidad),
+        String(Math.abs(m.cantidad)),
+        String(m.costo_unitario),
+        m.costo_unitario.toLocaleString("es-PY"),
+        m.usuario_nombre ?? "",
+        formatFecha(m.fecha),
+        fechaMov,
+      ]
+        .join(" • ")
+        .toLowerCase();
+      const terms = q.split(/\s+/).filter(Boolean);
+      return terms.every((t) => haystack.includes(t));
+    });
+  }, [todos, query, fechaDesde, fechaHasta]);
 
-    return coincideTexto && coincideTipo && coincideOrigen && coincideDesde && coincideHasta;
-  });
+  const filtrados = pageSize === "all" ? filtradosTodos : filtradosTodos.slice(0, pageSize);
+
+  function handleExportExcel() {
+    if (filtradosTodos.length === 0) {
+      alert("No hay movimientos para exportar con los filtros actuales.");
+      return;
+    }
+    const rows = filtradosTodos.map((m) => ({
+      Producto: m.producto_nombre,
+      SKU: m.producto_sku,
+      Tipo: m.tipo,
+      Cantidad: m.cantidad,
+      "Costo unit.": m.costo_unitario,
+      Origen: origenLabel[m.origen],
+      Usuario: m.usuario_nombre ?? "",
+      Fecha: formatFecha(m.fecha),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // anchos minimos legibles
+    ws["!cols"] = [
+      { wch: 32 }, // Producto
+      { wch: 14 }, // SKU
+      { wch: 10 }, // Tipo
+      { wch: 10 }, // Cantidad
+      { wch: 14 }, // Costo unit.
+      { wch: 18 }, // Origen
+      { wch: 22 }, // Usuario
+      { wch: 18 }, // Fecha
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Movimientos");
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `movimientos_inventario_${stamp}.xlsx`);
+  }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 pb-10">
 
-      <div>
-        <h1 className="text-3xl font-bold text-gray-800">Movimientos de inventario</h1>
-        <p className="text-gray-600">Registro de entradas, salidas y ajustes de stock</p>
-      </div>
-
-      <div className="bg-white rounded-xl shadow p-6">
-
-        {/* Header */}
-        <div className="flex justify-between items-center mb-5">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold">Historial</h2>
-            <Link
-              href="/inventario/movimientos/nuevo"
-              className="text-sm text-gray-600 hover:text-gray-900 underline"
-            >
-              Nuevo movimiento
-            </Link>
-            <span className="text-sm text-gray-400">
-              {filtrados.length} de {todos.length} registros
-            </span>
+      {/* Header tipo Dashboard */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Operaciones · Movimientos
+            </p>
           </div>
-          <p className="text-xs text-gray-400">
-            Los movimientos se generan automáticamente desde <span className="font-medium text-gray-500">Compras</span>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+            Movimientos de inventario
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Registro de entradas, salidas y ajustes de stock
           </p>
         </div>
-
-        {/* Filtros */}
-        <div className="flex flex-wrap gap-3 mb-5 pb-5 border-b border-gray-100">
-          {/* Fila 1: búsqueda + tipo + origen */}
-          <input
-            type="text"
-            placeholder="Buscar por producto o SKU..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className={`${inputFilterClass} min-w-56`}
-          />
-          <select
-            value={filtroTipo}
-            onChange={(e) => setFiltroTipo(e.target.value as TipoMovimiento | "")}
-            className={inputFilterClass}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={filtradosTodos.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-50 hover:text-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <option value="">Todos los tipos</option>
-            <option value="ENTRADA">ENTRADA</option>
-            <option value="SALIDA">SALIDA</option>
-            <option value="AJUSTE">AJUSTE</option>
-          </select>
-          <select
-            value={filtroOrigen}
-            onChange={(e) => setFiltroOrigen(e.target.value as OrigenMovimiento | "")}
-            className={inputFilterClass}
-          >
-            <option value="">Todos los orígenes</option>
-            <option value="compra">Compra</option>
-            <option value="venta">Venta</option>
-            <option value="ajuste_manual">Ajuste manual</option>
-          </select>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path d="M10.75 2.75a.75.75 0 0 0-1.5 0v8.614L6.295 8.235a.75.75 0 1 0-1.09 1.03l4.25 4.5a.75.75 0 0 0 1.09 0l4.25-4.5a.75.75 0 0 0-1.09-1.03l-2.955 3.129V2.75Z" />
+              <path d="M3.5 12.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5Z" />
+            </svg>
+            Exportar Excel
+          </button>
+        </div>
+      </div>
 
-          {/* Separador visual entre grupos */}
-          <div className="w-full flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-400 whitespace-nowrap">Desde</label>
-              <input
-                type="date"
-                value={fechaDesde}
-                onChange={(e) => setFechaDesde(e.target.value)}
-                max={fechaHasta || undefined}
-                className={inputFilterClass}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-400 whitespace-nowrap">Hasta</label>
-              <input
-                type="date"
-                value={fechaHasta}
-                onChange={(e) => setFechaHasta(e.target.value)}
-                min={fechaDesde || undefined}
-                className={inputFilterClass}
-              />
-            </div>
-            {(busqueda || filtroTipo || filtroOrigen || fechaDesde || fechaHasta) && (
-              <button
-                onClick={() => {
-                  setBusqueda("");
-                  setFiltroTipo("");
-                  setFiltroOrigen("");
-                  setFechaDesde("");
-                  setFechaHasta("");
-                }}
-                className="text-sm text-gray-400 hover:text-gray-600 transition-colors px-2"
-              >
-                Limpiar filtros
-              </button>
-            )}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
+        {/* Header de la seccion */}
+        <div className="mb-5 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              Historial
+            </h2>
           </div>
+          <Link
+            href="/inventario/movimientos/nuevo"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
+          >
+            + Nuevo movimiento
+          </Link>
+
+          {/* Buscador único */}
+          <div className="relative min-w-[16rem] flex-1">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            >
+              <path
+                fillRule="evenodd"
+                d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por producto, SKU, tipo, origen, usuario, fecha…"
+              className={`${inputFilterClass} w-full pl-9`}
+            />
+          </div>
+
+          {/* Rango de fechas */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+              Desde
+            </label>
+            <input
+              type="date"
+              value={fechaDesde}
+              onChange={(e) => setFechaDesde(e.target.value)}
+              max={fechaHasta || undefined}
+              className={inputFilterClass}
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+              Hasta
+            </label>
+            <input
+              type="date"
+              value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
+              min={fechaDesde || undefined}
+              className={inputFilterClass}
+            />
+          </div>
+
+          {/* Paginado */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+              Filas
+            </label>
+            <select
+              value={String(pageSize)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPageSize(v === "all" ? "all" : (Number(v) as 25 | 50 | 100));
+              }}
+              className={inputFilterClass}
+            >
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">Todo</option>
+            </select>
+          </div>
+
+          <span className="ml-auto text-[11px] text-slate-400">
+            {filtrados.length} de {filtradosTodos.length}
+            {filtradosTodos.length !== todos.length ? ` · ${todos.length} en total` : ""}
+            {" "}registro{filtradosTodos.length === 1 ? "" : "s"}
+          </span>
         </div>
 
         {/* Tabla */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b text-gray-500">
+              <tr className="bg-slate-50 text-slate-600 text-sm font-semibold">
                 <th className="py-3 pr-4 font-medium">Producto</th>
                 <th className="py-3 pr-4 font-medium">SKU</th>
                 <th className="py-3 pr-4 font-medium">Tipo</th>
@@ -216,7 +297,7 @@ export default function MovimientosPage() {
                       : "text-yellow-600";
 
                   return (
-                    <tr key={m.id} className="border-b last:border-0 hover:bg-gray-50">
+                    <tr key={m.id} className="border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors">
                       <td className="py-4 pr-4 font-medium text-gray-800">{m.producto_nombre}</td>
                       <td className="py-4 pr-4 text-gray-500 font-mono">{m.producto_sku}</td>
                       <td className="py-4 pr-4">
@@ -249,7 +330,7 @@ export default function MovimientosPage() {
           </table>
         </div>
 
-      </div>
+      </section>
 
     </div>
   );

@@ -2,9 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import ExportExcelButton from "@/components/ui/ExportExcelButton";
-import ImportExcelButton from "@/components/ui/ImportExcelButton";
-import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 interface Categoria {
   id: string;
@@ -21,7 +18,6 @@ const labelCls =
   "block text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500 mb-1";
 
 export default function CategoriasProductosPage() {
-  const { isAdmin } = useIsAdmin();
   const [items, setItems] = useState<Categoria[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,54 +120,34 @@ export default function CategoriasProductosPage() {
   return (
     <div className="space-y-6 pb-10">
 
-      {/* Header tipo Dashboard */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
-            />
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
-              Operaciones · Categorías
-            </p>
-          </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-            Categorías de productos
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Clasificá tus productos para reportes y búsqueda. Cada categoría puede tener sub-categorías eligiendo
-            una <span className="font-medium text-slate-600">Categoría padre</span>.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ExportExcelButton url="/api/inventario/categorias/export" />
-          <ImportExcelButton
-            entidad="Categorías"
-            previewUrl="/api/inventario/categorias/import/preview"
-            commitUrl="/api/inventario/categorias/import/commit"
-            templateUrl="/api/inventario/categorias/import/template"
-            permiteCrearFaltantes
-            visible={isAdmin}
-            onCompleted={load}
-          />
-          <Link
-            href="/inventario"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-[#3F8E91] transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5"
-          >
-            ← Volver a Inventario
-          </Link>
-        </div>
+      {/* Breadcrumb / volver */}
+      <div>
+        <Link
+          href="/inventario"
+          className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3F8E91] transition-colors hover:text-[#2f6c6f]"
+        >
+          ← Volver a Inventario
+        </Link>
       </div>
 
-      {/* Banner informativo */}
-      <div className="rounded-xl border border-[#4FAEB2]/30 bg-[#4FAEB2]/[0.06] px-4 py-3 text-xs text-slate-700">
-        Estas categorías aparecen en el selector <strong className="text-slate-900">Categoría principal</strong> de
-        Nuevo producto. Los{" "}
-        <Link href="/proveedores/categorias" className="font-medium text-[#3F8E91] underline hover:text-[#2f6c6f]">
-          rubros de proveedor
-        </Link>{" "}
-        también se importan automáticamente acá, así no tenés que cargarlos dos veces.
+      {/* Header tipo Dashboard */}
+      <div>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+          />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+            Operaciones · Categorías
+          </p>
+        </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+          Categorías de productos
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Clasificá tus productos para reportes y búsqueda. Cada categoría puede tener sub-categorías eligiendo
+          una <span className="font-medium text-slate-600">Categoría padre</span>.
+        </p>
       </div>
 
       {/* Alta */}

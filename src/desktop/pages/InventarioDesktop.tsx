@@ -40,14 +40,9 @@ export default function InventarioPage() {
   const [ubicaciones, setUbicaciones] = useState<UbicacionMin[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Filtros por columna
-  const [filtroPorNombre,  setFiltroPorNombre]  = useState("");
-  const [filtroPorSku,     setFiltroPorSku]     = useState("");
-  const [filtroPorCosto,   setFiltroPorCosto]   = useState("");
-  const [filtroPorPrecio,  setFiltroPorPrecio]  = useState("");
-  const [filtroValuacion,  setFiltroValuacion]  = useState<MetodoValuacion | "">("");
-  const [filtroUbicacion,  setFiltroUbicacion]  = useState<string>(""); // "", "__sin__" o id
-  const [soloStockBajo,    setSoloStockBajo]    = useState(false);
+  // Busqueda unica global + paginado
+  const [query, setQuery] = useState("");
+  const [pageSize, setPageSize] = useState<25 | 50 | 100 | "all">(25);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,64 +62,34 @@ export default function InventarioPage() {
 
   const ubicacionById = new Map(ubicaciones.map((u) => [u.id, u]));
 
-  const productos = todos.filter((p) => {
-    // Nombre
-    if (filtroPorNombre.trim() !== "" &&
-        !p.nombre.toLowerCase().includes(filtroPorNombre.toLowerCase().trim()))
-      return false;
-
-    // SKU
-    if (filtroPorSku.trim() !== "" &&
-        !p.sku.toLowerCase().includes(filtroPorSku.toLowerCase().trim()))
-      return false;
-
-    // Costo promedio — acepta "35000" o "35.000"
-    if (filtroPorCosto.trim() !== "") {
-      const t = filtroPorCosto.trim();
-      const coincide =
-        String(p.costo_promedio).includes(t) ||
-        p.costo_promedio.toLocaleString("es-PY").includes(t);
-      if (!coincide) return false;
-    }
-
-    // Precio venta — acepta "75000" o "75.000"
-    if (filtroPorPrecio.trim() !== "") {
-      const t = filtroPorPrecio.trim();
-      const coincide =
-        String(p.precio_venta).includes(t) ||
-        p.precio_venta.toLocaleString("es-PY").includes(t);
-      if (!coincide) return false;
-    }
-
-    // Valuación
-    if (filtroValuacion !== "" && p.metodo_valuacion !== filtroValuacion) return false;
-
-    // Ubicación
-    if (filtroUbicacion === "__sin__") {
-      if (p.ubicacion_principal_id) return false;
-    } else if (filtroUbicacion !== "") {
-      if (p.ubicacion_principal_id !== filtroUbicacion) return false;
-    }
-
-    // Solo stock bajo
-    if (soloStockBajo && p.stock_actual > p.stock_minimo) return false;
-
-    return true;
+  // Filtro unico: matchea contra cualquier dato visible del producto.
+  // El query se separa por palabras y todas deben matchear (AND), case-insensitive.
+  const filtradosTodos = todos.filter((p) => {
+    const q = query.trim().toLowerCase();
+    if (q === "") return true;
+    const u = p.ubicacion_principal_id ? ubicacionById.get(p.ubicacion_principal_id) : null;
+    const haystack = [
+      p.nombre,
+      p.sku,
+      String(p.costo_promedio),
+      p.costo_promedio.toLocaleString("es-PY"),
+      String(p.precio_venta),
+      p.precio_venta.toLocaleString("es-PY"),
+      String(p.stock_actual),
+      String(p.stock_minimo),
+      p.unidad_medida,
+      p.metodo_valuacion,
+      u?.nombre ?? "",
+      u?.tipo ?? "",
+    ]
+      .join(" • ")
+      .toLowerCase();
+    const terms = q.split(/\s+/).filter(Boolean);
+    return terms.every((t) => haystack.includes(t));
   });
 
-  const hayFiltrosActivos =
-    filtroPorNombre || filtroPorSku || filtroPorCosto ||
-    filtroPorPrecio || filtroValuacion || filtroUbicacion || soloStockBajo;
-
-  function limpiarFiltros() {
-    setFiltroPorNombre("");
-    setFiltroPorSku("");
-    setFiltroPorCosto("");
-    setFiltroPorPrecio("");
-    setFiltroValuacion("");
-    setFiltroUbicacion("");
-    setSoloStockBajo(false);
-  }
+  const productos =
+    pageSize === "all" ? filtradosTodos : filtradosTodos.slice(0, pageSize);
 
   return (
     <div className="space-y-6 pb-10">
@@ -160,126 +125,67 @@ export default function InventarioPage() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                Productos
-              </h2>
-            </div>
-            <Link
-              href="/inventario/nuevo"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
-            >
-              + Nuevo producto
-            </Link>
+        <div className="mb-5 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              Productos
+            </h2>
           </div>
-          <p className="text-[11px] text-slate-400">
+          <Link
+            href="/inventario/nuevo"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
+          >
+            + Nuevo producto
+          </Link>
+          <div className="relative min-w-[16rem] flex-1">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            >
+              <path
+                fillRule="evenodd"
+                d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nombre, SKU, costo, precio, stock, unidad, ubicación, valuación…"
+              className={`${inputFilterClass} w-full pl-9`}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+              Filas
+            </label>
+            <select
+              value={String(pageSize)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPageSize(v === "all" ? "all" : (Number(v) as 25 | 50 | 100));
+              }}
+              className={inputFilterClass}
+            >
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">Todo</option>
+            </select>
+          </div>
+          <span className="ml-auto text-[11px] text-slate-400">
+            {productos.length} de {filtradosTodos.length}
+            {filtradosTodos.length !== todos.length ? ` · ${todos.length} en total` : ""}
+            {" "}producto{filtradosTodos.length === 1 ? "" : "s"}
+          </span>
+          <p className="hidden text-[11px] text-slate-400 xl:block">
             Los productos ingresan desde <span className="font-medium text-slate-500">Compras</span>
           </p>
-        </div>
-
-        {/* Filtros por columna */}
-        <div className="space-y-3 mb-5 pb-5 border-b border-gray-100">
-
-          {/* Fila 1: filtros de texto por columna */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Nombre</label>
-              <input
-                type="text"
-                placeholder="Buscar nombre..."
-                value={filtroPorNombre}
-                onChange={(e) => setFiltroPorNombre(e.target.value)}
-                className={inputFilterClass}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">SKU</label>
-              <input
-                type="text"
-                placeholder="Buscar SKU..."
-                value={filtroPorSku}
-                onChange={(e) => setFiltroPorSku(e.target.value)}
-                className={inputFilterClass}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Costo promedio</label>
-              <input
-                type="text"
-                placeholder="Ej: 35000"
-                value={filtroPorCosto}
-                onChange={(e) => setFiltroPorCosto(e.target.value)}
-                className={inputFilterClass}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Precio venta</label>
-              <input
-                type="text"
-                placeholder="Ej: 75000"
-                value={filtroPorPrecio}
-                onChange={(e) => setFiltroPorPrecio(e.target.value)}
-                className={inputFilterClass}
-              />
-            </div>
-          </div>
-
-          {/* Fila 2: valuación, ubicación, stock bajo, limpiar y contador */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Valuación</label>
-              <select
-                value={filtroValuacion}
-                onChange={(e) => setFiltroValuacion(e.target.value as MetodoValuacion | "")}
-                className={inputFilterClass}
-              >
-                <option value="">Todos los métodos</option>
-                <option value="CPP">CPP</option>
-                <option value="FIFO">FIFO</option>
-                <option value="LIFO">LIFO</option>
-              </select>
-            </div>
-            <div className="min-w-[14rem]">
-              <label className="block text-xs text-gray-400 mb-1">Depósito / Ubicación</label>
-              <select
-                value={filtroUbicacion}
-                onChange={(e) => setFiltroUbicacion(e.target.value)}
-                className={`${inputFilterClass} w-full`}
-              >
-                <option value="">Todas las ubicaciones</option>
-                <option value="__sin__">Sin ubicación asignada</option>
-                {ubicaciones.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nombre} — {u.tipo}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none mt-4">
-              <input
-                type="checkbox"
-                checked={soloStockBajo}
-                onChange={(e) => setSoloStockBajo(e.target.checked)}
-                className="rounded"
-              />
-              Solo stock bajo
-            </label>
-            {hayFiltrosActivos && (
-              <button
-                onClick={limpiarFiltros}
-                className="mt-4 text-sm text-gray-400 hover:text-gray-600 transition-colors px-2"
-              >
-                Limpiar filtros
-              </button>
-            )}
-            <span className="ml-auto text-sm text-gray-400 self-end mb-0.5">
-              {productos.length} de {todos.length} productos
-            </span>
-          </div>
-
         </div>
 
         <div className="overflow-x-auto">

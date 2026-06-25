@@ -40,6 +40,8 @@ export type ComisionVendedorRow = {
   premio_fijo_tramo: number;
   progreso_hacia_siguiente_pct: number | null;
   max_escala_alcanzada: boolean;
+  comision_variable?: number;
+  premio_fijo_aplicado?: number;
   comision_estimada: number;
   lineas: ComisionLinea[];
 };
@@ -48,6 +50,8 @@ export type ComisionKpis = {
   revenue_base_total: number;
   revenue_comisionable_total?: number;
   revenue_cobrado_total?: number;
+  comision_variable_total?: number;
+  premio_fijo_total?: number;
   comision_estimada_total: number;
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;

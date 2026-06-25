@@ -61,6 +61,8 @@ type VendedorRow = {
   falta_para_siguiente_escala: number | null;
   progreso_hacia_siguiente_pct: number | null;
   max_escala_alcanzada: boolean;
+  comision_variable?: number;
+  premio_fijo_aplicado?: number;
   comision_estimada: number;
   lineas: Linea[];
 };
@@ -92,6 +94,8 @@ type PreviewKpis = {
   revenue_base_total: number;
   revenue_comisionable_total?: number;
   revenue_cobrado_total?: number;
+  comision_variable_total?: number;
+  premio_fijo_total?: number;
   comision_estimada_total: number;
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
@@ -221,7 +225,9 @@ function escalaActualLabel(r: VendedorRow): string {
   if (r.escala_actual_porcentaje == null) {
     return r.siguiente_escala_desde == null ? "Sin escalas configuradas" : "Sin escala alcanzada todavía";
   }
-  return `Escala actual: ${fmtPct(r.escala_actual_porcentaje)}`;
+  const premio = r.escala_actual_premio_fijo ?? r.premio_fijo_tramo ?? 0;
+  const premioTxt = premio > 0 ? ` + ₲ ${fmtMoney(premio)} fijo` : "";
+  return `Escala actual: ${fmtPct(r.escala_actual_porcentaje)}${premioTxt}`;
 }
 
 function siguienteEscalaLabel(r: VendedorRow): string {
@@ -395,10 +401,21 @@ function MiniScaleSummary({ row }: { row: VendedorRow }) {
 }
 
 function TotalsStrip({ row }: { row: VendedorRow }) {
+  const premio = row.premio_fijo_aplicado ?? 0;
+  const variable = row.comision_variable ?? row.comision_estimada;
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
       <Kpi label="Base comisionable" value={`₲ ${fmtMoney(row.revenue_base)}`} />
-      <Kpi label="Comisión estimada" value={`₲ ${fmtMoney(row.comision_estimada)}`} accent="featured" />
+      <Kpi
+        label="Comisión estimada"
+        value={`₲ ${fmtMoney(row.comision_estimada)}`}
+        accent="featured"
+        sub={
+          premio > 0
+            ? `Variable ₲ ${fmtMoney(variable)} + Premio fijo ₲ ${fmtMoney(premio)}`
+            : undefined
+        }
+      />
       <Kpi label="Cobrado" value={`₲ ${fmtMoney(row.cobrado_periodo_total ?? 0)}`} accent="success" />
       <Kpi label="Pendiente de cobro" value={`₲ ${fmtMoney(row.saldo_pendiente_total ?? 0)}`} accent="warning" />
       <Kpi label="Pendiente por comisionar" value={`₲ ${fmtMoney(row.pendiente_por_comisionar_total ?? 0)}`} />
@@ -798,7 +815,7 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
                     { h: "Monto total", right: true },
                     { h: "Monto pagado", right: true },
                     { h: "Fecha de pago", right: false },
-                    { h: "Comisión estimada", right: true },
+                    { h: "Comisión (variable)", right: true },
                     { h: "Acción", right: true },
                   ].map(({ h, right }) => (
                     <th
@@ -893,7 +910,7 @@ function SellerMovimientosList({ row }: { row: VendedorRow }) {
                 </div>
                 <div className="text-left sm:text-right">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    Comisión estimada
+                    Comisión (variable)
                   </p>
                   <p className="mt-0.5 text-base font-semibold tabular-nums text-[#3F8E91]">
                     ₲ {fmtMoney(ln.comision_estimada_linea)}
@@ -1041,6 +1058,11 @@ function renderVendedorView({
                 label="Comisión estimada"
                 value={`₲ ${fmtMoney(sellerRow.comision_estimada)}`}
                 accent="featured"
+                sub={
+                  (sellerRow.premio_fijo_aplicado ?? 0) > 0
+                    ? `Variable ₲ ${fmtMoney(sellerRow.comision_variable ?? sellerRow.comision_estimada)} + Premio fijo ₲ ${fmtMoney(sellerRow.premio_fijo_aplicado ?? 0)}`
+                    : undefined
+                }
               />
               <Kpi
                 label="Cobrado"
@@ -1196,6 +1218,11 @@ function renderAdminView({
               label="Comisión estimada total"
               value={`₲ ${fmtMoney(kpis.comision_estimada_total)}`}
               accent="featured"
+              sub={
+                (kpis.premio_fijo_total ?? 0) > 0
+                  ? `Variable ₲ ${fmtMoney(kpis.comision_variable_total ?? 0)} + Premio fijo ₲ ${fmtMoney(kpis.premio_fijo_total ?? 0)}`
+                  : undefined
+              }
             />
             <Kpi
               label="Total cobrado"

@@ -73,6 +73,12 @@ export default function ComisionesMobile() {
           <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
             {formatGs(data.kpis.comision_estimada_total)}
           </p>
+          {(data.kpis.premio_fijo_total ?? 0) > 0 ? (
+            <p className="mt-0.5 text-[11px] text-emerald-700">
+              Variable {formatGs(data.kpis.comision_variable_total ?? 0)} + Premio fijo{" "}
+              {formatGs(data.kpis.premio_fijo_total ?? 0)}
+            </p>
+          ) : null}
           <p className="mt-0.5 text-xs text-slate-600">
             Sobre {formatGs(data.kpis.revenue_comisionable_total ?? data.kpis.revenue_base_total)} comisionable ·{" "}
             {data.kpis.vendedores_con_comision} vendedor(es)

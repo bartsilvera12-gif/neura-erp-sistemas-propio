@@ -718,6 +718,8 @@ export async function GET(request: Request) {
     const porVendedorOut: Record<string, unknown>[] = [];
     let revenueTotal = 0;
     let comisionTotal = 0;
+    let comisionVariableTotal = 0;
+    let premioFijoTotal = 0;
     let cobradoTotal = 0;
     let pendienteCobroTotal = 0;
     let pendienteComisionarTotal = 0;
@@ -732,11 +734,21 @@ export async function GET(request: Request) {
       lineasExcluidasTotal += agg.lineasExcluidas;
       lineasIncluidasManualTotal += agg.lineasIncluidasManual;
       const tier: TierResult | null = sinEscalas ? null : resolverTramo(agg.revenueComisionable, escalas);
+      const pct = tier?.porcentaje ?? 0;
+      // Variable = base × % del tramo. Premio fijo = del tramo (no se reparte).
+      // Total = variable + premio_fijo. Si no hay tier, comisionPorTramo devuelve 0.
+      const comisionVariable = sinEscalas || !tier ? 0 : (agg.revenueComisionable * pct) / 100;
+      const premioFijoAplicado = sinEscalas || !tier ? 0 : tier.premioFijo;
       const comisionVen = sinEscalas ? 0 : comisionPorTramo(agg.revenueComisionable, tier);
       const progresoEscala = calcularProgresoEscala(agg.revenueComisionable, escalas);
       comisionTotal += comisionVen;
+      comisionVariableTotal += comisionVariable;
+      premioFijoTotal += premioFijoAplicado;
 
-      // El reparto proporcional se hace SOLO sobre líneas comisionables.
+      // El reparto proporcional se hace SOLO sobre la comisión VARIABLE.
+      // El premio fijo se conserva como valor global del vendedor y NO se distribuye
+      // por línea para evitar interpretaciones (la comisión por línea queda como
+      // monto_base × % del tramo, lo que el cajero/vendedor esperaría).
       const idxComisionables: number[] = [];
       const montosComisionables: number[] = [];
       agg.lines.forEach((l, i) => {
@@ -745,7 +757,7 @@ export async function GET(request: Request) {
           montosComisionables.push(l.monto_base);
         }
       });
-      const sharesC = repartoProporcional(comisionVen, montosComisionables);
+      const sharesC = repartoProporcional(comisionVariable, montosComisionables);
       const linesOut = agg.lines.map((l) => ({ ...l, comision_estimada_linea: 0 }));
       idxComisionables.forEach((idx, k) => {
         const out = linesOut[idx];
@@ -764,9 +776,11 @@ export async function GET(request: Request) {
         lineas_excluidas: agg.lineasExcluidas,
         lineas_incluidas_manual: agg.lineasIncluidasManual,
         escala_aplicada: tier?.etiqueta ?? (sinEscalas ? "Sin escalas configuradas" : "—"),
-        porcentaje_tramo: tier?.porcentaje ?? 0,
+        porcentaje_tramo: pct,
         premio_fijo_tramo: tier?.premioFijo ?? 0,
         ...progresoEscala,
+        comision_variable: Math.round(comisionVariable * 100) / 100,
+        premio_fijo_aplicado: Math.round(premioFijoAplicado * 100) / 100,
         comision_estimada: Math.round(comisionVen * 100) / 100,
         lineas: linesOut,
       });
@@ -782,6 +796,8 @@ export async function GET(request: Request) {
       revenue_base_total: Math.round(revenueTotal * 100) / 100,
       revenue_comisionable_total: Math.round(revenueTotal * 100) / 100,
       revenue_cobrado_total: roundMoney(cobradoTotal),
+      comision_variable_total: Math.round(comisionVariableTotal * 100) / 100,
+      premio_fijo_total: Math.round(premioFijoTotal * 100) / 100,
       comision_estimada_total: Math.round(comisionTotal * 100) / 100,
       cobrado_periodo_total: roundMoney(cobradoTotal),
       saldo_pendiente_total: roundMoney(pendienteCobroTotal),

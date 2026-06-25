@@ -1182,33 +1182,21 @@ function renderAdminView({
       </div>
 
       {/* Período actual */}
-      <section className="rounded-2xl border border-[#4FAEB2]/45 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                Período actual
-              </p>
-            </div>
-            <p className="mt-2 text-xl font-semibold capitalize tracking-tight text-slate-900">
-              {meta?.periodo ?? "—"}
+      <section className="rounded-2xl border border-[#4FAEB2]/45 bg-white px-6 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              Período actual
             </p>
-            <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
-              {meta?.fecha_inicio_local} → {meta?.fecha_fin_local}
-              {meta?.timezone ? <span className="text-slate-400"> · {meta.timezone}</span> : null}
+            <p className="text-base font-semibold capitalize tracking-tight text-slate-900">
+              {meta?.periodo ?? "—"}
             </p>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#3F8E91]">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
             En seguimiento
           </span>
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi label="Estado" value="Período actual" />
-          <Kpi label="Política activa" value={meta?.politica_nombre ?? "—"} />
-          <Kpi label="Base de cálculo" value={baseLabel} />
-          <Kpi label="Escalas" value={meta?.sin_escalas ? "Sin escalas" : "Configuradas"} />
         </div>
       </section>
 
@@ -1222,9 +1210,9 @@ function renderAdminView({
             </h2>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <Kpi label="Base comisionable total" value={`₲ ${fmtMoney(kpis.revenue_base_total)}`} />
+            <Kpi label="Base comisionable" value={`₲ ${fmtMoney(kpis.revenue_base_total)}`} />
             <Kpi
-              label="Comisión estimada total"
+              label="Comisión estimada"
               value={`₲ ${fmtMoney(kpis.comision_estimada_total)}`}
               accent="featured"
               sub={
@@ -1234,26 +1222,9 @@ function renderAdminView({
               }
             />
             <Kpi
-              label="Total cobrado"
-              value={`₲ ${fmtMoney(kpis.cobrado_periodo_total ?? 0)}`}
-              accent="success"
-            />
-            <Kpi
               label="Total pendiente de cobro"
               value={`₲ ${fmtMoney(kpis.saldo_pendiente_total ?? 0)}`}
               accent="warning"
-            />
-            <Kpi
-              label="Pendiente por comisionar"
-              value={`₲ ${fmtMoney(kpis.pendiente_por_comisionar_total ?? 0)}`}
-            />
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi label="Vendedores con comisión" value={kpis.vendedores_con_comision} />
-            <Kpi
-              label="Revenue total cobrado"
-              value={`₲ ${fmtMoney(kpis.revenue_cobrado_total ?? kpis.cobrado_periodo_total ?? 0)}`}
-              sub="Incluye cobros no comisionables"
             />
             <Kpi
               label="Líneas excluidas"
@@ -1264,11 +1235,7 @@ function renderAdminView({
                 (kpis.lineas_excluidas ?? 0) > 0 && onShowExcluidas ? onShowExcluidas : undefined
               }
             />
-            <Kpi
-              label="Líneas incluidas manual"
-              value={kpis.lineas_incluidas_manual ?? 0}
-              sub="Override de inclusión"
-            />
+            <Kpi label="Vendedores con comisión" value={kpis.vendedores_con_comision} />
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi

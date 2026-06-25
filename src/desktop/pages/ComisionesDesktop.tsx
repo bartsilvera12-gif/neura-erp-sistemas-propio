@@ -404,7 +404,7 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
   const premio = row.premio_fijo_aplicado ?? 0;
   const variable = row.comision_variable ?? row.comision_estimada;
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       <Kpi label="Base comisionable" value={`₲ ${fmtMoney(row.revenue_base)}`} />
       <Kpi
         label="Comisión estimada"
@@ -416,9 +416,7 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
             : undefined
         }
       />
-      <Kpi label="Cobrado" value={`₲ ${fmtMoney(row.cobrado_periodo_total ?? 0)}`} accent="success" />
       <Kpi label="Pendiente de cobro" value={`₲ ${fmtMoney(row.saldo_pendiente_total ?? 0)}`} accent="warning" />
-      <Kpi label="Pendiente por comisionar" value={`₲ ${fmtMoney(row.pendiente_por_comisionar_total ?? 0)}`} />
     </div>
   );
 }
@@ -1072,7 +1070,7 @@ function renderVendedorView({
 
             <ScaleProgress row={sellerRow} />
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Kpi label="Base comisionable" value={`₲ ${fmtMoney(sellerRow.revenue_base)}`} />
               <Kpi
                 label="Comisión estimada"
@@ -1085,18 +1083,9 @@ function renderVendedorView({
                 }
               />
               <Kpi
-                label="Cobrado"
-                value={`₲ ${fmtMoney(sellerRow.cobrado_periodo_total ?? 0)}`}
-                accent="success"
-              />
-              <Kpi
                 label="Pendiente de cobro"
                 value={`₲ ${fmtMoney(sellerRow.saldo_pendiente_total ?? 0)}`}
                 accent="warning"
-              />
-              <Kpi
-                label="Pendiente por comisionar"
-                value={`₲ ${fmtMoney(sellerRow.pendiente_por_comisionar_total ?? 0)}`}
               />
             </div>
           </section>

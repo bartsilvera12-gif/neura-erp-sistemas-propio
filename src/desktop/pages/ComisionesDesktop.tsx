@@ -537,10 +537,12 @@ type ExcluidaConVendedor = Linea & { _vendedorNombre: string; _vendedorId: strin
 function LineasExcluidasDrawer({
   rows,
   meta,
+  overrideCtx,
   onClose,
 }: {
   rows: VendedorRow[];
   meta: PreviewMeta | null | undefined;
+  overrideCtx?: OverrideCtx;
   onClose: () => void;
 }) {
   const excluidas: ExcluidaConVendedor[] = useMemo(() => {
@@ -634,6 +636,7 @@ function LineasExcluidasDrawer({
                     { h: "Vendedor", right: false },
                     { h: "Motivo", right: false },
                     { h: "Origen", right: false },
+                    ...(overrideCtx?.canOverride ? [{ h: "Acción", right: true as const }] : []),
                   ].map(({ h, right }) => (
                     <th
                       key={h}
@@ -686,6 +689,23 @@ function LineasExcluidasDrawer({
                           {tag.label}
                         </span>
                       </td>
+                      {overrideCtx?.canOverride ? (
+                        <td className="px-4 py-3 text-right">
+                          {ln.tipo === "pago" && ln.pago_id ? (
+                            <button
+                              type="button"
+                              disabled={overrideCtx.busyPagoId === ln.pago_id}
+                              onClick={() => overrideCtx.onOpen(ln)}
+                              title="Incluir manualmente en la comisión de este período"
+                              className="inline-flex items-center gap-1 rounded-lg border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-2 py-1 text-[10px] font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/20 disabled:opacity-50"
+                            >
+                              + Agregar
+                            </button>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -1647,6 +1667,7 @@ export default function ComisionesPage() {
         <LineasExcluidasDrawer
           rows={rows}
           meta={meta}
+          overrideCtx={overrideCtx}
           onClose={() => setExcludedDrawerOpen(false)}
         />
       ) : null}

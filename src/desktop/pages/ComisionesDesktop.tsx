@@ -976,28 +976,21 @@ function renderVendedorView({
 }) {
   return (
     <div className="space-y-6 pb-10">
-      <section className="rounded-2xl border border-[#4FAEB2]/45 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span
-                aria-hidden="true"
-                className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
-              />
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
-                Mi comisión
-              </p>
-            </div>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+      <section className="rounded-2xl border border-[#4FAEB2]/45 bg-white px-6 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Mi comisión
+            </p>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
               Comisión del mes
             </h1>
-            <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Período</p>
-            <p className="mt-0.5 text-base font-semibold capitalize text-slate-900">{meta?.periodo ?? "—"}</p>
-            <p className="text-xs text-slate-500">
-              {meta?.fecha_inicio_local} → {meta?.fecha_fin_local}
-            </p>
           </div>
-          <label className="block text-left">
+          <label className="flex items-center gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
               Mes a consultar
             </span>
@@ -1005,7 +998,7 @@ function renderVendedorView({
               type="month"
               value={selectedSellerMonth}
               onChange={(e) => onMonthChange(e.target.value)}
-              className="mt-1.5 block rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             />
           </label>
         </div>

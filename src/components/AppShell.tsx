@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Sidebar from "./layout/Sidebar";
 import Header from "./layout/Header";
+import AgentPresenceHeartbeat from "./AgentPresenceHeartbeat";
 
 const STANDALONE_ROUTES = ["/login"];
 
@@ -59,6 +60,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       {ASSISTANT_ENABLED && <AssistantWidget />}
+      {/* Presencia global del agente: heartbeat en cualquier pantalla del ERP (no solo el inbox). */}
+      <AgentPresenceHeartbeat />
     </div>
   );
 }

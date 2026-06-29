@@ -2,21 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ProveedorForm, { emptyProveedorForm, type ProveedorFormValues } from "@/app/proveedores/ProveedorForm";
-import { createProveedor, getCategoriasProveedor } from "@/lib/proveedores/storage";
-import type { ProveedorCategoria } from "@/lib/proveedores/types";
+import { createProveedor } from "@/lib/proveedores/storage";
 
 export default function NuevoProveedorPage() {
   const router = useRouter();
   const [form, setForm] = useState<ProveedorFormValues>(emptyProveedorForm);
-  const [categorias, setCategorias] = useState<ProveedorCategoria[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    getCategoriasProveedor({ todas: true }).then(setCategorias);
-  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,31 +47,49 @@ export default function NuevoProveedorPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 pb-10">
+
       <div>
-        <Link href="/proveedores" className="text-sm text-sky-600 hover:underline">
-          ← Proveedores
+        <Link
+          href="/proveedores"
+          className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#3F8E91] transition-colors hover:text-[#2f6c6f]"
+        >
+          ← Volver a Proveedores
         </Link>
-        <h1 className="mt-2 text-3xl font-bold text-gray-800">Nuevo proveedor</h1>
-        <p className="text-gray-600">Los datos se guardan en la base de tu empresa.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
-        <ProveedorForm values={form} onChange={setForm} categorias={categorias} disabled={saving} />
+      <div>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+          />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+            Operaciones · Proveedores
+          </p>
+        </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Nuevo proveedor</h1>
+        <p className="mt-1 text-sm text-slate-500">Los datos se guardan en la base de tu empresa.</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+        <ProveedorForm values={form} onChange={setForm} disabled={saving} />
         {error && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {error}
+          </p>
         )}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-5">
           <button
             type="submit"
             disabled={saving}
-            className="rounded-lg bg-[#0EA5E9] px-5 py-2 text-sm font-medium text-white hover:bg-[#0284C7] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "Guardando…" : "Guardar"}
+            {saving ? "Guardando…" : "Guardar proveedor"}
           </button>
           <Link
             href="/proveedores"
-            className="rounded-lg border border-slate-200 px-5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
           >
             Cancelar
           </Link>

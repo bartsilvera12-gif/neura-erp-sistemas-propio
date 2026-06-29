@@ -3,11 +3,10 @@
 import type {
   CondicionPagoProveedor,
   EstadoProveedor,
-  ProveedorCategoria,
 } from "@/lib/proveedores/types";
 
 const inputClass =
-  "w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9] bg-white text-sm";
+  "w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 focus:border-[#4FAEB2] bg-white text-sm";
 const labelClass = "block text-sm font-medium text-slate-700 mb-1";
 
 export interface ProveedorFormValues {
@@ -49,23 +48,14 @@ export function emptyProveedorForm(): ProveedorFormValues {
 export default function ProveedorForm({
   values,
   onChange,
-  categorias,
   disabled,
 }: {
   values: ProveedorFormValues;
   onChange: (next: ProveedorFormValues) => void;
-  categorias: ProveedorCategoria[];
   disabled?: boolean;
 }) {
   function patch<K extends keyof ProveedorFormValues>(key: K, v: ProveedorFormValues[K]) {
     onChange({ ...values, [key]: v });
-  }
-
-  function toggleCat(id: string) {
-    const set = new Set(values.categoria_ids);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    patch("categoria_ids", [...set]);
   }
 
   return (
@@ -203,39 +193,6 @@ export default function ProveedorForm({
         </div>
       </div>
 
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Categorías</p>
-        {categorias.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            No hay categorías aún.{" "}
-            <a href="/proveedores/categorias" className="text-sky-600 underline">
-              Crear en gestión de categorías
-            </a>
-            .
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {categorias.filter((c) => c.activo || values.categoria_ids.includes(c.id)).map((c) => {
-              const on = values.categoria_ids.includes(c.id);
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => toggleCat(c.id)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                    on
-                      ? "bg-sky-500 border-sky-500 text-white"
-                      : "bg-white border-slate-200 text-slate-600 hover:border-sky-300"
-                  }`}
-                >
-                  {c.nombre}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

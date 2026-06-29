@@ -190,6 +190,89 @@ function isPreviewableMime(mime: unknown): boolean {
   return ["image/", "text/", "audio/", "video/"].some((p) => m.startsWith(p));
 }
 
+type ArchivoCategoria =
+  | "pdf"
+  | "imagen"
+  | "video"
+  | "audio"
+  | "excel"
+  | "documento"
+  | "comprimido"
+  | "otro";
+
+const ARCHIVO_CATEGORIAS_ORDEN: { key: ArchivoCategoria; label: string }[] = [
+  { key: "pdf", label: "PDF" },
+  { key: "imagen", label: "Imágenes" },
+  { key: "video", label: "Videos" },
+  { key: "audio", label: "Audio" },
+  { key: "excel", label: "Hojas de cálculo" },
+  { key: "documento", label: "Documentos" },
+  { key: "comprimido", label: "Comprimidos" },
+  { key: "otro", label: "Otros" },
+];
+
+const ARCHIVO_CATEGORIA_COLOR: Record<ArchivoCategoria, { bg: string; text: string }> = {
+  pdf: { bg: "bg-rose-50", text: "text-rose-500" },
+  imagen: { bg: "bg-violet-50", text: "text-violet-500" },
+  video: { bg: "bg-amber-50", text: "text-amber-600" },
+  audio: { bg: "bg-fuchsia-50", text: "text-fuchsia-500" },
+  excel: { bg: "bg-emerald-50", text: "text-emerald-600" },
+  documento: { bg: "bg-sky-50", text: "text-sky-600" },
+  comprimido: { bg: "bg-orange-50", text: "text-orange-600" },
+  otro: { bg: "bg-slate-100", text: "text-slate-500" },
+};
+
+function extensionArchivo(nombre: unknown): string {
+  if (typeof nombre !== "string") return "";
+  const m = nombre.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : "";
+}
+
+function categoriaArchivo(nombre: unknown, mime: unknown): ArchivoCategoria {
+  const m = typeof mime === "string" ? mime.toLowerCase() : "";
+  const ext = extensionArchivo(nombre);
+  if (
+    m.startsWith("image/") ||
+    ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "heic", "heif", "tif", "tiff", "avif", "ico"].includes(ext)
+  )
+    return "imagen";
+  if (
+    m.startsWith("video/") ||
+    ["mp4", "mov", "avi", "mkv", "webm", "wmv", "flv", "m4v", "mpeg", "mpg"].includes(ext)
+  )
+    return "video";
+  if (
+    m.startsWith("audio/") ||
+    ["mp3", "wav", "ogg", "m4a", "flac", "aac", "opus", "wma"].includes(ext)
+  )
+    return "audio";
+  if (m === "application/pdf" || ext === "pdf") return "pdf";
+  if (
+    m.includes("spreadsheet") ||
+    m.includes("excel") ||
+    m === "text/csv" ||
+    ["xls", "xlsx", "xlsm", "xlsb", "csv", "ods"].includes(ext)
+  )
+    return "excel";
+  if (
+    m.includes("zip") ||
+    m.includes("compressed") ||
+    m.includes("x-tar") ||
+    m.includes("x-7z") ||
+    m.includes("x-rar") ||
+    ["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"].includes(ext)
+  )
+    return "comprimido";
+  if (
+    m.includes("word") ||
+    m.includes("opendocument.text") ||
+    m.startsWith("text/") ||
+    ["doc", "docx", "txt", "rtf", "odt", "md", "pages"].includes(ext)
+  )
+    return "documento";
+  return "otro";
+}
+
 const IconTareaUser = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -441,6 +524,9 @@ export default function ProyectoDetalleInner({
   const [archivoActionId, setArchivoActionId] = useState<string | null>(null);
   const [archivoDragActive, setArchivoDragActive] = useState(false);
   const archivoInputRef = useRef<HTMLInputElement | null>(null);
+  const [archivoFiltro, setArchivoFiltro] = useState<ArchivoCategoria | "todos">("todos");
+  const [archivosSel, setArchivosSel] = useState<Set<string>>(() => new Set());
+  const [archivoBulkBusy, setArchivoBulkBusy] = useState(false);
 
   const [briefForm, setBriefForm] = useState<Record<string, string>>({});
   const [briefLists, setBriefLists] = useState<Record<string, string[]>>({});
@@ -501,6 +587,23 @@ export default function ProyectoDetalleInner({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Saco de la selección los archivos que ya no existen (tras borrar o recarga realtime).
+  const archivoIdsActuales = useMemo(
+    () => new Set((data?.archivos ?? []).map((a) => String(a.id ?? ""))),
+    [data?.archivos]
+  );
+  useEffect(() => {
+    setArchivosSel((prev) => {
+      let cambio = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (archivoIdsActuales.has(id)) next.add(id);
+        else cambio = true;
+      }
+      return cambio ? next : prev;
+    });
+  }, [archivoIdsActuales]);
 
   // Mantengo una ref a `load` para que las suscripciones de Realtime no se re-creen
   // en cada render. El callback estable adentro del channel siempre llama al último.
@@ -1027,6 +1130,76 @@ export default function ProyectoDetalleInner({
       onProjectUpdated?.();
     } finally {
       setArchivoActionId(null);
+    }
+  }
+
+  function toggleArchivoSel(aid: string) {
+    setArchivosSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(aid)) next.delete(aid);
+      else next.add(aid);
+      return next;
+    });
+  }
+
+  function setArchivoSelLote(ids: string[], marcar: boolean) {
+    setArchivosSel((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (marcar) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  async function descargarSeleccionados(ids: string[]) {
+    if (archivoBulkBusy || ids.length === 0) return;
+    setArchivoBulkBusy(true);
+    try {
+      for (const aid of ids) {
+        const url = await fetchArchivoUrl(aid, true);
+        if (!url) continue;
+        const a = document.createElement("a");
+        a.href = url;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Pequeña pausa para que el navegador no descarte descargas encadenadas.
+        await new Promise((r) => setTimeout(r, 350));
+      }
+    } finally {
+      setArchivoBulkBusy(false);
+    }
+  }
+
+  async function eliminarSeleccionados(ids: string[]) {
+    if (archivoBulkBusy || ids.length === 0) return;
+    const ok = window.confirm(
+      `¿Eliminar ${ids.length} archivo${ids.length === 1 ? "" : "s"}? Esta acción no se puede deshacer.`
+    );
+    if (!ok) return;
+    setArchivoBulkBusy(true);
+    try {
+      let huboError = false;
+      for (const aid of ids) {
+        const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos/${aid}`, {
+          method: "DELETE",
+        });
+        const j = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || !j.success) {
+          huboError = true;
+          setErr(j.error ?? "No se pudieron eliminar todos los archivos");
+          break;
+        }
+      }
+      setArchivoSelLote(ids, false);
+      await load();
+      onProjectUpdated?.();
+      if (!huboError) setErr(null);
+    } finally {
+      setArchivoBulkBusy(false);
     }
   }
 
@@ -2012,7 +2185,33 @@ export default function ProyectoDetalleInner({
           </div>
         ) : null}
 
-        {tab === "archivos" ? (
+        {tab === "archivos" ? (() => {
+          const archivosAll = data.archivos ?? [];
+          // Conteo por categoría sobre el total.
+          const conteo = new Map<ArchivoCategoria, number>();
+          for (const a of archivosAll) {
+            const cat = categoriaArchivo(a.nombre, a.mime_type);
+            conteo.set(cat, (conteo.get(cat) ?? 0) + 1);
+          }
+          const categoriasPresentes = ARCHIVO_CATEGORIAS_ORDEN.filter((c) => (conteo.get(c.key) ?? 0) > 0);
+          const filtrados =
+            archivoFiltro === "todos"
+              ? archivosAll
+              : archivosAll.filter((a) => categoriaArchivo(a.nombre, a.mime_type) === archivoFiltro);
+          const filtradosIds = filtrados.map((a) => String(a.id ?? ""));
+          const selEnFiltro = filtradosIds.filter((id) => archivosSel.has(id));
+          const todosFiltradosSel = filtradosIds.length > 0 && selEnFiltro.length === filtradosIds.length;
+          const selIds = [...archivosSel];
+          const ownedSelIds = selIds.filter((id) => {
+            const a = archivosAll.find((x) => String(x.id ?? "") === id);
+            return (
+              !!a &&
+              !!data.current_user_id &&
+              typeof a.uploaded_by === "string" &&
+              a.uploaded_by === data.current_user_id
+            );
+          });
+          return (
           <div className={`${panelCls}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -2020,7 +2219,7 @@ export default function ProyectoDetalleInner({
                 <h2 className="text-sm font-semibold text-slate-900">Archivos del proyecto</h2>
               </div>
               <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500">
-                {(data.archivos ?? []).length} archivo{(data.archivos ?? []).length === 1 ? "" : "s"}
+                {archivosAll.length} archivo{archivosAll.length === 1 ? "" : "s"}
               </span>
             </div>
             <p className="mt-2 text-xs text-slate-500">
@@ -2069,16 +2268,121 @@ export default function ProyectoDetalleInner({
               <span className="text-xs text-slate-400">Se aceptan varios archivos a la vez</span>
             </div>
 
+            {/* Filtros por tipo de archivo */}
+            {archivosAll.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setArchivoFiltro("todos")}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                    archivoFiltro === "todos"
+                      ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-[#4FAEB2]/50"
+                  }`}
+                >
+                  Todos
+                  <span className="rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-500">
+                    {archivosAll.length}
+                  </span>
+                </button>
+                {categoriasPresentes.map((c) => {
+                  const activo = archivoFiltro === c.key;
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => setArchivoFiltro(c.key)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                        activo
+                          ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
+                          : "border-slate-200 bg-white text-slate-500 hover:border-[#4FAEB2]/50"
+                      }`}
+                    >
+                      {c.label}
+                      <span className="rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-500">
+                        {conteo.get(c.key) ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {/* Barra de selección / acciones masivas */}
+            {filtrados.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#4FAEB2]"
+                    checked={todosFiltradosSel}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selEnFiltro.length > 0 && !todosFiltradosSel;
+                    }}
+                    onChange={(e) => setArchivoSelLote(filtradosIds, e.target.checked)}
+                    disabled={archivoBulkBusy}
+                  />
+                  {selIds.length > 0
+                    ? `${selIds.length} seleccionado${selIds.length === 1 ? "" : "s"}`
+                    : "Seleccionar todo"}
+                </label>
+                {selIds.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void descargarSeleccionados(selIds)}
+                      disabled={archivoBulkBusy}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {archivoBulkBusy ? <IconSpinner /> : <IconDownload />}
+                      Descargar ({selIds.length})
+                    </button>
+                    {ownedSelIds.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void eliminarSeleccionados(ownedSelIds)}
+                        disabled={archivoBulkBusy}
+                        title={
+                          ownedSelIds.length < selIds.length
+                            ? "Solo se eliminan los archivos que vos subiste"
+                            : undefined
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-500 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {archivoBulkBusy ? <IconSpinner /> : <IconTrash />}
+                        Eliminar ({ownedSelIds.length})
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setArchivosSel(new Set())}
+                      disabled={archivoBulkBusy}
+                      className="inline-flex items-center rounded-lg px-2 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-slate-600 disabled:opacity-50"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <ul className="mt-4 space-y-2">
-              {(data.archivos ?? []).length === 0 ? (
+              {archivosAll.length === 0 ? (
                 <li className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                   Sin archivos registrados.
                 </li>
+              ) : filtrados.length === 0 ? (
+                <li className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  No hay archivos de este tipo.
+                </li>
               ) : (
-                (data.archivos ?? []).map((a) => {
+                filtrados.map((a) => {
                   const aid = String(a.id ?? "");
                   const nombre = String(a.nombre ?? "");
                   const mime = typeof a.mime_type === "string" ? a.mime_type : "";
+                  const cat = categoriaArchivo(nombre, mime);
+                  const catColor = ARCHIVO_CATEGORIA_COLOR[cat];
+                  const catLabel = ARCHIVO_CATEGORIAS_ORDEN.find((c) => c.key === cat)?.label ?? "Otros";
                   const subidoPor =
                     (a.uploaded_by_nombre as string | null | undefined) ?? null;
                   const esPropietario =
@@ -2086,13 +2390,26 @@ export default function ProyectoDetalleInner({
                     typeof a.uploaded_by === "string" &&
                     a.uploaded_by === data.current_user_id;
                   const enAccionArchivo = archivoActionId === aid;
+                  const seleccionado = archivosSel.has(aid);
                   return (
                     <li
                       key={aid}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-sm transition-shadow hover:shadow-md"
+                      className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-sm transition-shadow hover:shadow-md ${
+                        seleccionado ? "border-[#4FAEB2] ring-1 ring-[#4FAEB2]/30" : "border-slate-200"
+                      }`}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 accent-[#4FAEB2]"
+                          checked={seleccionado}
+                          onChange={() => toggleArchivoSel(aid)}
+                          disabled={archivoBulkBusy}
+                          aria-label={`Seleccionar ${nombre}`}
+                        />
+                        <span
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${catColor.bg} ${catColor.text}`}
+                        >
                           <IconFile />
                         </span>
                         <div className="min-w-0">
@@ -2100,6 +2417,8 @@ export default function ProyectoDetalleInner({
                             {nombre}
                           </p>
                           <p className="mt-0.5 truncate text-xs text-slate-500">
+                            <span className={`font-medium ${catColor.text}`}>{catLabel}</span>
+                            {" · "}
                             {formatBytes(a.size_bytes)} · {formatFechaPyFull(String(a.created_at ?? ""))}
                             {subidoPor ? ` · ${subidoPor}` : ""}
                           </p>
@@ -2110,7 +2429,7 @@ export default function ProyectoDetalleInner({
                           <button
                             type="button"
                             onClick={() => void previsualizarArchivo(aid)}
-                            disabled={enAccionArchivo}
+                            disabled={enAccionArchivo || archivoBulkBusy}
                             title="Vista previa"
                             aria-label={`Vista previa de ${nombre}`}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
@@ -2122,7 +2441,7 @@ export default function ProyectoDetalleInner({
                         <button
                           type="button"
                           onClick={() => void descargarArchivo(aid)}
-                          disabled={enAccionArchivo}
+                          disabled={enAccionArchivo || archivoBulkBusy}
                           title="Descargar"
                           aria-label={`Descargar ${nombre}`}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
@@ -2134,7 +2453,7 @@ export default function ProyectoDetalleInner({
                           <button
                             type="button"
                             onClick={() => void eliminarArchivo(aid, nombre)}
-                            disabled={enAccionArchivo}
+                            disabled={enAccionArchivo || archivoBulkBusy}
                             title="Eliminar"
                             aria-label={`Eliminar ${nombre}`}
                             className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
@@ -2149,7 +2468,8 @@ export default function ProyectoDetalleInner({
               )}
             </ul>
           </div>
-        ) : null}
+          );
+        })() : null}
 
         {tab === "cambios" ? (() => {
           const estadoCodigo = String(

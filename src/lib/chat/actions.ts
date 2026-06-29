@@ -30,6 +30,7 @@ import {
   getOmnicanalScope,
   isOmnicanalAdminScope,
   OMNICANAL_IMPOSSIBLE_CONVERSATION_ID,
+  resolveInboxAssignmentForScope,
   resolveQueueIdsForUsuarios,
   shouldBypassOmnicanalConversationScope,
 } from "@/lib/chat/omnicanal-scope";
@@ -463,7 +464,10 @@ async function fetchChatConversationsUnsafe(
       console.error("[fetchChatConversations] alcance omnicanal omitido:", e);
     }
 
-    const assignment = filters?.assignment ?? "all";
+    // Visibilidad por rol: un agente normal ve por defecto SOLO lo asignado a él
+    // (las sin asignar quedan tras el filtro explícito "unassigned"). Admin/supervisor
+    // conservan alcance amplio. Aplicado en backend, no solo en el front.
+    const assignment = resolveInboxAssignmentForScope(filters?.assignment, scope, bypass);
     if (assignment === "mine") {
       let myAgents: { id: string }[] | null = null;
       let maErr = null as { message: string } | null;

@@ -145,6 +145,29 @@ export function isOmnicanalAdminScope(scope: OmnicanalScope): boolean {
   return scope.role === "admin";
 }
 
+export type InboxAssignmentFilterValue = "all" | "mine" | "unassigned";
+
+/**
+ * Visibilidad por defecto del Inbox según rol/alcance (regla de negocio, no solo UI):
+ *  - admin / supervisor / bypass: alcance amplio → "all" dentro de su scope.
+ *  - agente normal (rol "agente" o sin rol con fila chat_agents): por defecto ve SOLO
+ *    sus conversaciones asignadas ("mine"). Las "sin asignar" de su cola quedan
+ *    disponibles únicamente con el filtro explícito "unassigned" (vista "tomar chats").
+ *    Así un asesor nunca ve el inbox general ni el backlog sin asignar por defecto.
+ * Las elecciones explícitas "mine"/"unassigned" siempre se respetan.
+ *
+ * Se aplica en el backend (server actions / tenant_pg), no solo en el frontend.
+ */
+export function resolveInboxAssignmentForScope(
+  requested: InboxAssignmentFilterValue | null | undefined,
+  scope: OmnicanalScope,
+  bypass: boolean
+): InboxAssignmentFilterValue {
+  if (requested === "mine" || requested === "unassigned") return requested;
+  if (bypass || scope.role === "admin" || scope.role === "supervisor") return "all";
+  return "mine";
+}
+
 /**
  * Admin ERP (`admin`, `administrador`, `super_admin`) sin rol operativo omnicanal:
  * no se restringe por colas/agentes (compatibilidad con quien gestiona pero no está en `chat_empresa_operator_roles`).

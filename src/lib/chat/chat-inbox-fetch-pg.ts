@@ -18,6 +18,7 @@ import {
   getOmnicanalScope,
   isOmnicanalAdminScope,
   OMNICANAL_IMPOSSIBLE_CONVERSATION_ID,
+  resolveInboxAssignmentForScope,
   resolveQueueIdsForUsuarios,
   shouldBypassOmnicanalConversationScope,
 } from "@/lib/chat/omnicanal-scope";
@@ -321,7 +322,9 @@ export async function fetchChatConversationsFromTenantPg(
     whereParts.push(`COALESCE(hidden_by_tag, false) = false`);
   }
 
-  const assignment = filters?.assignment ?? "all";
+  // Visibilidad por rol (mismo criterio que el path PostgREST): agente normal ve por
+  // defecto solo lo asignado a él; sin asignar solo con filtro explícito "unassigned".
+  const assignment = resolveInboxAssignmentForScope(filters?.assignment, scope, bypass);
   if (assignment === "mine") {
     const mids = await pgSelectChatAgentIdsForUsuarios(pool, dataSchema, empresa_id, [usuario_id], true);
     const mids2 =

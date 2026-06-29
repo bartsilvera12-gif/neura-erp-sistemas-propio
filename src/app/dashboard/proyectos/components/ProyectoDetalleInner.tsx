@@ -444,23 +444,106 @@ const IconEye = () => (
   </svg>
 );
 
-const IconFile = () => (
+const IconCheckSquare = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
+    width="14"
+    height="14"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.8"
+    strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
     aria-hidden="true"
   >
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
+    <polyline points="9 11 12 14 22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
   </svg>
 );
+
+// Ícono por tipo de archivo (categoría). Líneas finas, estilo coherente con el resto del set.
+function ArchivoTipoIcon({ cat }: { cat: ArchivoCategoria }) {
+  const common = {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: 18,
+    height: 18,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  switch (cat) {
+    case "imagen":
+      return (
+        <svg {...common}>
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.6" />
+          <path d="m21 15-4.2-4.2a2 2 0 0 0-2.8 0L4 21" />
+        </svg>
+      );
+    case "video":
+      return (
+        <svg {...common}>
+          <rect x="2" y="4" width="20" height="16" rx="2.5" />
+          <path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "audio":
+      return (
+        <svg {...common}>
+          <path d="M9 18V6l11-2v12" />
+          <circle cx="6" cy="18" r="2.6" />
+          <circle cx="17" cy="16" r="2.6" />
+        </svg>
+      );
+    case "pdf":
+      return (
+        <svg {...common}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="8.5" y1="13" x2="15.5" y2="13" />
+          <line x1="8.5" y1="16.5" x2="13" y2="16.5" />
+        </svg>
+      );
+    case "excel":
+      return (
+        <svg {...common}>
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="3" y1="9" x2="21" y2="9" />
+          <line x1="3" y1="15" x2="21" y2="15" />
+          <line x1="9" y1="3" x2="9" y2="21" />
+          <line x1="15" y1="3" x2="15" y2="21" />
+        </svg>
+      );
+    case "documento":
+      return (
+        <svg {...common}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+      );
+    case "comprimido":
+      return (
+        <svg {...common}>
+          <rect x="2.5" y="4" width="19" height="5" rx="1.2" />
+          <path d="M4.5 9v9a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V9" />
+          <line x1="10" y1="13" x2="14" y2="13" />
+          <line x1="10.5" y1="16" x2="13.5" y2="16" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...common}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+      );
+  }
+}
 
 export type ProyectoDetalleInnerProps = {
   projectId: string;
@@ -2216,6 +2299,7 @@ export default function ProyectoDetalleInner({
             ...c,
             items: filtrados.filter((a) => categoriaArchivo(a.nombre, a.mime_type) === c.key),
           })).filter((g) => g.items.length > 0);
+          const selectionMode = selIds.length > 0;
 
           const renderArchivoLi = (a: Record<string, unknown>) => {
             const aid = String(a.id ?? "");
@@ -2230,38 +2314,66 @@ export default function ProyectoDetalleInner({
               a.uploaded_by === data.current_user_id;
             const enAccionArchivo = archivoActionId === aid;
             const seleccionado = archivosSel.has(aid);
+            const fijarCheck = seleccionado || selectionMode;
             return (
               <li
                 key={aid}
-                className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-sm transition-shadow hover:shadow-md ${
-                  seleccionado ? "border-[#4FAEB2] ring-1 ring-[#4FAEB2]/30" : "border-slate-200"
+                className={`group flex items-center gap-3 rounded-xl border px-2.5 py-2 transition-all duration-150 ${
+                  seleccionado
+                    ? "border-[#4FAEB2]/50 bg-[#4FAEB2]/[0.06]"
+                    : "border-transparent hover:border-slate-200 hover:bg-slate-50"
                 }`}
               >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 accent-[#4FAEB2]"
-                    checked={seleccionado}
-                    onChange={() => toggleArchivoSel(aid)}
-                    disabled={archivoBulkBusy}
-                    aria-label={`Seleccionar ${nombre}`}
-                  />
+                {/* Ícono de tipo que se transforma en checkbox al hover / selección */}
+                <label
+                  className="relative h-10 w-10 shrink-0 cursor-pointer"
+                  title="Seleccionar"
+                >
                   <span
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${catColor.bg} ${catColor.text}`}
+                    className={`absolute inset-0 flex items-center justify-center rounded-xl ${catColor.bg} ${catColor.text} transition-opacity duration-150 ${
+                      fijarCheck ? "opacity-0" : "opacity-100 group-hover:opacity-0"
+                    }`}
                   >
-                    <IconFile />
+                    <ArchivoTipoIcon cat={cat} />
                   </span>
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-800" title={nombre}>
-                      {nombre}
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {formatBytes(a.size_bytes)} · {formatFechaPyFull(String(a.created_at ?? ""))}
-                      {subidoPor ? ` · ${subidoPor}` : ""}
-                    </p>
-                  </div>
+                  <span
+                    className={`absolute inset-0 flex items-center justify-center transition-opacity duration-150 ${
+                      fijarCheck ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-[18px] w-[18px] cursor-pointer rounded-md border-slate-300 accent-[#4FAEB2]"
+                      checked={seleccionado}
+                      onChange={() => toggleArchivoSel(aid)}
+                      disabled={archivoBulkBusy}
+                      aria-label={`Seleccionar ${nombre}`}
+                    />
+                  </span>
+                </label>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800" title={nombre}>
+                    {nombre}
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-slate-400">
+                    <span className="font-medium text-slate-500">{formatBytes(a.size_bytes)}</span>
+                    <span className="text-slate-300">·</span>
+                    {formatFechaPyFull(String(a.created_at ?? ""))}
+                    {subidoPor ? (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span className="truncate">{subidoPor}</span>
+                      </>
+                    ) : null}
+                  </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+
+                <div
+                  className={`flex shrink-0 items-center gap-0.5 transition-opacity duration-150 ${
+                    selectionMode ? "opacity-40" : "opacity-100"
+                  }`}
+                >
                   {isPreviewableMime(mime) ? (
                     <button
                       type="button"
@@ -2269,10 +2381,9 @@ export default function ProyectoDetalleInner({
                       disabled={enAccionArchivo || archivoBulkBusy}
                       title="Vista previa"
                       aria-label={`Vista previa de ${nombre}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-[#3F8E91] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {enAccionArchivo ? <IconSpinner /> : <IconEye />}
-                      <span className="hidden sm:inline">Vista previa</span>
                     </button>
                   ) : null}
                   <button
@@ -2281,10 +2392,9 @@ export default function ProyectoDetalleInner({
                     disabled={enAccionArchivo || archivoBulkBusy}
                     title="Descargar"
                     aria-label={`Descargar ${nombre}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-[#3F8E91] hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {enAccionArchivo ? <IconSpinner /> : <IconDownload />}
-                    <span className="hidden sm:inline">Descargar</span>
                   </button>
                   {esPropietario ? (
                     <button
@@ -2293,7 +2403,7 @@ export default function ProyectoDetalleInner({
                       disabled={enAccionArchivo || archivoBulkBusy}
                       title="Eliminar"
                       aria-label={`Eliminar ${nombre}`}
-                      className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-rose-500 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <IconTrash />
                     </button>
@@ -2359,53 +2469,53 @@ export default function ProyectoDetalleInner({
               <span className="text-xs text-slate-400">Se aceptan varios archivos a la vez</span>
             </div>
 
-            {/* Filtros por tipo de archivo */}
+            {/* Filtros por tipo + entrada a modo selección */}
             {archivosAll.length > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setArchivoFiltro("todos")}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                    archivoFiltro === "todos"
-                      ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
-                      : "border-slate-200 bg-white text-slate-500 hover:border-[#4FAEB2]/50"
-                  }`}
-                >
-                  Todos
-                  <span className="rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-500">
-                    {archivosAll.length}
-                  </span>
-                </button>
-                {categoriasPresentes.map((c) => {
+              <div className="mt-5 flex flex-wrap items-center gap-1.5">
+                {[{ key: "todos" as const, label: "Todos", count: archivosAll.length }, ...categoriasPresentes.map((c) => ({ key: c.key, label: c.label, count: conteo.get(c.key) ?? 0 }))].map((c) => {
                   const activo = archivoFiltro === c.key;
                   return (
                     <button
                       key={c.key}
                       type="button"
                       onClick={() => setArchivoFiltro(c.key)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                         activo
-                          ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
-                          : "border-slate-200 bg-white text-slate-500 hover:border-[#4FAEB2]/50"
+                          ? "bg-[#4FAEB2] text-white shadow-sm shadow-[#4FAEB2]/20"
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200/70"
                       }`}
                     >
                       {c.label}
-                      <span className="rounded-full bg-slate-100 px-1.5 text-[10px] text-slate-500">
-                        {conteo.get(c.key) ?? 0}
+                      <span
+                        className={`rounded-full px-1.5 text-[10px] font-semibold ${
+                          activo ? "bg-white/25 text-white" : "bg-white text-slate-400"
+                        }`}
+                      >
+                        {c.count}
                       </span>
                     </button>
                   );
                 })}
+                {!selectionMode && filtrados.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setArchivoSelLote(filtradosIds, true)}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-[#3F8E91]"
+                  >
+                    <IconCheckSquare />
+                    Seleccionar
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
-            {/* Barra de selección / acciones masivas */}
-            {filtrados.length > 0 ? (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
+            {/* Barra flotante de acciones masivas */}
+            {selectionMode ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-[#4FAEB2]/25 bg-[#4FAEB2]/[0.07] px-3 py-2">
+                <label className="inline-flex cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#4FAEB2]"
+                    className="h-[18px] w-[18px] cursor-pointer rounded-md border-slate-300 accent-[#4FAEB2]"
                     checked={todosFiltradosSel}
                     ref={(el) => {
                       if (el) el.indeterminate = selEnFiltro.length > 0 && !todosFiltradosSel;
@@ -2413,47 +2523,45 @@ export default function ProyectoDetalleInner({
                     onChange={(e) => setArchivoSelLote(filtradosIds, e.target.checked)}
                     disabled={archivoBulkBusy}
                   />
-                  {selIds.length > 0
-                    ? `${selIds.length} seleccionado${selIds.length === 1 ? "" : "s"}`
-                    : "Seleccionar todo"}
+                  <span className="text-sm font-semibold text-[#3F8E91]">
+                    {selIds.length} seleccionado{selIds.length === 1 ? "" : "s"}
+                  </span>
                 </label>
-                {selIds.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-1.5">
+                <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void descargarSeleccionados(selIds)}
+                    disabled={archivoBulkBusy}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {archivoBulkBusy ? <IconSpinner /> : <IconDownload />}
+                    Descargar
+                  </button>
+                  {ownedSelIds.length > 0 ? (
                     <button
                       type="button"
-                      onClick={() => void descargarSeleccionados(selIds)}
+                      onClick={() => void eliminarSeleccionados(ownedSelIds)}
                       disabled={archivoBulkBusy}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                      title={
+                        ownedSelIds.length < selIds.length
+                          ? "Solo se eliminan los archivos que vos subiste"
+                          : undefined
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {archivoBulkBusy ? <IconSpinner /> : <IconDownload />}
-                      Descargar ({selIds.length})
+                      {archivoBulkBusy ? <IconSpinner /> : <IconTrash />}
+                      Eliminar ({ownedSelIds.length})
                     </button>
-                    {ownedSelIds.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => void eliminarSeleccionados(ownedSelIds)}
-                        disabled={archivoBulkBusy}
-                        title={
-                          ownedSelIds.length < selIds.length
-                            ? "Solo se eliminan los archivos que vos subiste"
-                            : undefined
-                        }
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-500 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {archivoBulkBusy ? <IconSpinner /> : <IconTrash />}
-                        Eliminar ({ownedSelIds.length})
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setArchivosSel(new Set())}
-                      disabled={archivoBulkBusy}
-                      className="inline-flex items-center rounded-lg px-2 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-slate-600 disabled:opacity-50"
-                    >
-                      Limpiar
-                    </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setArchivosSel(new Set())}
+                    disabled={archivoBulkBusy}
+                    className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:bg-white hover:text-slate-700 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
             ) : null}
 
@@ -2466,36 +2574,51 @@ export default function ProyectoDetalleInner({
                 No hay archivos de este tipo.
               </div>
             ) : (
-              <div className="mt-4 space-y-5">
+              <div className="mt-5 space-y-6">
                 {grupos.map((g) => {
                   const color = ARCHIVO_CATEGORIA_COLOR[g.key];
                   const idsGrupo = g.items.map((a) => String(a.id ?? ""));
                   const selEnGrupo = idsGrupo.filter((id) => archivosSel.has(id));
                   const todoGrupoSel = idsGrupo.length > 0 && selEnGrupo.length === idsGrupo.length;
                   return (
-                    <section key={g.key}>
-                      <div className="mb-2 flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#4FAEB2]"
-                          checked={todoGrupoSel}
-                          ref={(el) => {
-                            if (el) el.indeterminate = selEnGrupo.length > 0 && !todoGrupoSel;
-                          }}
-                          onChange={(e) => setArchivoSelLote(idsGrupo, e.target.checked)}
-                          disabled={archivoBulkBusy}
-                          aria-label={`Seleccionar todos los de ${g.label}`}
-                        />
-                        <span className={`h-2 w-2 rounded-full bg-current ${color.text}`} aria-hidden="true" />
-                        <h3 className={`text-xs font-semibold uppercase tracking-wide ${color.text}`}>
-                          {g.label}
-                        </h3>
-                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                    <section key={g.key} className="group/sec">
+                      <div className="mb-2.5 flex items-center gap-2.5">
+                        <span
+                          className={`flex h-6 w-6 items-center justify-center rounded-lg ${color.bg} ${color.text}`}
+                          aria-hidden="true"
+                        >
+                          <span className="scale-[0.72]">
+                            <ArchivoTipoIcon cat={g.key} />
+                          </span>
+                        </span>
+                        <h3 className="text-[13px] font-semibold text-slate-700">{g.label}</h3>
+                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
                           {g.items.length}
                         </span>
-                        <span className="h-px flex-1 bg-slate-100" />
+                        <span className="h-px flex-1 bg-gradient-to-r from-slate-200/80 to-transparent" />
+                        <label
+                          className={`inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-opacity hover:text-[#3F8E91] ${
+                            selectionMode || selEnGrupo.length > 0
+                              ? "opacity-100"
+                              : "opacity-0 group-hover/sec:opacity-100"
+                          }`}
+                          title={`Seleccionar todos los de ${g.label}`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-[15px] w-[15px] cursor-pointer rounded border-slate-300 accent-[#4FAEB2]"
+                            checked={todoGrupoSel}
+                            ref={(el) => {
+                              if (el) el.indeterminate = selEnGrupo.length > 0 && !todoGrupoSel;
+                            }}
+                            onChange={(e) => setArchivoSelLote(idsGrupo, e.target.checked)}
+                            disabled={archivoBulkBusy}
+                            aria-label={`Seleccionar todos los de ${g.label}`}
+                          />
+                          Todo
+                        </label>
                       </div>
-                      <ul className="space-y-2">{g.items.map((a) => renderArchivoLi(a))}</ul>
+                      <ul className="space-y-0.5">{g.items.map((a) => renderArchivoLi(a))}</ul>
                     </section>
                   );
                 })}

@@ -6,7 +6,7 @@
 export type BriefFieldDef =
   | { kind: "checkbox"; key: string; label: string }
   | { kind: "text"; key: string; label: string; placeholder?: string }
-  | { kind: "url_list"; key: string; label: string; placeholder?: string };
+  | { kind: "url_list"; key: string; label: string; placeholder?: string; addLabel?: string };
 
 export type ProyectoModuloSnapshot = {
   id: string | null;
@@ -30,7 +30,13 @@ export const PROYECTO_DATOS_BRIEF_FIELDS: BriefFieldDef[] = [
   { kind: "text", key: "objetivo", label: "Objetivo de la web" },
   { kind: "text", key: "secciones", label: "Secciones necesarias" },
   { kind: "text", key: "estilo_colores", label: "Colores o estilo deseado" },
-  { kind: "text", key: "logo_cliente", label: "Logo del cliente", placeholder: "https://..." },
+  {
+    kind: "url_list",
+    key: "logo_cliente",
+    label: "Logo del cliente",
+    placeholder: "https://...",
+    addLabel: "Agregar otro logo",
+  },
   { kind: "url_list", key: "redes_sociales", label: "Redes sociales", placeholder: "https://..." },
   { kind: "text", key: "whatsapp_contacto", label: "WhatsApp de contacto" },
   { kind: "checkbox", key: "hosting_existente", label: "Hosting existente" },

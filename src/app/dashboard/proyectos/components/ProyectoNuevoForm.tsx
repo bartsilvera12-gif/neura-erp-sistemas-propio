@@ -387,7 +387,7 @@ export default function ProyectoNuevoForm({
                                 setBriefLists((b) => ({ ...b, [f.key]: next }));
                               }}
                               disabled={items.length === 1 && !items[0]}
-                              aria-label={`Eliminar link ${idx + 1}`}
+                              aria-label={`Eliminar ${idx + 1}`}
                               title="Eliminar"
                               className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-400"
                             >
@@ -434,7 +434,7 @@ export default function ProyectoNuevoForm({
                             <line x1="12" y1="5" x2="12" y2="19" />
                             <line x1="5" y1="12" x2="19" y2="12" />
                           </svg>
-                          Agregar otro link
+                          {f.addLabel ?? "Agregar otro link"}
                         </button>
                       </div>
                     </div>

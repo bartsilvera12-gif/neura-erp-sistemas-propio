@@ -134,6 +134,17 @@ BEGIN
       sch
     );
 
+    -- Privilegios: sin esto el rol de PostgREST (service_role/authenticated) recibe
+    -- "permission denied for table proyecto_cambios". No depender de default privileges.
+    EXECUTE format(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON %I.proyecto_cambios TO authenticated',
+      sch
+    );
+    EXECUTE format(
+      'GRANT ALL ON %I.proyecto_cambios TO postgres, service_role',
+      sch
+    );
+
     IF rls_sch IS NOT NULL THEN
       EXECUTE format($pol$ALTER TABLE %I.proyecto_cambios ENABLE ROW LEVEL SECURITY$pol$, sch);
 

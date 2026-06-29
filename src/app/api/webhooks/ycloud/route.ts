@@ -21,6 +21,11 @@ import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-sche
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { assignConversationPg } from "@/lib/chat/webhooks/assign-conversation-pg";
 import {
+  contactCenterV1Enabled,
+  applyInboundWindowAndAssignPg,
+  applyInboundWindowAndAssignRest,
+} from "@/lib/chat/contact-center-inbound";
+import {
   extractDisplayName,
   extractExternalMessageId,
   extractInboundIdentifiers,
@@ -185,13 +190,25 @@ export async function POST(request: NextRequest) {
     inboundContactId = save.contact_id;
 
     if (mode === "inbound") {
-      const ar1 = await assignConversationPg(pool!, resolved.data_schema, conversationId);
-      if (!ar1.ok) {
-        console.warn(LOG, LOG_IN, "assign_pg", conversationId, ar1.error);
-      } else if (ar1.assigned) {
-        console.info(LOG, LOG_IN, "assign_pg_ok", { conversation_id: conversationId, agent_id: ar1.agent_id });
-      } else {
-        console.info(LOG, LOG_IN, "assign_pg_sin_asignación", { conversation_id: conversationId, reason: ar1.reason });
+      let ccDone = false;
+      if (contactCenterV1Enabled()) {
+        const cc = await applyInboundWindowAndAssignPg(pool!, resolved.data_schema, resolved.empresa_id, conversationId);
+        if (cc.ok) {
+          ccDone = true;
+          console.info(LOG, LOG_IN, "cc_assign_pg", { conversation_id: conversationId, assigned: cc.assigned, reason: cc.reason });
+        } else {
+          console.warn(LOG, LOG_IN, "cc_assign_pg_falló_fallback_legacy", conversationId, cc.error);
+        }
+      }
+      if (!ccDone) {
+        const ar1 = await assignConversationPg(pool!, resolved.data_schema, conversationId);
+        if (!ar1.ok) {
+          console.warn(LOG, LOG_IN, "assign_pg", conversationId, ar1.error);
+        } else if (ar1.assigned) {
+          console.info(LOG, LOG_IN, "assign_pg_ok", { conversation_id: conversationId, agent_id: ar1.agent_id });
+        } else {
+          console.info(LOG, LOG_IN, "assign_pg_sin_asignación", { conversation_id: conversationId, reason: ar1.reason });
+        }
       }
     } else {
       console.info(LOG, LOG_IN, "echo_smb_sin_autoasignación", { conversation_id: conversationId });
@@ -235,16 +252,28 @@ export async function POST(request: NextRequest) {
     inboundContactId = save.contact_id;
 
     if (mode === "inbound") {
-      const ar = await assignConversation(supabase, conversationId);
-      if (!ar.ok) {
-        console.warn(LOG, LOG_IN, "assignConversation", conversationId, ar.error);
-      } else if (ar.assigned) {
-        console.info(LOG, LOG_IN, "assignConversation_ok", { conversation_id: conversationId, agent_id: ar.agent_id });
-      } else {
-        console.info(LOG, LOG_IN, "assignConversation_sin_asignación", {
-          conversation_id: conversationId,
-          reason: ar.reason,
-        });
+      let ccDone = false;
+      if (contactCenterV1Enabled()) {
+        const cc = await applyInboundWindowAndAssignRest(supabase, resolved.data_schema, resolved.empresa_id, conversationId);
+        if (cc.ok) {
+          ccDone = true;
+          console.info(LOG, LOG_IN, "cc_assign_rest", { conversation_id: conversationId, assigned: cc.assigned, reason: cc.reason });
+        } else {
+          console.warn(LOG, LOG_IN, "cc_assign_rest_falló_fallback_legacy", conversationId, cc.error);
+        }
+      }
+      if (!ccDone) {
+        const ar = await assignConversation(supabase, conversationId);
+        if (!ar.ok) {
+          console.warn(LOG, LOG_IN, "assignConversation", conversationId, ar.error);
+        } else if (ar.assigned) {
+          console.info(LOG, LOG_IN, "assignConversation_ok", { conversation_id: conversationId, agent_id: ar.agent_id });
+        } else {
+          console.info(LOG, LOG_IN, "assignConversation_sin_asignación", {
+            conversation_id: conversationId,
+            reason: ar.reason,
+          });
+        }
       }
     } else {
       console.info(LOG, LOG_IN, "echo_smb_sin_autoasignación", { conversation_id: conversationId });

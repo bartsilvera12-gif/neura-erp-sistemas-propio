@@ -14,7 +14,8 @@ import {
 } from "@/lib/chat/outbound-send-dispatch";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
-import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
+import { assertAllowedChatDataSchema, isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
+import { contactCenterV1Enabled } from "@/lib/chat/contact-center-inbound";
 
 /**
  * POST /api/chat/send
@@ -89,6 +90,52 @@ export async function POST(request: NextRequest) {
 
     if (conv.empresa_id !== auth.empresa_id) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
+    }
+
+    // Contact Center V1: guard de ventana WhatsApp 24h (flag). Texto libre solo si la
+    // ventana sigue abierta. Fuera de ventana exige plantilla aprobada (no soportada aún
+    // en este endpoint de texto) → error claro, sin fallo silencioso.
+    const hasTemplate =
+      body && typeof body === "object" &&
+      ((body as { template?: unknown }).template != null ||
+        typeof (body as { template_name?: string }).template_name === "string");
+    if (contactCenterV1Enabled() && !hasTemplate) {
+      try {
+        let expiresAt: string | null = null;
+        if (tenantPg && pool) {
+          const sch = assertAllowedChatDataSchema(dataSchema);
+          const wr = await pool.query(
+            `SELECT whatsapp_window_expires_at FROM "${sch}".chat_conversations WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+            [conversationId, auth.empresa_id]
+          );
+          expiresAt = (wr.rows[0] as { whatsapp_window_expires_at?: string | null } | undefined)?.whatsapp_window_expires_at ?? null;
+        } else {
+          const { data: wd } = await supabase
+            .from("chat_conversations")
+            .select("whatsapp_window_expires_at")
+            .eq("id", conversationId)
+            .maybeSingle();
+          expiresAt = (wd as { whatsapp_window_expires_at?: string | null } | null)?.whatsapp_window_expires_at ?? null;
+        }
+        // Si nunca hubo mensaje del cliente (expiresAt null), no bloqueamos (no se puede
+        // determinar la ventana; se mantiene el comportamiento actual).
+        if (expiresAt && new Date(expiresAt).getTime() < Date.now()) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "La ventana de 24 h de WhatsApp está cerrada para este contacto. Para reabrir el chat hay que enviar una plantilla aprobada (recontacto).",
+              code: "whatsapp_window_closed",
+              whatsapp_window_expires_at: expiresAt,
+            },
+            { status: 409 }
+          );
+        }
+      } catch (e) {
+        // Si la columna no existe (migración no aplicada) u otro error de lectura,
+        // no bloqueamos el envío: degradación segura.
+        console.warn("[api/chat/send] window_guard_skip", e instanceof Error ? e.message : String(e));
+      }
     }
 
     let outbound;
@@ -188,6 +235,27 @@ export async function POST(request: NextRequest) {
         from_me: true,
         sender_type: senderType,
       });
+    }
+
+    // Contact Center V1: marcar última respuesta del agente (flag, degradación segura).
+    if (contactCenterV1Enabled()) {
+      try {
+        if (tenantPg && pool) {
+          const sch = assertAllowedChatDataSchema(dataSchema);
+          await pool.query(
+            `UPDATE "${sch}".chat_conversations SET last_agent_message_at = $2::timestamptz WHERE id = $1::uuid AND empresa_id = $3::uuid`,
+            [conversationId, ts, empresaId]
+          );
+        } else {
+          await supabase
+            .from("chat_conversations")
+            .update({ last_agent_message_at: ts })
+            .eq("id", conversationId)
+            .eq("empresa_id", empresaId);
+        }
+      } catch (e) {
+        console.warn("[api/chat/send] last_agent_message_at_skip", e instanceof Error ? e.message : String(e));
+      }
     }
 
     return NextResponse.json({

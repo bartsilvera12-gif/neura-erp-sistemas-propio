@@ -610,6 +610,10 @@ export default function ProyectoDetalleInner({
   const [archivoFiltro, setArchivoFiltro] = useState<ArchivoCategoria | "todos">("todos");
   const [archivosSel, setArchivosSel] = useState<Set<string>>(() => new Set());
   const [archivoBulkBusy, setArchivoBulkBusy] = useState(false);
+  // Miniaturas (signed URL inline) para archivos de imagen. id → url.
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+  const thumbFetchingRef = useRef<Set<string>>(new Set());
+  const thumbFailedRef = useRef<Set<string>>(new Set());
 
   const [briefForm, setBriefForm] = useState<Record<string, string>>({});
   const [briefLists, setBriefLists] = useState<Record<string, string[]>>({});
@@ -687,6 +691,41 @@ export default function ProyectoDetalleInner({
       return cambio ? next : prev;
     });
   }, [archivoIdsActuales]);
+
+  // Carga perezosa de miniaturas para archivos de imagen (signed URL inline).
+  useEffect(() => {
+    if (tab !== "archivos") return;
+    const imagenes = (data?.archivos ?? []).filter(
+      (a) => categoriaArchivo(a.nombre, a.mime_type) === "imagen"
+    );
+    for (const a of imagenes) {
+      const aid = String(a.id ?? "");
+      if (
+        !aid ||
+        thumbUrls[aid] ||
+        thumbFetchingRef.current.has(aid) ||
+        thumbFailedRef.current.has(aid)
+      )
+        continue;
+      thumbFetchingRef.current.add(aid);
+      void (async () => {
+        try {
+          const res = await fetchWithSupabaseSession(
+            `/api/proyectos/${projectId}/archivos/${aid}`,
+            { cache: "no-store" }
+          );
+          const j = (await res.json()) as { success?: boolean; data?: { url?: string } };
+          if (res.ok && j.success && j.data?.url) {
+            setThumbUrls((prev) => ({ ...prev, [aid]: j.data!.url! }));
+          }
+        } catch {
+          // Silencioso: si falla, la fila muestra el ícono de tipo.
+        } finally {
+          thumbFetchingRef.current.delete(aid);
+        }
+      })();
+    }
+  }, [tab, data?.archivos, thumbUrls, projectId]);
 
   // Mantengo una ref a `load` para que las suscripciones de Realtime no se re-creen
   // en cada render. El callback estable adentro del channel siempre llama al último.
@@ -2315,6 +2354,7 @@ export default function ProyectoDetalleInner({
             const enAccionArchivo = archivoActionId === aid;
             const seleccionado = archivosSel.has(aid);
             const fijarCheck = seleccionado || selectionMode;
+            const thumb = cat === "imagen" ? thumbUrls[aid] : undefined;
             return (
               <li
                 key={aid}
@@ -2330,11 +2370,29 @@ export default function ProyectoDetalleInner({
                   title="Seleccionar"
                 >
                   <span
-                    className={`absolute inset-0 flex items-center justify-center rounded-xl ${catColor.bg} ${catColor.text} transition-opacity duration-150 ${
-                      fijarCheck ? "opacity-0" : "opacity-100 group-hover:opacity-0"
-                    }`}
+                    className={`absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl transition-opacity duration-150 ${
+                      thumb ? "ring-1 ring-slate-200" : `${catColor.bg} ${catColor.text}`
+                    } ${fijarCheck ? "opacity-0" : "opacity-100 group-hover:opacity-0"}`}
                   >
-                    <ArchivoTipoIcon cat={cat} />
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={thumb}
+                        alt={nombre}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                        onError={() => {
+                          thumbFailedRef.current.add(aid);
+                          setThumbUrls((prev) => {
+                            const next = { ...prev };
+                            delete next[aid];
+                            return next;
+                          });
+                        }}
+                      />
+                    ) : (
+                      <ArchivoTipoIcon cat={cat} />
+                    )}
                   </span>
                   <span
                     className={`absolute inset-0 flex items-center justify-center transition-opacity duration-150 ${

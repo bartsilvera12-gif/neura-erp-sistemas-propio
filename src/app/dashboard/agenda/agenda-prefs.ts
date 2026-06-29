@@ -2,7 +2,10 @@
  * Preferencias de visualización de la Agenda, persistidas por navegador/usuario
  * en localStorage (mismo patrón que src/lib/favorites.ts). Sin backend ni migración.
  */
-const STORAGE_KEY = "neura_agenda_prefs";
+// v2: el default pasó a día completo (0–24). Se cambia la clave para que las
+// preferencias previas (rango acotado) no oculten horas y todos vean el día completo;
+// quien quiera acotar el rango lo vuelve a hacer desde el config y se persiste.
+const STORAGE_KEY = "neura_agenda_prefs_v2";
 
 export type AgendaPrefs = {
   /** Hora inicial visible en las vistas Día/Semana (0–23). */
@@ -11,7 +14,7 @@ export type AgendaPrefs = {
   endHour: number;
 };
 
-export const DEFAULT_PREFS: AgendaPrefs = { startHour: 7, endHour: 20 };
+export const DEFAULT_PREFS: AgendaPrefs = { startHour: 0, endHour: 24 };
 
 function clampRange(p: AgendaPrefs): AgendaPrefs {
   const s = Math.max(0, Math.min(23, Math.round(p.startHour)));

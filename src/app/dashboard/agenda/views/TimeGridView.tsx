@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { AgendaCitaEnriquecida } from "@/lib/agenda/types";
 import {
+  DAY_START_SCROLL_HOUR,
   HOUR_PX,
   addDays,
   estadoStyle,
@@ -38,6 +40,15 @@ export default function TimeGridView({
   const hours = Array.from({ length: Math.max(1, endHour - startHour) }, (_, i) => startHour + i);
   const gridHeight = hours.length * HOUR_PX;
 
+  // Con el día completo visible, al abrir posicionamos la grilla cerca de la
+  // mañana (sin perder la madrugada, que queda accesible scrolleando hacia arriba).
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = Math.max(0, (DAY_START_SCROLL_HOUR - startHour) * HOUR_PX);
+  }, [view, startHour, endHour]);
+
   function handleColumnClick(day: Date, e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
@@ -53,7 +64,7 @@ export default function TimeGridView({
       {/* Header + grilla comparten el MISMO contenedor de scroll para que el
           ancho de la barra de scroll afecte por igual a encabezado y cuerpo y
           las divisiones de columnas queden alineadas. El header es sticky. */}
-      <div className="relative max-h-[68vh] overflow-y-auto">
+      <div ref={scrollRef} className="relative max-h-[68vh] overflow-y-auto">
         {/* Encabezado de días (sticky) */}
         <div className="sticky top-0 z-30 flex border-b border-slate-300/80 bg-slate-50">
           <div className="shrink-0 border-r border-slate-200" style={{ width: GUTTER_W }} />

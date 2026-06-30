@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
-import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { getFcmMessaging } from "@/lib/cc/firebase-admin";
 
 export const runtime = "nodejs";
@@ -16,6 +15,9 @@ export const runtime = "nodejs";
  * - Si faltan credenciales Firebase → responde config_missing y deja los eventos pending.
  * - Desactiva tokens inválidos (registration-token-not-registered).
  * - No imprime secretos.
+ *
+ * Acceso a datos vía cliente service-role PostgREST scopeado al schema de la app
+ * (APP_DB_SCHEMA = neura) — NO el pool PG crudo (que no es el camino soportado para neura).
  *
  * Programar cada ~1 min en Coolify cuando se active (hoy NO programado).
  */
@@ -44,15 +46,6 @@ async function handle(req: NextRequest) {
   const dryRun = parseBool(url.searchParams.get("dryRun"));
   const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? "100", 10) || 100));
 
-  let schema: string;
-  try {
-    schema = assertAllowedChatDataSchema((process.env.APP_DB_SCHEMA ?? "neura").trim());
-  } catch {
-    return NextResponse.json({ ok: false, error: "schema inválido" }, { status: 500 });
-  }
-  const pool = getChatPostgresPool();
-  if (!pool) return NextResponse.json({ ok: false, error: "pool no disponible" }, { status: 500 });
-
   const fcm = await getFcmMessaging();
   if (!fcm.ok && fcm.reason === "config_missing" && !dryRun) {
     return NextResponse.json(
@@ -60,29 +53,40 @@ async function handle(req: NextRequest) {
         ok: false,
         error: "config_missing",
         missing: fcm.missing,
-        hint: "Configurar credenciales Firebase en Coolify (ver FIREBASE/CAPACITOR docs). Los eventos quedan pending.",
+        hint: "Configurar credenciales Firebase en Coolify (ver docs/CAPACITOR_PUSH_SETUP.md). Los eventos quedan pending.",
       },
       { status: 200 }
     );
   }
 
-  let pend;
+  let sb;
   try {
-    pend = await pool.query(
-      `SELECT id, agent_id, conversation_id, type
-         FROM "${schema}".agent_notification_events
-        WHERE status='pending' AND channel='fcm'
-        ORDER BY created_at ASC LIMIT $1`,
-      [limit]
-    );
+    sb = createServiceRoleClient();
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: `query pending falló: ${e instanceof Error ? e.message : String(e)}` },
+      { ok: false, error: `cliente service-role no disponible: ${e instanceof Error ? e.message : String(e)}` },
       { status: 500 }
     );
   }
+  const nowIso = () => new Date().toISOString();
 
-  const events = pend.rows as Array<{ id: string; agent_id: string | null; conversation_id: string | null; type: string }>;
+  const { data: pend, error: pendErr } = await sb
+    .from("agent_notification_events")
+    .select("id, agent_id, conversation_id, type")
+    .eq("status", "pending")
+    .eq("channel", "fcm")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (pendErr) {
+    return NextResponse.json({ ok: false, error: `query pending falló: ${pendErr.message}` }, { status: 500 });
+  }
+
+  const events = (pend ?? []) as Array<{
+    id: string;
+    agent_id: string | null;
+    conversation_id: string | null;
+    type: string;
+  }>;
   let sent = 0,
     failed = 0,
     skipped = 0,
@@ -92,20 +96,19 @@ async function handle(req: NextRequest) {
   for (const ev of events) {
     let tokens: string[] = [];
     if (ev.agent_id) {
-      const t = await pool.query(
-        `SELECT fcm_token FROM "${schema}".agent_device_tokens WHERE agent_id=$1::uuid AND is_active=true`,
-        [ev.agent_id]
-      );
-      tokens = (t.rows as Array<{ fcm_token: string }>).map((r) => r.fcm_token).filter(Boolean);
+      const { data: tk } = await sb
+        .from("agent_device_tokens")
+        .select("fcm_token")
+        .eq("agent_id", ev.agent_id)
+        .eq("is_active", true);
+      tokens = ((tk ?? []) as Array<{ fcm_token: string }>).map((r) => r.fcm_token).filter(Boolean);
     }
     if (tokens.length === 0) {
       if (!dryRun) {
-        await pool
-          .query(
-            `UPDATE "${schema}".agent_notification_events SET status='skipped', error_message='no_active_device', updated_at=now() WHERE id=$1::uuid`,
-            [ev.id]
-          )
-          .catch(() => {});
+        await sb
+          .from("agent_notification_events")
+          .update({ status: "skipped", error_message: "no_active_device", updated_at: nowIso() })
+          .eq("id", ev.id);
       }
       skipped++;
       detail.push({ event: ev.id.slice(0, 8), result: "skipped_no_device" });
@@ -114,17 +117,29 @@ async function handle(req: NextRequest) {
 
     let body = "Tenés un nuevo mensaje";
     if (ev.conversation_id) {
-      const c = await pool.query(
-        `SELECT c.last_message_preview AS preview, ct.nombre, ct.telefono
-           FROM "${schema}".chat_conversations c
-           LEFT JOIN "${schema}".chat_contacts ct ON ct.id=c.contact_id
-          WHERE c.id=$1::uuid`,
-        [ev.conversation_id]
-      );
-      const row = c.rows[0] as { preview?: string | null; nombre?: string | null; telefono?: string | null } | undefined;
-      const who = (row?.nombre || row?.telefono || "").toString().trim();
-      const prev = (row?.preview || "").toString().trim();
-      body = who ? (prev ? `${who}: ${prev}`.slice(0, 140) : who) : prev ? prev.slice(0, 140) : body;
+      const { data: conv } = await sb
+        .from("chat_conversations")
+        .select("last_message_preview, contact_id")
+        .eq("id", ev.conversation_id)
+        .maybeSingle();
+      const preview = ((conv as { last_message_preview?: string | null } | null)?.last_message_preview ?? "").toString().trim();
+      let who = "";
+      const contactId = (conv as { contact_id?: string | null } | null)?.contact_id ?? null;
+      if (contactId) {
+        const { data: ct } = await sb
+          .from("chat_contacts")
+          .select("nombre, telefono")
+          .eq("id", contactId)
+          .maybeSingle();
+        who = (
+          (ct as { nombre?: string | null } | null)?.nombre ||
+          (ct as { telefono?: string | null } | null)?.telefono ||
+          ""
+        )
+          .toString()
+          .trim();
+      }
+      body = who ? (preview ? `${who}: ${preview}`.slice(0, 140) : who) : preview ? preview.slice(0, 140) : body;
     }
     const title = TITLES[ev.type] ?? "Notificación";
     const route = ev.conversation_id ? `/m/asesor/chat/${ev.conversation_id}` : "/m/asesor";
@@ -136,12 +151,10 @@ async function handle(req: NextRequest) {
     }
     if (!fcm.ok) {
       failed++;
-      await pool
-        .query(
-          `UPDATE "${schema}".agent_notification_events SET status='failed', error_message=$2, updated_at=now() WHERE id=$1::uuid`,
-          [ev.id, `fcm_${fcm.reason}`]
-        )
-        .catch(() => {});
+      await sb
+        .from("agent_notification_events")
+        .update({ status: "failed", error_message: `fcm_${fcm.reason}`, updated_at: nowIso() })
+        .eq("id", ev.id);
       detail.push({ event: ev.id.slice(0, 8), result: "fcm_unavailable" });
       continue;
     }
@@ -163,37 +176,33 @@ async function handle(req: NextRequest) {
         }
       });
       if (toDeactivate.length > 0) {
-        await pool
-          .query(
-            `UPDATE "${schema}".agent_device_tokens SET is_active=false, updated_at=now() WHERE empresa_id IS NOT NULL AND fcm_token = ANY($1::text[])`,
-            [toDeactivate]
-          )
-          .catch(() => {});
+        await sb
+          .from("agent_device_tokens")
+          .update({ is_active: false, updated_at: nowIso() })
+          .in("fcm_token", toDeactivate);
       }
       if (res.successCount > 0) {
         const msgId = res.responses.find((r) => r.success)?.messageId ?? null;
-        await pool.query(
-          `UPDATE "${schema}".agent_notification_events SET status='sent', provider_message_id=$2, sent_at=now(), updated_at=now() WHERE id=$1::uuid`,
-          [ev.id, msgId]
-        );
+        await sb
+          .from("agent_notification_events")
+          .update({ status: "sent", provider_message_id: msgId, sent_at: nowIso(), updated_at: nowIso() })
+          .eq("id", ev.id);
         sent++;
         detail.push({ event: ev.id.slice(0, 8), result: "sent", ok: res.successCount, fail: res.failureCount });
       } else {
-        await pool.query(
-          `UPDATE "${schema}".agent_notification_events SET status='failed', error_message=$2, updated_at=now() WHERE id=$1::uuid`,
-          [ev.id, `all_failed(${res.failureCount})`]
-        );
+        await sb
+          .from("agent_notification_events")
+          .update({ status: "failed", error_message: `all_failed(${res.failureCount})`, updated_at: nowIso() })
+          .eq("id", ev.id);
         failed++;
         detail.push({ event: ev.id.slice(0, 8), result: "failed", fail: res.failureCount });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      await pool
-        .query(
-          `UPDATE "${schema}".agent_notification_events SET status='failed', error_message=$2, updated_at=now() WHERE id=$1::uuid`,
-          [ev.id, msg.slice(0, 300)]
-        )
-        .catch(() => {});
+      await sb
+        .from("agent_notification_events")
+        .update({ status: "failed", error_message: msg.slice(0, 300), updated_at: nowIso() })
+        .eq("id", ev.id);
       failed++;
       detail.push({ event: ev.id.slice(0, 8), result: "error" });
     }

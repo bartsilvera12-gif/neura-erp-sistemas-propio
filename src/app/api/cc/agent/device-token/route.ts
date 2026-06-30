@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
-import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
-import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 
 export const runtime = "nodejs";
 
@@ -13,15 +11,18 @@ export const runtime = "nodejs";
  * Idempotencia: UNIQUE (empresa_id, fcm_token). Si el token ya existe, actualiza
  * last_seen_at, is_active=true y metadatos; nunca duplica.
  * Escopado al usuario logueado (no se puede registrar token de otro).
+ *
+ * Usa el cliente schema-aware `ctx.supabase` (PostgREST para neura, shim-pool para
+ * tenants no expuestos) — NO el pool PG crudo, que no es el camino soportado para neura.
  */
 export async function POST(request: NextRequest) {
   let ctx;
   try {
     ctx = await requireEmpresaTenantServiceRole();
   } catch {
-    return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Iniciá sesión", code: "unauthenticated" }, { status: 401 });
   }
-  const { empresa_id, usuario_id, dataSchema } = ctx;
+  const { supabase, empresa_id, usuario_id } = ctx;
 
   const body = (await request.json().catch(() => null)) as
     | { fcm_token?: string; platform?: string; app_version?: string; device_label?: string }
@@ -37,43 +38,49 @@ export async function POST(request: NextRequest) {
   const deviceLabel =
     typeof body?.device_label === "string" ? body.device_label.trim().slice(0, 120) || null : null;
 
-  const pool = getChatPostgresPool();
-  if (!pool) return NextResponse.json({ ok: false, error: "pool no disponible" }, { status: 500 });
-  let sch: string;
   try {
-    sch = assertAllowedChatDataSchema(dataSchema);
-  } catch {
-    return NextResponse.json({ ok: false, error: "schema inválido" }, { status: 500 });
-  }
+    // agent_id del usuario (si es agente). Preferimos la fila activa.
+    const { data: agRows } = await supabase
+      .from("chat_agents")
+      .select("id, is_active")
+      .eq("empresa_id", empresa_id)
+      .eq("usuario_id", usuario_id)
+      .order("is_active", { ascending: false })
+      .limit(1);
+    const agentId = (agRows?.[0] as { id?: string } | undefined)?.id ?? null;
 
-  try {
-    const ag = await pool.query(
-      `SELECT id FROM "${sch}".chat_agents WHERE empresa_id=$1::uuid AND usuario_id=$2::uuid ORDER BY is_active DESC LIMIT 1`,
-      [empresa_id, usuario_id]
-    );
-    const agentId = (ag.rows[0] as { id?: string } | undefined)?.id ?? null;
+    const nowIso = new Date().toISOString();
+    // device_name/app_version solo si vienen (en conflicto no pisan con null lo previo).
+    const payload: Record<string, unknown> = {
+      empresa_id,
+      agent_id: agentId,
+      user_id: usuario_id,
+      platform,
+      fcm_token: fcmToken,
+      is_active: true,
+      last_seen_at: nowIso,
+      updated_at: nowIso,
+    };
+    if (deviceLabel != null) payload.device_name = deviceLabel;
+    if (appVersion != null) payload.app_version = appVersion;
 
-    const up = await pool.query(
-      `INSERT INTO "${sch}".agent_device_tokens
-         (empresa_id, agent_id, user_id, platform, fcm_token, device_name, app_version, is_active, last_seen_at)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, true, now())
-       ON CONFLICT (empresa_id, fcm_token) DO UPDATE SET
-         agent_id    = EXCLUDED.agent_id,
-         user_id     = EXCLUDED.user_id,
-         platform    = EXCLUDED.platform,
-         device_name = COALESCE(EXCLUDED.device_name, "${sch}".agent_device_tokens.device_name),
-         app_version = COALESCE(EXCLUDED.app_version, "${sch}".agent_device_tokens.app_version),
-         is_active   = true,
-         last_seen_at = now(),
-         updated_at   = now()
-       RETURNING id`,
-      [empresa_id, agentId, usuario_id, platform, fcmToken, deviceLabel, appVersion]
-    );
-    const id = (up.rows[0] as { id?: string } | undefined)?.id ?? null;
-    return NextResponse.json({ ok: true, id, agent_id: agentId, is_agent: agentId != null });
+    const { data, error } = await supabase
+      .from("agent_device_tokens")
+      .upsert(payload, { onConflict: "empresa_id,fcm_token" })
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      console.error("[api/cc/agent/device-token]", error.message);
+      return NextResponse.json({ ok: false, error: "No se pudo registrar el dispositivo" }, { status: 500 });
+    }
+    return NextResponse.json({
+      ok: true,
+      id: (data as { id?: string } | null)?.id ?? null,
+      agent_id: agentId,
+      is_agent: agentId != null,
+    });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[api/cc/agent/device-token] error:", msg);
+    console.error("[api/cc/agent/device-token] error:", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ ok: false, error: "No se pudo registrar el dispositivo" }, { status: 500 });
   }
 }

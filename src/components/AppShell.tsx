@@ -21,7 +21,9 @@ const AssistantWidget = dynamic(() => import("./assistant/AssistantWidget"), { s
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isStandalone = pathname && STANDALONE_ROUTES.includes(pathname);
+  // /m/* = app móvil del asesor (Capacitor/APK): pantalla completa, sin sidebar/header del ERP.
+  const isStandalone =
+    !!pathname && (STANDALONE_ROUTES.includes(pathname) || pathname.startsWith("/m/"));
 
   /** Sidebar mobile: cerrado por defecto. En desktop (>=md) este estado no aplica:
    *  el sidebar siempre está visible en su flujo normal. */

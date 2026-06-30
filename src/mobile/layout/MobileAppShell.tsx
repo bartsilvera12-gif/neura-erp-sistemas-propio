@@ -25,7 +25,9 @@ const STANDALONE_ROUTES = ["/login"];
  */
 export default function MobileAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isStandalone = pathname && STANDALONE_ROUTES.includes(pathname);
+  // /m/* = app móvil del asesor (Capacitor/APK): pantalla completa, sin header/bottom-nav del ERP.
+  const isStandalone =
+    !!pathname && (STANDALONE_ROUTES.includes(pathname) || pathname.startsWith("/m/"));
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Cerrar el menú al cambiar de ruta.

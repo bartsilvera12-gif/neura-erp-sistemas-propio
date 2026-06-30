@@ -61,6 +61,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
+    "@capacitor/core": "^7.6.7",
+    "@capacitor/push-notifications": "^7.0.6",
     "@dnd-kit/core": "^6.3.1",
     "@fontsource/inter": "^5.2.8",
     "@supabase/ssr": "^0.9.0",
@@ -89,6 +91,8 @@
     "xml-crypto": "^6.1.2"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.7",
+    "@capacitor/cli": "^7.6.7",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/fontkit": "^2.0.9",

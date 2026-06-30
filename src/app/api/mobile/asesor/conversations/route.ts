@@ -1,66 +1,56 @@
 import { NextResponse } from "next/server";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
-import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
-import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { fetchChatConversations } from "@/lib/chat/actions";
+import { getMyAgentOperationalPresence } from "@/lib/chat/chat-ops-actions";
 
 export const runtime = "nodejs";
 
 /**
  * GET /api/mobile/asesor/conversations
  * Lista ESTRICTAMENTE las conversaciones open/pending asignadas al asesor logueado
- * (assigned_agent_id ∈ sus chat_agents). Seguridad en backend: nunca devuelve chats
- * de otros, ni sin-asignar, ni de otra cola. Si el usuario no es agente → lista vacía.
+ * (assigned_agent_id ∈ sus chat_agents). Seguridad en backend.
+ *
+ * Reusa el MISMO camino que el inbox desktop (`fetchChatConversations` con assignment="mine"),
+ * que internamente elige PostgREST (neura) o pool PG (tenants no expuestos) según el schema.
+ * Antes este endpoint consultaba el pool PG crudo, que para neura (PostgREST) no es el camino
+ * soportado → fallaba con "Error interno".
  */
 export async function GET() {
-  let ctx;
+  // 1) Sesión.
   try {
-    ctx = await requireEmpresaTenantServiceRole();
+    await requireEmpresaTenantServiceRole();
   } catch {
-    return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
-  }
-  const { empresa_id, usuario_id, dataSchema } = ctx;
-  const pool = getChatPostgresPool();
-  if (!pool) return NextResponse.json({ ok: false, error: "pool no disponible" }, { status: 500 });
-  let sch: string;
-  try {
-    sch = assertAllowedChatDataSchema(dataSchema);
-  } catch {
-    return NextResponse.json({ ok: false, error: "schema inválido" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Iniciá sesión", code: "unauthenticated" },
+      { status: 401 }
+    );
   }
 
   try {
-    const ag = await pool.query(
-      `SELECT id FROM "${sch}".chat_agents WHERE empresa_id=$1::uuid AND usuario_id=$2::uuid`,
-      [empresa_id, usuario_id]
-    );
-    const agentIds = (ag.rows as Array<{ id: string }>).map((r) => r.id);
-    if (agentIds.length === 0) {
+    // 2) ¿Es agente en cola? Si no, lista vacía con flag (no error).
+    const presence = await getMyAgentOperationalPresence();
+    if (!presence.in_queues) {
       return NextResponse.json({ ok: true, is_agent: false, conversations: [] });
     }
-    const r = await pool.query(
-      `SELECT c.id, c.status, c.last_message_at, c.last_message_preview, c.unread_count,
-              c.whatsapp_window_expires_at, ct.nombre AS contact_nombre, ct.telefono AS contact_telefono
-         FROM "${sch}".chat_conversations c
-         LEFT JOIN "${sch}".chat_contacts ct ON ct.id = c.contact_id
-        WHERE c.empresa_id=$1::uuid AND c.assigned_agent_id = ANY($2::uuid[]) AND c.status IN ('open','pending')
-        ORDER BY c.last_message_at DESC NULLS LAST
-        LIMIT 50`,
-      [empresa_id, agentIds]
-    );
-    const now = Date.now();
-    const conversations = (r.rows as Array<Record<string, unknown>>).map((row) => ({
-      id: row.id as string,
-      status: row.status as string,
-      last_message_at: (row.last_message_at as string | null) ?? null,
-      last_message_preview: (row.last_message_preview as string | null) ?? null,
-      unread_count: Number(row.unread_count ?? 0),
-      contact_nombre: (row.contact_nombre as string | null) ?? null,
-      contact_telefono: (row.contact_telefono as string | null) ?? null,
-      window_open: row.whatsapp_window_expires_at
-        ? new Date(String(row.whatsapp_window_expires_at)).getTime() > now
-        : null,
+
+    // 3) Solo sus asignadas (assignment="mine" aplica scope + filtro por su agent_id).
+    const { conversations } = await fetchChatConversations("inbox", {
+      assignment: "mine",
+      limit: 200,
+    });
+
+    const mapped = conversations.map((c) => ({
+      id: c.id,
+      status: c.status,
+      last_message_at: c.last_message_at,
+      last_message_preview: c.last_message_preview,
+      unread_count: c.unread_count,
+      contact_nombre: c.contact?.name ?? null,
+      contact_telefono: c.contact?.phone_number ?? null,
+      window_open: null as boolean | null,
     }));
-    return NextResponse.json({ ok: true, is_agent: true, conversations });
+
+    return NextResponse.json({ ok: true, is_agent: true, conversations: mapped });
   } catch (e) {
     console.error("[mobile/asesor/conversations]", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });

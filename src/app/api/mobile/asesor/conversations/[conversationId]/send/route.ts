@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
-import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
-import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/mobile/asesor/conversations/[conversationId]/send
  * Wrapper SEGURO de envío para el asesor móvil:
- *  1) Verifica en backend que la conversación esté asignada al asesor logueado (403 si no).
- *  2) Delega en /api/chat/send (que ya valida empresa, ventana WhatsApp 24h y persiste +
- *     marca last_agent_message_at). Reusa esa lógica reenviando la auth del request.
+ *  1) Verifica en backend (PostgREST) que la conversación esté asignada al asesor
+ *     logueado (403 si no). Antes la verificación usaba el pool PG crudo → "Error interno".
+ *  2) Delega en /api/chat/send (que valida empresa, ventana WhatsApp 24h y persiste +
+ *     marca last_agent_message_at), reenviando la auth del request.
  * Body: { message }
  */
 export async function POST(
@@ -22,37 +21,40 @@ export async function POST(
   try {
     ctx = await requireEmpresaTenantServiceRole();
   } catch {
-    return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Iniciá sesión", code: "unauthenticated" },
+      { status: 401 }
+    );
   }
-  const { empresa_id, usuario_id, dataSchema } = ctx;
-  const pool = getChatPostgresPool();
-  if (!pool) return NextResponse.json({ ok: false, error: "pool no disponible" }, { status: 500 });
-  let sch: string;
-  try {
-    sch = assertAllowedChatDataSchema(dataSchema);
-  } catch {
-    return NextResponse.json({ ok: false, error: "schema inválido" }, { status: 500 });
-  }
+  const { supabase, empresa_id, usuario_id } = ctx;
 
   const body = (await request.json().catch(() => null)) as { message?: string } | null;
   const message = typeof body?.message === "string" ? body.message.trim() : "";
   if (!message) return NextResponse.json({ ok: false, error: "message requerido" }, { status: 400 });
 
-  // 1) Ownership en backend.
+  // 1) Ownership en backend (PostgREST, camino soportado para neura).
   try {
-    const ag = await pool.query(
-      `SELECT id FROM "${sch}".chat_agents WHERE empresa_id=$1::uuid AND usuario_id=$2::uuid`,
-      [empresa_id, usuario_id]
-    );
-    const agentIds = new Set((ag.rows as Array<{ id: string }>).map((r) => r.id));
-    const cr = await pool.query(
-      `SELECT assigned_agent_id FROM "${sch}".chat_conversations WHERE id=$1::uuid AND empresa_id=$2::uuid`,
-      [conversationId, empresa_id]
-    );
-    const conv = cr.rows[0] as { assigned_agent_id: string | null } | undefined;
+    const { data: agRows } = await supabase
+      .from("chat_agents")
+      .select("id")
+      .eq("empresa_id", empresa_id)
+      .eq("usuario_id", usuario_id);
+    const agentIds = new Set((agRows ?? []).map((r) => String((r as { id: string }).id)));
+
+    const { data: conv } = await supabase
+      .from("chat_conversations")
+      .select("assigned_agent_id")
+      .eq("id", conversationId)
+      .eq("empresa_id", empresa_id)
+      .maybeSingle();
+
     if (!conv) return NextResponse.json({ ok: false, error: "Conversación no encontrada" }, { status: 404 });
-    if (!conv.assigned_agent_id || !agentIds.has(conv.assigned_agent_id)) {
-      return NextResponse.json({ ok: false, error: "No autorizado para esta conversación" }, { status: 403 });
+    const assignedAgentId = (conv as { assigned_agent_id: string | null }).assigned_agent_id;
+    if (!assignedAgentId || !agentIds.has(String(assignedAgentId))) {
+      return NextResponse.json(
+        { ok: false, error: "No autorizado para esta conversación", code: "forbidden" },
+        { status: 403 }
+      );
     }
   } catch (e) {
     console.error("[mobile send] ownership check", e instanceof Error ? e.message : String(e));

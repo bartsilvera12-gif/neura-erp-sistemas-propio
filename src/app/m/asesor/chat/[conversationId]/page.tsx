@@ -18,7 +18,13 @@ type Msg = {
   raw_payload?: Record<string, unknown> | null;
 };
 
-type Pending = { tempId: string; content: string; status: "sending" | "error" };
+type Pending = {
+  tempId: string;
+  status: "sending" | "error";
+  kind: "text" | "audio";
+  content: string;
+  file?: File;
+};
 
 const EMOJIS = [
   "😀", "😅", "😂", "🙂", "😉", "😊", "😍", "🙌", "👍", "👌",
@@ -29,6 +35,10 @@ const EMOJIS = [
 function mediaUrl(m: Msg): string | null {
   const raw = (m.raw_payload ?? null) as Parameters<typeof getErpAttachmentPublicUrl>[0];
   return getErpAttachmentPublicUrl(raw) ?? getWhatsAppMediaUrlFromRawPayload(raw) ?? null;
+}
+
+function fmtSecs(s: number): string {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 function MessageBody({ m }: { m: Msg }) {
@@ -74,8 +84,17 @@ export default function MAsesorChatPage() {
   const [text, setText] = useState("");
   const [sendErr, setSendErr] = useState<string | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [micSupported, setMicSupported] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recSecs, setRecSecs] = useState(0);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const cancelRecRef = useRef(false);
+  const recTimerRef = useRef<number | null>(null);
 
   const load = useCallback(
     async (silent?: boolean) => {
@@ -131,8 +150,30 @@ export default function MAsesorChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
   }, [text]);
 
-  // Envía en segundo plano y reconcilia el mensaje optimista (tempId) con el servidor.
-  const deliver = useCallback(
+  // Detección de soporte de grabación (client-only, evita mostrar un botón inútil).
+  useEffect(() => {
+    setMicSupported(
+      typeof navigator !== "undefined" &&
+        !!navigator.mediaDevices?.getUserMedia &&
+        typeof MediaRecorder !== "undefined"
+    );
+  }, []);
+
+  // Limpieza: cortar grabación/stream/timer al desmontar.
+  useEffect(() => {
+    return () => {
+      try {
+        mediaRecorderRef.current?.stop();
+      } catch {
+        /* noop */
+      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (recTimerRef.current) window.clearInterval(recTimerRef.current);
+    };
+  }, []);
+
+  // ── Envío de texto (optimista, no bloqueante) ──────────────────────────────
+  const deliverText = useCallback(
     (tempId: string, msg: string) => {
       void (async () => {
         try {
@@ -155,7 +196,6 @@ export default function MAsesorChatPage() {
             return;
           }
           if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo enviar");
-          // Éxito: traer el mensaje real y recién ahí quitar el optimista (sin parpadeo/duplicado).
           await load(true);
           setPending((p) => p.filter((x) => x.tempId !== tempId));
         } catch (e) {
@@ -167,7 +207,39 @@ export default function MAsesorChatPage() {
     [conversationId, load]
   );
 
-  // Envío NO bloqueante: limpia el input al toque y deja seguir escribiendo/enviando.
+  // ── Envío de audio (optimista, no bloqueante) ──────────────────────────────
+  const deliverAudio = useCallback(
+    (tempId: string, file: File) => {
+      void (async () => {
+        try {
+          const fd = new FormData();
+          fd.set("file", file, file.name || "nota-voz.webm");
+          const res = await fetchWithSupabaseSession(
+            `/api/mobile/asesor/conversations/${conversationId}/send-media`,
+            { method: "POST", body: fd }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (res.status === 409 || data?.code === "whatsapp_window_closed") {
+            setWindowOpen(false);
+            setSendErr(
+              data?.error ||
+                "La ventana de 24 h de WhatsApp está cerrada. Para reabrir hay que enviar una plantilla aprobada."
+            );
+            setPending((p) => p.map((x) => (x.tempId === tempId ? { ...x, status: "error" } : x)));
+            return;
+          }
+          if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo enviar el audio");
+          await load(true);
+          setPending((p) => p.filter((x) => x.tempId !== tempId));
+        } catch (e) {
+          setSendErr(e instanceof Error ? e.message : "Error al enviar el audio");
+          setPending((p) => p.map((x) => (x.tempId === tempId ? { ...x, status: "error" } : x)));
+        }
+      })();
+    },
+    [conversationId, load]
+  );
+
   const send = useCallback(() => {
     const msg = text.trim();
     if (!msg) return;
@@ -175,18 +247,97 @@ export default function MAsesorChatPage() {
     setText("");
     setShowEmoji(false);
     setSendErr(null);
-    setPending((p) => [...p, { tempId, content: msg, status: "sending" }]);
-    deliver(tempId, msg);
-  }, [text, deliver]);
+    setPending((p) => [...p, { tempId, kind: "text", content: msg, status: "sending" }]);
+    deliverText(tempId, msg);
+  }, [text, deliverText]);
+
+  const sendAudio = useCallback(
+    (file: File) => {
+      const tempId = `tmp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+      setSendErr(null);
+      setPending((p) => [...p, { tempId, kind: "audio", content: "Nota de voz", file, status: "sending" }]);
+      deliverAudio(tempId, file);
+    },
+    [deliverAudio]
+  );
 
   const retry = useCallback(
-    (tempId: string, msg: string) => {
+    (item: Pending) => {
       setSendErr(null);
-      setPending((p) => p.map((x) => (x.tempId === tempId ? { ...x, status: "sending" } : x)));
-      deliver(tempId, msg);
+      setPending((p) => p.map((x) => (x.tempId === item.tempId ? { ...x, status: "sending" } : x)));
+      if (item.kind === "audio" && item.file) deliverAudio(item.tempId, item.file);
+      else deliverText(item.tempId, item.content);
     },
-    [deliver]
+    [deliverAudio, deliverText]
   );
+
+  // ── Grabación de nota de voz ────────────────────────────────────────────────
+  const startRec = useCallback(async () => {
+    setSendErr(null);
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setSendErr("No se pudo acceder al micrófono");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      cancelRecRef.current = false;
+      const mime =
+        typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm")
+            ? "audio/webm"
+            : "";
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = rec;
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
+        streamRef.current = null;
+        if (recTimerRef.current) {
+          window.clearInterval(recTimerRef.current);
+          recTimerRef.current = null;
+        }
+        setRecording(false);
+        setRecSecs(0);
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        chunksRef.current = [];
+        if (cancelRecRef.current || blob.size < 300) return;
+        const ext = blob.type.includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `nota-voz.${ext}`, { type: blob.type || "audio/webm" });
+        sendAudio(file);
+      };
+      setRecording(true);
+      setRecSecs(0);
+      recTimerRef.current = window.setInterval(() => setRecSecs((s) => s + 1), 1000);
+      rec.start(400);
+    } catch {
+      setSendErr("No se pudo acceder al micrófono");
+      setRecording(false);
+    }
+  }, [sendAudio]);
+
+  const stopAndSend = useCallback(() => {
+    cancelRecRef.current = false;
+    try {
+      mediaRecorderRef.current?.stop();
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  const cancelRec = useCallback(() => {
+    cancelRecRef.current = true;
+    try {
+      mediaRecorderRef.current?.stop();
+    } catch {
+      /* noop */
+    }
+  }, []);
 
   return (
     <div className="min-h-svh max-h-svh bg-slate-50 flex flex-col">
@@ -225,12 +376,14 @@ export default function MAsesorChatPage() {
             {pending.map((p) => (
               <div key={p.tempId} className="flex justify-end">
                 <div className="max-w-[78%] rounded-2xl rounded-br-md bg-[#4FAEB2]/70 text-white px-3 py-2 text-[14px] leading-snug shadow-sm">
-                  <span className="whitespace-pre-wrap break-words">{p.content}</span>
+                  <span className="whitespace-pre-wrap break-words">
+                    {p.kind === "audio" ? "🎤 Nota de voz" : p.content}
+                  </span>
                   <div className="mt-0.5 text-[10px] text-white/85">
                     {p.status === "sending" ? (
                       "enviando…"
                     ) : (
-                      <button type="button" onClick={() => retry(p.tempId, p.content)} className="underline">
+                      <button type="button" onClick={() => retry(p)} className="underline">
                         error · reintentar
                       </button>
                     )}
@@ -250,46 +403,81 @@ export default function MAsesorChatPage() {
       {sendErr ? <div className="px-3 py-1.5 bg-red-50 text-red-700 text-[12px]">{sendErr}</div> : null}
 
       <div className="sticky bottom-0 bg-white border-t border-slate-200 px-2 py-2">
-        {showEmoji ? (
-          <div className="mb-2 flex flex-wrap gap-1 px-1">
-            {EMOJIS.map((e) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => setText((t) => t + e)}
-                className="p-1 text-xl leading-none active:scale-90"
-                aria-label={`Emoji ${e}`}
-              >
-                {e}
-              </button>
-            ))}
+        {recording ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={cancelRec}
+              className="shrink-0 h-10 px-3 rounded-2xl border border-slate-200 text-slate-600 text-sm font-semibold active:scale-95"
+            >
+              Cancelar
+            </button>
+            <div className="flex-1 flex items-center gap-2 text-red-600 text-sm font-medium">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
+              Grabando {fmtSecs(recSecs)}
+            </div>
+            <button
+              type="button"
+              onClick={stopAndSend}
+              className="shrink-0 h-10 px-4 rounded-2xl bg-[#3F8E91] text-white text-sm font-semibold active:scale-95"
+            >
+              Enviar
+            </button>
           </div>
-        ) : null}
-        <div className="flex items-end gap-2">
-          <button
-            type="button"
-            onClick={() => setShowEmoji((v) => !v)}
-            aria-label="Emojis"
-            className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-xl active:bg-slate-100"
-          >
-            😊
-          </button>
-          <textarea
-            ref={taRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={1}
-            placeholder="Escribí un mensaje…"
-            className="flex-1 resize-none rounded-2xl border border-slate-200 px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 max-h-32"
-          />
-          <button
-            onClick={send}
-            disabled={!text.trim()}
-            className="shrink-0 h-10 px-4 rounded-2xl bg-[#3F8E91] text-white text-sm font-semibold disabled:opacity-40 active:scale-95 transition"
-          >
-            Enviar
-          </button>
-        </div>
+        ) : (
+          <>
+            {showEmoji ? (
+              <div className="mb-2 flex flex-wrap gap-1 px-1">
+                {EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setText((t) => t + e)}
+                    className="p-1 text-xl leading-none active:scale-90"
+                    aria-label={`Emoji ${e}`}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex items-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEmoji((v) => !v)}
+                aria-label="Emojis"
+                className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-xl active:bg-slate-100"
+              >
+                😊
+              </button>
+              <textarea
+                ref={taRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={1}
+                placeholder="Escribí un mensaje…"
+                className="flex-1 resize-none rounded-2xl border border-slate-200 px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 max-h-32"
+              />
+              {text.trim() ? (
+                <button
+                  onClick={send}
+                  className="shrink-0 h-10 px-4 rounded-2xl bg-[#3F8E91] text-white text-sm font-semibold active:scale-95 transition"
+                >
+                  Enviar
+                </button>
+              ) : micSupported ? (
+                <button
+                  type="button"
+                  onClick={() => void startRec()}
+                  aria-label="Grabar nota de voz"
+                  className="shrink-0 h-10 w-10 grid place-items-center rounded-full bg-[#3F8E91] text-white text-lg active:scale-95 transition"
+                >
+                  🎤
+                </button>
+              ) : null}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

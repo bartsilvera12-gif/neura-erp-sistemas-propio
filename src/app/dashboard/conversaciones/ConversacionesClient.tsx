@@ -31,7 +31,7 @@ import {
   assignConversationToAgent,
   changeConversationQueue,
   changeConversationStatus,
-  fetchSupervisorAgentLoads,
+  fetchTransferTargetAgents,
   getMyAgentOperationalPresence,
   listChatQueues,
   setMyAgentOperationalPresence,
@@ -837,7 +837,7 @@ export function ConversacionesClient({
     listChatQueues()
       .then(setOpsQueues)
       .catch(() => setOpsQueues([]));
-    fetchSupervisorAgentLoads()
+    fetchTransferTargetAgents()
       .then(setOpsAgentLoads)
       .catch(() => setOpsAgentLoads([]));
   }, []);
@@ -876,7 +876,7 @@ export function ConversacionesClient({
     if (!transferModalOpen) return;
     let cancelled = false;
     setTransferLoadsRefreshing(true);
-    void fetchSupervisorAgentLoads()
+    void fetchTransferTargetAgents()
       .then((rows) => {
         if (!cancelled) setOpsAgentLoads(rows);
       })

@@ -1169,6 +1169,137 @@ export async function fetchSupervisorAgentLoads(): Promise<SupervisorAgentLoadRo
   return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
 }
 
+/**
+ * Agentes DESTINO para el modal "Transferir conversación".
+ *
+ * A diferencia del directorio del inbox (scoped a "mis" agentes vía `scope.agentUsuarioIds`),
+ * acá un agente normal debe ver a sus COMPAÑEROS DE COLA para poder transferirles un chat.
+ * Alcance de colas:
+ *   - admin / bypass / supervisor: se delega al loader existente (ya ven equipo o global).
+ *   - agente / sin rol: agentes activos (que reciben chats) de SUS colas.
+ * Incluye la carga (`active_conversations`) para mostrar "X activos".
+ *
+ * NO amplía la visibilidad de CONVERSACIONES del inbox (eso sigue scoped a "mine"); solo arma
+ * la lista de destinos válidos. No toca el reparto automático ni `cc_assign_conversation`.
+ */
+export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRow[]> {
+  const ctx = await requireEmpresaTenantServiceRole();
+  const { supabase, catalogSr, empresa_id, usuario_id, dataSchema } = ctx;
+  const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id, { tenantDataSchema: dataSchema });
+  const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
+
+  // Admin/supervisor/bypass: mantener alcance existente (equipo o global).
+  if (bypass || scope.role === "admin" || scope.role === "supervisor") {
+    return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+  }
+  // Tenants no expuestos (pool): sin regresión, comportamiento previo.
+  const pool = getChatPostgresPool();
+  if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
+    return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+  }
+
+  // Agente normal: colas propias como alcance de destinos.
+  const ownQueues = await resolveQueueIdsForUsuarios(supabase, empresa_id, [usuario_id], dataSchema);
+  if (ownQueues.length === 0) {
+    return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+  }
+
+  const buildQuery = (sel: string, withReceives: boolean) => {
+    let q = supabase
+      .from("chat_agents")
+      .select(sel)
+      .eq("empresa_id", empresa_id)
+      .eq("is_active", true)
+      .in("queue_id", ownQueues);
+    if (withReceives) q = q.eq("receives_new_chats", true);
+    return q;
+  };
+  const fullSel =
+    "id, queue_id, usuario_id, operational_status, operational_status_changed_at, last_heartbeat_at, max_conversations, is_online";
+  let res = await buildQuery(fullSel, true);
+  if (res.error && isMissingColumnError(res.error.message, "receives_new_chats")) res = await buildQuery(fullSel, false);
+  if (
+    res.error &&
+    (isMissingColumnError(res.error.message, "operational_status_changed_at") ||
+      isMissingColumnError(res.error.message, "last_heartbeat_at"))
+  ) {
+    res = await buildQuery("id, queue_id, usuario_id, operational_status, max_conversations, is_online", false);
+  }
+  if (res.error && isMissingColumnError(res.error.message, "operational_status")) {
+    res = await buildQuery("id, queue_id, usuario_id, max_conversations, is_online", false);
+  }
+  if (res.error) {
+    logInvalidSchema("fetchTransferTargetAgents", dataSchema, res.error);
+    throw new Error(res.error.message);
+  }
+  const rows = (res.data ?? []) as unknown as Record<string, unknown>[];
+  if (rows.length === 0) return [];
+
+  const uids = [...new Set(rows.map((r) => String(r.usuario_id ?? "")).filter(Boolean))];
+  const qids = [...new Set(rows.map((r) => String(r.queue_id ?? "")).filter(Boolean))];
+  const [uRes, qRes, roleByUsuario] = await Promise.all([
+    uids.length
+      ? catalogSr.from("usuarios").select("id, nombre, email").in("id", uids)
+      : Promise.resolve({ data: [] as unknown[], error: null }),
+    qids.length
+      ? supabase.from("chat_queues").select("id, nombre").eq("empresa_id", empresa_id).in("id", qids)
+      : Promise.resolve({ data: [] as unknown[], error: null }),
+    batchFetchOmnicanalOperatorRoles(supabase, empresa_id, uids),
+  ]);
+  const uById = new Map<string, { nombre: string | null; email: string | null }>();
+  for (const u of ((uRes as { data?: unknown[] }).data ?? []) as Array<{ id: string; nombre: string | null; email: string | null }>) {
+    uById.set(String(u.id), { nombre: u.nombre ?? null, email: u.email ?? null });
+  }
+  const qById = new Map<string, string>();
+  for (const q of ((qRes as { data?: unknown[] }).data ?? []) as Array<{ id: string; nombre: string | null }>) {
+    qById.set(String(q.id), (q.nombre ?? "").trim() || "Cola");
+  }
+
+  // Carga total (open/pending) de cada destino — solo el número, sin exponer contenido.
+  const agentIds = rows.map((r) => String(r.id));
+  const { data: convRows } = await supabase
+    .from("chat_conversations")
+    .select("assigned_agent_id, status, first_human_response_at")
+    .eq("empresa_id", empresa_id)
+    .in("assigned_agent_id", agentIds)
+    .neq("status", "closed");
+  const tally = new Map<string, number>();
+  const pendingFirst = new Map<string, number>();
+  for (const c of (convRows ?? []) as Array<{ assigned_agent_id: string | null; status?: string; first_human_response_at?: string | null }>) {
+    const aid = c.assigned_agent_id;
+    if (!aid) continue;
+    tally.set(aid, (tally.get(aid) ?? 0) + 1);
+    if ((c.status === "open" || c.status === "pending") && (c.first_human_response_at == null || c.first_human_response_at === "")) {
+      pendingFirst.set(aid, (pendingFirst.get(aid) ?? 0) + 1);
+    }
+  }
+
+  return rows.map((r) => {
+    const id = String(r.id);
+    const uid = String(r.usuario_id ?? "");
+    const qid = String(r.queue_id ?? "");
+    const u = uById.get(uid);
+    const hasHb = Object.prototype.hasOwnProperty.call(r, "last_heartbeat_at");
+    const online = hasHb ? isAgentSessionOnline((r.last_heartbeat_at as string | null) ?? null) : Boolean(r.is_online);
+    return {
+      id,
+      queue_id: qid,
+      queue_nombre: qById.get(qid) ?? "Cola",
+      usuario_id: uid,
+      nombre: (u?.nombre?.trim() || u?.email?.trim() || "—") as string,
+      email: (u?.email as string) ?? "",
+      is_online: online,
+      operational_status: (r.operational_status as string | undefined)?.trim() === "offline" ? "offline" : "ready",
+      max_conversations: (r.max_conversations as number) ?? 5,
+      operational_status_changed_at: (r.operational_status_changed_at as string | null | undefined) ?? null,
+      last_heartbeat_at: (r.last_heartbeat_at as string | null | undefined) ?? null,
+      active_conversations: tally.get(id) ?? 0,
+      pending_first_reply: pendingFirst.get(id) ?? 0,
+      omnicanal_role: roleByUsuario.get(uid) ?? null,
+    };
+  });
+}
+
 /** Una sola ida servidor: métricas + tabla agentes + banner UX (Monitoreo). */
 export type MonitoreoPageData = {
   dash: MonitoringDashboard;

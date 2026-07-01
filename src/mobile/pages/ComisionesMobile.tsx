@@ -36,21 +36,33 @@ export default function ComisionesMobile() {
       </header>
 
       {/* Selector de periodo */}
-      <div className="mb-3 flex gap-2">
-        {opciones.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => setMes(o.value === opciones[0].value ? undefined : o.value)}
-            className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-              periodoMes === o.value
-                ? "border-[#0EA5E9] bg-[#0EA5E9]/5 text-[#0EA5E9]"
-                : "border-slate-200 bg-white text-slate-600"
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
+      <div className="mb-3 space-y-2">
+        <div className="flex gap-2">
+          {opciones.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => setMes(o.value === opciones[0].value ? undefined : o.value)}
+              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                periodoMes === o.value
+                  ? "border-[#0EA5E9] bg-[#0EA5E9]/5 text-[#0EA5E9]"
+                  : "border-slate-200 bg-white text-slate-600"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Otro mes</span>
+          <input
+            type="month"
+            value={periodoMes}
+            max={opciones[0].value}
+            onChange={(e) => setMes(e.target.value || undefined)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-800 focus:border-[#0EA5E9] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/20"
+          />
+        </label>
       </div>
 
       {error ? (

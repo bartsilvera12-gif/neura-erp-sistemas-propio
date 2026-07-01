@@ -997,6 +997,7 @@ function renderVendedorView({
             <input
               type="month"
               value={selectedSellerMonth}
+              max={currentMonthInputValue()}
               onChange={(e) => onMonthChange(e.target.value)}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             />
@@ -1111,6 +1112,8 @@ function renderAdminView({
   kpis,
   rows,
   baseLabel,
+  selectedMonth,
+  onMonthChange,
   onReload,
   overrideCtx,
   onShowExcluidas,
@@ -1120,6 +1123,8 @@ function renderAdminView({
   kpis: PreviewKpis | null | undefined;
   rows: VendedorRow[];
   baseLabel: string;
+  selectedMonth: string;
+  onMonthChange: (mes: string) => void;
   onReload: () => void;
   overrideCtx?: OverrideCtx;
 }) {
@@ -1174,22 +1179,30 @@ function renderAdminView({
         </div>
       </div>
 
-      {/* Período actual */}
+      {/* Período (seleccionable) */}
       <section className="rounded-2xl border border-[#4FAEB2]/45 bg-white px-6 py-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-              Período actual
+              Período
             </p>
             <p className="text-base font-semibold capitalize tracking-tight text-slate-900">
               {meta?.periodo ?? "—"}
             </p>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#3F8E91]">
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
-            En seguimiento
-          </span>
+          <label className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Mes a consultar
+            </span>
+            <input
+              type="month"
+              value={selectedMonth}
+              max={currentMonthInputValue()}
+              onChange={(e) => onMonthChange(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+            />
+          </label>
         </div>
       </section>
 
@@ -1393,7 +1406,7 @@ export default function ComisionesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PreviewPayload | null>(null);
-  const [sellerMonth, setSellerMonth] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("");
   const [overrideModal, setOverrideModal] = useState<
     { ln: Linea; decision: "incluir" | "excluir"; periodoYm: string } | null
   >(null);
@@ -1411,8 +1424,10 @@ export default function ComisionesPage() {
         throw new Error(json.error ?? `Error ${res.status}`);
       }
       setData(json.data);
-      if (!opts?.mes && json.data.meta?.alcance === "solo_vendedor_autenticado") {
-        setSellerMonth(json.data.meta.periodo_mes ?? currentMonthInputValue());
+      // Sincroniza el selector de mes con el período efectivamente cargado
+      // (aplica tanto a la vista de vendedor como a la de administración).
+      if (!opts?.mes) {
+        setSelectedMonth(json.data.meta?.periodo_mes ?? currentMonthInputValue());
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -1569,17 +1584,18 @@ export default function ComisionesPage() {
     meta?.viewer_scope === "vendedor" ||
     meta?.alcance === "solo_vendedor_autenticado";
   const sellerRow = rows[0] ?? null;
-  const selectedSellerMonth = sellerMonth || meta?.periodo_mes || currentMonthInputValue();
+  const selectedMonthValue = selectedMonth || meta?.periodo_mes || currentMonthInputValue();
+  const onMonthChange = (mes: string) => {
+    setSelectedMonth(mes);
+    if (mes) void load({ mes });
+  };
 
   if (isSellerView) {
     return renderVendedorView({
       meta,
       sellerRow,
-      selectedSellerMonth,
-      onMonthChange: (mes) => {
-        setSellerMonth(mes);
-        if (mes) void load({ mes });
-      },
+      selectedSellerMonth: selectedMonthValue,
+      onMonthChange,
     });
   }
 
@@ -1599,6 +1615,8 @@ export default function ComisionesPage() {
         kpis,
         rows,
         baseLabel,
+        selectedMonth: selectedMonthValue,
+        onMonthChange,
         onReload: () => void load({ mes: periodoYm }),
         overrideCtx,
         onShowExcluidas: () => setExcludedDrawerOpen(true),

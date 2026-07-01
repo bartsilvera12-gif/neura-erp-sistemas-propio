@@ -121,15 +121,17 @@ async function handle(req: NextRequest) {
     }
 
     let body = "Tenés un nuevo mensaje";
+    let preview = "";
+    let contactId: string | null = null;
     if (ev.conversation_id) {
       const { data: conv } = await sb
         .from("chat_conversations")
         .select("last_message_preview, contact_id")
         .eq("id", ev.conversation_id)
         .maybeSingle();
-      const preview = ((conv as { last_message_preview?: string | null } | null)?.last_message_preview ?? "").toString().trim();
+      preview = ((conv as { last_message_preview?: string | null } | null)?.last_message_preview ?? "").toString().trim();
       let who = "";
-      const contactId = (conv as { contact_id?: string | null } | null)?.contact_id ?? null;
+      contactId = (conv as { contact_id?: string | null } | null)?.contact_id ?? null;
       if (contactId) {
         const { data: ct } = await sb
           .from("chat_contacts")
@@ -146,7 +148,28 @@ async function handle(req: NextRequest) {
       }
       body = who ? (preview ? `${who}: ${preview}`.slice(0, 140) : who) : preview ? preview.slice(0, 140) : body;
     }
-    const title = TITLES[ev.type] ?? "Notificación";
+    let title = TITLES[ev.type] ?? "Notificación";
+    // new_message: título = nombre/teléfono del contacto (columnas reales name/phone_number),
+    // cuerpo = preview del mensaje. new_lead y los demás tipos quedan igual (arriba).
+    if (ev.type === "new_message") {
+      let whoMsg = "";
+      if (contactId) {
+        const { data: ctm } = await sb
+          .from("chat_contacts")
+          .select("name, phone_number")
+          .eq("id", contactId)
+          .maybeSingle();
+        whoMsg = (
+          (ctm as { name?: string | null } | null)?.name ||
+          (ctm as { phone_number?: string | null } | null)?.phone_number ||
+          ""
+        )
+          .toString()
+          .trim();
+      }
+      title = whoMsg || "Nuevo mensaje";
+      body = preview ? preview.slice(0, 140) : "Nuevo mensaje";
+    }
     const route = ev.conversation_id ? `/m/asesor/chat/${ev.conversation_id}` : "/m/asesor";
 
     if (dryRun) {
@@ -168,7 +191,7 @@ async function handle(req: NextRequest) {
       const res = await fcm.messaging.sendEachForMulticast({
         tokens,
         notification: { title, body },
-        data: { conversationId: ev.conversation_id ?? "", route, type: ev.type },
+        data: { conversationId: ev.conversation_id ?? "", route, type: ev.type, agentId: ev.agent_id ?? "" },
         android: { priority: "high" },
       });
       const toDeactivate: string[] = [];

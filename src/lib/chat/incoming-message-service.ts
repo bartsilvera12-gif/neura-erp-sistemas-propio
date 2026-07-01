@@ -8,6 +8,7 @@ import { ensureCentralChatConversationMirror } from "@/lib/chat/central-chat-con
 import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers";
 import { maybeRedistributeInitialAssignment } from "@/lib/chat/initial-assignment-redistribution";
 import { createWhatsappConversationWithActiveFlow } from "@/lib/chat/whatsapp-conversation-bootstrap";
+import { contactCenterV1Enabled } from "@/lib/chat/contact-center-inbound";
 import { markCampaignReplyFromInbound } from "@/lib/campaigns/campaign-inbound-hook";
 import { executeCampaignButtonActionForMatchedRecipient } from "@/lib/campaigns/campaign-button-action-service";
 import type { SupabaseAdmin } from "@/lib/chat/types";
@@ -403,7 +404,7 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
   const { data: convRow } = await supabase
     .from("chat_conversations")
     .select(
-      "status, unread_count, flow_code, flow_current_node, flow_status, human_taken_over"
+      "status, unread_count, flow_code, flow_current_node, flow_status, human_taken_over, assigned_agent_id"
     )
     .eq("id", conversationId)
     .eq("empresa_id", empresaId)
@@ -453,6 +454,36 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
     }
   } else {
     return { ok: false, error: persist.error };
+  }
+
+  // Push "nuevo mensaje" (Contact Center V1): inbound real del cliente en una conversación
+  // EXISTENTE ya asignada. Las conversaciones nuevas las cubre `new_lead` (lo crea cc_assign en
+  // el webhook); en este punto todavía no tienen assigned_agent_id, así que el gate de abajo las
+  // excluye y no hay doble notificación. Dedup: solo cuando el mensaje se insertó por primera vez
+  // (persist.ok); el reproceso por wa_message_id duplicado da persist.duplicate → no crea evento.
+  if (contactCenterV1Enabled() && isContactInbound && persist.ok) {
+    const assignedAgentId =
+      (convRow as { assigned_agent_id?: string | null } | null)?.assigned_agent_id ?? null;
+    const rawStatus = String((convRow as { status?: string } | null)?.status ?? "open");
+    const effectiveStatus = rawStatus === "closed" ? "pending" : rawStatus; // inbound reabre closed→pending
+    if (assignedAgentId && (effectiveStatus === "open" || effectiveStatus === "pending")) {
+      const { error: notifErr } = await supabase.from("agent_notification_events").insert({
+        empresa_id: empresaId,
+        agent_id: assignedAgentId,
+        conversation_id: conversationId,
+        type: "new_message",
+        channel: "fcm",
+        status: "pending",
+        metadata: {
+          message_id: persistedMessageId,
+          wa_message_id: ext,
+          preview: preview.slice(0, 140),
+        },
+      });
+      if (notifErr) {
+        console.warn("[saveIncomingMessage] new_message notification insert", notifErr.message);
+      }
+    }
   }
 
   let campaignReplyMatch: Awaited<ReturnType<typeof markCampaignReplyFromInbound>> = {

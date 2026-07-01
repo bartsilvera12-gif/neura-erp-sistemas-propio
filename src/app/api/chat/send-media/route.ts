@@ -18,11 +18,45 @@ import { sendYCloudWhatsappMediaViaLink } from "@/lib/chat/ycloud-send-service";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const CHAT_MEDIA_BUCKET = "chat-media";
+const execFileAsync = promisify(execFile);
 
 function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "archivo";
+}
+
+/**
+ * Remux de nota de voz webm/opus -> ogg/opus (formato que WhatsApp SÍ acepta;
+ * WhatsApp rechaza webm). Primero intenta copiar el stream Opus (sin recodificar,
+ * rápido y sin pérdida); si falla, recodifica a Opus. Usa execFile con args array
+ * (sin shell) y archivos temporales con nombres propios (no del usuario).
+ * Lanza si ffmpeg no está disponible o no produce salida → el caller NO envía webm.
+ */
+async function remuxWebmOpusToOgg(input: Buffer): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), "ccaudio-"));
+  const inPath = join(dir, "in.webm");
+  const outPath = join(dir, "out.ogg");
+  const baseArgs = ["-y", "-hide_banner", "-loglevel", "error", "-i", inPath, "-vn"];
+  try {
+    await writeFile(inPath, input);
+    try {
+      await execFileAsync("ffmpeg", [...baseArgs, "-c:a", "copy", "-f", "ogg", outPath], { timeout: 30000 });
+    } catch {
+      // Fallback: recodificar a Opus si el copy no fue posible.
+      await execFileAsync("ffmpeg", [...baseArgs, "-c:a", "libopus", "-b:a", "32k", "-f", "ogg", outPath], { timeout: 60000 });
+    }
+    const out = await readFile(outPath);
+    if (!out || out.length < 1) throw new Error("ffmpeg produjo un OGG vacío");
+    return out;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 /**
@@ -127,14 +161,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const buf = Buffer.from(await file.arrayBuffer());
-    const origName = safeFileName(file.name || "archivo");
+    const originalMime = (file.type || "").toLowerCase();
+    let buf: Buffer = Buffer.from(await file.arrayBuffer());
+    let origName = safeFileName(file.name || "archivo");
+    let uploadMime = file.type || "application/octet-stream";
+
+    // WhatsApp NO acepta audio webm. Si la nota de voz llega en webm/opus (MediaRecorder
+    // Android/WebView), remux a ogg/opus antes de subir + enviar. Otros formatos (mp3, m4a,
+    // ogg, imágenes, docs, video) pasan sin tocar.
+    const isAudioWebm =
+      originalMime.startsWith("audio/") &&
+      (originalMime.includes("webm") || /\.webm$/i.test(file.name || ""));
+    if (isAudioWebm) {
+      try {
+        buf = await remuxWebmOpusToOgg(buf);
+      } catch (e) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "No se pudo convertir el audio a OGG (ffmpeg): " + (e instanceof Error ? e.message : String(e)),
+          },
+          { status: 500 }
+        );
+      }
+      origName = (origName.replace(/\.webm$/i, "") || "nota-voz") + ".ogg";
+      uploadMime = "audio/ogg";
+    }
+
     const objectPath = `${empresaId}/${conversationId}/out_${Date.now()}_${origName}`;
 
     const { error: upErr } = await supabase.storage
       .from(CHAT_MEDIA_BUCKET)
       .upload(objectPath, buf, {
-        contentType: file.type || "application/octet-stream",
+        contentType: uploadMime,
         upsert: true,
       });
 
@@ -148,7 +207,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "No se pudo obtener URL pública del archivo" }, { status: 500 });
     }
 
-    const mime = (file.type || "").toLowerCase();
+    // mime EFECTIVO (tras posible remux) para rutear el tipo a WhatsApp/YCloud.
+    const mime = uploadMime.toLowerCase();
     const isImage = mime.startsWith("image/");
     const isAudio = mime.startsWith("audio/");
     const isVideo = mime.startsWith("video/");
@@ -276,7 +336,8 @@ export async function POST(request: NextRequest) {
         erp: {
           public_url: publicUrl,
           storage_path: objectPath,
-          mime_type: file.type || null,
+          mime_type: uploadMime,
+          original_mime: originalMime || null,
           filename: origName,
           caption: caption || null,
         },

@@ -105,10 +105,15 @@ async function handle(req: NextRequest) {
     }
     if (tokens.length === 0) {
       if (!dryRun) {
-        await sb
+        const { error: upErr } = await sb
           .from("agent_notification_events")
-          .update({ status: "skipped", error_message: "no_active_device", updated_at: nowIso() })
+          .update({ status: "skipped", error_message: "no_active_device" })
           .eq("id", ev.id);
+        if (upErr) {
+          failed++;
+          detail.push({ event: ev.id.slice(0, 8), result: "status_update_failed", stage: "skipped", error: upErr.message.slice(0, 160) });
+          continue;
+        }
       }
       skipped++;
       detail.push({ event: ev.id.slice(0, 8), result: "skipped_no_device" });
@@ -151,11 +156,11 @@ async function handle(req: NextRequest) {
     }
     if (!fcm.ok) {
       failed++;
-      await sb
+      const { error: upErr } = await sb
         .from("agent_notification_events")
-        .update({ status: "failed", error_message: `fcm_${fcm.reason}`, updated_at: nowIso() })
+        .update({ status: "failed", error_message: `fcm_${fcm.reason}` })
         .eq("id", ev.id);
-      detail.push({ event: ev.id.slice(0, 8), result: "fcm_unavailable" });
+      detail.push({ event: ev.id.slice(0, 8), result: "fcm_unavailable", status_persisted: !upErr });
       continue;
     }
 
@@ -183,28 +188,35 @@ async function handle(req: NextRequest) {
       }
       if (res.successCount > 0) {
         const msgId = res.responses.find((r) => r.success)?.messageId ?? null;
-        await sb
+        const { error: upErr } = await sb
           .from("agent_notification_events")
-          .update({ status: "sent", provider_message_id: msgId, sent_at: nowIso(), updated_at: nowIso() })
+          .update({ status: "sent", provider_message_id: msgId, sent_at: nowIso() })
           .eq("id", ev.id);
-        sent++;
-        detail.push({ event: ev.id.slice(0, 8), result: "sent", ok: res.successCount, fail: res.failureCount });
+        if (upErr) {
+          // El push se envió, pero no se pudo persistir 'sent'. NO contarlo como éxito:
+          // si quedara 'pending' se reenviaría en el próximo tick. Se reporta como fallo visible.
+          failed++;
+          detail.push({ event: ev.id.slice(0, 8), result: "sent_but_status_not_persisted", error: upErr.message.slice(0, 160) });
+        } else {
+          sent++;
+          detail.push({ event: ev.id.slice(0, 8), result: "sent", ok: res.successCount, fail: res.failureCount });
+        }
       } else {
-        await sb
+        const { error: upErr } = await sb
           .from("agent_notification_events")
-          .update({ status: "failed", error_message: `all_failed(${res.failureCount})`, updated_at: nowIso() })
+          .update({ status: "failed", error_message: `all_failed(${res.failureCount})` })
           .eq("id", ev.id);
         failed++;
-        detail.push({ event: ev.id.slice(0, 8), result: "failed", fail: res.failureCount });
+        detail.push({ event: ev.id.slice(0, 8), result: "failed", fail: res.failureCount, status_persisted: !upErr });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      await sb
+      const { error: upErr } = await sb
         .from("agent_notification_events")
-        .update({ status: "failed", error_message: msg.slice(0, 300), updated_at: nowIso() })
+        .update({ status: "failed", error_message: msg.slice(0, 300) })
         .eq("id", ev.id);
       failed++;
-      detail.push({ event: ev.id.slice(0, 8), result: "error" });
+      detail.push({ event: ev.id.slice(0, 8), result: "error", status_persisted: !upErr });
     }
   }
 

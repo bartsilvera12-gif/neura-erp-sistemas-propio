@@ -236,6 +236,9 @@ export async function POST(request: NextRequest) {
         from_me: fromMe,
         sender_type: senderType,
       },
+      // CC V1: si el flag está activo, no dejar que el legacy asigne acá; la asignación
+      // (y la generación de eventos push) la hace cc_assign_conversation más abajo.
+      skipLegacyAutoAssignment: contactCenterV1Enabled(),
     });
 
     if (!save.ok) {

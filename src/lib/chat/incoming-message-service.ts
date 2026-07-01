@@ -61,6 +61,13 @@ export type SaveIncomingMessageParams = {
     conversationId: string;
     contactId: string;
   }) => Promise<void>;
+  /**
+   * Si `true`, NO ejecuta la autoasignación legacy (`assignConversation` / redistribución
+   * inicial) dentro de esta función. Se usa cuando Contact Center V1 está activo: el webhook
+   * asigna con `cc_assign_conversation` (que además avanza el contador diario y genera los
+   * `agent_notification_events` para el push). Default `false` → comportamiento legacy intacto.
+   */
+  skipLegacyAutoAssignment?: boolean;
 };
 
 export type SaveIncomingMessageResult =
@@ -240,6 +247,7 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
     contact_data,
     message_data,
     adjustConversationBeforePersist,
+    skipLegacyAutoAssignment = false,
   } = params;
 
   const ext = externalId.trim();
@@ -337,7 +345,7 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
         return { ok: false, error: `Conversación: ${convErr.message}` };
       } else {
         existingConv = conv as ConversationRowLite;
-        if (existingConv?.id) {
+        if (existingConv?.id && !skipLegacyAutoAssignment) {
           const ar = await assignConversation(supabase, existingConv.id);
           if (!ar.ok) {
             console.warn("[saveIncomingMessage] assignConversation", ar.error);
@@ -364,13 +372,22 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
   const isContactInbound =
     message_data.from_me !== true && (message_data.sender_type ?? "contact") === "contact";
   if (isContactInbound) {
-    const rd = await maybeRedistributeInitialAssignment(supabase, conversationId);
-    if (rd.changed) {
-      /* conversación posiblemente reasignada; el assign siguiente es idempotente si ya hay agente */
-    }
-    const ar = await assignConversation(supabase, conversationId);
-    if (!ar.ok) {
-      console.warn("[saveIncomingMessage] assignConversation (inbound)", ar.error);
+    if (skipLegacyAutoAssignment) {
+      // Contact Center V1 activo: la asignación la hace cc_assign_conversation en el webhook
+      // (avanza contador diario + crea agent_notification_events/push). No asignar acá para
+      // no adelantarnos y dejar la RPC en 'already_assigned'.
+      console.info("[incoming-message-service] legacy_assignment_skipped_for_cc_v1", {
+        conversation_id: conversationId,
+      });
+    } else {
+      const rd = await maybeRedistributeInitialAssignment(supabase, conversationId);
+      if (rd.changed) {
+        /* conversación posiblemente reasignada; el assign siguiente es idempotente si ya hay agente */
+      }
+      const ar = await assignConversation(supabase, conversationId);
+      if (!ar.ok) {
+        console.warn("[saveIncomingMessage] assignConversation (inbound)", ar.error);
+      }
     }
   }
 

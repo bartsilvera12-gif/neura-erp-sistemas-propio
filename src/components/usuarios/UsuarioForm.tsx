@@ -188,6 +188,7 @@ export function UsuarioFormFields({
                 onChange={onChange}
                 placeholder="usuario@empresa.com"
                 className={fInput}
+                autoComplete="off"
                 required
               />
             </div>
@@ -335,6 +336,7 @@ export function UsuarioFormFields({
                   onChange={onChange}
                   placeholder="Mínimo 6 caracteres"
                   className={`${fInput} pr-10`}
+                  autoComplete="new-password"
                   required
                 />
                 <button
@@ -357,6 +359,7 @@ export function UsuarioFormFields({
                   onChange={onChange}
                   placeholder="Repetir contraseña"
                   className={`${fInput} pr-10`}
+                  autoComplete="new-password"
                   required
                 />
                 <button

@@ -14,24 +14,13 @@ function emailExistsInAuthError(msg: string): boolean {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function findAuthUserIdByEmail(supabase: any, email: string): Promise<string | null> {
-  const target = email.trim().toLowerCase();
-  let page = 1;
-  while (true) {
-    const { data } = await supabase.auth.admin.listUsers({ page, perPage: 500 });
-    const users = data?.users ?? [];
-    const found = users.find((u: { id: string; email?: string }) => (u.email ?? "").toLowerCase() === target);
-    if (found) return found.id;
-    if (users.length < 500) break;
-    page++;
-  }
-  return null;
-}
-
 /**
- * Crea usuario en Auth + `zentra_erp.usuarios`, o si el correo ya existe en Auth,
- * vincula ese usuario a la empresa del administrador (útil tras pruebas u otra empresa).
+ * Crea un usuario NUEVO en Auth + `usuarios`.
+ *
+ * Guardrail crítico: "crear" jamás modifica un usuario existente. Si el correo ya existe
+ * (en `usuarios` o en Auth) se RECHAZA — nunca se sobrescribe contraseña ni perfil/rol.
+ * (Antes, un email autocompletado por el navegador —p. ej. el del propio admin— pisaba
+ * la contraseña y degradaba el rol del usuario existente.)
  */
 export async function POST(req: Request) {
   try {
@@ -104,41 +93,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Solo un administrador de empresa puede crear usuarios." }, { status: 403 });
     }
 
-    let authUserId: string | null = null;
-    let vinculado = false;
-
-    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-
-    if (createErr) {
-      if (emailExistsInAuthError(createErr.message)) {
-        authUserId = await findAuthUserIdByEmail(supabase, email);
-        if (!authUserId) {
-          return NextResponse.json(
-            {
-              error:
-                "El correo figura como ocupado en Auth pero no se pudo localizar el usuario. Revisá en Supabase → Authentication → Users o esperá unos minutos y reintentá.",
-            },
-            { status: 400 }
-          );
-        }
-        vinculado = true;
-        await supabase.auth.admin.updateUserById(authUserId, { password });
-      } else {
-        return NextResponse.json({ error: createErr.message }, { status: 400 });
-      }
-    } else {
-      authUserId = created.user?.id ?? null;
-    }
-
+    // 1) Rechazar si el correo YA existe en `usuarios` (nunca sobrescribir un perfil/rol).
     const { data: existente } = await supabase
       .from("usuarios")
       .select("id")
       .eq("email", email)
       .maybeSingle();
+    if (existente?.id) {
+      return NextResponse.json(
+        {
+          error:
+            "Ese correo ya está registrado en el sistema. Para modificar ese usuario usá 'Editar'; acá no se puede crear uno nuevo con el mismo correo.",
+        },
+        { status: 409 }
+      );
+    }
+
+    // 2) Crear en Auth. Si ya existe en Auth → rechazar (NO se toca la contraseña de nadie).
+    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (createErr) {
+      if (emailExistsInAuthError(createErr.message)) {
+        return NextResponse.json(
+          {
+            error:
+              "Ese correo ya está registrado en el sistema de acceso (Auth). No se puede crear un usuario nuevo con ese correo.",
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ error: createErr.message }, { status: 400 });
+    }
+    const authUserId: string | null = created.user?.id ?? null;
 
     const payload = {
       empresa_id: empresaId,
@@ -157,24 +146,20 @@ export async function POST(req: Request) {
       estado: "activo" as const,
     };
 
-    let targetId: string;
-
-    if (existente?.id) {
-      const { error: upErr } = await supabase.from("usuarios").update(payload).eq("id", existente.id);
-      if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
-      targetId = existente.id;
-    } else {
-      const { data: inserted, error: insErr } = await supabase
-        .from("usuarios")
-        .insert([payload])
-        .select("id")
-        .single();
-      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 });
-      if (!inserted?.id) {
-        return NextResponse.json({ error: "No se pudo obtener el id del usuario creado." }, { status: 500 });
-      }
-      targetId = inserted.id as string;
+    // 3) INSERT (nunca update). Si falla, revierte el Auth recién creado (sin huérfanos).
+    const { data: inserted, error: insErr } = await supabase
+      .from("usuarios")
+      .insert([payload])
+      .select("id")
+      .single();
+    if (insErr) {
+      if (authUserId) await supabase.auth.admin.deleteUser(authUserId).catch(() => {});
+      return NextResponse.json({ error: insErr.message }, { status: 400 });
     }
+    if (!inserted?.id) {
+      return NextResponse.json({ error: "No se pudo obtener el id del usuario creado." }, { status: 500 });
+    }
+    const targetId: string = inserted.id as string;
 
     await supabase.from("usuario_modulos").delete().eq("usuario_id", targetId);
     if (!esRolAdminEmpresa(rol)) {
@@ -200,10 +185,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      vinculado,
-      message: vinculado
-        ? "Ese correo ya existía en el sistema. Se actualizó la contraseña y se asignó a tu empresa."
-        : "Usuario creado correctamente.",
+      message: "Usuario creado correctamente.",
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error";

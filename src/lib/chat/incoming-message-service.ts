@@ -306,7 +306,8 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
         supabase,
         empresaId,
         channelId,
-        contactId
+        contactId,
+        skipLegacyAutoAssignment
       );
       if (bootErr) return { ok: false, error: bootErr };
       existingConv = conv;

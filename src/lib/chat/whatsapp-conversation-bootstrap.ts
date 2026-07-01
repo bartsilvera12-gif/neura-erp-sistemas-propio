@@ -45,7 +45,8 @@ export async function createWhatsappConversationWithActiveFlow(
   supabase: SupabaseAdmin,
   empresaId: string,
   channelId: string,
-  contactId: string
+  contactId: string,
+  skipLegacyAutoAssignment = false
 ): Promise<{ conv: WhatsappConversationRow | null; error: string | null }> {
   const catalogNew = await listActiveWhatsappFlowsForEmpresa(supabase, empresaId);
   let flowCodeIns: string | null = null;
@@ -142,9 +143,18 @@ export async function createWhatsappConversationWithActiveFlow(
   }
 
   if (wasNewInsert && existingConv?.id) {
-    const ar = await assignConversation(supabase, existingConv.id);
-    if (!ar.ok) {
-      console.warn("[whatsapp-conversation-bootstrap] assignConversation", ar.error);
+    if (skipLegacyAutoAssignment) {
+      // Con CC V1 activo, la asignación la hace cc_assign_conversation (que además
+      // genera el evento push). Si asignáramos acá por legacy, cc_assign llegaría
+      // tarde y respondería already_assigned → nunca se crearía el evento.
+      console.info("[whatsapp-bootstrap] legacy_assignment_skipped_for_cc_v1", {
+        conversation_id: existingConv.id,
+      });
+    } else {
+      const ar = await assignConversation(supabase, existingConv.id);
+      if (!ar.ok) {
+        console.warn("[whatsapp-conversation-bootstrap] assignConversation", ar.error);
+      }
     }
   }
 

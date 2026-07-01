@@ -12,8 +12,10 @@ import { vencimientoPeriodo } from "@/lib/fechas/calendario";
  *    tipo/plan sale de la suscripción, no de `clientes.tipo_servicio_cliente`.
  *  - fecha_emision = día 01 del período; fecha_vencimiento = mismo mes, `dia_vencimiento`
  *    de la suscripción (fallback 10). NO se empuja al mes siguiente (el cron corre el 01).
- *  - Idempotente: no crea si ya existe una factura tipo suscripción de esa suscripción con
- *    fecha_vencimiento dentro del período (excluye Anulado / Corregida NC).
+ *  - Idempotente por PERÍODO EXPLÍCITO: no crea si ya existe una factura tipo suscripción de
+ *    esa suscripción con `periodo_facturado = período` (excluye Anulado / Corregida NC). NO
+ *    depende de `fecha_vencimiento` para deduplicar (evita confundir "emitida en N con venc
+ *    en N+1" con "factura de N+1"). Cada factura creada se marca con `periodo_facturado`.
  *  - Solo clientes vigentes: salta eliminados, inactivos y dados de baja operativa.
  *  - Numeración SIEMPRE por el RPC transaccional (sin MAX+1). El contador avanza solo al crear.
  *
@@ -36,6 +38,8 @@ export type ResumenFacturacionMensual = {
   facturas_creadas: number;
   skipped_existente: number;
   skipped_cliente_inactivo: number;
+  /** Facturas tipo=suscripcion de la empresa sin `periodo_facturado` (legacy sin backfill). */
+  legacy_sin_periodo: number;
   errores: ErrorSuscripcion[];
 };
 
@@ -67,11 +71,6 @@ export async function generarFacturasMensuales(opts: {
   const dryRun = opts.dryRun ?? false;
   const periodo = /^\d{4}-\d{2}$/.test(opts.periodo ?? "") ? (opts.periodo as string) : periodoActualYmd();
   const emision = `${periodo}-01`;
-  const [py, pm] = periodo.split("-").map(Number);
-  const nm = pm === 12 ? 1 : pm + 1;
-  const ny = pm === 12 ? py + 1 : py;
-  const mesIni = `${periodo}-01`;
-  const mesFin = `${ny}-${String(nm).padStart(2, "0")}-01`;
 
   const resumen: ResumenFacturacionMensual = {
     periodo,
@@ -83,6 +82,7 @@ export async function generarFacturasMensuales(opts: {
     facturas_creadas: 0,
     skipped_existente: 0,
     skipped_cliente_inactivo: 0,
+    legacy_sin_periodo: 0,
     errores: [],
   };
 
@@ -99,6 +99,17 @@ export async function generarFacturasMensuales(opts: {
   if (suscErr) throw new Error(`No se pudieron leer suscripciones: ${suscErr.message}`);
   const suscripciones = (suscData ?? []) as unknown as SuscRow[];
   resumen.total_suscripciones_activas = suscripciones.length;
+
+  // Diagnóstico: facturas de suscripción sin periodo_facturado (legacy sin backfill).
+  // La idempotencia por período no las reconoce; útil para detectar backfill pendiente.
+  const { count: legacyCount } = await supabase
+    .from("facturas")
+    .select("id", { count: "exact", head: true })
+    .eq("empresa_id", empresaId)
+    .eq("tipo", "suscripcion")
+    .is("periodo_facturado", null);
+  resumen.legacy_sin_periodo = legacyCount ?? 0;
+
   if (suscripciones.length === 0) return resumen;
 
   // 2) Estado de clientes (filtrar eliminados / inactivos / baja)
@@ -149,15 +160,15 @@ export async function generarFacturasMensuales(opts: {
       continue;
     }
 
-    // Idempotencia: factura tipo suscripción de esta suscripción con vencimiento en el período
+    // Idempotencia por PERÍODO EXPLÍCITO (suscripcion_id + periodo_facturado). No usa
+    // fecha_vencimiento: una factura emitida en N con venc en N+1 ya no confunde períodos.
     const { data: existentes, error: exErr } = await supabase
       .from("facturas")
       .select("id, estado")
       .eq("empresa_id", empresaId)
       .eq("suscripcion_id", suscId)
       .eq("tipo", "suscripcion")
-      .gte("fecha_vencimiento", mesIni)
-      .lt("fecha_vencimiento", mesFin);
+      .eq("periodo_facturado", periodo);
     if (exErr) {
       resumen.errores.push({ suscripcion_id: suscId, error: `idempotencia: ${exErr.message}` });
       continue;
@@ -200,6 +211,7 @@ export async function generarFacturasMensuales(opts: {
           numero_factura: numeroFactura,
           fecha: emision,
           fecha_vencimiento: fechaVenc,
+          periodo_facturado: periodo,
           monto,
           saldo: monto,
           estado: "Pendiente",

@@ -103,6 +103,7 @@ async function handle(request: NextRequest) {
         creadas: resumen.facturas_creadas,
         skip_existente: resumen.skipped_existente,
         skip_cliente: resumen.skipped_cliente_inactivo,
+        legacy_sin_periodo: resumen.legacy_sin_periodo,
         errores: resumen.errores.length,
       });
     } catch (e) {

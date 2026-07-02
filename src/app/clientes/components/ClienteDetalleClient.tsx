@@ -22,6 +22,7 @@ import {
   apiCreateFacturaWithError,
   apiCreatePago,
   apiCreateSuscripcion,
+  apiDeleteSuscripcion,
   apiGetClienteHistorial,
   type BajaOperativaPreview,
   type EliminarClientePreview,
@@ -343,6 +344,25 @@ export default function ClienteDetalleClient({
     plan_id: "", precio: "", fecha_inicio: "", duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, periodo_factura: "actual" as "actual" | "siguiente", fecha_vencimiento_override: "",
   });
   const [guardandoSusc, setGuardandoSusc] = useState(false);
+  const [borrandoSuscId, setBorrandoSuscId] = useState<string | null>(null);
+
+  async function eliminarSuscripcion(susc: { id: string; plan_id?: string | null; plan_nombre?: string | null }) {
+    if (borrandoSuscId) return;
+    const nombrePlan = planes.find((p) => p.id === susc.plan_id)?.nombre ?? susc.plan_nombre ?? "esta suscripción";
+    const ok = window.confirm(
+      `¿Eliminar la suscripción "${nombrePlan}"?\n\nLas facturas ya emitidas se conservan (quedan sin vincular). No se borran pagos.`
+    );
+    if (!ok) return;
+    setBorrandoSuscId(susc.id);
+    const res = await apiDeleteSuscripcion(susc.id);
+    setBorrandoSuscId(null);
+    if (!res.success) {
+      window.alert(res.error || "No se pudo eliminar la suscripción.");
+      return;
+    }
+    getSuscripciones(id).then(setSuscripciones);
+    getFacturas(id).then(setFacturas);
+  }
   const [marketingTasks, setMarketingTasks] = useState<MarketingTask[]>([]);
   const [usuariosEmpresa, setUsuariosEmpresa] = useState<UsuarioEmpresa[]>([]);
   const [usuariosEmpresaError, setUsuariosEmpresaError] = useState<string | null>(null);
@@ -2198,6 +2218,7 @@ export default function ClienteDetalleClient({
                         {["Plan", "Precio", "Moneda", "Inicio", "Meses", "Día fact.", "Día venc.", "Estado"].map((h) => (
                           <th key={h} className="text-left text-xs font-semibold text-slate-600 px-4 py-3">{h}</th>
                         ))}
+                        <th className="text-right text-xs font-semibold text-slate-600 px-4 py-3">Acción</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -2216,6 +2237,27 @@ export default function ClienteDetalleClient({
                             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                               s.estado === "activa" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
                             }`}>{s.estado}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => void eliminarSuscripcion(s)}
+                              disabled={borrandoSuscId === s.id}
+                              title="Eliminar suscripción"
+                              aria-label="Eliminar suscripción"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 disabled:pointer-events-none"
+                            >
+                              {borrandoSuscId === s.id ? (
+                                <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-red-500" />
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  <line x1="10" y1="11" x2="10" y2="17" />
+                                  <line x1="14" y1="11" x2="14" y2="17" />
+                                </svg>
+                              )}
+                            </button>
                           </td>
                         </tr>
                       ))}

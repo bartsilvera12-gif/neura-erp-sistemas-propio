@@ -446,3 +446,26 @@ export async function apiCreateSuscripcion(data: {
 }): Promise<{ success: true; data: { id: string; [key: string]: unknown } } | { success: false; error: string }> {
   return apiPost<{ id: string; [key: string]: unknown }>("/api/suscripciones", data);
 }
+
+/** Elimina una suscripción. Las facturas ya emitidas se conservan (quedan sin vincular). */
+export async function apiDeleteSuscripcion(
+  suscripcionId: string
+): Promise<{ success: true; data: { id: string; facturas_desvinculadas?: number } } | { success: false; error: string }> {
+  const res = await fetchWithSupabaseSession(`/api/suscripciones/${encodeURIComponent(suscripcionId)}`, {
+    method: "DELETE",
+  });
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    return { success: false, error: res.ok ? "Respuesta inválida del servidor" : `Error ${res.status}` };
+  }
+  const body = json as { success?: boolean; data?: { id: string; facturas_desvinculadas?: number }; error?: string };
+  if (!res.ok) {
+    return { success: false, error: body?.error ?? `Error ${res.status}` };
+  }
+  if (body?.success !== true || !body.data) {
+    return { success: false, error: body?.error ?? "Respuesta inválida del servidor" };
+  }
+  return { success: true, data: body.data };
+}

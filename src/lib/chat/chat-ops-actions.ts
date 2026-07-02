@@ -613,56 +613,56 @@ async function loadMonitoringDashboardForContext(
     ...new Set(convList.map((c: Record<string, unknown>) => (c.contact_id as string | null)?.trim()).filter(Boolean)),
   ] as string[];
 
-  let queueNombreById: Record<string, string> = {};
-  if (queueIds.length > 0) {
-    const { data: qrows, error: qErr } = await supabase
-      .from("chat_queues")
-      .select("id, nombre")
-      .eq("empresa_id", empresa_id)
-      .in("id", queueIds);
-    if (qErr) throw new Error(qErr.message);
-    queueNombreById = Object.fromEntries(
-      (qrows ?? []).map((r) => [r.id as string, String((r as { nombre?: string }).nombre ?? "").trim() || "Cola"])
-    );
+  // PostgREST pasa el filtro `.in(id, [uuid,...])` por URL. Con >~100 UUIDs (~3.7 KB) la
+  // request supera límites típicos del proxy/edge (Nginx `large_client_header_buffers`) y
+  // vuelve vacía SIN error visible. Batcheamos en chunks para mantener la URL bajo control.
+  const IN_CHUNK = 50;
+  async function selectByIdChunks<T>(
+    table: "chat_queues" | "chat_channels" | "chat_contacts",
+    cols: string,
+    ids: string[]
+  ): Promise<T[]> {
+    if (ids.length === 0) return [];
+    const out: T[] = [];
+    for (let i = 0; i < ids.length; i += IN_CHUNK) {
+      const chunk = ids.slice(i, i + IN_CHUNK);
+      const { data, error } = await supabase
+        .from(table)
+        .select(cols)
+        .eq("empresa_id", empresa_id)
+        .in("id", chunk);
+      if (error) throw new Error(`${table} batch: ${error.message}`);
+      if (data) out.push(...(data as unknown as T[]));
+    }
+    return out;
   }
 
-  let channelMetaById: Record<string, { type: string; nombre: string | null }> = {};
-  if (channelIds.length > 0) {
-    const { data: chrows, error: chErr } = await supabase
-      .from("chat_channels")
-      .select("id, type, nombre")
-      .eq("empresa_id", empresa_id)
-      .in("id", channelIds);
-    if (chErr) throw new Error(chErr.message);
-    channelMetaById = Object.fromEntries(
-      (chrows ?? []).map((r) => [
-        r.id as string,
-        {
-          type: ((r as { type?: string }).type as string) ?? "whatsapp",
-          nombre: (r as { nombre?: string | null }).nombre ?? null,
-        },
-      ])
-    );
-  }
+  const qrows = await selectByIdChunks<{ id: string; nombre?: string | null }>(
+    "chat_queues",
+    "id, nombre",
+    queueIds
+  );
+  const queueNombreById: Record<string, string> = Object.fromEntries(
+    qrows.map((r) => [r.id, String(r.nombre ?? "").trim() || "Cola"])
+  );
 
-  let contactById: Record<string, { phone_number: string | null; name: string | null }> = {};
-  if (contactIds.length > 0) {
-    const { data: crows, error: cErr } = await supabase
-      .from("chat_contacts")
-      .select("id, phone_number, name")
-      .eq("empresa_id", empresa_id)
-      .in("id", contactIds);
-    if (cErr) throw new Error(cErr.message);
-    contactById = Object.fromEntries(
-      (crows ?? []).map((r) => [
-        r.id as string,
-        {
-          phone_number: (r as { phone_number?: string | null }).phone_number ?? null,
-          name: (r as { name?: string | null }).name ?? null,
-        },
-      ])
-    );
-  }
+  const chrows = await selectByIdChunks<{ id: string; type?: string; nombre?: string | null }>(
+    "chat_channels",
+    "id, type, nombre",
+    channelIds
+  );
+  const channelMetaById: Record<string, { type: string; nombre: string | null }> = Object.fromEntries(
+    chrows.map((r) => [r.id, { type: r.type ?? "whatsapp", nombre: r.nombre ?? null }])
+  );
+
+  const crows = await selectByIdChunks<{ id: string; phone_number?: string | null; name?: string | null }>(
+    "chat_contacts",
+    "id, phone_number, name",
+    contactIds
+  );
+  const contactById: Record<string, { phone_number: string | null; name: string | null }> = Object.fromEntries(
+    crows.map((r) => [r.id, { phone_number: r.phone_number ?? null, name: r.name ?? null }])
+  );
 
   if (pendingHumanRes.error) {
     console.warn("[fetchMonitoringDashboard] pendientes primera respuesta:", pendingHumanRes.error.message);
@@ -694,44 +694,23 @@ async function loadMonitoringDashboardForContext(
         .filter((x): x is string => Boolean(x && x.length > 0))
     ),
   ];
-  let pendChannelMeta: Record<string, { type: string; nombre: string | null }> = {};
-  if (pendChannelIds.length > 0) {
-    const { data: pch, error: peCh } = await supabase
-      .from("chat_channels")
-      .select("id, type, nombre")
-      .eq("empresa_id", empresa_id)
-      .in("id", pendChannelIds);
-    if (!peCh && pch) {
-      pendChannelMeta = Object.fromEntries(
-        (pch ?? []).map((row) => [
-          row.id as string,
-          {
-            type: ((row as { type?: string }).type as string) ?? "whatsapp",
-            nombre: (row as { nombre?: string | null }).nombre ?? null,
-          },
-        ])
-      );
-    }
-  }
-  let pendContactById: Record<string, { phone_number: string | null; name: string | null }> = {};
-  if (pendContactIds.length > 0) {
-    const { data: pco, error: peCo } = await supabase
-      .from("chat_contacts")
-      .select("id, phone_number, name")
-      .eq("empresa_id", empresa_id)
-      .in("id", pendContactIds);
-    if (!peCo && pco) {
-      pendContactById = Object.fromEntries(
-        (pco ?? []).map((row) => [
-          row.id as string,
-          {
-            phone_number: (row as { phone_number?: string | null }).phone_number ?? null,
-            name: (row as { name?: string | null }).name ?? null,
-          },
-        ])
-      );
-    }
-  }
+  const pchAll = await selectByIdChunks<{ id: string; type?: string; nombre?: string | null }>(
+    "chat_channels",
+    "id, type, nombre",
+    pendChannelIds
+  );
+  const pendChannelMeta: Record<string, { type: string; nombre: string | null }> = Object.fromEntries(
+    pchAll.map((r) => [r.id, { type: r.type ?? "whatsapp", nombre: r.nombre ?? null }])
+  );
+
+  const pcoAll = await selectByIdChunks<{ id: string; phone_number?: string | null; name?: string | null }>(
+    "chat_contacts",
+    "id, phone_number, name",
+    pendContactIds
+  );
+  const pendContactById: Record<string, { phone_number: string | null; name: string | null }> = Object.fromEntries(
+    pcoAll.map((r) => [r.id, { phone_number: r.phone_number ?? null, name: r.name ?? null }])
+  );
 
   const pendAgentIds = [
     ...new Set(

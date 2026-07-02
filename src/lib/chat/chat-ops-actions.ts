@@ -1058,12 +1058,15 @@ async function pgLoadDailyLeadStats(
   pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
   dataSchema: string,
   empresaId: string,
-  agentIds: string[]
+  agentIds: string[],
+  dateYmd?: string | null
 ): Promise<DailyLeadStats> {
   const leads = new Map<string, number>();
   const transfers = new Map<string, number>();
   const ultima = new Map<string, string>();
   if (agentIds.length === 0) return { leads, transfers, ultima };
+  // Fecha objetivo YYYY-MM-DD (America/Asuncion); null → hoy. Validada para el cast ::date.
+  const d = typeof dateYmd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd) ? dateYmd : null;
   try {
     const counterTbl = quoteSchemaTable(dataSchema, "cc_daily_assignment_counter");
     const eventsTbl = quoteSchemaTable(dataSchema, "chat_routing_events");
@@ -1071,10 +1074,10 @@ async function pgLoadDailyLeadStats(
       `SELECT agent_id::text AS agent_id, sum(count)::int AS n, max(updated_at) AS ult
          FROM ${counterTbl}
         WHERE empresa_id = $1::uuid
-          AND dia_local = (now() AT TIME ZONE 'America/Asuncion')::date
+          AND dia_local = COALESCE($3::date, (now() AT TIME ZONE 'America/Asuncion')::date)
           AND agent_id = ANY($2::uuid[])
         GROUP BY agent_id`,
-      [empresaId, agentIds]
+      [empresaId, agentIds, d]
     );
     for (const r of rc.rows as Array<{ agent_id: string; n: number; ult: string | null }>) {
       leads.set(r.agent_id, Number(r.n) || 0);
@@ -1085,10 +1088,10 @@ async function pgLoadDailyLeadStats(
          FROM ${eventsTbl}
         WHERE empresa_id = $1::uuid
           AND event_type = 'supervisor_assigned'
-          AND (created_at AT TIME ZONE 'America/Asuncion')::date = (now() AT TIME ZONE 'America/Asuncion')::date
+          AND (created_at AT TIME ZONE 'America/Asuncion')::date = COALESCE($3::date, (now() AT TIME ZONE 'America/Asuncion')::date)
           AND (payload->>'to_agent_id') = ANY($2::text[])
         GROUP BY 1`,
-      [empresaId, agentIds]
+      [empresaId, agentIds, d]
     );
     for (const r of rt.rows as Array<{ agent_id: string | null; n: number }>) {
       if (r.agent_id) transfers.set(r.agent_id, Number(r.n) || 0);
@@ -1103,7 +1106,9 @@ async function loadSupervisorAgentLoadsWithContext(
   ctx: EmpresaTenantSrContext,
   scope: OmnicanalScope,
   bypass: boolean,
-  scopeConvCache: OmnicanalConversationScopeCache
+  scopeConvCache: OmnicanalConversationScopeCache,
+  /** Fecha YYYY-MM-DD (America/Asuncion) para leads_hoy/transfers. null/undefined → hoy. */
+  leadsDateYmd?: string | null
 ): Promise<SupervisorAgentLoadRow[]> {
   const poolPg = getChatPostgresPool();
   const { dataSchema, empresa_id, supabase } = ctx;
@@ -1141,7 +1146,7 @@ async function loadSupervisorAgentLoadsWithContext(
       }
     }
 
-    const daily = await pgLoadDailyLeadStats(poolPg, dataSchema, empresa_id, agentIds);
+    const daily = await pgLoadDailyLeadStats(poolPg, dataSchema, empresa_id, agentIds, leadsDateYmd);
     return agents.map((a) => ({
       ...a,
       active_conversations: tally.get(a.id) ?? 0,
@@ -1201,7 +1206,7 @@ async function loadSupervisorAgentLoadsWithContext(
   }
 
   const daily = poolPg
-    ? await pgLoadDailyLeadStats(poolPg, dataSchema, empresa_id, agentIds)
+    ? await pgLoadDailyLeadStats(poolPg, dataSchema, empresa_id, agentIds, leadsDateYmd)
     : { leads: new Map<string, number>(), transfers: new Map<string, number>(), ultima: new Map<string, string>() };
   return agents.map((a) => ({
     ...a,
@@ -1365,7 +1370,7 @@ export type MonitoreoPageData = {
   };
 };
 
-export async function fetchMonitoreoPageData(): Promise<MonitoreoPageData> {
+export async function fetchMonitoreoPageData(leadsDateYmd?: string | null): Promise<MonitoreoPageData> {
   const t0 = Date.now();
   const ctx = await requireEmpresaTenantServiceRole();
   const scope = await getOmnicanalScope(ctx.supabase, ctx.empresa_id, ctx.usuario_id, {
@@ -1376,7 +1381,7 @@ export async function fetchMonitoreoPageData(): Promise<MonitoreoPageData> {
   const tParallel = Date.now();
   const [dash, agents] = await Promise.all([
     loadMonitoringDashboardForContext(ctx, scope, bypass, scopeConvCache),
-    loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, scopeConvCache),
+    loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, scopeConvCache, leadsDateYmd),
   ]);
   if (process.env.MONITOREO_TIMING_DEBUG === "1") {
     console.info("[fetchMonitoreoPageData]", {

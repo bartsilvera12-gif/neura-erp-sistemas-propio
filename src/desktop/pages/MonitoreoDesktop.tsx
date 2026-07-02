@@ -550,38 +550,57 @@ export default function MonitoreoPage() {
                   </button>
                   {open ? (
                     <div className="space-y-2 border-t border-slate-100 bg-slate-50/40 px-4 py-3">
-                      {g.items.map((it) => (
+                      {g.items.map((it) => {
+                        const displayName = it.contact_name?.trim() || it.contact_phone || "Contacto sin datos";
+                        const showPhoneLine = Boolean(it.contact_phone && it.contact_name?.trim());
+                        const chatHref = `/dashboard/conversaciones?conversationId=${encodeURIComponent(it.conversation_id)}`;
+                        return (
                         <div
                           key={it.conversation_id}
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs"
                         >
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <Link
-                              href={`/dashboard/conversaciones?conversationId=${encodeURIComponent(it.conversation_id)}`}
+                              href={chatHref}
                               className="block truncate text-sm font-semibold text-[#3F8E91] hover:underline"
                             >
-                              {it.contact_name?.trim() || "Sin nombre"}
+                              {displayName}
                             </Link>
-                            <p className="truncate font-mono text-[11px] tabular-nums text-slate-500">
-                              {it.contact_phone ?? "—"}
-                            </p>
+                            {showPhoneLine ? (
+                              <p className="truncate font-mono text-[11px] tabular-nums text-slate-500">
+                                {it.contact_phone}
+                              </p>
+                            ) : null}
                             {it.channel_label ? (
                               <p className="mt-0.5 text-[11px] text-slate-500">{it.channel_label}</p>
                             ) : null}
                           </div>
-                          <div className="shrink-0 text-right">
-                            <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-orange-700">
-                              <IconClock className="h-3 w-3" />
-                              <TickingSinceLabel iso={it.waiting_since} />
-                            </span>
-                            {it.last_preview ? (
-                              <p className="mt-1 line-clamp-1 max-w-[18rem] text-[11px] text-slate-400">
-                                {it.last_preview}
-                              </p>
-                            ) : null}
+                          <div className="flex shrink-0 items-center gap-2 self-start text-right">
+                            <div>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-orange-700">
+                                <IconClock className="h-3 w-3" />
+                                <TickingSinceLabel iso={it.waiting_since} />
+                              </span>
+                              {it.last_preview ? (
+                                <p className="mt-1 line-clamp-1 max-w-[18rem] text-[11px] text-slate-400">
+                                  {it.last_preview}
+                                </p>
+                              ) : null}
+                            </div>
+                            <Link
+                              href={chatHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5 hover:text-[#3F8E91]"
+                              title="Ver el chat en una nueva pestaña"
+                              aria-label="Ver el chat en una nueva pestaña"
+                            >
+                              <Eye className="h-4 w-4" aria-hidden />
+                            </Link>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>

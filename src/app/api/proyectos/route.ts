@@ -44,60 +44,34 @@ export async function GET(request: Request) {
       if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
       rows = (data ?? []) as Record<string, unknown>[];
     } else {
+      // Búsqueda: proyectos cuyo título matchea, o cuyo cliente (empresa /
+      // contacto) matchea. Traemos los proyectos con los filtros base en UNA
+      // sola query y filtramos en memoria. Evita armar `.in(id/cliente_id, [...])`
+      // con cientos de UUIDs, que genera una URL enorme que el gateway rechaza
+      // (URI too long → página HTML de error). Los proyectos por empresa son
+      // acotados, así que filtrar en memoria es barato y seguro.
       const term = `%${q}%`;
-      const [byTitulo, cEmp, cNom] = await Promise.all([
-        proyectosFiltrados().ilike("titulo", term).order("last_activity_at", { ascending: false }),
+      const qLower = q.toLowerCase();
+      const [cEmp, cNom, todos] = await Promise.all([
         sb.from("clientes").select("id").eq("empresa_id", empresaId).ilike("empresa", term),
         sb.from("clientes").select("id").eq("empresa_id", empresaId).ilike("nombre_contacto", term),
+        proyectosFiltrados().order("last_activity_at", { ascending: false }),
       ]);
 
-      if (byTitulo.error) {
-        return NextResponse.json(errorResponse(byTitulo.error.message), { status: 400 });
+      if (todos.error) {
+        return NextResponse.json(errorResponse(todos.error.message), { status: 400 });
       }
 
-      const ids = new Set<string>();
-      for (const r of (byTitulo.data ?? []) as { id?: string }[]) {
-        if (r.id) ids.add(r.id);
-      }
+      const clienteMatch = new Set<string>([
+        ...((cEmp.data ?? []) as { id: string }[]).map((x) => x.id),
+        ...((cNom.data ?? []) as { id: string }[]).map((x) => x.id),
+      ]);
 
-      const clienteIds = [
-        ...new Set([
-          ...((cEmp.data ?? []) as { id: string }[]).map((x) => x.id),
-          ...((cNom.data ?? []) as { id: string }[]).map((x) => x.id),
-        ]),
-      ];
-
-      if (clienteIds.length > 0) {
-        const byCliente = await proyectosFiltrados()
-          .in("cliente_id", clienteIds)
-          .order("last_activity_at", { ascending: false });
-        if (byCliente.error) {
-          return NextResponse.json(errorResponse(byCliente.error.message), { status: 400 });
-        }
-        for (const r of (byCliente.data ?? []) as { id?: string }[]) {
-          if (r.id) ids.add(r.id);
-        }
-      }
-
-      const allIds = [...ids];
-      if (allIds.length === 0) {
-        rows = [];
-      } else {
-        let q = sb
-          .from("proyectos")
-          .select("*")
-          .eq("empresa_id", empresaId)
-          .eq("archivado", archivado)
-          .in("id", allIds);
-        if (estadoId) q = q.eq("estado_id", estadoId);
-        if (tipoId) q = q.eq("tipo_id", tipoId);
-        if (prioridad && PRIORIDADES.has(prioridad)) q = q.eq("prioridad", prioridad);
-        if (rc) q = q.eq("responsable_comercial_id", rc);
-        if (rt) q = q.eq("responsable_tecnico_id", rt);
-        const { data, error } = await q.order("last_activity_at", { ascending: false });
-        if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
-        rows = (data ?? []) as Record<string, unknown>[];
-      }
+      rows = ((todos.data ?? []) as Record<string, unknown>[]).filter((r) => {
+        const titulo = typeof r.titulo === "string" ? r.titulo.toLowerCase() : "";
+        const cid = typeof r.cliente_id === "string" ? r.cliente_id : "";
+        return titulo.includes(qLower) || (cid !== "" && clienteMatch.has(cid));
+      });
     }
 
     const enriched = await enrichProyectosRows(sb, empresaId, rows);

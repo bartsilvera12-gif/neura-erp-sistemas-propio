@@ -441,8 +441,8 @@ export async function apiCreateSuscripcion(data: {
   generar_factura?: boolean;
   periodo_factura?: "actual" | "siguiente" | "none";
   fecha_vencimiento_override?: string | null;
-  tipo_servicio?: string | null;
-}): Promise<{ id: string; [key: string]: unknown } | null> {
-  const result = await apiPost<{ id: string; [key: string]: unknown }>("/api/suscripciones", data);
-  return result.success ? result.data : null;
+  /** Confirma crear aunque el cliente ya tenga una suscripción activa del mismo plan. */
+  permitir_duplicado?: boolean;
+}): Promise<{ success: true; data: { id: string; [key: string]: unknown } } | { success: false; error: string }> {
+  return apiPost<{ id: string; [key: string]: unknown }>("/api/suscripciones", data);
 }

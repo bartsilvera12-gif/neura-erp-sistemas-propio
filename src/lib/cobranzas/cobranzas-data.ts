@@ -223,7 +223,10 @@ function agruparPorServicio(
         g = { suscripcion_id: null, tipo: "General", plan: null, monto: null, facturas: [] };
       } else {
         const info = suscInfo.get(sid);
-        const tipoSlug = info?.tipo_servicio ?? clienteTipoSlug ?? null;
+        // Fuente única de verdad del tipo = el CLIENTE (`clientes.tipo_servicio_cliente`).
+        // La suscripción/plan ya NO llevan tipo (ver modelo unificado 2026-07-02). El tipo
+        // es una propiedad del cliente y existe aunque no haya suscripción.
+        const tipoSlug = clienteTipoSlug ?? null;
         g = {
           suscripcion_id: sid,
           tipo: tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogo) : "Sin clasificar",

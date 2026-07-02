@@ -340,7 +340,7 @@ export default function ClienteDetalleClient({
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [modalSuscripcion, setModalSuscripcion] = useState(false);
   const [formSusc, setFormSusc] = useState({
-    plan_id: "", precio: "", fecha_inicio: "", duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, periodo_factura: "actual" as "actual" | "siguiente", fecha_vencimiento_override: "", tipo_servicio: "",
+    plan_id: "", precio: "", fecha_inicio: "", duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, periodo_factura: "actual" as "actual" | "siguiente", fecha_vencimiento_override: "",
   });
   const [guardandoSusc, setGuardandoSusc] = useState(false);
   const [marketingTasks, setMarketingTasks] = useState<MarketingTask[]>([]);
@@ -1165,7 +1165,6 @@ export default function ClienteDetalleClient({
                   generar_factura_este_mes: false,
                   periodo_factura: "actual",
                   fecha_vencimiento_override: "",
-                  tipo_servicio: (cliente?.tipo_servicio_cliente ?? "").trim().toLowerCase(),
                 });
                 setModalSuscripcion(true);
               }}
@@ -2183,7 +2182,7 @@ export default function ClienteDetalleClient({
                 <SectionTitle>Suscripciones</SectionTitle>
                 <button
                   type="button"
-                  onClick={() => { setFormSusc({ plan_id: "", precio: "", fecha_inicio: new Date().toISOString().slice(0, 10), duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, periodo_factura: "actual", fecha_vencimiento_override: "", tipo_servicio: (cliente?.tipo_servicio_cliente ?? "").trim().toLowerCase() }); setModalSuscripcion(true); }}
+                  onClick={() => { setFormSusc({ plan_id: "", precio: "", fecha_inicio: new Date().toISOString().slice(0, 10), duracion_meses: "12", dia_facturacion: "1", dia_vencimiento: "10", generar_factura_este_mes: false, periodo_factura: "actual", fecha_vencimiento_override: "" }); setModalSuscripcion(true); }}
                   className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2 rounded-lg text-sm font-medium"
                 >
                   Nueva suscripción
@@ -2520,9 +2519,28 @@ export default function ClienteDetalleClient({
             <h3 className="text-lg font-bold text-gray-800 mb-4">Nueva suscripción</h3>
             <form onSubmit={async (e) => {
               e.preventDefault();
+              // Guarda anti-duplicado: avisar si el cliente ya tiene una suscripción ACTIVA
+              // del mismo plan. El tipo de servicio ya no se carga acá: vive en el cliente.
+              const planSel = formSusc.plan_id.trim();
+              let permitirDuplicado = false;
+              if (planSel) {
+                const yaActiva = suscripciones.some(
+                  (s) =>
+                    String((s as { plan_id?: string | null }).plan_id ?? "") === planSel &&
+                    String((s as { estado?: string }).estado ?? "") === "activa"
+                );
+                if (yaActiva) {
+                  const planDup = planes.find((p) => p.id === planSel);
+                  const ok = window.confirm(
+                    `Este cliente ya tiene una suscripción ACTIVA del plan "${planDup?.nombre ?? "seleccionado"}".\n\n¿Agregar otra suscripción igual de todos modos?`
+                  );
+                  if (!ok) return;
+                  permitirDuplicado = true;
+                }
+              }
               setGuardandoSusc(true);
               const plan = planes.find((p) => p.id === formSusc.plan_id);
-              await apiCreateSuscripcion({
+              const res = await apiCreateSuscripcion({
                 cliente_id: id,
                 plan_id: formSusc.plan_id || null,
                 precio: parseFloat(formSusc.precio) || (plan?.precio ?? 0),
@@ -2534,30 +2552,17 @@ export default function ClienteDetalleClient({
                 generar_factura: formSusc.generar_factura_este_mes,
                 periodo_factura: formSusc.generar_factura_este_mes ? formSusc.periodo_factura : "none",
                 fecha_vencimiento_override: formSusc.fecha_vencimiento_override || null,
-                tipo_servicio: formSusc.tipo_servicio || null,
+                permitir_duplicado: permitirDuplicado,
               });
+              setGuardandoSusc(false);
+              if (!res.success) {
+                window.alert(res.error || "No se pudo crear la suscripción.");
+                return;
+              }
               setModalSuscripcion(false);
               getSuscripciones(id).then(setSuscripciones);
               getFacturas(id).then(setFacturas);
-              setGuardandoSusc(false);
             }} className="space-y-4">
-              <div>
-                <label className={labelClass}>Tipo de servicio</label>
-                <select
-                  value={formSusc.tipo_servicio}
-                  onChange={(e) => setFormSusc((prev) => ({ ...prev, tipo_servicio: e.target.value }))}
-                  className={inputClass}
-                  required
-                >
-                  <option value="">— Seleccionar —</option>
-                  {filasTiposServicio
-                    .filter((t) => t.activo !== false)
-                    .map((t) => (
-                      <option key={t.slug} value={t.slug}>{t.nombre}</option>
-                    ))}
-                </select>
-                <p className="mt-1 text-[11px] text-slate-500">Cada servicio puede tener su propio tipo (ej. Contable, SaaS).</p>
-              </div>
               <div>
                 <label className={labelClass}>Plan</label>
                 <select

@@ -59,10 +59,33 @@ export async function POST(request: NextRequest) {
     const { auth, supabase } = ctx;
 
     const body = await request.json();
-    const { cliente_id, plan_id, precio, moneda, fecha_inicio, duracion_meses, dia_facturacion, dia_vencimiento, generar_factura_este_mes, generar_factura, periodo_factura, fecha_vencimiento_override, tipo_servicio } = body;
+    const { cliente_id, plan_id, precio, moneda, fecha_inicio, duracion_meses, dia_facturacion, dia_vencimiento, generar_factura_este_mes, generar_factura, periodo_factura, fecha_vencimiento_override, permitir_duplicado } = body;
 
     if (!cliente_id?.trim()) {
       return NextResponse.json(errorResponse("cliente_id es obligatorio"), { status: 400 });
+    }
+
+    // Guarda anti-duplicado: un cliente no debería tener 2 suscripciones ACTIVAS del mismo plan.
+    // Se avisa (409) salvo que el llamador confirme con `permitir_duplicado: true`.
+    const planIdTrim = typeof plan_id === "string" ? plan_id.trim() : "";
+    if (planIdTrim && permitir_duplicado !== true) {
+      const { data: yaActivas, error: dupErr } = await supabase
+        .from("suscripciones")
+        .select("id")
+        .eq("empresa_id", auth.empresa_id)
+        .eq("cliente_id", cliente_id.trim())
+        .eq("plan_id", planIdTrim)
+        .eq("estado", "activa")
+        .limit(1);
+      if (!dupErr && yaActivas && yaActivas.length > 0) {
+        return NextResponse.json(
+          {
+            ...errorResponse("El cliente ya tiene una suscripción activa de este plan."),
+            code: "suscripcion_duplicada",
+          },
+          { status: 409 }
+        );
+      }
     }
     if (precio == null || Number(precio) < 0) {
       return NextResponse.json(errorResponse("precio debe ser >= 0"), { status: 400 });
@@ -115,10 +138,9 @@ export async function POST(request: NextRequest) {
       dia_facturacion: Math.min(28, Math.max(1, Number(dia_facturacion) || 1)),
       dia_vencimiento: Math.min(31, Math.max(1, Number(dia_vencimiento) || 10)),
       generar_factura_este_mes: debeGenerar,
-      tipo_servicio:
-        typeof tipo_servicio === "string" && tipo_servicio.trim()
-          ? tipo_servicio.trim().toLowerCase()
-          : null,
+      // La suscripción ya NO lleva tipo_servicio: la clasificación vive en el cliente
+      // (`clientes.tipo_servicio_cliente`). Se persiste null para el registro histórico.
+      tipo_servicio: null,
     };
 
     const { data, error } = await supabase.from("suscripciones").insert([insert]).select("*").single();

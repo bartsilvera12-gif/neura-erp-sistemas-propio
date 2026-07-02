@@ -225,8 +225,11 @@ export async function generarFacturasMensuales(opts: {
         continue;
       }
 
+      // Concepto = nombre del plan (fuente natural del servicio). Ya NO se usa el
+      // `tipo_servicio` de la suscripción (modelo unificado: el tipo vive en el cliente,
+      // no en la suscripción/plan). Fallback genérico "Suscripción" si no hay plan.
       const planNombre =
-        (s.plan_id ? planMap.get(String(s.plan_id))?.nombre : null) || s.tipo_servicio || "Suscripción";
+        (s.plan_id ? planMap.get(String(s.plan_id))?.nombre : null) || "Suscripción";
       const linea = montosFacturaItemParaInsert({ totalLinea: monto, moneda, cantidad: 1, precioUnitario: monto });
       const { error: iErr } = await supabase.from("factura_items").insert({
         factura_id: (factura as { id: string }).id,

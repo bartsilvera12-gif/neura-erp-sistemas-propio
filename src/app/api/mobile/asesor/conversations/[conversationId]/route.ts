@@ -95,7 +95,11 @@ export async function GET(
       .reverse();
 
     const expiresAt = (conv as { whatsapp_window_expires_at: string | null }).whatsapp_window_expires_at;
-    const windowOpen = expiresAt ? new Date(expiresAt).getTime() > Date.now() : null;
+    // YCloud coexistence: no señalamos "ventana cerrada" preventivamente (el ERP ya no
+    // pre-bloquea envíos; si YCloud rechaza, se ve el error real). Reportamos `true` solo
+    // como indicador positivo cuando está abierta; nunca `false` (así el composer mobile no
+    // muestra el banner de "24 h cerrada"). `whatsapp_window_expires_at` queda informativo.
+    const windowOpen = expiresAt && new Date(expiresAt).getTime() > Date.now() ? true : null;
 
     return NextResponse.json({
       ok: true,

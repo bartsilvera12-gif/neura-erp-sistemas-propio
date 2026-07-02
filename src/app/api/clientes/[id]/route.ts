@@ -168,6 +168,67 @@ export async function PATCH(
       return NextResponse.json(errorResponse("Cliente no encontrado"), { status: 404 });
     }
 
+    // Sync de tipo_servicio con las suscripciones activas del cliente. Cobranzas y el motor de
+    // facturación leen de `suscripciones.tipo_servicio` (fuente de verdad para lo facturable), no
+    // de `clientes.tipo_servicio_cliente`. Sin este sync, editar el tipo desde el form de Clientes
+    // parecía no reflejarse en Cobranzas. Aplica solo cuando el usuario cambió el campo.
+    // Regla: si el cliente tiene EXACTAMENTE 1 suscripción activa, se propaga automáticamente.
+    // Si tiene 0 o >1 suscripciones activas es ambiguo → no se toca (el response informa el caso
+    // para que la UI pueda advertir al usuario).
+    let suscripcion_sync:
+      | {
+          active_count: number;
+          propagated: boolean;
+          previous_tipo_servicio: string | null;
+          new_tipo_servicio: string | null;
+        }
+      | undefined;
+    if (datos.tipo_servicio_cliente !== undefined) {
+      const nuevoTipo = (patch.tipo_servicio_cliente ?? null) as string | null;
+      const { data: subs, error: subsErr } = await supabase
+        .from("suscripciones")
+        .select("id, tipo_servicio")
+        .eq("empresa_id", auth.empresa_id)
+        .eq("cliente_id", clienteId)
+        .eq("estado", "activa");
+      if (!subsErr && subs) {
+        const activas = subs as Array<{ id: string; tipo_servicio: string | null }>;
+        let propagated = false;
+        let previous: string | null = null;
+        if (activas.length === 1) {
+          previous = activas[0].tipo_servicio ?? null;
+          if (previous !== nuevoTipo) {
+            const { error: uErr } = await supabase
+              .from("suscripciones")
+              .update({ tipo_servicio: nuevoTipo })
+              .eq("id", activas[0].id)
+              .eq("empresa_id", auth.empresa_id);
+            if (uErr) {
+              console.warn(
+                "[api/clientes/[id]] PATCH sync suscripciones.tipo_servicio",
+                { clienteId, message: uErr.message }
+              );
+            } else {
+              propagated = true;
+            }
+          } else {
+            propagated = true; // ya coincidía, tratamos como propagado sin cambios
+          }
+        }
+        suscripcion_sync = {
+          active_count: activas.length,
+          propagated,
+          previous_tipo_servicio: previous,
+          new_tipo_servicio: nuevoTipo,
+        };
+      } else if (subsErr) {
+        console.warn(
+          "[api/clientes/[id]] PATCH leer suscripciones para sync",
+          { clienteId, message: subsErr.message }
+        );
+      }
+    }
+
     const before = existing as unknown as Record<string, unknown>;
     const after = data as unknown as Record<string, unknown>;
     const diff = diffCamposCliente(before, after);
@@ -194,7 +255,7 @@ export async function PATCH(
       });
     }
 
-    return NextResponse.json(successResponse(data));
+    return NextResponse.json(successResponse({ ...data, suscripcion_sync }));
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

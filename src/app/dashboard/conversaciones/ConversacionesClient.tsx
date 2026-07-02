@@ -344,7 +344,17 @@ export function ConversacionesClient({
   // Vista de asesor "puro" (agente, no admin/supervisor): tarjetas de chat más compactas
   // (sin la fila de badges estado/cola/agente, que para él son redundantes) y el tiempo de
   // turno junto al nombre. Admin y supervisor conservan la fila completa.
-  const esAsesor = initialOmnicanalRole === "agente";
+  //
+  // Nota: además del rol explícito "agente" en `chat_empresa_operator_roles`, contemplamos
+  // el caso "asesor implícito" — sin fila de rol pero con fila en `chat_agents` (getOmnicanalScope
+  // devuelve role=null y presence.in_queues=true). Así un asesor dado de alta sin fila de rol
+  // (bug de flujo de alta) también ve la vista compacta.
+  const esAsesor =
+    initialCabeceraInsignia !== "admin" &&
+    initialCabeceraInsignia !== "supervisor" &&
+    initialOmnicanalRole !== "admin" &&
+    initialOmnicanalRole !== "supervisor" &&
+    Boolean(initialOperationalPresence?.in_queues);
   const supabaseChat = useMemo(
     () => createBrowserClientForSchema(chatDataSchema),
     [chatDataSchema]

@@ -341,6 +341,10 @@ export function ConversacionesClient({
   /** Rol operativo omnicanal (precargado para mensajes UX de alcance). */
   initialOmnicanalRole?: OmnicanalOperatorRole | null;
 }) {
+  // Vista de asesor "puro" (agente, no admin/supervisor): tarjetas de chat más compactas
+  // (sin la fila de badges estado/cola/agente, que para él son redundantes) y el tiempo de
+  // turno junto al nombre. Admin y supervisor conservan la fila completa.
+  const esAsesor = initialOmnicanalRole === "agente";
   const supabaseChat = useMemo(
     () => createBrowserClientForSchema(chatDataSchema),
     [chatDataSchema]
@@ -2502,6 +2506,7 @@ export function ConversacionesClient({
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
+                          {esAsesor && vista !== "bot" ? <InboxReplyTurnBadges c={c} dense /> : null}
                           {vista === "bot" ? (
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded">
                               Bot
@@ -2523,6 +2528,7 @@ export function ConversacionesClient({
                       </p>
                     </div>
                   </div>
+                  {!esAsesor ? (
                   <div className="flex flex-wrap gap-1 mt-1">
                     <span
                       className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${badgeEstadoClass(c.status)}`}
@@ -2559,6 +2565,7 @@ export function ConversacionesClient({
                       })()
                     )}
                   </div>
+                  ) : null}
                 </button>
                 );
               })

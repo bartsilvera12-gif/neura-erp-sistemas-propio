@@ -2151,8 +2151,8 @@ export function ConversacionesClient({
 
       {!headerCollapsed ? (
       <>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 shrink-0">
-        <div className="min-w-0 flex flex-1 items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 shrink-0">
+        <div className="min-w-0 flex flex-1 items-center gap-2 flex-wrap pt-1">
           <span
             aria-hidden="true"
             className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
@@ -2217,45 +2217,37 @@ export function ConversacionesClient({
         ) : null}
         {mode === "inbox" && opPresenceLoaded && opInQueues && opStatus !== null ? (
           <div
-            className="flex flex-col items-end gap-1 shrink-0"
+            className="flex flex-col items-end gap-0.5 shrink-0"
             role="group"
             aria-label="Disponible u en pausa para recibir chats nuevos por autoasignación"
           >
-            <div className="flex flex-col items-end gap-0.5">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Tu turno</span>
-                {opPresenceBusy ? (
-                  <span className="text-[10px] font-medium text-[#4FAEB2] animate-pulse">Guardando…</span>
-                ) : null}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Tu turno</span>
+              {opPresenceBusy ? (
+                <span className="text-[10px] font-medium text-[#4FAEB2] animate-pulse">Guardando…</span>
+              ) : null}
+              <div className="flex items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 shadow-inner">
+                <button
+                  type="button"
+                  disabled={opPresenceBusy}
+                  className={opPresenceToggleClass(opStatus === "ready", "ready")}
+                  aria-pressed={opStatus === "ready"}
+                  aria-label="Marcar disponible para autoasignación (ready)"
+                  onClick={() => void applyOperationalStatus("ready")}
+                >
+                  Disponible
+                </button>
+                <button
+                  type="button"
+                  disabled={opPresenceBusy}
+                  className={opPresenceToggleClass(opStatus === "offline", "offline")}
+                  aria-pressed={opStatus === "offline"}
+                  aria-label="Pausar recepción de chats nuevos por autoasignación (offline)"
+                  onClick={() => void applyOperationalStatus("offline")}
+                >
+                  En pausa
+                </button>
               </div>
-              <p className="text-[11px] font-bold text-slate-800 tabular-nums">
-                Estado actual:{" "}
-                <span className={opStatus === "ready" ? "text-emerald-700" : "text-slate-600"}>
-                  {opStatus === "ready" ? "Disponible" : "En pausa"}
-                </span>
-              </p>
-            </div>
-            <div className="flex items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 shadow-inner">
-              <button
-                type="button"
-                disabled={opPresenceBusy}
-                className={opPresenceToggleClass(opStatus === "ready", "ready")}
-                aria-pressed={opStatus === "ready"}
-                aria-label="Marcar disponible para autoasignación (ready)"
-                onClick={() => void applyOperationalStatus("ready")}
-              >
-                Disponible
-              </button>
-              <button
-                type="button"
-                disabled={opPresenceBusy}
-                className={opPresenceToggleClass(opStatus === "offline", "offline")}
-                aria-pressed={opStatus === "offline"}
-                aria-label="Pausar recepción de chats nuevos por autoasignación (offline)"
-                onClick={() => void applyOperationalStatus("offline")}
-              >
-                En pausa
-              </button>
             </div>
             <div className="text-[10px] text-slate-600 text-right leading-tight w-full">
               <span className="text-slate-500">

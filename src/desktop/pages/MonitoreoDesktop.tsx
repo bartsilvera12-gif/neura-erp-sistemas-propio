@@ -222,7 +222,13 @@ export default function MonitoreoPage() {
             Cargando métricas…
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+            <MetricTile
+              label="Leads hoy"
+              value={agents.reduce((s, a) => s + (a.leads_hoy ?? 0), 0)}
+              tone="success"
+              icon={<Flame className="h-4 w-4" />}
+            />
             <MetricTile
               label="Colas activas"
               value={dash.active_queues}
@@ -691,6 +697,7 @@ export default function MonitoreoPage() {
                       "Agente",
                       "En línea",
                       "Turno",
+                      "Leads hoy",
                       "En este modo",
                       "Último ping",
                       "Máx.",
@@ -751,6 +758,19 @@ export default function MonitoreoPage() {
                               En pausa
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm font-semibold tabular-nums text-[#3F8E91]" title="Leads auto-asignados hoy (reparto del día, America/Asuncion)">
+                            {a.leads_hoy ?? 0}
+                          </span>
+                          {a.transfers_hoy ? (
+                            <span
+                              className="ml-1.5 text-[10px] font-medium text-slate-400"
+                              title="Transferencias manuales recibidas hoy (aparte de los leads automáticos)"
+                            >
+                              +{a.transfers_hoy} transf.
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-xs tabular-nums text-slate-600">
                           <TickingSinceLabel iso={a.operational_status_changed_at} />

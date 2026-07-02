@@ -1032,7 +1032,72 @@ export type SupervisorAgentLoadRow = ChatAgentDirectoryRow & {
   pending_first_reply: number;
   /** Rol operativo en la empresa (tabla `chat_empresa_operator_roles`), si existe. */
   omnicanal_role: OmnicanalOperatorRole | null;
+  /** Leads auto-asignados HOY (America/Asuncion) por CC V1 (cc_daily_assignment_counter). Reparto del día, NO backlog ni carga actual. */
+  leads_hoy?: number;
+  /** Transferencias manuales recibidas HOY (chat_routing_events supervisor_assigned). Separado de leads automáticos. */
+  transfers_hoy?: number;
+  /** Hora ISO de la última auto-asignación de hoy (updated_at del contador), si hubo. */
+  ultima_asignacion_hoy?: string | null;
 };
+
+type DailyLeadStats = {
+  leads: Map<string, number>;
+  transfers: Map<string, number>;
+  ultima: Map<string, string>;
+};
+
+/**
+ * Métricas de reparto del DÍA (America/Asuncion) por agente para el Monitor. Solo lectura.
+ *  - leads = auto-asignaciones CC V1 = suma de `cc_daily_assignment_counter` del día (NO cuenta
+ *    transferencias manuales, ni backlog, ni mensajes nuevos en chats viejos).
+ *  - transfers = transferencias manuales recibidas hoy (`chat_routing_events` supervisor_assigned).
+ *  - ultima = updated_at más reciente del contador del día (hora del último lead auto).
+ * NO modifica el contador ni el reparto. Degradación segura: si falla, devuelve mapas vacíos.
+ */
+async function pgLoadDailyLeadStats(
+  pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
+  dataSchema: string,
+  empresaId: string,
+  agentIds: string[]
+): Promise<DailyLeadStats> {
+  const leads = new Map<string, number>();
+  const transfers = new Map<string, number>();
+  const ultima = new Map<string, string>();
+  if (agentIds.length === 0) return { leads, transfers, ultima };
+  try {
+    const counterTbl = quoteSchemaTable(dataSchema, "cc_daily_assignment_counter");
+    const eventsTbl = quoteSchemaTable(dataSchema, "chat_routing_events");
+    const rc = await pool.query(
+      `SELECT agent_id::text AS agent_id, sum(count)::int AS n, max(updated_at) AS ult
+         FROM ${counterTbl}
+        WHERE empresa_id = $1::uuid
+          AND dia_local = (now() AT TIME ZONE 'America/Asuncion')::date
+          AND agent_id = ANY($2::uuid[])
+        GROUP BY agent_id`,
+      [empresaId, agentIds]
+    );
+    for (const r of rc.rows as Array<{ agent_id: string; n: number; ult: string | null }>) {
+      leads.set(r.agent_id, Number(r.n) || 0);
+      if (r.ult) ultima.set(r.agent_id, new Date(r.ult).toISOString());
+    }
+    const rt = await pool.query(
+      `SELECT (payload->>'to_agent_id') AS agent_id, count(*)::int AS n
+         FROM ${eventsTbl}
+        WHERE empresa_id = $1::uuid
+          AND event_type = 'supervisor_assigned'
+          AND (created_at AT TIME ZONE 'America/Asuncion')::date = (now() AT TIME ZONE 'America/Asuncion')::date
+          AND (payload->>'to_agent_id') = ANY($2::text[])
+        GROUP BY 1`,
+      [empresaId, agentIds]
+    );
+    for (const r of rt.rows as Array<{ agent_id: string | null; n: number }>) {
+      if (r.agent_id) transfers.set(r.agent_id, Number(r.n) || 0);
+    }
+  } catch (e) {
+    console.warn("[monitor] daily_lead_stats_skip", e instanceof Error ? e.message : String(e));
+  }
+  return { leads, transfers, ultima };
+}
 
 async function loadSupervisorAgentLoadsWithContext(
   ctx: EmpresaTenantSrContext,
@@ -1076,11 +1141,15 @@ async function loadSupervisorAgentLoadsWithContext(
       }
     }
 
+    const daily = await pgLoadDailyLeadStats(poolPg, dataSchema, empresa_id, agentIds);
     return agents.map((a) => ({
       ...a,
       active_conversations: tally.get(a.id) ?? 0,
       pending_first_reply: pendingFirst.get(a.id) ?? 0,
       omnicanal_role: roleByUsuario.get(a.usuario_id) ?? null,
+      leads_hoy: daily.leads.get(a.id) ?? 0,
+      transfers_hoy: daily.transfers.get(a.id) ?? 0,
+      ultima_asignacion_hoy: daily.ultima.get(a.id) ?? null,
     }));
   }
 
@@ -1131,11 +1200,17 @@ async function loadSupervisorAgentLoadsWithContext(
     }
   }
 
+  const daily = poolPg
+    ? await pgLoadDailyLeadStats(poolPg, dataSchema, empresa_id, agentIds)
+    : { leads: new Map<string, number>(), transfers: new Map<string, number>(), ultima: new Map<string, string>() };
   return agents.map((a) => ({
     ...a,
     active_conversations: tally.get(a.id) ?? 0,
     pending_first_reply: pendingFirst.get(a.id) ?? 0,
     omnicanal_role: roleByUsuario.get(a.usuario_id) ?? null,
+    leads_hoy: daily.leads.get(a.id) ?? 0,
+    transfers_hoy: daily.transfers.get(a.id) ?? 0,
+    ultima_asignacion_hoy: daily.ultima.get(a.id) ?? null,
   }));
 }
 

@@ -2257,37 +2257,37 @@ export function ConversacionesClient({
                 En pausa
               </button>
             </div>
-            <span className="text-[10px] text-slate-500 max-w-[15rem] text-right leading-tight hidden sm:block">
-              Disponible = entrás en la rotación de nuevos chats. En pausa = no recibís asignaciones automáticas.
-            </span>
-            <div className="text-[10px] text-slate-700 text-right leading-tight w-full">
+            <div className="text-[10px] text-slate-600 text-right leading-tight w-full">
               <span className="text-slate-500">
                 {opStatus === "ready" ? "Tiempo en Disponible" : "Tiempo en pausa"}:{" "}
               </span>
               {opSince ? (
                 <LiveElapsedLabel sinceIso={opSince} />
               ) : (
-                <span className="text-slate-400 italic">sin marca de tiempo en DB</span>
+                <span className="text-slate-400 italic">—</span>
               )}
+              {sessionSinceIso ? (
+                <>
+                  <span className="text-slate-300" aria-hidden="true">
+                    {" · "}
+                  </span>
+                  <span className="text-slate-500">Sesión:</span>{" "}
+                  <LiveElapsedLabel sinceIso={sessionSinceIso} />
+                </>
+              ) : null}
             </div>
-            {sessionSinceIso ? (
-              <div className="text-[10px] text-slate-600 text-right leading-tight w-full border-t border-slate-200/80 pt-1 mt-0.5">
-                <span className="text-slate-500">Sesión en inbox:</span>{" "}
-                <LiveElapsedLabel sinceIso={sessionSinceIso} />
-              </div>
-            ) : null}
           </div>
         ) : null}
         <button
           type="button"
           onClick={() => setHeaderCollapsed(true)}
-          className="ml-auto inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5 hover:text-[#3F8E91]"
+          className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center self-start rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5 hover:text-[#3F8E91]"
           title="Ocultar barra superior"
+          aria-label="Ocultar barra superior"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
             <polyline points="18 15 12 9 6 15" />
           </svg>
-          Ocultar barra
         </button>
       </div>
       {mode === "inbox" && sessionSinceIso && !opInQueues ? (

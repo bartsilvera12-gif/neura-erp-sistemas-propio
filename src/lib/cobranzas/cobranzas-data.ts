@@ -219,17 +219,19 @@ function agruparPorServicio(
     const key = sid || "general";
     let g = grupos.get(key);
     if (!g) {
+      // Fuente única de verdad del tipo = el CLIENTE (`clientes.tipo_servicio_cliente`).
+      // La suscripción/plan ya NO llevan tipo (modelo unificado 2026-07-02). El tipo es una
+      // propiedad del cliente y aplica a TODAS sus facturas, tengan o no suscripción vinculada
+      // (p. ej. facturas de contado, o facturas que quedaron sin suscripción al borrarla).
+      const tipoSlug = clienteTipoSlug ?? null;
+      const tipoLabel = tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogo) : "Sin clasificar";
       if (key === "general") {
-        g = { suscripcion_id: null, tipo: "General", plan: null, monto: null, facturas: [] };
+        g = { suscripcion_id: null, tipo: tipoLabel, plan: null, monto: null, facturas: [] };
       } else {
         const info = suscInfo.get(sid);
-        // Fuente única de verdad del tipo = el CLIENTE (`clientes.tipo_servicio_cliente`).
-        // La suscripción/plan ya NO llevan tipo (ver modelo unificado 2026-07-02). El tipo
-        // es una propiedad del cliente y existe aunque no haya suscripción.
-        const tipoSlug = clienteTipoSlug ?? null;
         g = {
           suscripcion_id: sid,
-          tipo: tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogo) : "Sin clasificar",
+          tipo: tipoLabel,
           plan: info?.plan ?? null,
           monto: info?.precio ?? null,
           facturas: [],

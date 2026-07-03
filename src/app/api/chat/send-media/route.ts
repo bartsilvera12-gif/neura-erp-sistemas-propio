@@ -194,7 +194,10 @@ export async function POST(request: NextRequest) {
         );
       }
       origName = (origName.replace(/\.webm$/i, "") || "nota-voz") + ".ogg";
-      uploadMime = "audio/ogg";
+      // WhatsApp exige el content-type EXACTO `audio/ogg; codecs=opus`. El `audio/ogg` base
+      // NO es soportado (error 131053) y, al enviar por link, WhatsApp usa el Content-Type que
+      // sirve el storage → si es `audio/ogg` a secas, el receptor ve "audio no disponible".
+      uploadMime = "audio/ogg; codecs=opus";
     }
 
     const objectPath = `${empresaId}/${conversationId}/out_${Date.now()}_${origName}`;

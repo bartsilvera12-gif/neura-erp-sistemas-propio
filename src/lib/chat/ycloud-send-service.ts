@@ -126,8 +126,11 @@ export async function sendYCloudWhatsappMediaViaLink(params: {
     if (cap) mediaPayload.caption = cap;
   } else if (kind === "video") {
     if (cap) mediaPayload = { link, caption: cap };
+  } else if (kind === "audio") {
+    // `voice: true` → WhatsApp lo entrega como NOTA DE VOZ nativa (reproducible), no como
+    // adjunto de audio genérico. Requiere ogg/opus (el archivo ya se remuxea a eso).
+    mediaPayload = { link, voice: true };
   }
-  /* audio: solo link (WhatsApp Cloud API) */
 
   return postYCloudWhatsappMessage(params.apiKey, {
     from: params.fromE164,

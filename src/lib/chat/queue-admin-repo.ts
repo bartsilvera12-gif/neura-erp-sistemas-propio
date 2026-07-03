@@ -333,6 +333,24 @@ export async function repoAddAgentToQueue(
     }
     throw new Error(error.message);
   }
+
+  // Declarar el rol operativo omnicanal 'agente' si el usuario aún no tiene rol.
+  // `ignoreDuplicates` (ON CONFLICT DO NOTHING) NO pisa un 'admin'/'supervisor' existente.
+  // Antes este rol solo se seedeaba una vez por migración; ahora queda automático al
+  // habilitar el comercial desde la UI de colas. No es requisito del reparto (usa
+  // `chat_usuario_omnicanal`); si falla, no bloqueamos el alta (solo log).
+  const { error: roleErr } = await ctx.supabase.from("chat_empresa_operator_roles").upsert(
+    {
+      empresa_id: ctx.empresa_id,
+      usuario_id: uid,
+      role: "agente",
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "empresa_id,usuario_id", ignoreDuplicates: true }
+  );
+  if (roleErr) {
+    console.warn("[queue-admin] operator_role_agente_skip", roleErr.message);
+  }
 }
 
 export async function repoUpdateQueueAgent(

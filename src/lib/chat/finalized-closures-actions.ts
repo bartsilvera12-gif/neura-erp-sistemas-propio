@@ -338,6 +338,77 @@ async function loadFinalizedFilterOptionsScopedTeam(
   };
 }
 
+/**
+ * Opciones de filtro para el ASESOR PURO (vista "own"). Espeja EXACTAMENTE el alcance de
+ * `listFinalizedClosures` (conversaciones ASIGNADAS a él + status='closed'), de modo que los
+ * estados/subestados del dropdown siempre concuerden con las filas que efectivamente ve.
+ * (El path scoped-team/Regla-B derivaba estados de un set que en runtime salía vacío → dropdown
+ * "Estado" sin opciones.)
+ */
+async function loadFinalizedFilterOptionsOwn(
+  supabase: AppSupabaseClient,
+  empresa_id: string,
+  usuario_id: string
+): Promise<FinalizedFilterOptions> {
+  const base: FinalizedFilterOptions = {
+    queues: [],
+    channels: [],
+    agents: [],
+    closed_by_users: [],
+    state_labels: [],
+    substate_labels: [],
+    ux_scope: "own",
+  };
+
+  const ownFkIds = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, [usuario_id]);
+  if (ownFkIds.length === 0) return base;
+
+  const { data: ownConv, error: ownErr } = await supabase
+    .from("chat_conversations")
+    .select("id")
+    .eq("empresa_id", empresa_id)
+    .in("assigned_agent_id", ownFkIds)
+    .eq("status", "closed")
+    .limit(15000);
+  if (ownErr) {
+    console.warn("[loadFinalizedFilterOptions] alcance asesor:", ownErr.message);
+    return base;
+  }
+  const convIds = (ownConv ?? [])
+    .map((r: { id?: string }) => String(r.id ?? "").trim())
+    .filter(Boolean);
+  if (convIds.length === 0) return base;
+
+  const states = new Set<string>();
+  const subs = new Set<string>();
+  const chunk = 120;
+  for (let i = 0; i < convIds.length; i += chunk) {
+    const slice = convIds.slice(i, i + chunk);
+    const { data: closureSample, error: ce } = await supabase
+      .from("chat_conversation_closures")
+      .select("closure_state_label, closure_substate_label")
+      .eq("empresa_id", empresa_id)
+      .in("conversation_id", slice)
+      .limit(4000);
+    if (ce) {
+      if (!isMissingClosureTable(ce)) console.warn("[loadFinalizedFilterOptions] closures asesor:", ce.message);
+      continue;
+    }
+    for (const r of closureSample ?? []) {
+      const st = String((r as { closure_state_label?: string }).closure_state_label ?? "").trim();
+      const su = String((r as { closure_substate_label?: string }).closure_substate_label ?? "").trim();
+      if (st) states.add(st);
+      if (su) subs.add(su);
+    }
+  }
+
+  return {
+    ...base,
+    state_labels: [...states].sort((a, b) => a.localeCompare(b, "es")),
+    substate_labels: [...subs].sort((a, b) => a.localeCompare(b, "es")),
+  };
+}
+
 export async function loadFinalizedFilterOptions(): Promise<FinalizedFilterOptions> {
   const { supabase, catalogSr, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
   const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id);
@@ -345,13 +416,12 @@ export async function loadFinalizedFilterOptions(): Promise<FinalizedFilterOptio
   if (bypass || isOmnicanalAdminScope(scope)) {
     return loadFinalizedFilterOptionsAllEmpresa(supabase, catalogSr, empresa_id);
   }
-  const scoped = await loadFinalizedFilterOptionsScopedTeam(supabase, catalogSr, empresa_id, scope);
   // Asesor puro (no supervisor): vista simplificada "own" → el cliente muestra solo Fecha,
-  // Estado y búsqueda (sin combos de cola/agente/canal/subestado). Sigue viendo solo lo suyo.
+  // Estado y búsqueda. Opciones acotadas a SUS finalizadas (mismo alcance que la lista).
   if (scope.role !== "supervisor") {
-    return { ...scoped, ux_scope: "own" };
+    return loadFinalizedFilterOptionsOwn(supabase, empresa_id, usuario_id);
   }
-  return scoped;
+  return loadFinalizedFilterOptionsScopedTeam(supabase, catalogSr, empresa_id, scope);
 }
 
 function mapQueues(rows: unknown): { id: string; nombre: string }[] {

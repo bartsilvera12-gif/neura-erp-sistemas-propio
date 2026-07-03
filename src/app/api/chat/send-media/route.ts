@@ -14,7 +14,11 @@ import {
   sendWhatsAppVideo,
   type SendWhatsAppTextResult,
 } from "@/lib/chat/whatsapp-send-service";
-import { sendYCloudWhatsappMediaViaLink } from "@/lib/chat/ycloud-send-service";
+import {
+  sendYCloudWhatsappMediaViaLink,
+  sendYCloudWhatsappAudioById,
+  uploadYCloudWhatsappMedia,
+} from "@/lib/chat/ycloud-send-service";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
@@ -241,13 +245,35 @@ export async function POST(request: NextRequest) {
         });
       } else if (isAudio) {
         outboundMessageType = "audio";
-        sendResult = await sendYCloudWhatsappMediaViaLink({
+        // Nota de voz: subimos el ogg/opus a YCloud y enviamos por MEDIA ID (voice:true).
+        // El envío por `link` hace que WhatsApp entregue la nota de voz como "audio no
+        // disponible" aunque el archivo sea válido (fetch asíncrono del link poco fiable para
+        // PTT). Si la subida falla, degradamos al link para no perder el mensaje.
+        const uploaded = await uploadYCloudWhatsappMedia({
           apiKey: ycloudApiKey,
           fromE164: ycloudFromE164!,
-          toDigits,
-          kind: "audio",
-          mediaLink: publicUrl,
+          bytes: buf,
+          filename: origName,
+          contentType: uploadMime,
         });
+        if (uploaded.ok) {
+          sendResult = await sendYCloudWhatsappAudioById({
+            apiKey: ycloudApiKey,
+            fromE164: ycloudFromE164!,
+            toDigits,
+            mediaId: uploaded.mediaId,
+            voice: true,
+          });
+        } else {
+          console.warn("[api/chat/send-media] upload YCloud audio falló, fallback a link:", uploaded.error);
+          sendResult = await sendYCloudWhatsappMediaViaLink({
+            apiKey: ycloudApiKey,
+            fromE164: ycloudFromE164!,
+            toDigits,
+            kind: "audio",
+            mediaLink: publicUrl,
+          });
+        }
       } else if (isVideo) {
         outboundMessageType = "video";
         sendResult = await sendYCloudWhatsappMediaViaLink({

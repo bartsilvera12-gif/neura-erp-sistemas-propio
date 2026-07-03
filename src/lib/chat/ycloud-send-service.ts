@@ -140,6 +140,83 @@ export async function sendYCloudWhatsappMediaViaLink(params: {
   });
 }
 
+/**
+ * Sube un archivo de media a YCloud (Meta lo persiste ~30 días) y devuelve su `id`.
+ * Endpoint: `POST /v2/whatsapp/media/{phoneNumber}/upload` (multipart, campo `file`).
+ *
+ * Enviar audio por MEDIA ID (en vez de por `link`) es lo recomendado por YCloud para notas de
+ * voz: WhatsApp valida y hostea el archivo de forma SÍNCRONA en la subida, evitando el fetch
+ * asíncrono del link que hace que las notas de voz ogg/opus lleguen como "audio no disponible"
+ * aunque el archivo sea válido. Respuesta observada en vivo: `{"id":"159491..."}`.
+ */
+export async function uploadYCloudWhatsappMedia(params: {
+  apiKey: string;
+  /** Número de negocio (sender). El path usa solo dígitos. */
+  fromE164: string;
+  bytes: Buffer;
+  filename: string;
+  contentType: string;
+}): Promise<{ ok: true; mediaId: string } | { ok: false; error: string }> {
+  const phoneDigits = String(params.fromE164 ?? "").replace(/[^\d]/g, "");
+  if (!phoneDigits) return { ok: false, error: "Sender inválido para subir media a YCloud" };
+
+  const form = new FormData();
+  const blob = new Blob([new Uint8Array(params.bytes)], { type: params.contentType });
+  form.append("file", blob, params.filename || "archivo");
+
+  let res: Response;
+  try {
+    res = await fetch(`https://api.ycloud.com/v2/whatsapp/media/${phoneDigits}/upload`, {
+      method: "POST",
+      headers: { "X-API-Key": params.apiKey },
+      body: form,
+    });
+  } catch (e) {
+    return { ok: false, error: "Fallo de red al subir media a YCloud: " + (e instanceof Error ? e.message : String(e)) };
+  }
+
+  const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const errObj = raw.error as Record<string, unknown> | undefined;
+    const msg =
+      (typeof errObj?.message === "string" && errObj.message) ||
+      (typeof raw.message === "string" && raw.message) ||
+      res.statusText;
+    console.warn("[ycloud-media-upload] failed", { status: res.status, raw });
+    return { ok: false, error: msg || `HTTP ${res.status}` };
+  }
+  const mediaId = typeof raw.id === "string" ? raw.id.trim() : "";
+  if (!mediaId) {
+    console.warn("[ycloud-media-upload] sin id en respuesta", { raw });
+    return { ok: false, error: "YCloud no devolvió media id" };
+  }
+  return { ok: true, mediaId };
+}
+
+/**
+ * Envía audio referenciando un MEDIA ID ya subido (ver `uploadYCloudWhatsappMedia`).
+ * `voice: true` → nota de voz nativa reproducible. Camino preferido para audio (más estable
+ * que el link).
+ */
+export async function sendYCloudWhatsappAudioById(params: {
+  apiKey: string;
+  fromE164: string;
+  toDigits: string;
+  mediaId: string;
+  voice?: boolean;
+}): Promise<SendWhatsAppTextResult> {
+  const toE164 = digitsToE164(params.toDigits);
+  if (!toE164) {
+    return { ok: false, error: "Teléfono de destino inválido para YCloud" };
+  }
+  return postYCloudWhatsappMessage(params.apiKey, {
+    from: params.fromE164,
+    to: toE164,
+    type: "audio",
+    audio: { id: params.mediaId, voice: params.voice ?? true },
+  });
+}
+
 export function ycloudSenderToE164(senderId: string): string | null {
   return digitsToE164(senderId);
 }

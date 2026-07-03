@@ -7,6 +7,7 @@ import {
   getErpAttachmentPublicUrl,
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
+import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 
 type Msg = {
   id: string;
@@ -16,6 +17,7 @@ type Msg = {
   message_type: string;
   created_at: string | null;
   raw_payload?: Record<string, unknown> | null;
+  whatsapp_delivery_status?: string | null;
 };
 
 type Pending = {
@@ -370,6 +372,15 @@ export default function MAsesorChatPage() {
                   }`}
                 >
                   <MessageBody m={m} />
+                  {m.from_me && m.whatsapp_delivery_status === "failed" ? (
+                    <div className="mt-1 rounded-md bg-red-50 border border-red-200 px-2 py-1 text-[11px] text-red-700 flex items-start gap-1">
+                      <span aria-hidden>⚠</span>
+                      <span>
+                        <span className="font-semibold">No entregado.</span>{" "}
+                        {friendlyWhatsappFailureReason(extractWhatsappFailureInfo(m.raw_payload))}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}

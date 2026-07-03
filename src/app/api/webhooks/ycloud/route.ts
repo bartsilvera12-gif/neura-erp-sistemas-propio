@@ -46,6 +46,7 @@ import {
   applyYCloudCampaignMessageUpdated,
   resolveYCloudCampaignStatusWebhookContext,
 } from "@/lib/campaigns/ycloud-outbound-campaign-status";
+import { applyYCloudInboxMessageStatus } from "@/lib/chat/webhooks/ycloud-inbox-message-status";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 import { createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
 
@@ -109,9 +110,16 @@ export async function POST(request: NextRequest) {
       whatsappMessage: wmsg,
     });
     if (!ctx) {
-      console.info(LOG, LOG_IN, "message.updated sin_contexto_campaña", { event_id: env?.id });
+      console.info(LOG, LOG_IN, "message.updated sin_contexto", { event_id: env?.id });
       return new Response("OK", { status: 200 });
     }
+    // Inbox: reflejar entregado/leído/NO ENTREGADO (con motivo) en el mensaje saliente normal.
+    try {
+      await applyYCloudInboxMessageStatus({ resolved: ctx.resolved, whatsappMessage: wmsg });
+    } catch (e) {
+      console.warn(LOG, LOG_IN, "inbox_status_update_falló", e instanceof Error ? e.message : String(e));
+    }
+    // Campañas: reconciliación de destinatarios/contadores (no-op si no es de campaña).
     await applyYCloudCampaignMessageUpdated({
       resolved: ctx.resolved,
       whatsappMessage: wmsg,

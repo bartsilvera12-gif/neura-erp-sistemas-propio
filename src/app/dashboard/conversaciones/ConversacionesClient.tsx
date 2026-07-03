@@ -43,6 +43,7 @@ import {
 } from "@/lib/chat/chat-ops-actions";
 import { INBOX_HEARTBEAT_INTERVAL_MS } from "@/lib/chat/agent-presence";
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
+import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
 import { ArrowLeftRight, Flame, Mic, Paperclip, RefreshCw, Square, UserRound, Zap } from "lucide-react";
 import {
@@ -71,6 +72,7 @@ type ChatMessage = {
   content: string | null;
   created_at: string;
   raw_payload?: Record<string, unknown> | null;
+  whatsapp_delivery_status?: string | null;
 };
 
 function isHumanContactName(name: string | null | undefined, phone?: string | null): boolean {
@@ -120,6 +122,8 @@ function mapRowToMessage(row: Record<string, unknown>): ChatMessage {
       typeof row.raw_payload === "object" && row.raw_payload !== null
         ? (row.raw_payload as Record<string, unknown>)
         : null,
+    whatsapp_delivery_status:
+      row.whatsapp_delivery_status != null ? String(row.whatsapp_delivery_status) : null,
   };
 }
 
@@ -3261,6 +3265,15 @@ export function ConversacionesClient({
                             {formatTime(m.created_at)}
                             {m.message_type !== "text" && ` · ${m.message_type}`}
                           </p>
+                          {m.from_me && m.whatsapp_delivery_status === "failed" ? (
+                            <div className="mt-1 rounded-md bg-red-50 border border-red-200 px-2 py-1 text-[11px] text-red-700 flex items-start gap-1">
+                              <span aria-hidden>⚠</span>
+                              <span>
+                                <span className="font-semibold">No entregado.</span>{" "}
+                                {friendlyWhatsappFailureReason(extractWhatsappFailureInfo(m.raw_payload))}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     );

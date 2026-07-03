@@ -10,7 +10,9 @@ import {
   type FinalizedFilterOptions,
 } from "@/lib/chat/finalized-closures-actions";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+/** Valor de "Todos" (tope del server para page_size). */
+const TODOS_PAGE_SIZE = 1000;
 const EXPORT_MAX_ROWS = 5000;
 
 function formatDateTime(iso: string): string {
@@ -96,6 +98,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
   const [applied, setApplied] = useState<FinalizedClosuresFilters>({});
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [rows, setRows] = useState<FinalizedClosureListRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -126,7 +129,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     setError(null);
     setInfo(null);
     try {
-      const res = await listFinalizedClosures(filtersPayload, page, PAGE_SIZE);
+      const res = await listFinalizedClosures(filtersPayload, page, pageSize);
       setRows(res.rows);
       setTotal(res.total);
     } catch (e) {
@@ -136,7 +139,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     } finally {
       setLoading(false);
     }
-  }, [filtersPayload, page]);
+  }, [filtersPayload, page, pageSize]);
 
   useEffect(() => {
     void load();
@@ -229,7 +232,9 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     return () => window.removeEventListener("keydown", onKey);
   }, [detail]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  // Vista de ASESOR (alcance "own"): filtros reducidos (Fecha, Estado, búsqueda).
+  const esAsesor = filterOptions.ux_scope === "own";
 
   const channelLabel = (r: FinalizedClosureListRow) =>
     r.channel_nombre?.trim() ? `${r.channel_nombre} (${r.channel_type})` : r.channel_type;
@@ -240,9 +245,11 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Conversaciones finalizadas</h1>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-            {filterOptions.ux_scope === "team"
-              ? "Vista acotada a tu alcance omnicanal: los combos solo listan colas, agentes y canales relevantes para tu equipo. Exportá el resultado filtrado."
-              : "Bandeja global de cierres: todas las colas, agentes y canales. Filtrá, revisá el detalle sin salir de la pantalla y exportá el resultado filtrado para Excel."}
+            {filterOptions.ux_scope === "own"
+              ? "Tus conversaciones finalizadas. Filtrá por fecha, estado o buscá un contacto. Exportá el resultado para Excel."
+              : filterOptions.ux_scope === "team"
+                ? "Vista acotada a tu alcance omnicanal: los combos solo listan colas, agentes y canales relevantes para tu equipo. Exportá el resultado filtrado."
+                : "Bandeja global de cierres: todas las colas, agentes y canales. Filtrá, revisá el detalle sin salir de la pantalla y exportá el resultado filtrado para Excel."}
           </p>
         </div>
         <button
@@ -283,6 +290,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
             />
           </label>
+          {!esAsesor && (
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Cola
             <select
@@ -298,6 +306,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               ))}
             </select>
           </label>
+          )}
+          {!esAsesor && (
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Agente asignado
             <select
@@ -313,6 +323,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               ))}
             </select>
           </label>
+          )}
+          {!esAsesor && (
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Canal
             <select
@@ -328,6 +340,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               ))}
             </select>
           </label>
+          )}
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Estado
             <select
@@ -343,6 +356,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               ))}
             </select>
           </label>
+          {!esAsesor && (
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Subestado
             <select
@@ -358,6 +372,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               ))}
             </select>
           </label>
+          )}
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 sm:col-span-2">
             Nombre o número
             <input
@@ -370,6 +385,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           </label>
         </div>
 
+        {!esAsesor && (
         <details className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
           <summary className="cursor-pointer text-sm font-semibold text-slate-700 select-none">
             Filtros secundarios
@@ -396,6 +412,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             </p>
           </div>
         </details>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <button
@@ -490,9 +507,30 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
         </div>
         {!loading && total > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-600">
-            <span>
-              {total === 0 ? "0" : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)}`} de {total}
-            </span>
+            <div className="flex items-center gap-3">
+              <span>
+                {total === 0 ? "0" : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)}`} de {total}
+              </span>
+              <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                Filas
+                <select
+                  value={pageSize >= TODOS_PAGE_SIZE ? "todos" : String(pageSize)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPageSize(v === "todos" ? TODOS_PAGE_SIZE : Number(v));
+                    setPage(1);
+                  }}
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-900 bg-white"
+                >
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <option key={n} value={String(n)}>
+                      {n}
+                    </option>
+                  ))}
+                  <option value="todos">Todos</option>
+                </select>
+              </label>
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"

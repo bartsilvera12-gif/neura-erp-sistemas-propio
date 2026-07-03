@@ -52,7 +52,7 @@ export type FinalizedClosuresListResult = {
   page_size: number;
 };
 
-export type FinalizedFilterUxScope = "full" | "team";
+export type FinalizedFilterUxScope = "full" | "team" | "own";
 
 export type FinalizedFilterOptions = {
   queues: { id: string; nombre: string }[];
@@ -345,7 +345,13 @@ export async function loadFinalizedFilterOptions(): Promise<FinalizedFilterOptio
   if (bypass || isOmnicanalAdminScope(scope)) {
     return loadFinalizedFilterOptionsAllEmpresa(supabase, catalogSr, empresa_id);
   }
-  return loadFinalizedFilterOptionsScopedTeam(supabase, catalogSr, empresa_id, scope);
+  const scoped = await loadFinalizedFilterOptionsScopedTeam(supabase, catalogSr, empresa_id, scope);
+  // Asesor puro (no supervisor): vista simplificada "own" → el cliente muestra solo Fecha,
+  // Estado y búsqueda (sin combos de cola/agente/canal/subestado). Sigue viendo solo lo suyo.
+  if (scope.role !== "supervisor") {
+    return { ...scoped, ux_scope: "own" };
+  }
+  return scoped;
 }
 
 function mapQueues(rows: unknown): { id: string; nombre: string }[] {
@@ -369,7 +375,7 @@ export async function listFinalizedClosures(
   page_size: number
 ): Promise<FinalizedClosuresListResult> {
   const { supabase, catalogSr, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
-  const ps = Math.min(Math.max(page_size, 5), 100);
+  const ps = Math.min(Math.max(page_size, 5), 1000);
   const p = Math.max(1, page);
   const from = (p - 1) * ps;
   const to = from + ps - 1;

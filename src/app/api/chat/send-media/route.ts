@@ -32,25 +32,34 @@ function safeFileName(name: string): string {
 }
 
 /**
- * Remux de nota de voz webm/opus -> ogg/opus (formato que WhatsApp SÍ acepta;
- * WhatsApp rechaza webm). Primero intenta copiar el stream Opus (sin recodificar,
- * rápido y sin pérdida); si falla, recodifica a Opus. Usa execFile con args array
- * (sin shell) y archivos temporales con nombres propios (no del usuario).
- * Lanza si ffmpeg no está disponible o no produce salida → el caller NO envía webm.
+ * Convierte nota de voz webm/opus -> ogg/opus RE-ENCODANDO (formato que WhatsApp reproduce).
+ *
+ * IMPORTANTE: NO se usa `-c:a copy`. Copiar el stream Opus de webm a un contenedor ogg produce
+ * un archivo que WhatsApp ACEPTA (status "accepted") pero que el RECEPTOR no puede reproducir
+ * ("audio no disponible") — el paginado/pre-skip queda mal formado (pre-skip 0). Re-encodear
+ * con libopus mono 48kHz (`-application voip`) genera un ogg/opus correctamente paginado que
+ * WhatsApp entrega como nota de voz reproducible. +1-2s por audio, imperceptible.
+ *
+ * Usa execFile con args array (sin shell) y archivos temporales con nombres propios (no del
+ * usuario). Lanza si ffmpeg no está disponible o no produce salida → el caller NO envía webm.
  */
 async function remuxWebmOpusToOgg(input: Buffer): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "ccaudio-"));
   const inPath = join(dir, "in.webm");
   const outPath = join(dir, "out.ogg");
-  const baseArgs = ["-y", "-hide_banner", "-loglevel", "error", "-i", inPath, "-vn"];
   try {
     await writeFile(inPath, input);
-    try {
-      await execFileAsync("ffmpeg", [...baseArgs, "-c:a", "copy", "-f", "ogg", outPath], { timeout: 30000 });
-    } catch {
-      // Fallback: recodificar a Opus si el copy no fue posible.
-      await execFileAsync("ffmpeg", [...baseArgs, "-c:a", "libopus", "-b:a", "32k", "-f", "ogg", outPath], { timeout: 60000 });
-    }
+    await execFileAsync(
+      "ffmpeg",
+      [
+        "-y", "-hide_banner", "-loglevel", "error",
+        "-i", inPath,
+        "-vn",
+        "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1", "-application", "voip",
+        "-f", "ogg", outPath,
+      ],
+      { timeout: 60000 }
+    );
     const out = await readFile(outPath);
     if (!out || out.length < 1) throw new Error("ffmpeg produjo un OGG vacío");
     return out;

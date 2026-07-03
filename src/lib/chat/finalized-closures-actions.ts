@@ -416,21 +416,47 @@ export async function listFinalizedClosures(
 
   let omnicanalConvIds: string[] | null = null;
   if (!bypass && !isOmnicanalAdminScope(scope)) {
-    let cq = supabase.from("chat_conversations").select("id").eq("empresa_id", empresa_id);
-    cq = (await appendOmnicanalConversationScopeToQuery(supabase, empresa_id, scope, cq)).builder;
-    const { data: scopedConv, error: omnErr } = await cq.limit(15000);
-    if (omnErr) {
-      console.warn("[listFinalizedClosures] alcance omnicanal:", omnErr.message);
-      return { rows: [], total: 0, page: p, page_size: ps };
+    // ASESOR PURO (rol 'agente' o sin rol con fila chat_agents): ve SOLO SUS finalizadas =
+    // conversaciones ASIGNADAS a él. No usamos la Regla B del inbox (que además sumaría las
+    // sin-asignar de su cola). Acotamos a status='closed' para mantener el .in() chico (evita
+    // URLs largas de PostgREST). SUPERVISOR conserva su alcance de equipo (appendOmnicanal).
+    const esAsesorPuro = scope.role !== "supervisor";
+    if (esAsesorPuro) {
+      const ownFkIds = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, [usuario_id]);
+      if (ownFkIds.length === 0) {
+        return { rows: [], total: 0, page: p, page_size: ps };
+      }
+      const { data: ownConv, error: ownErr } = await supabase
+        .from("chat_conversations")
+        .select("id")
+        .eq("empresa_id", empresa_id)
+        .in("assigned_agent_id", ownFkIds)
+        .eq("status", "closed")
+        .limit(15000);
+      if (ownErr) {
+        console.warn("[listFinalizedClosures] alcance asesor:", ownErr.message);
+        return { rows: [], total: 0, page: p, page_size: ps };
+      }
+      omnicanalConvIds = (ownConv ?? [])
+        .map((r: { id?: string }) => String(r.id ?? "").trim())
+        .filter(Boolean);
+    } else {
+      let cq = supabase.from("chat_conversations").select("id").eq("empresa_id", empresa_id);
+      cq = (await appendOmnicanalConversationScopeToQuery(supabase, empresa_id, scope, cq)).builder;
+      const { data: scopedConv, error: omnErr } = await cq.limit(15000);
+      if (omnErr) {
+        console.warn("[listFinalizedClosures] alcance omnicanal:", omnErr.message);
+        return { rows: [], total: 0, page: p, page_size: ps };
+      }
+      omnicanalConvIds = (scopedConv ?? [])
+        .map((r: { id?: string }) => String(r.id ?? "").trim())
+        .filter(Boolean);
+      if (omnicanalConvIds.length >= 15000) {
+        console.warn("[listFinalizedClosures] alcance omnicanal truncado a 15000 conversaciones");
+      }
     }
-    omnicanalConvIds = (scopedConv ?? [])
-      .map((r: { id?: string }) => String(r.id ?? "").trim())
-      .filter(Boolean);
     if (omnicanalConvIds.length === 0) {
       return { rows: [], total: 0, page: p, page_size: ps };
-    }
-    if (omnicanalConvIds.length >= 15000) {
-      console.warn("[listFinalizedClosures] alcance omnicanal truncado a 15000 conversaciones");
     }
   }
 

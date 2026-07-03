@@ -377,6 +377,11 @@ export function ConversacionesClient({
     logInboxFlagsBoot(getInboxFlagsSnapshot());
   }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedAttribution, setSelectedAttribution] = useState<{
+    source_url: string;
+    headline: string | null;
+    red: "instagram" | "facebook" | "no_identificado";
+  } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loadingList, setLoadingList] = useState(true);
@@ -725,6 +730,40 @@ export function ConversacionesClient({
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  // Atribución Meta (Click-to-WhatsApp) de la conversación abierta → chip "Pauta ↗".
+  useEffect(() => {
+    setSelectedAttribution(null);
+    const cid = selectedId;
+    if (!cid) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetchWithSupabaseSession(
+          `/api/chat/conversation-attribution?conversation_id=${encodeURIComponent(cid)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const json = (await res.json()) as { success?: boolean; data?: unknown };
+        if (cancelled || selectedIdRef.current !== cid) return;
+        const d = json?.data as
+          | { source_url?: string; headline?: string | null; red?: "instagram" | "facebook" | "no_identificado" }
+          | null;
+        if (d?.source_url) {
+          setSelectedAttribution({
+            source_url: d.source_url,
+            headline: d.headline ?? null,
+            red: d.red ?? "no_identificado",
+          });
+        }
+      } catch {
+        /* sin chip si falla */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId]);
 
   const sendMediaFile = useCallback(async (file: File) => {
@@ -2895,6 +2934,38 @@ export function ConversacionesClient({
                                   CRM →
                                 </Link>
                               ) : null}
+                            </>
+                          ) : null}
+                          {selectedAttribution?.source_url ? (
+                            <>
+                              <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-slate-200" />
+                              <a
+                                href={selectedAttribution.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={
+                                  (selectedAttribution.red === "instagram"
+                                    ? "Vino de Instagram"
+                                    : selectedAttribution.red === "facebook"
+                                      ? "Vino de Facebook"
+                                      : "Vino de un anuncio") +
+                                  (selectedAttribution.headline ? ` · "${selectedAttribution.headline}"` : "") +
+                                  " — abrir la pauta"
+                                }
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                                  selectedAttribution.red === "instagram"
+                                    ? "border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100"
+                                    : selectedAttribution.red === "facebook"
+                                      ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                                }`}
+                              >
+                                {selectedAttribution.red === "instagram"
+                                  ? "Pauta IG ↗"
+                                  : selectedAttribution.red === "facebook"
+                                    ? "Pauta FB ↗"
+                                    : "Pauta ↗"}
+                              </a>
                             </>
                           ) : null}
                         </div>

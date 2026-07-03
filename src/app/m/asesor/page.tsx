@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
+import { attachmentCaptionForDisplay } from "@/lib/chat/message-erp-display";
 
 type Conv = {
   id: string;
@@ -109,7 +110,7 @@ export default function MAsesorInboxPage() {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-[13px] text-slate-500">
-                          {c.last_message_preview || "—"}
+                          {attachmentCaptionForDisplay(c.last_message_preview) || "—"}
                         </span>
                         {c.unread_count > 0 ? (
                           <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#4FAEB2] text-white text-[10px] font-bold grid place-items-center">

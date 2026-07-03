@@ -52,6 +52,7 @@ import {
   type FinalizeOptionsResult,
 } from "@/lib/chat/conversation-finalize-actions";
 import {
+  attachmentCaptionForDisplay,
   getErpAttachmentCaption,
   getErpAttachmentFilename,
   getErpAttachmentPublicUrl,
@@ -2577,7 +2578,7 @@ export function ConversacionesClient({
                         </div>
                       </div>
                       <p className="mt-1 text-[12px] text-slate-500 truncate leading-snug">
-                        {c.last_message_preview || "—"}
+                        {attachmentCaptionForDisplay(c.last_message_preview) || "—"}
                       </p>
                     </div>
                   </div>
@@ -3138,9 +3139,12 @@ export function ConversacionesClient({
                                   className="max-h-52 rounded-lg border border-white/30 bg-white object-contain"
                                 />
                               </button>
-                              {m.content && m.content !== "[imagen]" ? (
-                                <p className="whitespace-pre-wrap break-words text-sm opacity-95">{m.content}</p>
-                              ) : null}
+                              {(() => {
+                                const cap = attachmentCaptionForDisplay(m.content);
+                                return cap && cap !== "[imagen]" ? (
+                                  <p className="whitespace-pre-wrap break-words text-sm opacity-95">{cap}</p>
+                                ) : null;
+                              })()}
                             </div>
                           ) : m.message_type === "audio" ? (
                             <div className="space-y-2">
@@ -3158,7 +3162,7 @@ export function ConversacionesClient({
                                 />
                               ) : (
                                 <p className="whitespace-pre-wrap break-words text-sm opacity-90">
-                                  {m.content ?? "[audio]"}
+                                  {attachmentCaptionForDisplay(m.content) || "[audio]"}
                                 </p>
                               )}
                             </div>
@@ -3206,19 +3210,24 @@ export function ConversacionesClient({
                                     {m.message_type === "video" ? "Video" : "Documento"}
                                   </div>
                                   <p className="whitespace-pre-wrap break-words mt-1">
-                                    {erpName || metaDocName ? (
-                                      <>
-                                        <span className="font-medium">{erpName || metaDocName}</span>
-                                        {m.content ? (
+                                    {(() => {
+                                      const cap = attachmentCaptionForDisplay(m.content);
+                                      const name = erpName || metaDocName;
+                                      if (name) {
+                                        return (
                                           <>
-                                            <br />
-                                            {m.content}
+                                            <span className="font-medium">{name}</span>
+                                            {cap ? (
+                                              <>
+                                                <br />
+                                                {cap}
+                                              </>
+                                            ) : null}
                                           </>
-                                        ) : null}
-                                      </>
-                                    ) : (
-                                      m.content
-                                    )}
+                                        );
+                                      }
+                                      return cap;
+                                    })()}
                                   </p>
                                 </div>
                               )}
@@ -3251,7 +3260,9 @@ export function ConversacionesClient({
                                     <p className="whitespace-pre-wrap break-words">{parsed.caption}</p>
                                   ) : null}
                                   {!parsed.url && !parsed.caption ? (
-                                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                                    <p className="whitespace-pre-wrap break-words">
+                                      {attachmentCaptionForDisplay(m.content)}
+                                    </p>
                                   ) : null}
                                 </div>
                               );

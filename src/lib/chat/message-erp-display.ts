@@ -58,6 +58,25 @@ export function getWhatsAppMediaUrlFromRawPayload(raw: RawPayload): string | nul
   return null;
 }
 
+/**
+ * Limpia el texto de un mensaje para MOSTRARLO en la UI: quita las líneas que sean una URL
+ * interna del storage (bucket público chat-media) y los rótulos boilerplate ("Imagen enviada",
+ * "Audio enviado", "Video enviado"). Así el globo no imprime la ruta interna debajo del adjunto
+ * — que se veía como si "regaláramos" la infraestructura, aunque NO es una API key ni la ve el
+ * cliente. Conserva captions reales escritas por el operador.
+ */
+export function attachmentCaptionForDisplay(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .filter((l) => !/\/storage\/v1\/object\/(public|sign)\//i.test(l))
+    .filter((l) => !/^(imagen|audio|video)\s+enviad[oa]$/i.test(l))
+    .join("\n")
+    .trim();
+}
+
 export function isImageMimeHint(raw: RawPayload, messageType: string): boolean {
   if (messageType === "image" || messageType === "sticker") return true;
   const erp = raw?.erp;

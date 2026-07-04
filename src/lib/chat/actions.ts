@@ -437,8 +437,15 @@ async function fetchChatConversationsUnsafe(
   const buildFilteredConversationQuery = async (selectStr: string) => {
     let qb = supabase.from("chat_conversations").select(selectStr).eq("empresa_id", empresa_id);
 
-    if (vista === "inbox" || vista === "bot") {
-      /** Misma base abierta/pendiente; Inbox vs Bot se resuelve en memoria (`conversationBelongsToBotTab`). */
+    const hasTextSearch = Boolean(filters?.q && filters.q.trim());
+    if (vista === "inbox") {
+      /** Por defecto solo abiertas/pendientes; con búsqueda explícita (p.ej. click al teléfono
+       * de un lead del CRM) buscamos en TODOS los estados —incl. finalizadas— para que un
+       * contacto con conversación ya cerrada igual aparezca. Inbox vs Bot se resuelve en memoria. */
+      if (!hasTextSearch) {
+        qb = qb.in("status", ["open", "pending"]);
+      }
+    } else if (vista === "bot") {
       qb = qb.in("status", ["open", "pending"]);
     } else if (vista === "historial") {
       qb = qb.eq("status", "closed");

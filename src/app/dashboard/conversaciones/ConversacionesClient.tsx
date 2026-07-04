@@ -389,9 +389,15 @@ export function ConversacionesClient({
   } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  /** Mensajes de texto en vuelo (envío optimista): aparecen al instante como "enviando…" y se
+   * reconcilian con el server. Array separado para que loadMessages (que reemplaza `messages`)
+   * no los pise. `convId` para no mostrarlos si el operador cambió de conversación. */
+  const [pendingSends, setPendingSends] = useState<
+    { tempId: string; convId: string; text: string; status: "sending" | "error" }[]
+  >([]);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState(false);
-  const [sending, setSending] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   /** Grabación de nota de voz (MediaRecorder) antes de subir a /api/chat/send-media. */
   const [recordingVoice, setRecordingVoice] = useState(false);
@@ -1438,6 +1444,23 @@ export function ConversacionesClient({
     el.scrollTop = el.scrollHeight;
   }, [messages, selectedId]);
 
+  // Auto-alto del composer (tipo WhatsApp): crece con el texto hasta ~6 líneas y luego hace
+  // scroll interno, manteniendo el contexto de lo que se escribe. Se recalcula en cada cambio
+  // (incluye el reset a 1 línea cuando se limpia tras enviar).
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  }, [input]);
+
+  // Al encolar un envío optimista, pegamos el scroll al fondo para que se vea "enviando…".
+  useLayoutEffect(() => {
+    if (!stickBottomRef.current) return;
+    const el = messagesScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [pendingSends.length]);
+
   const handleSelect = useCallback(
     async (id: string) => {
       stickBottomRef.current = true;
@@ -1658,23 +1681,18 @@ export function ConversacionesClient({
     }
   }
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedId || !input.trim() || sending) return;
-    setSending(true);
-    setSendError(null);
-    stickBottomRef.current = true;
+  // Envío de texto en 2º plano: NO bloquea el composer. El mensaje ya se ve como "enviando…"
+  // (pendingSends); acá se confirma y se reconcilia con el server. Traemos el mensaje real
+  // ANTES de quitar el optimista para que no parpadee (React 18 batchea ambos setState).
+  async function doSendText(text: string, tempId: string, cid: string) {
     try {
       const res = await fetchWithSupabaseSession("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ conversation_id: selectedId, message: input.trim() }),
+        body: JSON.stringify({ conversation_id: cid, message: text }),
       });
-      const json = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        meta?: unknown;
-      };
+      const json = (await res.json().catch(() => ({}))) as { error?: string; meta?: unknown };
       if (!res.ok) {
         const base =
           typeof json.error === "string"
@@ -1684,14 +1702,51 @@ export function ConversacionesClient({
               : `Error al enviar (HTTP ${res.status})`;
         throw new Error(base);
       }
-      setInput("");
+      if (selectedIdRef.current === cid) {
+        await loadMessagesRef.current?.(cid, { silent: true });
+      }
+      setPendingSends((prev) => prev.filter((p) => p.tempId !== tempId));
       setSendError(null);
-      await loadMessages(selectedId, { silent: true });
-      await loadConversations({ silent: true });
+      void loadConversationsRef.current?.({ silent: true });
     } catch (err) {
+      setPendingSends((prev) =>
+        prev.map((p) => (p.tempId === tempId ? { ...p, status: "error" as const } : p))
+      );
       setSendError(err instanceof Error ? err.message : "Error al enviar");
-    } finally {
-      setSending(false);
+    }
+  }
+
+  function submitCurrentText() {
+    const text = input.trim();
+    const cid = selectedId;
+    if (!cid || !text) return;
+    const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setInput(""); // el textarea se limpia YA (el auto-size lo vuelve a 1 línea)
+    setSendError(null);
+    stickBottomRef.current = true;
+    setPendingSends((prev) => [...prev, { tempId, convId: cid, text, status: "sending" as const }]);
+    composerRef.current?.focus(); // seguir escribiendo sin re-clic (sobre todo al usar el botón)
+    void doSendText(text, tempId, cid);
+  }
+
+  function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    submitCurrentText();
+  }
+
+  function retryPendingSend(tempId: string) {
+    const p = pendingSends.find((x) => x.tempId === tempId);
+    if (!p) return;
+    setPendingSends((prev) => prev.map((x) => (x.tempId === tempId ? { ...x, status: "sending" as const } : x)));
+    void doSendText(p.text, p.tempId, p.convId);
+  }
+
+  function handleComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter envía; Shift+Enter hace salto de línea (default del textarea). Ignoramos Enter
+    // mientras se compone con IME (acentos/teclados) para no cortar la escritura.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submitCurrentText();
     }
   }
 
@@ -3290,6 +3345,28 @@ export function ConversacionesClient({
                     );
                   })
                 )}
+                {pendingSends
+                  .filter((p) => p.convId === selectedId)
+                  .map((p) => (
+                    <div key={p.tempId} className="flex justify-end py-1.5 border-t border-slate-200/55">
+                      <div className="max-w-[92%] sm:max-w-[88%] md:max-w-[78%] lg:max-w-[72%] rounded-2xl rounded-br-md px-3 py-2 text-[13px] sm:text-sm leading-relaxed bg-[#4FAEB2]/70 text-white shadow-md ring-1 ring-white/15">
+                        <p className="whitespace-pre-wrap break-words">{p.text}</p>
+                        <p className="text-[10px] mt-1 text-sky-100">
+                          {p.status === "sending" ? (
+                            "enviando…"
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => retryPendingSend(p.tempId)}
+                              className="underline decoration-white/60 hover:decoration-white"
+                            >
+                              no se envió · reintentar
+                            </button>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
               </div>
 
               <form
@@ -3412,39 +3489,35 @@ export function ConversacionesClient({
                       </>
                     ) : null}
                   </div>
-                  <input
-                    className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 outline-none min-h-[2.25rem]"
-                    placeholder="Escribí un mensaje…"
+                  <textarea
+                    ref={composerRef}
+                    rows={1}
+                    className="flex-1 min-w-0 resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 outline-none min-h-[2.25rem] max-h-[140px] overflow-y-auto leading-snug"
+                    placeholder="Escribí un mensaje…  (Enter envía · Shift+Enter salto de línea)"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    disabled={sending}
+                    onKeyDown={handleComposerKeyDown}
                   />
                   <button
                     type="submit"
-                    disabled={sending || !input.trim()}
+                    disabled={!input.trim()}
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none min-h-[2.25rem]"
                   >
-                    {sending ? (
-                      "…"
-                    ) : (
-                      <>
-                        <span>Enviar</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="h-3.5 w-3.5"
-                          aria-hidden="true"
-                        >
-                          <line x1="22" y1="2" x2="11" y2="13" />
-                          <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                        </svg>
-                      </>
-                    )}
+                    <span>Enviar</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-3.5 w-3.5"
+                      aria-hidden="true"
+                    >
+                      <line x1="22" y1="2" x2="11" y2="13" />
+                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
                   </button>
                 </div>
               </form>

@@ -160,26 +160,37 @@ async function fetchAll(
   return out;
 }
 
-type SuscInfo = { tipo_servicio: string | null; plan: string | null; precio: number | null };
+type SuscInfo = {
+  tipo_servicio: string | null;
+  /** Tipo del PLAN (slug del catálogo): fuente del tipo del SERVICIO en Cobranzas. */
+  plan_tipo: string | null;
+  plan: string | null;
+  precio: number | null;
+};
 
-/** Mapa suscripcion_id → { tipo_servicio, plan, precio } (TODAS las suscripciones, cualquier estado). */
+/** Mapa suscripcion_id → { tipo_servicio, plan_tipo, plan, precio } (TODAS las suscripciones, cualquier estado). */
 async function cargarSuscripcionInfo(sb: Sb, empresaId: string): Promise<Map<string, SuscInfo>> {
   const subs = await fetchAll(sb, "suscripciones", "id, plan_id, precio, tipo_servicio", empresaId);
   const planIds = [...new Set(subs.map((s) => String(s.plan_id ?? "")).filter(Boolean))];
   const planNombre = new Map<string, string>();
+  const planTipo = new Map<string, string | null>();
   for (let i = 0; i < planIds.length; i += 120) {
     const slice = planIds.slice(i, i + 120);
     if (slice.length === 0) break;
-    const { data } = await sb.from("planes").select("id, nombre").in("id", slice);
+    const { data } = await sb.from("planes").select("id, nombre, tipo_servicio").in("id", slice);
     for (const p of (data ?? []) as Record<string, unknown>[]) {
       planNombre.set(String(p.id), String(p.nombre ?? ""));
+      const t = p.tipo_servicio != null ? String(p.tipo_servicio).trim().toLowerCase() : "";
+      planTipo.set(String(p.id), t || null);
     }
   }
   const map = new Map<string, SuscInfo>();
   for (const s of subs) {
+    const planId = String(s.plan_id ?? "");
     map.set(String(s.id), {
       tipo_servicio: s.tipo_servicio != null ? String(s.tipo_servicio) : null,
-      plan: planNombre.get(String(s.plan_id ?? "")) || null,
+      plan_tipo: planTipo.get(planId) ?? null,
+      plan: planNombre.get(planId) || null,
       precio: s.precio != null ? Number(s.precio) : null,
     });
   }
@@ -219,19 +230,22 @@ function agruparPorServicio(
     const key = sid || "general";
     let g = grupos.get(key);
     if (!g) {
-      // Fuente única de verdad del tipo = el CLIENTE (`clientes.tipo_servicio_cliente`).
-      // La suscripción/plan ya NO llevan tipo (modelo unificado 2026-07-02). El tipo es una
-      // propiedad del cliente y aplica a TODAS sus facturas, tengan o no suscripción vinculada
-      // (p. ej. facturas de contado, o facturas que quedaron sin suscripción al borrarla).
-      const tipoSlug = clienteTipoSlug ?? null;
-      const tipoLabel = tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogo) : "Sin clasificar";
+      // El tipo de un SERVICIO sale del TIPO DE SU PLAN (`planes.tipo_servicio`). Así un mismo
+      // cliente con suscripciones de distinto servicio (p. ej. Contable + SaaS) aparece en el
+      // filtro de CADA equipo con la deuda que le corresponde. Si el plan no tiene tipo cargado,
+      // se cae al tipo del CLIENTE (`clientes.tipo_servicio_cliente`). Las facturas SIN suscripción
+      // (bucket "general": contado, o facturas huérfanas) usan el tipo del cliente.
+      const clienteSlug = clienteTipoSlug ?? null;
       if (key === "general") {
-        g = { suscripcion_id: null, tipo: tipoLabel, plan: null, monto: null, facturas: [] };
+        const label = clienteSlug ? etiquetaVisibleTipoServicio(clienteSlug, catalogo) : "Sin clasificar";
+        g = { suscripcion_id: null, tipo: label, plan: null, monto: null, facturas: [] };
       } else {
         const info = suscInfo.get(sid);
+        const slug = (info?.plan_tipo ?? null) || clienteSlug;
+        const label = slug ? etiquetaVisibleTipoServicio(slug, catalogo) : "Sin clasificar";
         g = {
           suscripcion_id: sid,
-          tipo: tipoLabel,
+          tipo: label,
           plan: info?.plan ?? null,
           monto: info?.precio ?? null,
           facturas: [],

@@ -8,6 +8,11 @@ import {
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
+import {
+  extractBodyPlaceholderKeysOrdered,
+  getBodyComponentText,
+  PLACEHOLDER_RE,
+} from "@/lib/campaigns/campaign-placeholders-shared";
 
 type Msg = {
   id: string;
@@ -26,6 +31,14 @@ type Pending = {
   kind: "text" | "audio";
   content: string;
   file?: File;
+};
+
+type Tpl = {
+  id: string;
+  name: string;
+  language: string;
+  category: string | null;
+  components_json: unknown[];
 };
 
 const EMOJIS = [
@@ -89,6 +102,14 @@ export default function MAsesorChatPage() {
   const [micSupported, setMicSupported] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
+  // Recontacto con plantilla aprobada.
+  const [tplOpen, setTplOpen] = useState(false);
+  const [tplList, setTplList] = useState<Tpl[]>([]);
+  const [tplLoading, setTplLoading] = useState(false);
+  const [tplSelId, setTplSelId] = useState<string | null>(null);
+  const [tplVars, setTplVars] = useState<Record<string, string>>({});
+  const [tplSending, setTplSending] = useState(false);
+  const [tplErr, setTplErr] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -341,6 +362,81 @@ export default function MAsesorChatPage() {
     }
   }, []);
 
+  // ---- Recontacto con plantilla ----
+  async function openTpl() {
+    setTplOpen(true);
+    setTplErr(null);
+    setTplSelId(null);
+    setTplVars({});
+    setTplLoading(true);
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/chat/templates?conversation_id=${encodeURIComponent(conversationId)}`,
+        { cache: "no-store" }
+      );
+      const json = (await res.json().catch(() => ({}))) as { data?: Tpl[] };
+      setTplList(Array.isArray(json.data) ? json.data : []);
+    } catch {
+      setTplList([]);
+      setTplErr("No se pudieron cargar las plantillas.");
+    } finally {
+      setTplLoading(false);
+    }
+  }
+
+  function pickTpl(t: Tpl) {
+    setTplSelId(t.id);
+    setTplErr(null);
+    const slots = extractBodyPlaceholderKeysOrdered(t.components_json ?? []);
+    const nombre = /\p{L}/u.test(title) && title !== "Chat" ? title.trim() : "";
+    const init: Record<string, string> = {};
+    for (const s of slots) {
+      const low = s.toLowerCase();
+      init[s] = low === "nombre" || low === "1" || low.includes("nombre") ? nombre : "";
+    }
+    setTplVars(init);
+  }
+
+  async function sendTpl() {
+    const t = tplList.find((x) => x.id === tplSelId);
+    if (!t || tplSending) return;
+    const slots = extractBodyPlaceholderKeysOrdered(t.components_json ?? []);
+    const missing = slots.filter((s) => !(tplVars[s] ?? "").trim());
+    if (missing.length > 0) {
+      setTplErr(`Completá: ${missing.join(", ")}`);
+      return;
+    }
+    setTplSending(true);
+    setTplErr(null);
+    try {
+      const res = await fetchWithSupabaseSession("/api/chat/send-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, template_id: t.id, variables: tplVars }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || json.ok === false) throw new Error(json.error || `Error ${res.status}`);
+      setTplOpen(false);
+      setTplSelId(null);
+      setTplVars({});
+      await load(true);
+    } catch (e) {
+      setTplErr(e instanceof Error ? e.message : "No se pudo enviar la plantilla");
+    } finally {
+      setTplSending(false);
+    }
+  }
+
+  const tplSel = tplList.find((t) => t.id === tplSelId) ?? null;
+  const tplSlots = tplSel ? extractBodyPlaceholderKeysOrdered(tplSel.components_json ?? []) : [];
+  const tplPreview = tplSel
+    ? getBodyComponentText(tplSel.components_json ?? []).replace(PLACEHOLDER_RE, (_m, rawKey: string) => {
+        const k = String(rawKey).trim();
+        const v = (tplVars[k] ?? "").trim();
+        return v || `{{${k}}}`;
+      })
+    : "";
+
   return (
     <div className="min-h-svh max-h-svh bg-slate-50 flex flex-col">
       <header className="sticky top-0 z-10 bg-[#3F8E91] text-white px-2 py-2.5 shadow-sm flex items-center gap-2">
@@ -407,9 +503,13 @@ export default function MAsesorChatPage() {
       </div>
 
       {windowOpen === false ? (
-        <div className="px-3 py-2 bg-amber-50 border-t border-amber-200 text-amber-800 text-[12px]">
-          Ventana de 24 h cerrada: para reabrir el chat hay que enviar una plantilla aprobada (recontacto).
-        </div>
+        <button
+          type="button"
+          onClick={() => void openTpl()}
+          className="w-full text-left px-3 py-2 bg-amber-50 border-t border-amber-200 text-amber-800 text-[12px] active:bg-amber-100"
+        >
+          Ventana de 24 h cerrada: tocá acá para <b>recontactar con una plantilla</b> aprobada.
+        </button>
       ) : null}
       {sendErr ? <div className="px-3 py-1.5 bg-red-50 text-red-700 text-[12px]">{sendErr}</div> : null}
 
@@ -461,6 +561,16 @@ export default function MAsesorChatPage() {
               >
                 😊
               </button>
+              <button
+                type="button"
+                onClick={() => void openTpl()}
+                aria-label="Enviar plantilla / recontactar"
+                className={`shrink-0 h-10 w-10 grid place-items-center rounded-full text-lg active:scale-95 ${
+                  windowOpen === false ? "bg-amber-100 text-amber-700" : "text-slate-500 active:bg-slate-100"
+                }`}
+              >
+                📄
+              </button>
               <textarea
                 ref={taRef}
                 value={text}
@@ -490,6 +600,89 @@ export default function MAsesorChatPage() {
           </>
         )}
       </div>
+
+      {tplOpen ? (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40" onClick={() => setTplOpen(false)}>
+          <div
+            className="max-h-[80svh] rounded-t-2xl bg-white flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <span className="text-sm font-semibold text-slate-800">Recontactar con plantilla</span>
+              <button type="button" onClick={() => setTplOpen(false)} className="text-slate-400 text-lg" aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {tplLoading ? (
+                <p className="py-6 text-center text-sm text-slate-400">Cargando plantillas…</p>
+              ) : tplList.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-500">No hay plantillas aprobadas para este canal.</p>
+              ) : !tplSel ? (
+                <ul className="space-y-1">
+                  {tplList.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => pickTpl(t)}
+                        className="w-full rounded-xl border border-slate-100 px-3 py-2.5 text-left active:bg-slate-50"
+                      >
+                        <span className="block text-sm font-semibold text-slate-900">{t.name}</span>
+                        <span className="mt-0.5 line-clamp-2 text-[12px] text-slate-500">
+                          {getBodyComponentText(t.components_json ?? [])}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTplSelId(null);
+                      setTplVars({});
+                      setTplErr(null);
+                    }}
+                    className="text-[12px] text-[#3F8E91]"
+                  >
+                    ← Elegir otra
+                  </button>
+                  <p className="text-sm font-semibold text-slate-800">{tplSel.name}</p>
+                  {tplSlots.map((s) => (
+                    <label key={s} className="block">
+                      <span className="mb-1 block text-[12px] font-medium text-slate-600">{s}</span>
+                      <input
+                        type="text"
+                        value={tplVars[s] ?? ""}
+                        onChange={(e) => setTplVars((prev) => ({ ...prev, [s]: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+                        placeholder={`Valor para ${s}`}
+                      />
+                    </label>
+                  ))}
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Vista previa
+                    </span>
+                    <p className="whitespace-pre-wrap break-words text-[13px] text-slate-700">{tplPreview}</p>
+                  </div>
+                  {tplErr ? <p className="text-[12px] text-red-600">{tplErr}</p> : null}
+                  <button
+                    type="button"
+                    onClick={() => void sendTpl()}
+                    disabled={tplSending}
+                    className="w-full rounded-2xl bg-[#3F8E91] px-4 py-3 text-sm font-semibold text-white active:scale-95 disabled:bg-slate-200 disabled:text-slate-400"
+                  >
+                    {tplSending ? "Enviando…" : "Enviar plantilla"}
+                  </button>
+                </div>
+              )}
+              {tplErr && !tplSel ? <p className="mt-2 text-center text-[12px] text-red-600">{tplErr}</p> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -45,7 +45,12 @@ import { INBOX_HEARTBEAT_INTERVAL_MS } from "@/lib/chat/agent-presence";
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
-import { ArrowLeftRight, Flame, Mic, Paperclip, RefreshCw, Square, UserRound, Zap } from "lucide-react";
+import { ArrowLeftRight, FileText, Flame, Mic, Paperclip, RefreshCw, Square, UserRound, Zap } from "lucide-react";
+import {
+  extractBodyPlaceholderKeysOrdered,
+  getBodyComponentText,
+  PLACEHOLDER_RE,
+} from "@/lib/campaigns/campaign-placeholders-shared";
 import {
   finalizeConversationWithClosure,
   loadFinalizeOptionsForConversation,
@@ -74,6 +79,15 @@ type ChatMessage = {
   created_at: string;
   raw_payload?: Record<string, unknown> | null;
   whatsapp_delivery_status?: string | null;
+};
+
+type InboxTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  category: string | null;
+  components_json: unknown[];
+  variable_schema_json?: unknown;
 };
 
 function isHumanContactName(name: string | null | undefined, phone?: string | null): boolean {
@@ -396,6 +410,15 @@ export function ConversacionesClient({
     { tempId: string; convId: string; text: string; status: "sending" | "error" }[]
   >([]);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  // Recontacto con plantilla aprobada (sobre todo fuera de la ventana de 24h).
+  const [tplPanelOpen, setTplPanelOpen] = useState(false);
+  const [tplList, setTplList] = useState<InboxTemplate[]>([]);
+  const [tplLoading, setTplLoading] = useState(false);
+  const [tplSelectedId, setTplSelectedId] = useState<string | null>(null);
+  const [tplVars, setTplVars] = useState<Record<string, string>>({});
+  const [tplSending, setTplSending] = useState(false);
+  const [tplError, setTplError] = useState<string | null>(null);
+  const tplPanelRef = useRef<HTMLDivElement | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -1750,11 +1773,108 @@ export function ConversacionesClient({
     }
   }
 
+  // ---- Recontacto con plantilla ----
+  async function openTemplatePanel() {
+    if (!selectedId) return;
+    setTplPanelOpen(true);
+    setTplError(null);
+    setTplSelectedId(null);
+    setTplVars({});
+    setTplLoading(true);
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/chat/templates?conversation_id=${encodeURIComponent(selectedId)}`,
+        { cache: "no-store" }
+      );
+      const json = (await res.json().catch(() => ({}))) as { data?: InboxTemplate[] };
+      setTplList(Array.isArray(json.data) ? json.data : []);
+    } catch {
+      setTplList([]);
+      setTplError("No se pudieron cargar las plantillas.");
+    } finally {
+      setTplLoading(false);
+    }
+  }
+
+  function selectTemplate(t: InboxTemplate) {
+    setTplSelectedId(t.id);
+    setTplError(null);
+    const slots = extractBodyPlaceholderKeysOrdered(t.components_json ?? []);
+    const contactName = isHumanContactName(selected?.contact.name, selected?.contact.phone_number)
+      ? (selected?.contact.name ?? "").trim()
+      : "";
+    const init: Record<string, string> = {};
+    for (const s of slots) {
+      const low = s.toLowerCase();
+      init[s] = low === "nombre" || low === "1" || low.includes("nombre") ? contactName : "";
+    }
+    setTplVars(init);
+  }
+
+  async function sendTemplate() {
+    const cid = selectedId;
+    const t = tplList.find((x) => x.id === tplSelectedId);
+    if (!cid || !t || tplSending) return;
+    const slots = extractBodyPlaceholderKeysOrdered(t.components_json ?? []);
+    const missing = slots.filter((s) => !(tplVars[s] ?? "").trim());
+    if (missing.length > 0) {
+      setTplError(`Completá: ${missing.join(", ")}`);
+      return;
+    }
+    setTplSending(true);
+    setTplError(null);
+    try {
+      const res = await fetchWithSupabaseSession("/api/chat/send-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ conversation_id: cid, template_id: t.id, variables: tplVars }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || json.ok === false) throw new Error(json.error || `Error ${res.status}`);
+      setTplPanelOpen(false);
+      setTplSelectedId(null);
+      setTplVars({});
+      stickBottomRef.current = true;
+      await loadMessages(cid, { silent: true });
+      await loadConversations({ silent: true });
+    } catch (e) {
+      setTplError(e instanceof Error ? e.message : "No se pudo enviar la plantilla");
+    } finally {
+      setTplSending(false);
+    }
+  }
+
   // La búsqueda es server-side (debouncedQ → backend). No se filtra localmente para no ocultar
   // coincidencias por preview/teléfono normalizado que el server sí incluye.
   const visibleConversations = conversations;
 
   const selected = conversations.find((c) => c.id === selectedId);
+
+  // Ventana de servicio 24h: abierta si el contacto escribió hace < 24h. Fuera de ella, un
+  // mensaje libre rebota (131047) → hay que recontactar con plantilla. Se calcula desde los
+  // mensajes cargados (último inbound).
+  const windowOpen = useMemo(() => {
+    let lastInbound = 0;
+    for (const m of messages) {
+      if (m.from_me) continue;
+      const t = new Date(m.created_at).getTime();
+      if (Number.isFinite(t) && t > lastInbound) lastInbound = t;
+    }
+    if (!lastInbound) return false;
+    return Date.now() - lastInbound < 24 * 60 * 60 * 1000;
+  }, [messages]);
+
+  const tplSelected = tplList.find((t) => t.id === tplSelectedId) ?? null;
+  const tplSlots = tplSelected ? extractBodyPlaceholderKeysOrdered(tplSelected.components_json ?? []) : [];
+  const tplPreview = tplSelected
+    ? getBodyComponentText(tplSelected.components_json ?? []).replace(PLACEHOLDER_RE, (_m, rawKey: string) => {
+        const k = String(rawKey).trim();
+        const v = (tplVars[k] ?? "").trim();
+        return v || `{{${k}}}`;
+      })
+    : "";
+
   const canResendCurrentFlowStep = Boolean(
     selected &&
       selected.status !== "closed" &&
@@ -3484,6 +3604,133 @@ export function ConversacionesClient({
                                 </ul>
                               )}
                             </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {vista !== "bot" ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={!selectedId}
+                          onClick={() => {
+                            if (tplPanelOpen) setTplPanelOpen(false);
+                            else void openTemplatePanel();
+                          }}
+                          className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border disabled:opacity-50 ${
+                            tplPanelOpen
+                              ? "border-[#4FAEB2]/50 bg-[#4FAEB2]/10 text-[#3F8E91]"
+                              : !windowOpen
+                                ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                          }`}
+                          title={!windowOpen ? "Recontactar con plantilla (fuera de las 24 h)" : "Enviar plantilla"}
+                          aria-label="Enviar plantilla / recontactar"
+                          aria-expanded={tplPanelOpen}
+                        >
+                          <FileText className="w-[18px] h-[18px]" aria-hidden />
+                        </button>
+                        {tplPanelOpen ? (
+                          <div
+                            ref={tplPanelRef}
+                            className="absolute bottom-full left-0 z-30 mb-1 flex w-[min(calc(100vw-2rem),24rem)] max-h-[26rem] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+                          >
+                            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                              <span className="text-xs font-semibold text-slate-800">Recontactar con plantilla</span>
+                              <button
+                                type="button"
+                                onClick={() => setTplPanelOpen(false)}
+                                className="text-sm text-slate-400 hover:text-slate-600"
+                                aria-label="Cerrar"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {!windowOpen ? (
+                              <div className="border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800">
+                                Pasaron +24 h desde el último mensaje del cliente: para recontactarlo solo se
+                                puede enviar una plantilla aprobada.
+                              </div>
+                            ) : null}
+                            <div className="max-h-[22rem] overflow-y-auto overscroll-contain p-2">
+                              {tplLoading ? (
+                                <p className="px-2 py-4 text-center text-xs text-slate-400">Cargando plantillas…</p>
+                              ) : tplList.length === 0 ? (
+                                <p className="px-2 py-4 text-center text-xs text-slate-500">
+                                  No hay plantillas aprobadas para este canal.
+                                </p>
+                              ) : !tplSelected ? (
+                                <ul className="space-y-0.5">
+                                  {tplList.map((t) => (
+                                    <li key={t.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => selectTemplate(t)}
+                                        className="w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-slate-50"
+                                      >
+                                        <span className="block font-semibold text-slate-900">{t.name}</span>
+                                        <span className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
+                                          {getBodyComponentText(t.components_json ?? [])}
+                                        </span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="space-y-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTplSelectedId(null);
+                                      setTplVars({});
+                                      setTplError(null);
+                                    }}
+                                    className="text-[11px] text-[#3F8E91] hover:underline"
+                                  >
+                                    ← Elegir otra
+                                  </button>
+                                  <p className="text-xs font-semibold text-slate-800">{tplSelected.name}</p>
+                                  {tplSlots.length > 0 ? (
+                                    <div className="space-y-1.5">
+                                      {tplSlots.map((s) => (
+                                        <label key={s} className="block">
+                                          <span className="mb-0.5 block text-[11px] font-medium text-slate-600">{s}</span>
+                                          <input
+                                            type="text"
+                                            value={tplVars[s] ?? ""}
+                                            onChange={(e) =>
+                                              setTplVars((prev) => ({ ...prev, [s]: e.target.value }))
+                                            }
+                                            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+                                            placeholder={`Valor para ${s}`}
+                                          />
+                                        </label>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  <div className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-2">
+                                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                      Vista previa
+                                    </span>
+                                    <p className="whitespace-pre-wrap break-words text-[12px] text-slate-700">
+                                      {tplPreview}
+                                    </p>
+                                  </div>
+                                  {tplError ? <p className="text-[11px] text-red-600">{tplError}</p> : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => void sendTemplate()}
+                                    disabled={tplSending}
+                                    className="w-full rounded-lg bg-[#4FAEB2] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3F8E91] disabled:bg-slate-200 disabled:text-slate-400"
+                                  >
+                                    {tplSending ? "Enviando…" : "Enviar plantilla"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            {tplError && !tplSelected ? (
+                              <p className="px-3 pb-2 text-[11px] text-red-600">{tplError}</p>
+                            ) : null}
                           </div>
                         ) : null}
                       </>

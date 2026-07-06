@@ -86,6 +86,38 @@ function intersectIds(a: string[] | null, b: string[]): string[] {
   return a.filter((id) => s.has(id));
 }
 
+/**
+ * Máximo de IDs por request `.in()`. PostgREST arma la lista en la URL; con muchos UUIDs la URL
+ * excede el límite del proxy y devuelve 414 (que antes rompía la vista de finalizadas de un asesor
+ * con ~100 conversaciones). Troceamos en lotes y unimos en memoria.
+ */
+const ID_IN_CHUNK = 50;
+
+/** Corre un `.in(col, ids)` en lotes de ID_IN_CHUNK y concatena los resultados. */
+async function selectInChunks<T>(
+  ids: string[],
+  run: (slice: string[]) => Promise<T[]>
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += ID_IN_CHUNK) {
+    const slice = ids.slice(i, i + ID_IN_CHUNK);
+    if (slice.length === 0) continue;
+    out.push(...(await run(slice)));
+  }
+  return out;
+}
+
+type ClosureRow = {
+  id: string;
+  conversation_id: string;
+  queue_id: string | null;
+  closure_state_label: string;
+  closure_substate_label: string;
+  comment: string;
+  closed_at: string;
+  closed_by_usuario_id: string;
+};
+
 async function loadFinalizedFilterOptionsAllEmpresa(
   supabase: AppSupabaseClient,
   catalogSr: AppSupabaseClient,
@@ -556,19 +588,22 @@ export async function listFinalizedClosures(
       if (cids.length === 0) {
         return { rows: [], total: 0, page: p, page_size: ps };
       }
-      const { data: convs, error: cvErr } = await supabase
-        .from("chat_conversations")
-        .select("id")
-        .eq("empresa_id", empresa_id)
-        .in("contact_id", cids)
-        .limit(2000);
-      if (cvErr) {
-        console.warn("[listFinalizedClosures] conversations by contact:", cvErr.message);
-      } else {
-        conversationIdFilter = (convs ?? []).map((x) => x.id as string).filter(Boolean);
-        if (conversationIdFilter.length === 0) {
-          return { rows: [], total: 0, page: p, page_size: ps };
+      const convs = await selectInChunks(cids, async (slice) => {
+        const { data, error } = await supabase
+          .from("chat_conversations")
+          .select("id")
+          .eq("empresa_id", empresa_id)
+          .in("contact_id", slice)
+          .limit(2000);
+        if (error) {
+          console.warn("[listFinalizedClosures] conversations by contact:", error.message);
+          return [];
         }
+        return (data ?? []) as { id: string }[];
+      });
+      conversationIdFilter = convs.map((x) => x.id).filter(Boolean);
+      if (conversationIdFilter.length === 0) {
+        return { rows: [], total: 0, page: p, page_size: ps };
       }
     }
   }
@@ -632,74 +667,99 @@ export async function listFinalizedClosures(
     }
   }
 
-  let countQuery = supabase
-    .from("chat_conversation_closures")
-    .select("id", { count: "exact", head: true })
-    .eq("empresa_id", empresa_id);
   const df = filters.date_from?.trim();
   const dt = filters.date_to?.trim();
-  if (df) countQuery = countQuery.gte("closed_at", startOfDayIso(df));
-  if (dt) countQuery = countQuery.lte("closed_at", endOfDayIso(dt));
-  if (filters.queue_id?.trim()) countQuery = countQuery.eq("queue_id", filters.queue_id.trim());
-  if (filters.closed_by_usuario_id?.trim()) {
-    countQuery = countQuery.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
-  }
-  if (filters.state_label?.trim()) countQuery = countQuery.eq("closure_state_label", filters.state_label.trim());
-  if (filters.substate_label?.trim()) {
-    countQuery = countQuery.eq("closure_substate_label", filters.substate_label.trim());
-  }
+
+  let total = 0;
+  let cl: ClosureRow[] = [];
+
   if (conversationIdFilter && conversationIdFilter.length > 0) {
-    countQuery = countQuery.in("conversation_id", conversationIdFilter);
-  }
-
-  const { count, error: cErr } = await countQuery;
-  if (cErr) {
-    if (isMissingClosureTable(cErr)) {
-      return { rows: [], total: 0, page: p, page_size: ps };
+    // Alcance acotado (asesor = sus finalizadas; o admin con búsqueda/filtro de canal): puede haber
+    // MUCHAS conversaciones. Traemos las closures en LOTES por conversation_id (evita URLs largas de
+    // PostgREST → 414 que rompía la vista) y paginamos en memoria, ordenando por closed_at desc.
+    const gathered: ClosureRow[] = [];
+    const seenIds = new Set<string>();
+    for (let i = 0; i < conversationIdFilter.length; i += ID_IN_CHUNK) {
+      const slice = conversationIdFilter.slice(i, i + ID_IN_CHUNK);
+      if (slice.length === 0) continue;
+      let q = supabase
+        .from("chat_conversation_closures")
+        .select(
+          "id, conversation_id, queue_id, closure_state_label, closure_substate_label, comment, closed_at, closed_by_usuario_id"
+        )
+        .eq("empresa_id", empresa_id)
+        .in("conversation_id", slice);
+      if (df) q = q.gte("closed_at", startOfDayIso(df));
+      if (dt) q = q.lte("closed_at", endOfDayIso(dt));
+      if (filters.queue_id?.trim()) q = q.eq("queue_id", filters.queue_id.trim());
+      if (filters.closed_by_usuario_id?.trim()) q = q.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
+      if (filters.state_label?.trim()) q = q.eq("closure_state_label", filters.state_label.trim());
+      if (filters.substate_label?.trim()) q = q.eq("closure_substate_label", filters.substate_label.trim());
+      const { data, error } = await q.limit(5000);
+      if (error) {
+        if (isMissingClosureTable(error)) return { rows: [], total: 0, page: p, page_size: ps };
+        throw new Error(error.message);
+      }
+      for (const r of (data ?? []) as ClosureRow[]) {
+        const id = String(r.id ?? "");
+        if (id && !seenIds.has(id)) {
+          seenIds.add(id);
+          gathered.push(r);
+        }
+      }
     }
-    throw new Error(cErr.message);
-  }
-  const total = count ?? 0;
-
-  let dataQuery = supabase
-    .from("chat_conversation_closures")
-    .select(
-      "id, conversation_id, queue_id, closure_state_label, closure_substate_label, comment, closed_at, closed_by_usuario_id"
-    )
-    .eq("empresa_id", empresa_id)
-    .order("closed_at", { ascending: false })
-    .range(from, to);
-  if (df) dataQuery = dataQuery.gte("closed_at", startOfDayIso(df));
-  if (dt) dataQuery = dataQuery.lte("closed_at", endOfDayIso(dt));
-  if (filters.queue_id?.trim()) dataQuery = dataQuery.eq("queue_id", filters.queue_id.trim());
-  if (filters.closed_by_usuario_id?.trim()) {
-    dataQuery = dataQuery.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
-  }
-  if (filters.state_label?.trim()) dataQuery = dataQuery.eq("closure_state_label", filters.state_label.trim());
-  if (filters.substate_label?.trim()) {
-    dataQuery = dataQuery.eq("closure_substate_label", filters.substate_label.trim());
-  }
-  if (conversationIdFilter && conversationIdFilter.length > 0) {
-    dataQuery = dataQuery.in("conversation_id", conversationIdFilter);
-  }
-
-  const { data: closures, error: dErr } = await dataQuery;
-  if (dErr) {
-    if (isMissingClosureTable(dErr)) {
-      return { rows: [], total: 0, page: p, page_size: ps };
+    gathered.sort((a, b) => String(b.closed_at ?? "").localeCompare(String(a.closed_at ?? "")));
+    total = gathered.length;
+    cl = gathered.slice(from, to + 1);
+  } else {
+    // Admin / bypass sin filtro de conversaciones: count + range directo (una sola query).
+    let countQuery = supabase
+      .from("chat_conversation_closures")
+      .select("id", { count: "exact", head: true })
+      .eq("empresa_id", empresa_id);
+    if (df) countQuery = countQuery.gte("closed_at", startOfDayIso(df));
+    if (dt) countQuery = countQuery.lte("closed_at", endOfDayIso(dt));
+    if (filters.queue_id?.trim()) countQuery = countQuery.eq("queue_id", filters.queue_id.trim());
+    if (filters.closed_by_usuario_id?.trim()) {
+      countQuery = countQuery.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
     }
-    throw new Error(dErr.message);
+    if (filters.state_label?.trim()) countQuery = countQuery.eq("closure_state_label", filters.state_label.trim());
+    if (filters.substate_label?.trim()) {
+      countQuery = countQuery.eq("closure_substate_label", filters.substate_label.trim());
+    }
+    const { count, error: cErr } = await countQuery;
+    if (cErr) {
+      if (isMissingClosureTable(cErr)) return { rows: [], total: 0, page: p, page_size: ps };
+      throw new Error(cErr.message);
+    }
+    total = count ?? 0;
+
+    let dataQuery = supabase
+      .from("chat_conversation_closures")
+      .select(
+        "id, conversation_id, queue_id, closure_state_label, closure_substate_label, comment, closed_at, closed_by_usuario_id"
+      )
+      .eq("empresa_id", empresa_id)
+      .order("closed_at", { ascending: false })
+      .range(from, to);
+    if (df) dataQuery = dataQuery.gte("closed_at", startOfDayIso(df));
+    if (dt) dataQuery = dataQuery.lte("closed_at", endOfDayIso(dt));
+    if (filters.queue_id?.trim()) dataQuery = dataQuery.eq("queue_id", filters.queue_id.trim());
+    if (filters.closed_by_usuario_id?.trim()) {
+      dataQuery = dataQuery.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
+    }
+    if (filters.state_label?.trim()) dataQuery = dataQuery.eq("closure_state_label", filters.state_label.trim());
+    if (filters.substate_label?.trim()) {
+      dataQuery = dataQuery.eq("closure_substate_label", filters.substate_label.trim());
+    }
+    const { data: closures, error: dErr } = await dataQuery;
+    if (dErr) {
+      if (isMissingClosureTable(dErr)) return { rows: [], total: 0, page: p, page_size: ps };
+      throw new Error(dErr.message);
+    }
+    cl = (closures ?? []) as ClosureRow[];
   }
-  const cl = (closures ?? []) as {
-    id: string;
-    conversation_id: string;
-    queue_id: string | null;
-    closure_state_label: string;
-    closure_substate_label: string;
-    comment: string;
-    closed_at: string;
-    closed_by_usuario_id: string;
-  }[];
+
   if (cl.length === 0) {
     return { rows: [], total, page: p, page_size: ps };
   }
@@ -707,39 +767,42 @@ export async function listFinalizedClosures(
   const convIds = [...new Set(cl.map((c) => c.conversation_id).filter(Boolean))];
   const queueIds = [...new Set(cl.map((c) => c.queue_id).filter(Boolean) as string[])];
 
-  const { data: convRows, error: convErr } = await supabase
-    .from("chat_conversations")
-    .select("id, contact_id, channel_id, last_message_preview, assigned_agent_id")
-    .eq("empresa_id", empresa_id)
-    .in("id", convIds);
-  if (convErr) throw new Error(convErr.message);
-  const convById = new Map(
-    (convRows ?? []).map((r) => {
-      const row = r as {
-        id: string;
-        contact_id: string;
-        channel_id: string;
-        last_message_preview: string | null;
-        assigned_agent_id: string | null;
-      };
-      return [row.id, row] as const;
-    })
-  );
+  const convRows = await selectInChunks(convIds, async (slice) => {
+    const { data, error } = await supabase
+      .from("chat_conversations")
+      .select("id, contact_id, channel_id, last_message_preview, assigned_agent_id")
+      .eq("empresa_id", empresa_id)
+      .in("id", slice);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as {
+      id: string;
+      contact_id: string;
+      channel_id: string;
+      last_message_preview: string | null;
+      assigned_agent_id: string | null;
+    }[];
+  });
+  const convById = new Map(convRows.map((row) => [row.id, row] as const));
 
   const assignedFkIds = [
     ...new Set([...convById.values()].map((c) => c.assigned_agent_id).filter(Boolean) as string[]),
   ];
   const chatAgentIdToUsuarioId = new Map<string, string>();
   if (assignedFkIds.length > 0) {
-    const { data: caJoin, error: cjErr } = await supabase
-      .from("chat_agents")
-      .select("id, usuario_id")
-      .eq("empresa_id", empresa_id)
-      .in("id", assignedFkIds);
-    if (!cjErr && caJoin) {
-      for (const r of caJoin as { id: string; usuario_id: string }[]) {
-        if (r.id && r.usuario_id) chatAgentIdToUsuarioId.set(r.id, r.usuario_id);
+    const caJoin = await selectInChunks(assignedFkIds, async (slice) => {
+      const { data, error } = await supabase
+        .from("chat_agents")
+        .select("id, usuario_id")
+        .eq("empresa_id", empresa_id)
+        .in("id", slice);
+      if (error) {
+        console.warn("[listFinalizedClosures] chat_agents join:", error.message);
+        return [];
       }
+      return (data ?? []) as { id: string; usuario_id: string }[];
+    });
+    for (const r of caJoin) {
+      if (r.id && r.usuario_id) chatAgentIdToUsuarioId.set(r.id, r.usuario_id);
     }
   }
 
@@ -756,60 +819,61 @@ export async function listFinalizedClosures(
   const contactIds = [...new Set([...convById.values()].map((c) => c.contact_id).filter(Boolean))];
   const channelIds = [...new Set([...convById.values()].map((c) => c.channel_id).filter(Boolean))];
 
-  const { data: contacts, error: coErr } = await supabase
-    .from("chat_contacts")
-    .select("id, name, phone_number")
-    .eq("empresa_id", empresa_id)
-    .in("id", contactIds);
-  if (coErr) throw new Error(coErr.message);
-  const contactById = new Map(
-    (contacts ?? []).map((r) => {
-      const row = r as { id: string; name: string | null; phone_number: string | null };
-      return [row.id, row] as const;
-    })
-  );
+  const contacts = await selectInChunks(contactIds, async (slice) => {
+    const { data, error } = await supabase
+      .from("chat_contacts")
+      .select("id, name, phone_number")
+      .eq("empresa_id", empresa_id)
+      .in("id", slice);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as { id: string; name: string | null; phone_number: string | null }[];
+  });
+  const contactById = new Map(contacts.map((row) => [row.id, row] as const));
 
-  const { data: chRows, error: chErr } = await supabase
-    .from("chat_channels")
-    .select("id, type, nombre")
-    .eq("empresa_id", empresa_id)
-    .in("id", channelIds);
-  if (chErr) throw new Error(chErr.message);
-  const channelById = new Map(
-    (chRows ?? []).map((r) => {
-      const row = r as { id: string; type: string | null; nombre: string | null };
-      return [row.id, row] as const;
-    })
-  );
+  const chRows = await selectInChunks(channelIds, async (slice) => {
+    const { data, error } = await supabase
+      .from("chat_channels")
+      .select("id, type, nombre")
+      .eq("empresa_id", empresa_id)
+      .in("id", slice);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as { id: string; type: string | null; nombre: string | null }[];
+  });
+  const channelById = new Map(chRows.map((row) => [row.id, row] as const));
 
   let queueById = new Map<string, string>();
   if (queueIds.length > 0) {
-    const { data: qrows, error: qErr } = await supabase
-      .from("chat_queues")
-      .select("id, nombre")
-      .eq("empresa_id", empresa_id)
-      .in("id", queueIds);
-    if (!qErr && qrows) {
-      queueById = new Map(
-        (qrows as { id: string; nombre?: string | null }[]).map((r) => [r.id, String(r.nombre ?? "")] as const)
-      );
-    }
+    const qrows = await selectInChunks(queueIds, async (slice) => {
+      const { data, error } = await supabase
+        .from("chat_queues")
+        .select("id, nombre")
+        .eq("empresa_id", empresa_id)
+        .in("id", slice);
+      if (error) {
+        console.warn("[listFinalizedClosures] chat_queues:", error.message);
+        return [];
+      }
+      return (data ?? []) as { id: string; nombre?: string | null }[];
+    });
+    queueById = new Map(qrows.map((r) => [r.id, String(r.nombre ?? "")] as const));
   }
 
   let usuarioNombre = new Map<string, string>();
   if (agentIds.length > 0) {
-    const { data: urows, error: uErr } = await catalogSr
-      .from("usuarios")
-      .select("id, nombre, email")
-      .in("id", agentIds);
-    if (!uErr && urows) {
-      usuarioNombre = new Map(
-        (urows as { id: string; nombre?: string | null; email?: string | null }[]).map((u) => [
-          u.id,
-          (u.nombre?.trim() || u.email?.trim() || "—") as string,
-        ])
-      );
-    }
+    const urows = await selectInChunks(agentIds, async (slice) => {
+      const { data, error } = await catalogSr
+        .from("usuarios")
+        .select("id, nombre, email")
+        .in("id", slice);
+      if (error) {
+        console.warn("[listFinalizedClosures] usuarios:", error.message);
+        return [];
+      }
+      return (data ?? []) as { id: string; nombre?: string | null; email?: string | null }[];
+    });
+    usuarioNombre = new Map(
+      urows.map((u) => [u.id, (u.nombre?.trim() || u.email?.trim() || "—") as string] as const)
+    );
   }
 
   const rows: FinalizedClosureListRow[] = cl.map((row) => {

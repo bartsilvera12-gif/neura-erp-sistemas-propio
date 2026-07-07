@@ -14,6 +14,7 @@
  */
 import { NextRequest } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
+import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers";
 import { assignConversation } from "@/lib/chat/assign-conversation-service";
 import { saveIncomingMessage } from "@/lib/chat/incoming-message-service";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
@@ -288,6 +289,22 @@ export async function POST(request: NextRequest) {
       }
     } else {
       console.info(LOG, LOG_IN, "echo_smb_sin_autoasignación", { conversation_id: conversationId });
+    }
+  }
+
+  // Eco SMB = mensaje que el asesor mandó DESDE EL CELULAR (coexistencia). Es una respuesta
+  // humana → marca la primera respuesta humana de la conversación (idempotente: solo si estaba
+  // NULL). Sin esto, un chat respondido desde el celu quedaba flageado para siempre como "sin
+  // primera respuesta humana" en Monitoreo.
+  if (mode === "smb_echo" && conversationId) {
+    try {
+      const sb = (await getChatServiceClientForEmpresa(resolved.empresa_id)) as unknown as SupabaseAdmin;
+      await markFirstHumanOperatorReply(sb, resolved.empresa_id, conversationId, {
+        from_me: true,
+        sender_type: "human",
+      });
+    } catch (e) {
+      console.warn(LOG, LOG_IN, "mark_first_human_reply_echo_falló", e instanceof Error ? e.message : String(e));
     }
   }
 

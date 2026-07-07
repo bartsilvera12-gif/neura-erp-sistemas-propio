@@ -35,6 +35,23 @@ export default function MAsesorInboxPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [isAgent, setIsAgent] = useState(true);
+  const [q, setQ] = useState("");
+
+  const filtered = (() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return convs;
+    const digits = term.replace(/\D/g, "");
+    return convs.filter((c) => {
+      const nombre = (c.contact_nombre ?? "").toLowerCase();
+      const tel = (c.contact_telefono ?? "").toLowerCase();
+      const telDigits = tel.replace(/\D/g, "");
+      return (
+        nombre.includes(term) ||
+        tel.includes(term) ||
+        (digits.length >= 3 && telDigits.includes(digits))
+      );
+    });
+  })();
 
   const load = useCallback(async (silent?: boolean) => {
     if (!silent) setLoading(true);
@@ -72,6 +89,15 @@ export default function MAsesorInboxPage() {
       <header className="sticky top-0 z-10 bg-[#3F8E91] text-white px-4 py-3 shadow-sm">
         <h1 className="text-base font-semibold">Mis conversaciones</h1>
         <p className="text-[11px] text-white/80">Contact Center · Neura</p>
+        <input
+          type="search"
+          inputMode="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por nombre o número…"
+          className="mt-2 w-full rounded-xl border border-white/20 bg-white/95 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-white/40"
+          aria-label="Buscar conversación"
+        />
       </header>
 
       <main className="flex-1 overflow-y-auto">
@@ -90,9 +116,11 @@ export default function MAsesorInboxPage() {
           </div>
         ) : convs.length === 0 ? (
           <div className="p-6 text-center text-slate-500 text-sm">No tenés conversaciones asignadas.</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-6 text-center text-slate-500 text-sm">Sin resultados para “{q.trim()}”.</div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {convs.map((c) => {
+            {filtered.map((c) => {
               const title = c.contact_nombre || c.contact_telefono || "Contacto";
               return (
                 <li key={c.id}>

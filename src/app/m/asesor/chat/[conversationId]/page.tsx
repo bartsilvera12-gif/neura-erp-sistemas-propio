@@ -28,10 +28,51 @@ type Msg = {
 type Pending = {
   tempId: string;
   status: "sending" | "error";
-  kind: "text" | "audio";
+  kind: "text" | "audio" | "file";
   content: string;
   file?: File;
 };
+
+/** Raíz del mensaje dentro del raw_payload (envelope YCloud o Meta directo). */
+function messageRoot(raw: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const wim = raw["whatsappInboundMessage"];
+  if (wim && typeof wim === "object") return wim as Record<string, unknown>;
+  const wm = raw["whatsappMessage"];
+  if (wm && typeof wm === "object") return wm as Record<string, unknown>;
+  return raw as Record<string, unknown>;
+}
+
+/** Contacto(s) compartido(s): nombre + teléfono. */
+function extractContacts(raw: Record<string, unknown> | null | undefined): { name: string; phone: string }[] {
+  const root = messageRoot(raw);
+  const arr = root?.["contacts"];
+  if (!Array.isArray(arr)) return [];
+  return arr.map((c) => {
+    const o = (c ?? {}) as Record<string, unknown>;
+    const nameObj = (o.name ?? {}) as Record<string, unknown>;
+    const name =
+      String(nameObj.formatted_name ?? nameObj.first_name ?? "").trim() || "Contacto";
+    const phones = Array.isArray(o.phones) ? (o.phones as Record<string, unknown>[]) : [];
+    const phone = String(phones[0]?.phone ?? phones[0]?.wa_id ?? "").trim();
+    return { name, phone };
+  });
+}
+
+/** Ubicación compartida: link a mapa + etiqueta. */
+function extractLocation(
+  raw: Record<string, unknown> | null | undefined
+): { lat: number; lng: number; label: string } | null {
+  const root = messageRoot(raw);
+  const loc = root?.["location"];
+  if (!loc || typeof loc !== "object") return null;
+  const o = loc as Record<string, unknown>;
+  const lat = Number(o.latitude);
+  const lng = Number(o.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const label = String(o.name ?? o.address ?? "").trim();
+  return { lat, lng, label };
+}
 
 type Tpl = {
   id: string;
@@ -76,6 +117,49 @@ function MessageBody({ m }: { m: Msg }) {
       <span className="italic opacity-80">[imagen]</span>
     );
   }
+  if (m.message_type === "video") {
+    return url ? (
+      <video src={url} controls preload="metadata" className="max-w-[220px] rounded-lg" />
+    ) : (
+      <span className="italic opacity-80">[video]</span>
+    );
+  }
+  if (m.message_type === "contacts") {
+    const cs = extractContacts(m.raw_payload);
+    if (cs.length === 0) return <span className="italic opacity-80">[contacto]</span>;
+    return (
+      <div className="space-y-1">
+        {cs.map((c, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-200 text-sm">👤</span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold truncate">{c.name}</div>
+              {c.phone ? (
+                <a href={`tel:${c.phone.replace(/\s+/g, "")}`} className="text-[12px] underline break-all">
+                  {c.phone}
+                </a>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (m.message_type === "location") {
+    const loc = extractLocation(m.raw_payload);
+    if (!loc) return <span className="italic opacity-80">[ubicación]</span>;
+    return (
+      <a
+        href={`https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-2 underline"
+      >
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-200 text-sm">📍</span>
+        <span className="text-sm">{loc.label || "Ver ubicación en el mapa"}</span>
+      </a>
+    );
+  }
   return url ? (
     <a href={url} target="_blank" rel="noreferrer" className="break-all underline">
       [{m.message_type}]
@@ -113,6 +197,7 @@ export default function MAsesorChatPage() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -279,6 +364,19 @@ export default function MAsesorChatPage() {
       const tempId = `tmp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
       setSendErr(null);
       setPending((p) => [...p, { tempId, kind: "audio", content: "Nota de voz", file, status: "sending" }]);
+      deliverAudio(tempId, file);
+    },
+    [deliverAudio]
+  );
+
+  // Imagen / video: mismo endpoint de media (detecta el tipo por el archivo). Optimista.
+  const sendFile = useCallback(
+    (file: File) => {
+      if (!file || file.size < 1) return;
+      const tempId = `tmp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+      setSendErr(null);
+      const label = file.type.startsWith("video/") ? "📹 Video" : file.type.startsWith("image/") ? "🖼️ Imagen" : "📎 Archivo";
+      setPending((p) => [...p, { tempId, kind: "file", content: label, file, status: "sending" }]);
       deliverAudio(tempId, file);
     },
     [deliverAudio]
@@ -553,6 +651,25 @@ export default function MAsesorChatPage() {
               </div>
             ) : null}
             <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) sendFile(f);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Adjuntar imagen o video"
+                className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-xl text-slate-500 active:bg-slate-100"
+              >
+                📎
+              </button>
               <button
                 type="button"
                 onClick={() => setShowEmoji((v) => !v)}

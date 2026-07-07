@@ -262,6 +262,7 @@ function parseInboxFilters(sp: URLSearchParams): ChatInboxFilters | undefined {
     rawA === "mios" ? "mine" : rawA === "sin_asignar" ? "unassigned" : "all";
   const queue_id = sp.get("cola")?.trim() || null;
   const channel_id = sp.get("canal")?.trim() || null;
+  const assigned_agent_id = sp.get("asesor")?.trim() || null;
   const statusRaw = sp.get("estado")?.trim().toLowerCase() || null;
   const priorityRaw = sp.get("prioridad")?.trim().toLowerCase() || null;
   const status =
@@ -271,6 +272,7 @@ function parseInboxFilters(sp: URLSearchParams): ChatInboxFilters | undefined {
   const has =
     assignment !== "all" ||
     (queue_id && queue_id.length > 0) ||
+    (assigned_agent_id && assigned_agent_id.length > 0) ||
     status !== null ||
     priority !== null ||
     (channel_id && channel_id.length > 0);
@@ -278,6 +280,7 @@ function parseInboxFilters(sp: URLSearchParams): ChatInboxFilters | undefined {
   return {
     assignment,
     queue_id: queue_id && queue_id.length > 0 ? queue_id : null,
+    assigned_agent_id: assigned_agent_id && assigned_agent_id.length > 0 ? assigned_agent_id : null,
     status,
     priority,
     channel_id: channel_id && channel_id.length > 0 ? channel_id : null,
@@ -374,6 +377,9 @@ export function ConversacionesClient({
     initialOmnicanalRole !== "admin" &&
     initialOmnicanalRole !== "supervisor" &&
     Boolean(initialOperationalPresence?.in_queues);
+  // Admin: en vez del filtro "Asignación" (que no le aporta) mostramos un selector de asesores
+  // para ver los chats de un agente puntual.
+  const esAdmin = initialCabeceraInsignia === "admin" || initialOmnicanalRole === "admin";
   const supabaseChat = useMemo(
     () => createBrowserClientForSchema(chatDataSchema),
     [chatDataSchema]
@@ -534,9 +540,13 @@ export function ConversacionesClient({
   const [pendingCanal, setPendingCanal] = useState<string | null>(null);
   const [pendingCola, setPendingCola] = useState<string | null>(null);
   const [pendingAsignacion, setPendingAsignacion] = useState<string | null>(null);
+  const [pendingAsesor, setPendingAsesor] = useState<string | null>(null);
+  /** Lista de asesores para el filtro del admin (id = chat_agent id = assigned_agent_id). */
+  const [inboxAgents, setInboxAgents] = useState<{ id: string; nombre: string }[]>([]);
 
   const urlCanal = searchParams?.get("canal")?.trim() ?? "";
   const urlCola = searchParams?.get("cola")?.trim() ?? "";
+  const urlAsesor = searchParams?.get("asesor")?.trim() ?? "";
   const urlAsignacionRaw = searchParams?.get("asignacion")?.trim();
   const urlAsignacion =
     urlAsignacionRaw === "mios" ? "mios" : urlAsignacionRaw === "sin_asignar" ? "sin_asignar" : "";
@@ -544,6 +554,7 @@ export function ConversacionesClient({
   const displayCanal = pendingCanal !== null ? pendingCanal : urlCanal;
   const displayCola = pendingCola !== null ? pendingCola : urlCola;
   const displayAsignacion = pendingAsignacion !== null ? pendingAsignacion : urlAsignacion;
+  const displayAsesor = pendingAsesor !== null ? pendingAsesor : urlAsesor;
 
   useEffect(() => {
     if (pendingCanal !== null && pendingCanal === urlCanal) setPendingCanal(null);
@@ -554,6 +565,37 @@ export function ConversacionesClient({
   useEffect(() => {
     if (pendingAsignacion !== null && pendingAsignacion === urlAsignacion) setPendingAsignacion(null);
   }, [pendingAsignacion, urlAsignacion]);
+  useEffect(() => {
+    if (pendingAsesor !== null && pendingAsesor === urlAsesor) setPendingAsesor(null);
+  }, [pendingAsesor, urlAsesor]);
+
+  // Admin: cargar la lista de asesores (agentes) para el filtro. Reusa la misma fuente que el
+  // modal de Transferir (id = chat_agent id = assigned_agent_id), deduplicada por agente.
+  useEffect(() => {
+    if (!esAdmin) return;
+    let cancelled = false;
+    void fetchTransferTargetAgents()
+      .then((rows) => {
+        if (cancelled) return;
+        const seen = new Set<string>();
+        const uniq: { id: string; nombre: string }[] = [];
+        for (const r of rows) {
+          const id = String((r as { id?: string }).id ?? "").trim();
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          const nombre = String((r as { nombre?: string }).nombre ?? "").trim();
+          uniq.push({ id, nombre: nombre || id.slice(0, 8) });
+        }
+        uniq.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+        setInboxAgents(uniq);
+      })
+      .catch(() => {
+        if (!cancelled) setInboxAgents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [esAdmin]);
 
   /** Si la URL corrige un canal inválido (p. ej. ya no existe), alinear UI optimista. */
   useEffect(() => {
@@ -2609,18 +2651,36 @@ export function ConversacionesClient({
                   backgroundImage:
                     "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234FAEB2' stroke-width='2.5'><path stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/></svg>\")",
                 }}
-                value={displayAsignacion}
+                value={esAdmin ? displayAsesor : displayAsignacion}
                 onChange={(e) => {
                   const v = e.target.value;
-                  setPendingAsignacion(v === "" ? "" : v);
-                  patchInboxQuery({ asignacion: v === "" ? null : v });
+                  if (esAdmin) {
+                    setPendingAsesor(v === "" ? "" : v);
+                    patchInboxQuery({ asesor: v === "" ? null : v });
+                  } else {
+                    setPendingAsignacion(v === "" ? "" : v);
+                    patchInboxQuery({ asignacion: v === "" ? null : v });
+                  }
                 }}
-                aria-label="Filtrar por asignación"
-                title="Asignación"
+                aria-label={esAdmin ? "Filtrar por asesor" : "Filtrar por asignación"}
+                title={esAdmin ? "Asesor" : "Asignación"}
               >
-                <option value="">Asignación: todas</option>
-                {opInQueues ? <option value="mios">Asignadas a mí</option> : null}
-                <option value="sin_asignar">Sin asignar</option>
+                {esAdmin ? (
+                  <>
+                    <option value="">Todos los asesores</option>
+                    {inboxAgents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.nombre}
+                      </option>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <option value="">Asignación: todas</option>
+                    {opInQueues ? <option value="mios">Asignadas a mí</option> : null}
+                    <option value="sin_asignar">Sin asignar</option>
+                  </>
+                )}
               </select>
             </>
           ) : null}

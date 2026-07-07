@@ -349,6 +349,15 @@ export async function fetchChatConversationsFromTenantPg(
     whereParts.push(`assigned_agent_id IS NULL`);
   }
 
+  // Filtro por asesor (admin): chats de ese agente. El alcance omnicanal se aplica igual más abajo
+  // para no-admin, así que no expone conversaciones fuera de scope.
+  const fAgent = filters?.assigned_agent_id?.trim();
+  if (fAgent) {
+    whereParts.push(`assigned_agent_id = $${pi}::uuid`);
+    params.push(fAgent);
+    pi++;
+  }
+
   const fq = filters?.queue_id?.trim();
   if (fq) {
     let queueOk = true;

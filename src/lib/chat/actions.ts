@@ -95,6 +95,12 @@ export type ChatInboxFilters = {
   /** Filtro opcional por `chat_conversations.channel_id` (UUID). */
   channel_id?: string | null;
   /**
+   * Filtro opcional por agente asignado (`chat_conversations.assigned_agent_id`, UUID de chat_agents).
+   * Pensado para el ADMIN (ver los chats de un asesor puntual). El alcance omnicanal se sigue
+   * aplicando para no-admin.
+   */
+  assigned_agent_id?: string | null;
+  /**
    * Paginación por "ventana creciente": trae las primeras `limit` conversaciones del alcance
    * (ordenadas por actividad). "Cargar más" en el cliente incrementa `limit`. Default 50.
    */
@@ -510,6 +516,13 @@ async function fetchChatConversationsUnsafe(
       }
     } else if (assignment === "unassigned") {
       qb = qb.is("assigned_agent_id", null);
+    }
+
+    // Filtro por asesor (admin): trae los chats de ese agente. El alcance omnicanal sigue
+    // aplicándose para no-admin (más abajo), así que no expone conversaciones fuera de scope.
+    const fAgent = filters?.assigned_agent_id?.trim();
+    if (fAgent) {
+      qb = qb.eq("assigned_agent_id", fAgent);
     }
 
     const fq = filters?.queue_id?.trim();

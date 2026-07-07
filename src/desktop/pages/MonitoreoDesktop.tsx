@@ -12,6 +12,21 @@ import {
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { assignmentWaitBadge, assignmentWaitBadgeClass } from "@/lib/chat/inbox-assignment-labels";
 import { ArrowLeftRight, Eye, Flame } from "lucide-react";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import {
+  attachmentCaptionForDisplay,
+  getErpAttachmentPublicUrl,
+  getWhatsAppMediaUrlFromRawPayload,
+} from "@/lib/chat/message-erp-display";
+
+type MonitorChatMsg = {
+  id: string;
+  from_me: boolean;
+  message_type: string;
+  content: string | null;
+  created_at: string;
+  raw_payload?: Record<string, unknown> | null;
+};
 
 /** `formatWaitHuman` depende de `Date.now()`; sin re-render el monitoreo mostraba tiempos “congelados”. */
 function buildMonitoreoInboxHref(row: MonitoringUnassignedRow, opts: { transferir?: boolean }) {
@@ -154,6 +169,37 @@ export default function MonitoreoPage() {
   useEffect(() => {
     void load(leadDate);
   }, [load, leadDate]);
+
+  // Popup de lectura de una conversación (sin salir del monitoreo, sin abrir pestañas).
+  const [chatModal, setChatModal] = useState<{ id: string; name: string; phone: string | null } | null>(null);
+  const [chatMsgs, setChatMsgs] = useState<MonitorChatMsg[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatErr, setChatErr] = useState<string | null>(null);
+
+  const openChat = useCallback((it: { conversation_id: string; contact_name?: string | null; contact_phone?: string | null }) => {
+    const name = it.contact_name?.trim() || it.contact_phone || "Contacto sin datos";
+    setChatModal({ id: it.conversation_id, name, phone: it.contact_phone ?? null });
+    setChatMsgs([]);
+    setChatErr(null);
+    setChatLoading(true);
+    void (async () => {
+      try {
+        const res = await fetchWithSupabaseSession(
+          `/api/chat/messages?conversation_id=${encodeURIComponent(it.conversation_id)}`,
+          { cache: "no-store" }
+        );
+        const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: MonitorChatMsg[] };
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          throw new Error("No se pudieron cargar los mensajes");
+        }
+        setChatMsgs(json.data);
+      } catch (e) {
+        setChatErr(e instanceof Error ? e.message : "Error al cargar la conversación");
+      } finally {
+        setChatLoading(false);
+      }
+    })();
+  }, []);
 
   return (
     <div className="flex flex-col gap-6 pb-10">
@@ -575,19 +621,19 @@ export default function MonitoreoPage() {
                       {g.items.map((it) => {
                         const displayName = it.contact_name?.trim() || it.contact_phone || "Contacto sin datos";
                         const showPhoneLine = Boolean(it.contact_phone && it.contact_name?.trim());
-                        const chatHref = `/dashboard/conversaciones?conversationId=${encodeURIComponent(it.conversation_id)}`;
                         return (
                         <div
                           key={it.conversation_id}
                           className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs"
                         >
                           <div className="min-w-0 flex-1">
-                            <Link
-                              href={chatHref}
-                              className="block truncate text-sm font-semibold text-[#3F8E91] hover:underline"
+                            <button
+                              type="button"
+                              onClick={() => openChat(it)}
+                              className="block truncate text-left text-sm font-semibold text-[#3F8E91] hover:underline"
                             >
                               {displayName}
-                            </Link>
+                            </button>
                             {showPhoneLine ? (
                               <p className="truncate font-mono text-[11px] tabular-nums text-slate-500">
                                 {it.contact_phone}
@@ -609,16 +655,15 @@ export default function MonitoreoPage() {
                                 </p>
                               ) : null}
                             </div>
-                            <Link
-                              href={chatHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => openChat(it)}
                               className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5 hover:text-[#3F8E91]"
-                              title="Ver el chat en una nueva pestaña"
-                              aria-label="Ver el chat en una nueva pestaña"
+                              title="Leer el chat"
+                              aria-label="Leer el chat"
                             >
                               <Eye className="h-4 w-4" aria-hidden />
-                            </Link>
+                            </button>
                           </div>
                         </div>
                         );
@@ -850,6 +895,82 @@ export default function MonitoreoPage() {
           </div>
         )}
       </section>
+
+      {chatModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setChatModal(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{chatModal.name}</p>
+                {chatModal.phone ? (
+                  <p className="truncate font-mono text-[11px] text-slate-500">{chatModal.phone}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setChatModal(null)}
+                className="text-lg text-slate-400 hover:text-slate-600"
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50 px-3 py-3">
+              {chatLoading ? (
+                <p className="py-8 text-center text-sm text-slate-400">Cargando…</p>
+              ) : chatErr ? (
+                <p className="py-8 text-center text-sm text-red-600">{chatErr}</p>
+              ) : chatMsgs.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-500">Sin mensajes.</p>
+              ) : (
+                chatMsgs.map((m) => {
+                  const url =
+                    getErpAttachmentPublicUrl(m.raw_payload) ?? getWhatsAppMediaUrlFromRawPayload(m.raw_payload);
+                  const cap = attachmentCaptionForDisplay(m.content);
+                  return (
+                    <div key={m.id} className={`flex ${m.from_me ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-3 py-2 text-[13px] leading-snug ${
+                          m.from_me
+                            ? "rounded-br-md bg-[#4FAEB2] text-white"
+                            : "rounded-bl-md border border-slate-200 bg-white text-slate-800"
+                        }`}
+                      >
+                        {m.message_type === "image" && url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={url} alt="imagen" className="max-h-48 rounded-lg" />
+                        ) : m.message_type === "audio" && url ? (
+                          <audio controls src={url} preload="metadata" className="h-8 max-w-[240px]" />
+                        ) : m.message_type === "video" && url ? (
+                          <video src={url} controls preload="metadata" className="max-h-48 rounded-lg" />
+                        ) : cap ? (
+                          <p className="whitespace-pre-wrap break-words">{cap}</p>
+                        ) : (
+                          <p className="italic opacity-70">[{m.message_type}]</p>
+                        )}
+                        <p className={`mt-1 text-[10px] ${m.from_me ? "text-sky-100" : "text-slate-400"}`}>
+                          {new Date(m.created_at).toLocaleString("es-PY", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

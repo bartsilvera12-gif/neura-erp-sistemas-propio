@@ -127,9 +127,9 @@ export async function sendYCloudWhatsappMediaViaLink(params: {
   } else if (kind === "video") {
     if (cap) mediaPayload = { link, caption: cap };
   } else if (kind === "audio") {
-    // `voice: true` → WhatsApp lo entrega como NOTA DE VOZ nativa (reproducible), no como
-    // adjunto de audio genérico. Requiere ogg/opus (el archivo ya se remuxea a eso).
-    mediaPayload = { link, voice: true };
+    // AUDIO NORMAL (sin `voice:true`). Las notas de voz por API son inestables para reproducir
+    // en el cliente; el audio normal (mp3) se descarga y se reproduce siempre.
+    mediaPayload = { link };
   }
 
   return postYCloudWhatsappMessage(params.apiKey, {
@@ -195,8 +195,8 @@ export async function uploadYCloudWhatsappMedia(params: {
 
 /**
  * Envía audio referenciando un MEDIA ID ya subido (ver `uploadYCloudWhatsappMedia`).
- * `voice: true` → nota de voz nativa reproducible. Camino preferido para audio (más estable
- * que el link).
+ * Por defecto = AUDIO NORMAL (más confiable de reproducir). `voice: true` lo enviaría como nota
+ * de voz PTT, pero esas son inestables del lado del cliente por la API — no usar salvo necesidad.
  */
 export async function sendYCloudWhatsappAudioById(params: {
   apiKey: string;
@@ -209,11 +209,15 @@ export async function sendYCloudWhatsappAudioById(params: {
   if (!toE164) {
     return { ok: false, error: "Teléfono de destino inválido para YCloud" };
   }
+  const audio: Record<string, unknown> = { id: params.mediaId };
+  // Solo marcamos nota de voz si se pide explícitamente. Por defecto = audio normal (mp3),
+  // más confiable de reproducir del lado del cliente.
+  if (params.voice) audio.voice = true;
   return postYCloudWhatsappMessage(params.apiKey, {
     from: params.fromE164,
     to: toE164,
     type: "audio",
-    audio: { id: params.mediaId, voice: params.voice ?? true },
+    audio,
   });
 }
 

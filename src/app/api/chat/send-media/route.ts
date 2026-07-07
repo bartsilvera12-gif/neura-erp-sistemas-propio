@@ -36,21 +36,22 @@ function safeFileName(name: string): string {
 }
 
 /**
- * Convierte nota de voz webm/opus -> ogg/opus RE-ENCODANDO (formato que WhatsApp reproduce).
+ * Convierte el audio grabado (webm/opus) -> MP3 (audio/mpeg) para enviarlo como AUDIO NORMAL
+ * (no nota de voz).
  *
- * IMPORTANTE: NO se usa `-c:a copy`. Copiar el stream Opus de webm a un contenedor ogg produce
- * un archivo que WhatsApp ACEPTA (status "accepted") pero que el RECEPTOR no puede reproducir
- * ("audio no disponible") — el paginado/pre-skip queda mal formado (pre-skip 0). Re-encodear
- * con libopus mono 48kHz (`-application voip`) genera un ogg/opus correctamente paginado que
- * WhatsApp entrega como nota de voz reproducible. +1-2s por audio, imperceptible.
+ * Por qué MP3 y no ogg/opus con voice:true: las NOTAS DE VOZ enviadas por la API de WhatsApp
+ * (`voice: true`) son inestables del lado del receptor — aunque se entreguen (status delivered/
+ * read), a muchos clientes les muestra "Este audio ya no está disponible" al reproducir. El MP3
+ * como audio normal se descarga al teléfono del cliente y queda reproducible de forma confiable
+ * (pierde la onda de "nota de voz", pero SIEMPRE se escucha). Mono 64k es más que suficiente para voz.
  *
- * Usa execFile con args array (sin shell) y archivos temporales con nombres propios (no del
- * usuario). Lanza si ffmpeg no está disponible o no produce salida → el caller NO envía webm.
+ * Usa execFile con args array (sin shell) y archivos temporales con nombres propios. Lanza si
+ * ffmpeg no está disponible o no produce salida → el caller NO envía el webm crudo.
  */
-async function remuxWebmOpusToOgg(input: Buffer): Promise<Buffer> {
+async function transcodeAudioToMp3(input: Buffer): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "ccaudio-"));
   const inPath = join(dir, "in.webm");
-  const outPath = join(dir, "out.ogg");
+  const outPath = join(dir, "out.mp3");
   try {
     await writeFile(inPath, input);
     await execFileAsync(
@@ -59,13 +60,13 @@ async function remuxWebmOpusToOgg(input: Buffer): Promise<Buffer> {
         "-y", "-hide_banner", "-loglevel", "error",
         "-i", inPath,
         "-vn",
-        "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1", "-application", "voip",
-        "-f", "ogg", outPath,
+        "-c:a", "libmp3lame", "-b:a", "64k", "-ar", "44100", "-ac", "1",
+        "-f", "mp3", outPath,
       ],
       { timeout: 60000 }
     );
     const out = await readFile(outPath);
-    if (!out || out.length < 1) throw new Error("ffmpeg produjo un OGG vacío");
+    if (!out || out.length < 1) throw new Error("ffmpeg produjo un MP3 vacío");
     return out;
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -179,29 +180,27 @@ export async function POST(request: NextRequest) {
     let origName = safeFileName(file.name || "archivo");
     let uploadMime = file.type || "application/octet-stream";
 
-    // WhatsApp NO acepta audio webm. Si la nota de voz llega en webm/opus (MediaRecorder
-    // Android/WebView), remux a ogg/opus antes de subir + enviar. Otros formatos (mp3, m4a,
-    // ogg, imágenes, docs, video) pasan sin tocar.
+    // El audio grabado (webm/opus del MediaRecorder, desktop y APK) se transcodea a MP3 y se
+    // envía como AUDIO NORMAL (no nota de voz). Las notas de voz por API (voice:true) llegan pero
+    // son inestables para reproducir en el cliente ("audio ya no está disponible"), incluso
+    // entregadas. El MP3 como audio normal se descarga al teléfono y se reproduce confiablemente.
     const isAudioWebm =
       originalMime.startsWith("audio/") &&
       (originalMime.includes("webm") || /\.webm$/i.test(file.name || ""));
     if (isAudioWebm) {
       try {
-        buf = await remuxWebmOpusToOgg(buf);
+        buf = await transcodeAudioToMp3(buf);
       } catch (e) {
         return NextResponse.json(
           {
             ok: false,
-            error: "No se pudo convertir el audio a OGG (ffmpeg): " + (e instanceof Error ? e.message : String(e)),
+            error: "No se pudo convertir el audio a MP3 (ffmpeg): " + (e instanceof Error ? e.message : String(e)),
           },
           { status: 500 }
         );
       }
-      origName = (origName.replace(/\.webm$/i, "") || "nota-voz") + ".ogg";
-      // WhatsApp exige el content-type EXACTO `audio/ogg; codecs=opus`. El `audio/ogg` base
-      // NO es soportado (error 131053) y, al enviar por link, WhatsApp usa el Content-Type que
-      // sirve el storage → si es `audio/ogg` a secas, el receptor ve "audio no disponible".
-      uploadMime = "audio/ogg; codecs=opus";
+      origName = (origName.replace(/\.webm$/i, "") || "audio") + ".mp3";
+      uploadMime = "audio/mpeg";
     }
 
     const objectPath = `${empresaId}/${conversationId}/out_${Date.now()}_${origName}`;
@@ -245,10 +244,10 @@ export async function POST(request: NextRequest) {
         });
       } else if (isAudio) {
         outboundMessageType = "audio";
-        // Nota de voz: subimos el ogg/opus a YCloud y enviamos por MEDIA ID (voice:true).
-        // El envío por `link` hace que WhatsApp entregue la nota de voz como "audio no
-        // disponible" aunque el archivo sea válido (fetch asíncrono del link poco fiable para
-        // PTT). Si la subida falla, degradamos al link para no perder el mensaje.
+        // AUDIO NORMAL (no nota de voz): subimos el MP3 a YCloud y enviamos por MEDIA ID SIN
+        // voice:true. Las notas de voz por API son inestables para reproducir en el cliente
+        // ("audio ya no está disponible") aunque se entreguen; el audio normal (mp3) se descarga
+        // y se reproduce siempre. Si la subida falla, degradamos al link.
         const uploaded = await uploadYCloudWhatsappMedia({
           apiKey: ycloudApiKey,
           fromE164: ycloudFromE164!,
@@ -262,7 +261,7 @@ export async function POST(request: NextRequest) {
             fromE164: ycloudFromE164!,
             toDigits,
             mediaId: uploaded.mediaId,
-            voice: true,
+            voice: false,
           });
         } else {
           console.warn("[api/chat/send-media] upload YCloud audio falló, fallback a link:", uploaded.error);

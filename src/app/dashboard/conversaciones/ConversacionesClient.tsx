@@ -529,9 +529,6 @@ export function ConversacionesClient({
   const [finalizeOptions, setFinalizeOptions] = useState<FinalizeOptionsResult | null>(null);
   /** Cache de opciones de cierre por conversación (se precargan al seleccionar → modal instantáneo). */
   const finalizeOptionsCacheRef = useRef<Map<string, FinalizeOptionsResult>>(new Map());
-  /** Conversaciones finalizadas en esta sesión: se ocultan del inbox aunque la búsqueda (que incluye
-   *  finalizadas) o el refresco las devuelvan. Evita que "reaparezcan" tras tipificar. */
-  const recentlyFinalizedRef = useRef<Set<string>>(new Set());
   const [finalizeStateId, setFinalizeStateId] = useState("");
   const [finalizeSubstateId, setFinalizeSubstateId] = useState("");
   const [finalizeComment, setFinalizeComment] = useState("");
@@ -1787,10 +1784,8 @@ export function ConversacionesClient({
       const closedId = selectedId;
       finalizeOptionsCacheRef.current.delete(closedId);
       if (mode === "inbox") {
-        // Optimista: la conversación sale de la vista YA (el inbox solo muestra abiertas/pendientes),
-        // sin esperar el refresco. Antes se quedaba hasta "Actualizar" → parecía que no finalizó.
-        // Y la marcamos como recién-finalizada para que el refresco/búsqueda no la resucite.
-        recentlyFinalizedRef.current.add(closedId);
+        // Optimista: la conversación sale de la vista YA, sin esperar el refresco. Como el inbox
+        // solo trae abiertas/pendientes, el refresco tampoco la devuelve.
         setConversations((prev) => prev.filter((c) => c.id !== closedId));
         setSelectedId(null);
         setMessages([]);
@@ -1944,15 +1939,9 @@ export function ConversacionesClient({
     }
   }
 
-  // La búsqueda es server-side (debouncedQ → backend). No se filtra localmente para no ocultar
-  // coincidencias por preview/teléfono normalizado que el server sí incluye.
-  // EXCEPCIÓN: conversaciones que el operador acaba de finalizar en esta sesión. Como la búsqueda
-  // ahora incluye finalizadas, el refresco las traía de vuelta (como CERRADA) 5s después de
-  // tipificar. Las ocultamos del inbox (siguen estando en el módulo Finalizadas).
-  const visibleConversations =
-    mode === "inbox" && recentlyFinalizedRef.current.size > 0
-      ? conversations.filter((c) => !recentlyFinalizedRef.current.has(c.id))
-      : conversations;
+  // La búsqueda es server-side (debouncedQ → backend). El inbox trae SOLO abiertas/pendientes
+  // (el backend ya no devuelve finalizadas ni buscando), así que no hace falta filtrar localmente.
+  const visibleConversations = conversations;
 
   const selected = conversations.find((c) => c.id === selectedId);
 

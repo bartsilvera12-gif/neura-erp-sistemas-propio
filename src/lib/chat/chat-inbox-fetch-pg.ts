@@ -305,19 +305,9 @@ export async function fetchChatConversationsFromTenantPg(
   let pi = 2;
   const whereParts: string[] = [`empresa_id = $1::uuid`];
 
-  const hasTextSearch = Boolean(filters?.q && filters.q.trim());
-  if (vista === "inbox") {
-    /**
-     * Inbox: por defecto solo abiertas/pendientes. PERO si hay una búsqueda explícita por
-     * texto/teléfono (p.ej. click al teléfono de un lead desde el CRM), buscamos en TODOS los
-     * estados —incluidas las finalizadas— para que un contacto cuya conversación ya fue cerrada
-     * igual aparezca (antes daba "No hay conversaciones aún"). El filtro explícito de estado (fs)
-     * se sigue respetando más abajo.
-     */
-    if (!hasTextSearch) {
-      whereParts.push(`status IN ('open','pending')`);
-    }
-  } else if (vista === "bot") {
+  // Inbox/Bot muestran SOLO abiertas/pendientes, SIEMPRE (también al buscar). Las finalizadas no
+  // aparecen en el inbox ni buscando (para verlas se usa el módulo Finalizadas). Historial = cerradas.
+  if (vista === "inbox" || vista === "bot") {
     whereParts.push(`status IN ('open','pending')`);
   } else if (vista === "historial") {
     whereParts.push(`status = 'closed'`);

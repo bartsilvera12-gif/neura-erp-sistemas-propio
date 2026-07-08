@@ -498,6 +498,8 @@ export function ConversacionesClient({
   const listLimitRef = useRef(50);
   debouncedQRef.current = debouncedQ;
   listLimitRef.current = listLimit;
+  /** Feedback "Buscando…" mientras una búsqueda por término está en curso (fetch en vuelo). */
+  const [searching, setSearching] = useState(false);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizeLoading, setFinalizeLoading] = useState(false);
   const [opPresenceLoaded, setOpPresenceLoaded] = useState(
@@ -959,7 +961,18 @@ export function ConversacionesClient({
       qWindowMountRef.current = false;
       return;
     }
-    void loadConversationsRef.current?.();
+    let active = true;
+    setSearching(true);
+    void (async () => {
+      try {
+        await loadConversationsRef.current?.();
+      } finally {
+        if (active) setSearching(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [debouncedQ, listLimit]);
 
   useEffect(() => {
@@ -2589,14 +2602,33 @@ export function ConversacionesClient({
               ) : null}
             </div>
           ) : null}
-          <input
-            type="search"
-            value={listSearch}
-            onChange={(e) => setListSearch(e.target.value)}
-            placeholder="Buscar por nombre o número"
-            className="flex-1 min-w-[10rem] border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 bg-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 focus:border-[#4FAEB2]"
-            aria-label="Buscar por nombre o número"
-          />
+          <div className="relative flex-1 min-w-[10rem]">
+            <input
+              type="search"
+              value={listSearch}
+              onChange={(e) => setListSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  // Búsqueda inmediata (sin esperar el debounce de 300ms).
+                  setDebouncedQ(listSearch.trim());
+                  setListLimit(50);
+                }
+              }}
+              placeholder="Buscar por nombre o número"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 pr-24 text-xs text-slate-800 bg-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 focus:border-[#4FAEB2]"
+              aria-label="Buscar por nombre o número"
+            />
+            {listSearch.trim() && (searching || listSearch.trim() !== debouncedQ) ? (
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 text-[11px] font-medium text-[#3F8E91]">
+                <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Buscando…
+              </span>
+            ) : null}
+          </div>
           {mode === "historial" || vista === "inbox" ? (
             <>
               <select

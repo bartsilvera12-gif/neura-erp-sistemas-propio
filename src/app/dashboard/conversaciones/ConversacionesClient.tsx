@@ -527,6 +527,8 @@ export function ConversacionesClient({
   const [sessionSinceIso, setSessionSinceIso] = useState<string | null>(null);
   const [finalizeSaving, setFinalizeSaving] = useState(false);
   const [finalizeOptions, setFinalizeOptions] = useState<FinalizeOptionsResult | null>(null);
+  /** Cache de opciones de cierre por conversación (se precargan al seleccionar → modal instantáneo). */
+  const finalizeOptionsCacheRef = useRef<Map<string, FinalizeOptionsResult>>(new Map());
   const [finalizeStateId, setFinalizeStateId] = useState("");
   const [finalizeSubstateId, setFinalizeSubstateId] = useState("");
   const [finalizeComment, setFinalizeComment] = useState("");
@@ -1682,24 +1684,56 @@ export function ConversacionesClient({
     }
   }
 
+  // Precarga (y cachea) las opciones de cierre al seleccionar una conversación abierta, para que
+  // el modal de Finalizar aparezca al instante (antes tardaba ~3s al abrirlo).
+  useEffect(() => {
+    if (mode !== "inbox" || !selectedId) return;
+    if (finalizeOptionsCacheRef.current.has(selectedId)) return;
+    const sel = conversationsRef.current.find((c) => c.id === selectedId);
+    if (!sel || sel.status === "closed") return;
+    let cancelled = false;
+    void loadFinalizeOptionsForConversation(selectedId)
+      .then((opts) => {
+        if (!cancelled) finalizeOptionsCacheRef.current.set(selectedId, opts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, mode]);
+
+  function applyFinalizeOptions(opts: FinalizeOptionsResult) {
+    setFinalizeOptions(opts);
+    const first = opts.states[0];
+    if (first) {
+      setFinalizeStateId(first.id);
+      setFinalizeSubstateId(first.substates[0]?.id ?? "");
+    }
+  }
+
   async function openFinalizeModal() {
     const sel = selectedId ? conversations.find((c) => c.id === selectedId) : null;
     if (!selectedId || !sel || sel.status === "closed") return;
     setFinalizeModalError(null);
     setFinalizeOpen(true);
-    setFinalizeLoading(true);
-    setFinalizeOptions(null);
     setFinalizeStateId("");
     setFinalizeSubstateId("");
     setFinalizeComment("");
+
+    // Si ya lo precargamos al seleccionar la conversación → aparece INSTANTÁNEO.
+    const cached = finalizeOptionsCacheRef.current.get(selectedId);
+    if (cached) {
+      applyFinalizeOptions(cached);
+      setFinalizeLoading(false);
+      return;
+    }
+
+    setFinalizeLoading(true);
+    setFinalizeOptions(null);
     try {
       const opts = await loadFinalizeOptionsForConversation(selectedId);
-      setFinalizeOptions(opts);
-      const first = opts.states[0];
-      if (first) {
-        setFinalizeStateId(first.id);
-        setFinalizeSubstateId(first.substates[0]?.id ?? "");
-      }
+      finalizeOptionsCacheRef.current.set(selectedId, opts);
+      applyFinalizeOptions(opts);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "No se pudieron cargar las opciones de cierre";
       setFinalizeModalError(msg);
@@ -1747,11 +1781,16 @@ export function ConversacionesClient({
       });
       setFinalizeOpen(false);
       setFinalizeOptions(null);
+      const closedId = selectedId;
+      finalizeOptionsCacheRef.current.delete(closedId);
       if (mode === "inbox") {
+        // Optimista: la conversación sale de la vista YA (el inbox solo muestra abiertas/pendientes),
+        // sin esperar el refresco. Antes se quedaba hasta "Actualizar" → parecía que no finalizó.
+        setConversations((prev) => prev.filter((c) => c.id !== closedId));
         setSelectedId(null);
         setMessages([]);
       }
-      await loadConversations({ silent: true });
+      void loadConversations({ silent: true }); // reconciliar en 2º plano (no bloquea la UI)
     } catch (e) {
       setFinalizeModalError(e instanceof Error ? e.message : "No se pudo finalizar la conversación");
     } finally {

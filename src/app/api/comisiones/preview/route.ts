@@ -368,7 +368,9 @@ export async function GET(request: Request) {
       const v = c.vendedor_usuario_id;
       return typeof v === "string" && v.trim() === auth.usuarioCatalogId;
     }).length;
-    const verTodoEmpresa = esRolAdminEmpresaOGlobal(auth.rol) || isErpRolSupervisor(auth.rol);
+    // Solo ADMINISTRADOR (empresa/global) ve las comisiones de TODOS. Supervisores y usuarios
+    // (asesores) ven SOLO las suyas. (Antes el supervisor veía todo — filtración de comisiones ajenas.)
+    const verTodoEmpresa = esRolAdminEmpresaOGlobal(auth.rol);
     const rolVendedor = isErpRolVendedor(auth.rol);
     const soloVendedor = !verTodoEmpresa;
     const vendedorScopeId = soloVendedor ? auth.usuarioCatalogId : null;

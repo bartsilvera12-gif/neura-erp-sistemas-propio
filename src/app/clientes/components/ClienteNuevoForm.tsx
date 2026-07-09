@@ -91,7 +91,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
     valor_cliente: "",
     condicion_pago: "CONTADO",
     moneda_preferida: "GS" as "GS" | "USD",
-    vendedor_asignado: "",
     vendedor_usuario_id: "",
     origen: "MANUAL" as OrigenCliente,
     prospecto_id: null as string | null,
@@ -211,7 +210,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
     };
   }, [fromCrmId]);
 
-  const upper = ["empresa", "razon_social", "nombre_contacto", "ciudad", "pais", "vendedor_asignado", "condicion_pago", "direccion", "sifen_codigo_pais"];
+  const upper = ["empresa", "razon_social", "nombre_contacto", "ciudad", "pais", "condicion_pago", "direccion", "sifen_codigo_pais"];
   const lower = ["email", "email_secundario"];
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
@@ -333,7 +332,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
       moneda_preferida: form.moneda_preferida,
       estado: form.estado,
       plan_comercial_id: formSusc.plan_id.trim() || null,
-      vendedor_asignado: form.vendedor_asignado.trim().toUpperCase() || undefined,
       vendedor_usuario_id: form.vendedor_usuario_id.trim() || null,
       ...sifenManualCreate,
     });
@@ -763,7 +761,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
                 </select>
               </div>
               <div>
-                <label className={labelClass}>Vendedor responsable (usuario ERP)</label>
+                <label className={labelClass}>Vendedor responsable</label>
                 <select
                   name="vendedor_usuario_id"
                   value={form.vendedor_usuario_id}
@@ -782,17 +780,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
                 ) : usuariosEmpresa.length === 0 ? (
                   <p className="mt-1 text-xs text-slate-500">No hay usuarios activos disponibles para asignar.</p>
                 ) : null}
-              </div>
-              <div>
-                <label className={labelClass}>Vendedor asignado (texto libre)</label>
-                <input
-                  type="text"
-                  name="vendedor_asignado"
-                  value={form.vendedor_asignado}
-                  onChange={handleChange}
-                  placeholder="Referencia escrita (opcional)"
-                  className={`${inputClass} uppercase`}
-                />
               </div>
             </div>
 

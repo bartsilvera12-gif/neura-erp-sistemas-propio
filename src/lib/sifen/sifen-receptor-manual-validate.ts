@@ -35,6 +35,7 @@ export type SifenReceptorNaturalezaManual = "contribuyente_paraguayo" | "no_cont
 export interface ClienteSifenManualSource {
   id: string;
   empresa: string | null;
+  razon_social?: string | null;
   nombre_contacto: string | null;
   nombre: string | null;
   ruc: string | null;
@@ -56,7 +57,7 @@ export interface ClienteSifenManualSource {
 }
 
 function nombreReceptor(c: ClienteSifenManualSource): string {
-  return trimStr(c.empresa) || trimStr(c.nombre_contacto) || trimStr(c.nombre);
+  return trimStr(c.razon_social) || trimStr(c.empresa) || trimStr(c.nombre_contacto) || trimStr(c.nombre);
 }
 
 function direccionDeParaSifen(c: ClienteSifenManualSource, nombre: string): string | null {

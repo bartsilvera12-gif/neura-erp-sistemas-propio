@@ -152,7 +152,7 @@ export async function loadValidatedNotaCreditoSifenPayload(
   const [clienteRes, configRes] = await Promise.all([
     supabase
       .from("clientes")
-      .select("id, empresa, nombre_contacto, nombre, ruc, documento, direccion, telefono, email")
+      .select("id, empresa, razon_social, nombre_contacto, nombre, ruc, documento, direccion, telefono, email")
       .eq("id", clienteId)
       .eq("empresa_id", empresaId)
       .maybeSingle(),
@@ -190,6 +190,7 @@ export async function loadValidatedNotaCreditoSifenPayload(
   }
 
   const nombreRec =
+    String((cli as { razon_social?: string | null }).razon_social ?? "").trim() ||
     String(cli.nombre_contacto ?? "").trim() ||
     String(cli.nombre ?? "").trim() ||
     String(cli.empresa ?? "").trim() ||

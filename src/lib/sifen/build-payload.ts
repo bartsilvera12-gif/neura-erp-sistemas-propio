@@ -56,6 +56,8 @@ export interface SifenBuildItemRow {
 export interface SifenBuildClienteRow {
   id: string;
   empresa: string | null;
+  /** Nombre legal para el DE; tiene prioridad sobre `empresa`/`nombre_contacto` si está cargado. */
+  razon_social?: string | null;
   nombre_contacto: string | null;
   nombre: string | null;
   ruc: string | null;
@@ -110,7 +112,9 @@ export type BuildSifenPayloadResult =
   | { ok: false; error: string };
 
 function nombreReceptor(c: SifenBuildClienteRow): string {
-  return trimStr(c.empresa) || trimStr(c.nombre_contacto) || trimStr(c.nombre);
+  // Prioridad: razón social para factura → nombre comercial → contacto → nombre genérico.
+  // Los clientes sin razon_social cargada facturan igual que antes (fallback a empresa/contacto).
+  return trimStr(c.razon_social) || trimStr(c.empresa) || trimStr(c.nombre_contacto) || trimStr(c.nombre);
 }
 
 function validateEmisor(config: SifenBuildConfigRow | null): { ok: true; emisor: SifenPayloadEmisor } | { ok: false; error: string } {

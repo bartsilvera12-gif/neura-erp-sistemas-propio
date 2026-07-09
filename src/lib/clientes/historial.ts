@@ -43,6 +43,7 @@ export async function registrarHistorialCliente(
 /** Campos "principales" de cliente a auditar en updates. */
 export const CAMPOS_AUDITABLES = [
   "empresa",
+  "razon_social",
   "nombre",
   "nombre_contacto",
   "ruc",

@@ -26,8 +26,10 @@ export interface Cliente {
   codigo_cliente:      string;          // CL-000001
 
   tipo_cliente:        TipoCliente;
-  empresa?:            string;          // razón social (si es empresa)
+  empresa?:            string;          // nombre comercial de la empresa (cómo se conoce al cliente)
   nombre_contacto:     string;          // persona de contacto principal
+  /** Nombre legal para la FACTURA (razón social SET). Si vacío, la factura cae a empresa/nombre_contacto. */
+  razon_social?:       string;
 
   ruc?:                string;
   documento?:          string;          // CI / pasaporte (persona)

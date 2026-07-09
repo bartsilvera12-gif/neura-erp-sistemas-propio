@@ -65,6 +65,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
     { mensaje: string; hay_inactivo: boolean; matches: DuplicadoMatchClient[] } | null
   >(null);
   const [guardando, setGuardando] = useState(false);
+  /** El nombre del cliente autocompleta la razón social de factura hasta que el usuario la edite. */
+  const [razonSocialTouched, setRazonSocialTouched] = useState(false);
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [usuariosEmpresa, setUsuariosEmpresa] = useState<UsuarioEmpresa[]>([]);
   const [usuariosEmpresaError, setUsuariosEmpresaError] = useState<string | null>(null);
@@ -72,6 +74,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
   const [form, setForm] = useState({
     tipo_cliente: "empresa" as TipoCliente,
     empresa: "",
+    razon_social: "",
     nombre_contacto: "",
     ruc: "",
     documento: "",
@@ -208,7 +211,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
     };
   }, [fromCrmId]);
 
-  const upper = ["empresa", "nombre_contacto", "ciudad", "pais", "vendedor_asignado", "condicion_pago", "direccion", "sifen_codigo_pais"];
+  const upper = ["empresa", "razon_social", "nombre_contacto", "ciudad", "pais", "vendedor_asignado", "condicion_pago", "direccion", "sifen_codigo_pais"];
   const lower = ["email", "email_secundario"];
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
@@ -218,7 +221,17 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
     let normalized = value;
     if (lower.includes(name) || type === "email") normalized = value.toLowerCase();
     else if (upper.includes(name)) normalized = value.toUpperCase();
-    setForm((prev) => ({ ...prev, [name]: normalized }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: normalized };
+      // Espejo: mientras el usuario no toque la razón social, sigue al nombre del cliente
+      // (empresa → razón social; persona → nombre completo). Así no hay que tipear dos veces.
+      if (name === "razon_social") setRazonSocialTouched(true);
+      else if (!razonSocialTouched) {
+        if (name === "empresa" && prev.tipo_cliente === "empresa") next.razon_social = normalized;
+        else if (name === "nombre_contacto" && prev.tipo_cliente === "persona") next.razon_social = normalized;
+      }
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -228,7 +241,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
 
     if (!form.nombre_contacto.trim()) return setError("El nombre de contacto es obligatorio.");
     if (form.tipo_cliente === "empresa" && !form.empresa.trim())
-      return setError("La razón social es obligatoria para empresas.");
+      return setError("El nombre de empresa es obligatorio.");
 
     if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
       const dur = parseInt(formSusc.duracion_meses, 10) || 0;
@@ -307,6 +320,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
       tipo_cliente: form.tipo_cliente,
       tipo_servicio_cliente: form.tipo_servicio_cliente || undefined,
       empresa: form.tipo_cliente === "empresa" ? form.empresa.trim().toUpperCase() : undefined,
+      razon_social: form.razon_social.trim().toUpperCase() || undefined,
       nombre_contacto: form.nombre_contacto.trim().toUpperCase(),
       ruc: form.ruc.trim() || undefined,
       documento: form.documento.trim() || undefined,
@@ -433,7 +447,17 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setForm((prev) => ({ ...prev, tipo_cliente: t }))}
+                    onClick={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        tipo_cliente: t,
+                        razon_social: razonSocialTouched
+                          ? prev.razon_social
+                          : t === "empresa"
+                            ? prev.empresa
+                            : prev.nombre_contacto,
+                      }))
+                    }
                     className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
                       form.tipo_cliente === t
                         ? "bg-[#4FAEB2] text-white shadow-sm shadow-[#4FAEB2]/25"
@@ -449,14 +473,14 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
             {form.tipo_cliente === "empresa" && (
               <div>
                 <label className={labelClass}>
-                  Razón social <span className="text-rose-500">*</span>
+                  Nombre de empresa <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   name="empresa"
                   value={form.empresa}
                   onChange={handleChange}
-                  placeholder="Nombre de la empresa"
+                  placeholder="Cómo conocés a la empresa"
                   className={`${inputClass} uppercase`}
                 />
               </div>
@@ -479,46 +503,69 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
               </select>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>
-                  {form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}{" "}
-                  <span className="text-rose-500">*</span>
-                </label>
+            <div>
+              <label className={labelClass}>
+                {form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}{" "}
+                <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="nombre_contacto"
+                value={form.nombre_contacto}
+                onChange={handleChange}
+                placeholder="Nombre y apellido"
+                className={`${inputClass} uppercase`}
+                required
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Datos para factura */}
+        <section className={sectionWrap}>
+          <SectionTitle>Datos para factura</SectionTitle>
+          <p className="-mt-2 mb-4 text-xs text-slate-500">
+            Es lo que sale en el documento tributario (SIFEN). Si lo dejás vacío, se factura con el nombre del cliente.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelClass}>
+                {form.tipo_cliente === "empresa" ? "Razón social" : "Nombre para factura"}
+              </label>
+              <input
+                type="text"
+                name="razon_social"
+                value={form.razon_social}
+                onChange={handleChange}
+                placeholder={
+                  form.tipo_cliente === "empresa"
+                    ? "Razón social legal (como en el RUC)"
+                    : "Nombre como figura en el documento"
+                }
+                className={`${inputClass} uppercase`}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>{form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}</label>
+              {form.tipo_cliente === "empresa" ? (
                 <input
                   type="text"
-                  name="nombre_contacto"
-                  value={form.nombre_contacto}
+                  name="ruc"
+                  value={form.ruc}
                   onChange={handleChange}
-                  placeholder="Nombre y apellido"
-                  className={`${inputClass} uppercase`}
-                  required
+                  placeholder="00000000-0"
+                  className={inputClass}
                 />
-              </div>
-              <div>
-                <label className={labelClass}>
-                  {form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}
-                </label>
-                {form.tipo_cliente === "empresa" ? (
-                  <input
-                    type="text"
-                    name="ruc"
-                    value={form.ruc}
-                    onChange={handleChange}
-                    placeholder="00000000-0"
-                    className={inputClass}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    name="documento"
-                    value={form.documento}
-                    onChange={handleChange}
-                    placeholder="CI sin puntos"
-                    className={inputClass}
-                  />
-                )}
-              </div>
+              ) : (
+                <input
+                  type="text"
+                  name="documento"
+                  value={form.documento}
+                  onChange={handleChange}
+                  placeholder="CI sin puntos"
+                  className={inputClass}
+                />
+              )}
             </div>
           </div>
         </section>

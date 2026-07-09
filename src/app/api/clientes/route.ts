@@ -194,6 +194,7 @@ export async function POST(request: NextRequest) {
     const {
       tipo_cliente,
       empresa,
+      razon_social,
       nombre_contacto,
       ruc,
       documento,
@@ -285,6 +286,7 @@ export async function POST(request: NextRequest) {
       tipo_cliente:         tipo_cliente ?? "empresa",
       tipo_servicio_cliente: tipoServicio || null,
       empresa:              empresa?.trim() || null,
+      razon_social:         (typeof razon_social === "string" && razon_social.trim()) || null,
       nombre:               nombre_contacto.trim(),
       nombre_contacto:      nombre_contacto.trim(),
       ruc:                  ruc?.trim() || null,

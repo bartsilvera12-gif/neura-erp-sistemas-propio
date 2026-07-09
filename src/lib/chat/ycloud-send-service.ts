@@ -10,6 +10,22 @@ function digitsToE164(digits: string): string | null {
   return `+${d}`;
 }
 
+/** Traduce códigos de error de YCloud a un mensaje claro en español para el asesor. */
+function friendlyYcloudError(code: string, rawMsg: string): string {
+  switch (code) {
+    case "BALANCE_INSUFFICIENT":
+      return "Sin saldo en la cuenta de WhatsApp (YCloud) para enviar este mensaje. Hay que recargar el saldo y volver a intentar.";
+    case "WHATSAPP_BUSINESS_ACCOUNT_UNAVAILABLE":
+      return "La cuenta de WhatsApp Business no está disponible o sin vincular. Revisá la configuración del canal.";
+    case "RATE_LIMIT_EXCEEDED":
+      return "Se alcanzó el límite de envíos por ahora. Probá de nuevo en unos minutos.";
+    case "UNAUTHORIZED":
+      return "Error de autenticación con WhatsApp (YCloud). Revisá la API key del canal.";
+    default:
+      return rawMsg || "No se pudo enviar el mensaje.";
+  }
+}
+
 async function postYCloudWhatsappMessage(
   apiKey: string,
   body: Record<string, unknown>
@@ -26,14 +42,16 @@ async function postYCloudWhatsappMessage(
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     const errObj = raw.error as Record<string, unknown> | undefined;
-    const msg =
+    const code = typeof errObj?.code === "string" ? errObj.code : "";
+    const rawMsg =
       (typeof errObj?.message === "string" && errObj.message) ||
       (typeof raw.message === "string" && raw.message) ||
       res.statusText;
-    console.warn("[ycloud-send] request_failed", { status: res.status, raw });
+    console.warn("[ycloud-send] request_failed", { status: res.status, code, raw });
     return {
       ok: false,
-      error: msg || `HTTP ${res.status}`,
+      error: friendlyYcloudError(code, rawMsg) || `HTTP ${res.status}`,
+      code: code || undefined,
       status: res.status,
       raw,
     };

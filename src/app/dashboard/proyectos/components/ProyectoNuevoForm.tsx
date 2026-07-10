@@ -48,7 +48,6 @@ export default function ProyectoNuevoForm({
   const [estadoId, setEstadoId] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [titulo, setTitulo] = useState("");
-  const [descripcion, setDescripcion] = useState("");
   const [prioridad, setPrioridad] = useState("normal");
   const [rc, setRc] = useState("");
   const [rt, setRt] = useState("");
@@ -133,7 +132,7 @@ export default function ProyectoNuevoForm({
     const body: Record<string, unknown> = {
       tipo_id: tipoId,
       titulo,
-      descripcion: descripcion || null,
+      descripcion: null,
       prioridad,
       cliente_id: clienteId || null,
       responsable_comercial_id: rc || null,
@@ -314,15 +313,6 @@ export default function ProyectoNuevoForm({
                 className={INPUT_CLS}
                 value={fechaProm}
                 onChange={(e) => setFechaProm(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm sm:col-span-2">
-              <span className={LABEL_CLS}>Descripción breve</span>
-              <textarea
-                className={`${INPUT_CLS} min-h-[88px]`}
-                rows={3}
-                value={descripcion}
-                onChange={(e) => setDescripcion(e.target.value)}
               />
             </label>
           </div>

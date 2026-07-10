@@ -39,7 +39,6 @@ export const PROYECTO_DATOS_BRIEF_FIELDS: BriefFieldDef[] = [
   },
   { kind: "url_list", key: "redes_sociales", label: "Redes sociales", placeholder: "https://..." },
   { kind: "text", key: "whatsapp_contacto", label: "WhatsApp de contacto" },
-  { kind: "checkbox", key: "hosting_existente", label: "Hosting existente" },
   { kind: "text", key: "referencias_urls", label: "Referencias de páginas" },
 ];
 

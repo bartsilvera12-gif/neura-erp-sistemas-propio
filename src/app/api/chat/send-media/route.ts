@@ -191,10 +191,17 @@ export async function POST(request: NextRequest) {
       try {
         buf = await transcodeAudioToMp3(buf);
       } catch (e) {
+        // El detalle técnico (comando ffmpeg / EBML) queda en logs; al asesor le mostramos algo claro.
+        console.warn("[send-media] transcode audio fallo", {
+          conversationId,
+          mime: originalMime,
+          name: file.name,
+          detail: e instanceof Error ? e.message : String(e),
+        });
         return NextResponse.json(
           {
             ok: false,
-            error: "No se pudo convertir el audio a MP3 (ffmpeg): " + (e instanceof Error ? e.message : String(e)),
+            error: "No se pudo procesar la nota de voz. Volvé a grabarla (mantené presionado el micrófono hasta terminar).",
           },
           { status: 500 }
         );

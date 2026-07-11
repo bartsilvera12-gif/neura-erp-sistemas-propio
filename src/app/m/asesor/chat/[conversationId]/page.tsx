@@ -435,7 +435,10 @@ export default function MAsesorChatPage() {
       setRecording(true);
       setRecSecs(0);
       recTimerRef.current = window.setInterval(() => setRecSecs((s) => s + 1), 1000);
-      rec.start(400);
+      // SIN timeslice: MediaRecorder acumula todo y emite UN solo blob completo al stop().
+      // Con timeslice (start(400)) el WebView de Android arma un webm con header roto / cluster
+      // final truncado → ffmpeg falla ("EBML header parsing failed") o el audio sale cortado.
+      rec.start();
     } catch {
       setSendErr("No se pudo acceder al micrófono");
       setRecording(false);

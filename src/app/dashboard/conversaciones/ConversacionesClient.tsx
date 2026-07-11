@@ -911,7 +911,10 @@ export function ConversacionesClient({
         void sendMediaFile(voiceFile);
       };
       setRecordingVoice(true);
-      rec.start(400);
+      // SIN timeslice: MediaRecorder acumula todo y emite UN solo blob completo al stop().
+      // Con timeslice (start(400)) el WebView de Android arma un webm con header roto / cluster
+      // final truncado → ffmpeg falla ("EBML header parsing failed") o el audio sale cortado.
+      rec.start();
     } catch (e) {
       setSendError(e instanceof Error ? e.message : "No se pudo acceder al micrófono");
       setRecordingVoice(false);

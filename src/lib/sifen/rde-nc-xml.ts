@@ -272,8 +272,9 @@ export function buildOfficialRdeNotaCreditoElectronicaXml(
   } else {
     const doc = (receptor.documento ?? "").replace(/\s/g, "").trim();
     if (!doc) throw new Error("Receptor sin RUC: se requiere documento (CI) en cliente.");
+    // Consumidor final (no contribuyente): iNatRec=2 EXIGE iTiOpe=2 (B2C), no B2B (1).
     recParts.push(textEl("iNatRec", "2"));
-    recParts.push(textEl("iTiOpe", "1"));
+    recParts.push(textEl("iTiOpe", "2"));
     recParts.push(textEl("cPaisRec", "PRY"));
     recParts.push(textEl("dDesPaisRe", "Paraguay"));
     recParts.push(textEl("iTipIDRec", "1"));

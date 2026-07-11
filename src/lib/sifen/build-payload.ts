@@ -58,6 +58,8 @@ export interface SifenBuildClienteRow {
   empresa: string | null;
   /** Nombre legal para el DE; tiene prioridad sobre `empresa`/`nombre_contacto` si está cargado. */
   razon_social?: string | null;
+  /** RUC de factura (Datos para factura); prioridad sobre `ruc`/`documento`. */
+  ruc_factura?: string | null;
   nombre_contacto: string | null;
   nombre: string | null;
   ruc: string | null;
@@ -228,8 +230,18 @@ function validateReceptor(
     };
   }
   const extranjero = parseBoolCliente(cliente.sifen_receptor_extranjero);
-  const ruc = trimStr(cliente.ruc) || null;
-  const documento = trimStr(cliente.documento) || null;
+  // El RUC de la factura sale de "Datos para factura" (ruc_factura). Fallback: RUC del cliente
+  // (ruc) y, para clientes viejos, un documento con forma de RUC. La cédula (documento sin guión)
+  // queda solo como CI de consumidor final.
+  let ruc = trimStr(cliente.ruc_factura) || trimStr(cliente.ruc) || null;
+  let documento = trimStr(cliente.documento) || null;
+  // Paraguay: la cédula es solo dígitos; con guión + dígito verificador (p. ej. 2901985-0) ya es un
+  // RUC (persona física contribuyente). Si aún no hay RUC pero el documento tiene forma de RUC,
+  // se factura como contribuyente (iNatRec=1) y no como consumidor final (legacy: RUC en documento).
+  if (!ruc && documento && /^\d{4,}-\d$/.test(documento.replace(/\s/g, ""))) {
+    ruc = documento.replace(/\s/g, "");
+    documento = null;
+  }
   const paisTxt = trimStr(cliente.pais) || null;
 
   const dirRaw = trimStr(cliente.direccion);

@@ -30,9 +30,11 @@ export interface Cliente {
   nombre_contacto:     string;          // persona de contacto principal
   /** Nombre legal para la FACTURA (razón social SET). Si vacío, la factura cae a empresa/nombre_contacto. */
   razon_social?:       string;
+  /** RUC para la FACTURA (SIFEN). Si vacío, cae a ruc / documento(si tiene forma de RUC). */
+  ruc_factura?:        string;
 
-  ruc?:                string;
-  documento?:          string;          // CI / pasaporte (persona)
+  ruc?:                string;          // RUC del cliente (Identificación de empresa)
+  documento?:          string;          // CI / pasaporte (Identificación de persona)
 
   telefono?:           string;
   telefono_secundario?: string;

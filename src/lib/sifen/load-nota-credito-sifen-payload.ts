@@ -152,7 +152,7 @@ export async function loadValidatedNotaCreditoSifenPayload(
   const [clienteRes, configRes] = await Promise.all([
     supabase
       .from("clientes")
-      .select("id, empresa, razon_social, nombre_contacto, nombre, ruc, documento, direccion, telefono, email")
+      .select("id, empresa, razon_social, ruc_factura, nombre_contacto, nombre, ruc, documento, direccion, telefono, email")
       .eq("id", clienteId)
       .eq("empresa_id", empresaId)
       .maybeSingle(),
@@ -198,6 +198,19 @@ export async function loadValidatedNotaCreditoSifenPayload(
 
   const fx = vOrigen.fiscal;
 
+  // RUC de la factura (Datos para factura) → fallback a RUC del cliente → documento con forma de RUC.
+  // Paraguay: documento con guión + dígito verificador (p. ej. 2901985-0) es un RUC (contribuyente),
+  // no una cédula. Mismo criterio que en la emisión de factura (build-payload).
+  const rucFacturaCli = (cli as { ruc_factura?: string | null }).ruc_factura;
+  let recRuc =
+    (rucFacturaCli != null && String(rucFacturaCli).trim() !== "" ? String(rucFacturaCli).trim() : null) ||
+    (cli.ruc == null || String(cli.ruc).trim() === "" ? null : String(cli.ruc).trim());
+  let recDoc = cli.documento == null || String(cli.documento).trim() === "" ? null : String(cli.documento).trim();
+  if (!recRuc && recDoc && /^\d{4,}-\d$/.test(recDoc.replace(/\s/g, ""))) {
+    recRuc = recDoc.replace(/\s/g, "");
+    recDoc = null;
+  }
+
   const payload: SifenNotaCreditoPayload = {
     emisor: {
       ruc: String(cfg.ruc ?? "").trim(),
@@ -214,8 +227,8 @@ export async function loadValidatedNotaCreditoSifenPayload(
     receptor: {
       cliente_id: String(cli.id),
       nombre: nombreRec,
-      ruc: cli.ruc == null || String(cli.ruc).trim() === "" ? null : String(cli.ruc).trim(),
-      documento: cli.documento == null || String(cli.documento).trim() === "" ? null : String(cli.documento).trim(),
+      ruc: recRuc,
+      documento: recDoc,
       direccion: cli.direccion == null ? null : String(cli.direccion).trim(),
       telefono: cli.telefono == null ? null : String(cli.telefono).trim(),
       email: cli.email == null ? null : String(cli.email).trim(),

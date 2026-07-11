@@ -67,6 +67,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
   const [guardando, setGuardando] = useState(false);
   /** El nombre del cliente autocompleta la razón social de factura hasta que el usuario la edite. */
   const [razonSocialTouched, setRazonSocialTouched] = useState(false);
+  /** El RUC del cliente autocompleta el RUC de factura hasta que el usuario lo edite. */
+  const [rucFacturaTouched, setRucFacturaTouched] = useState(false);
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [usuariosEmpresa, setUsuariosEmpresa] = useState<UsuarioEmpresa[]>([]);
   const [usuariosEmpresaError, setUsuariosEmpresaError] = useState<string | null>(null);
@@ -75,6 +77,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
     tipo_cliente: "empresa" as TipoCliente,
     empresa: "",
     razon_social: "",
+    ruc_factura: "",
     nombre_contacto: "",
     ruc: "",
     documento: "",
@@ -229,6 +232,19 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
         if (name === "empresa" && prev.tipo_cliente === "empresa") next.razon_social = normalized;
         else if (name === "nombre_contacto" && prev.tipo_cliente === "persona") next.razon_social = normalized;
       }
+      // Espejo del RUC de factura: sigue al RUC del cliente (empresa) o a un documento con forma de
+      // RUC (persona con guión); una cédula sin guión NO se copia (no es un RUC válido).
+      if (name === "ruc_factura") setRucFacturaTouched(true);
+      else if (!rucFacturaTouched) {
+        if (name === "ruc" && prev.tipo_cliente === "empresa") next.ruc_factura = normalized;
+        else if (
+          name === "documento" &&
+          prev.tipo_cliente === "persona" &&
+          /^\d{4,}-\d$/.test(normalized.replace(/\s/g, ""))
+        ) {
+          next.ruc_factura = normalized;
+        }
+      }
       return next;
     });
   }
@@ -320,6 +336,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
       tipo_servicio_cliente: form.tipo_servicio_cliente || undefined,
       empresa: form.tipo_cliente === "empresa" ? form.empresa.trim().toUpperCase() : undefined,
       razon_social: form.razon_social.trim().toUpperCase() || undefined,
+      ruc_factura: form.ruc_factura.trim() || undefined,
       nombre_contacto: form.nombre_contacto.trim().toUpperCase(),
       ruc: form.ruc.trim() || undefined,
       documento: form.documento.trim() || undefined,
@@ -454,6 +471,13 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
                           : t === "empresa"
                             ? prev.empresa
                             : prev.nombre_contacto,
+                        ruc_factura: rucFacturaTouched
+                          ? prev.ruc_factura
+                          : t === "empresa"
+                            ? prev.ruc
+                            : /^\d{4,}-\d$/.test((prev.documento || "").replace(/\s/g, ""))
+                              ? prev.documento
+                              : "",
                       }))
                     }
                     className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
@@ -501,20 +525,44 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
               </select>
             </div>
 
-            <div>
-              <label className={labelClass}>
-                {form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}{" "}
-                <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="nombre_contacto"
-                value={form.nombre_contacto}
-                onChange={handleChange}
-                placeholder="Nombre y apellido"
-                className={`${inputClass} uppercase`}
-                required
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>
+                  {form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}{" "}
+                  <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="nombre_contacto"
+                  value={form.nombre_contacto}
+                  onChange={handleChange}
+                  placeholder="Nombre y apellido"
+                  className={`${inputClass} uppercase`}
+                  required
+                />
+              </div>
+              <div>
+                <label className={labelClass}>{form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}</label>
+                {form.tipo_cliente === "empresa" ? (
+                  <input
+                    type="text"
+                    name="ruc"
+                    value={form.ruc}
+                    onChange={handleChange}
+                    placeholder="00000000-0"
+                    className={inputClass}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    name="documento"
+                    value={form.documento}
+                    onChange={handleChange}
+                    placeholder="CI sin puntos"
+                    className={inputClass}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -523,7 +571,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
         <section className={sectionWrap}>
           <SectionTitle>Datos para factura</SectionTitle>
           <p className="-mt-2 mb-4 text-xs text-slate-500">
-            Es lo que sale en el documento tributario (SIFEN). Si lo dejás vacío, se factura con el nombre del cliente.
+            Lo que sale en el documento tributario (SIFEN). La factura SIEMPRE se emite contra un RUC. Si lo dejás
+            vacío, se factura con el nombre y documento del cliente.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -544,26 +593,15 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: Client
               />
             </div>
             <div>
-              <label className={labelClass}>{form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}</label>
-              {form.tipo_cliente === "empresa" ? (
-                <input
-                  type="text"
-                  name="ruc"
-                  value={form.ruc}
-                  onChange={handleChange}
-                  placeholder="00000000-0"
-                  className={inputClass}
-                />
-              ) : (
-                <input
-                  type="text"
-                  name="documento"
-                  value={form.documento}
-                  onChange={handleChange}
-                  placeholder="CI sin puntos"
-                  className={inputClass}
-                />
-              )}
+              <label className={labelClass}>RUC</label>
+              <input
+                type="text"
+                name="ruc_factura"
+                value={form.ruc_factura}
+                onChange={handleChange}
+                placeholder="00000000-0"
+                className={inputClass}
+              />
             </div>
           </div>
         </section>

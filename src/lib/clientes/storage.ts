@@ -22,6 +22,7 @@ interface SupabaseRow {
   baja_operativa_anulo_factura: boolean | null;
   empresa:            string | null;
   razon_social:       string | null;
+  ruc_factura:        string | null;
   nombre:             string | null;
   nombre_contacto:    string | null;
   ruc:                string | null;
@@ -86,6 +87,7 @@ function rowToCliente(row: SupabaseRow): Cliente {
     tipo_cliente:        (row.tipo_cliente === "persona" ? "persona" : "empresa") as Cliente["tipo_cliente"],
     empresa:             row.empresa ?? undefined,
     razon_social:        row.razon_social ?? undefined,
+    ruc_factura:         row.ruc_factura ?? undefined,
     nombre_contacto:     nombreContacto,
     ruc:                 row.ruc ?? undefined,
     documento:           row.documento ?? undefined,
@@ -271,6 +273,7 @@ export async function saveCliente(datos: NuevoClienteData): Promise<Cliente | nu
     created_by_nombre:    (usuario as { nombre?: string })?.nombre ?? null,
     empresa:            datos.empresa ?? null,
     razon_social:       datos.razon_social ?? null,
+    ruc_factura:        datos.ruc_factura ?? null,
     nombre:             datos.nombre_contacto ?? null,
     nombre_contacto:    datos.nombre_contacto ?? null,
     ruc:                datos.ruc ?? null,
@@ -352,6 +355,7 @@ export function construirPatchActualizacionCliente(datos: ActualizarClienteInput
   if (datos.tipo_cliente !== undefined) patch.tipo_cliente = datos.tipo_cliente;
   if (datos.empresa !== undefined) patch.empresa = datos.empresa ?? null;
   if (datos.razon_social !== undefined) patch.razon_social = datos.razon_social ?? null;
+  if (datos.ruc_factura !== undefined) patch.ruc_factura = datos.ruc_factura ?? null;
   if (datos.nombre_contacto !== undefined) {
     patch.nombre = datos.nombre_contacto ?? null;
     patch.nombre_contacto = datos.nombre_contacto ?? null;

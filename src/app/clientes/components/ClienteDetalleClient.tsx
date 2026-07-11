@@ -138,6 +138,7 @@ const ACCION_HISTORIAL: Record<string, { label: string; color: string }> = {
 const CAMPO_HISTORIAL: Record<string, string> = {
   empresa: "Nombre de empresa",
   razon_social: "Razón social (factura)",
+  ruc_factura: "RUC (factura)",
   nombre: "Nombre",
   nombre_contacto: "Contacto",
   ruc: "RUC",
@@ -283,6 +284,7 @@ export default function ClienteDetalleClient({
     tipo_cliente:        "empresa" as Cliente["tipo_cliente"],
     empresa:             "",
     razon_social:        "",
+    ruc_factura:         "",
     nombre_contacto:     "",
     ruc:                 "",
     documento:           "",
@@ -459,6 +461,7 @@ export default function ClienteDetalleClient({
         tipo_cliente:        c.tipo_cliente,
         empresa:             c.empresa             ?? "",
         razon_social:        c.razon_social        ?? "",
+        ruc_factura:         c.ruc_factura         ?? "",
         nombre_contacto:     c.nombre_contacto,
         ruc:                 c.ruc                 ?? "",
         documento:           c.documento           ?? "",
@@ -741,6 +744,7 @@ export default function ClienteDetalleClient({
         tipo_cliente:        form.tipo_cliente,
         empresa:             form.tipo_cliente === "empresa" ? form.empresa.trim().toUpperCase() : undefined,
         razon_social:        form.razon_social.trim().toUpperCase() || undefined,
+        ruc_factura:         form.ruc_factura.trim() || undefined,
         nombre_contacto:     form.nombre_contacto.trim().toUpperCase(),
         ruc:                 form.ruc.trim()                 || undefined,
         documento:           form.documento.trim()           || undefined,
@@ -1667,15 +1671,26 @@ export default function ClienteDetalleClient({
                   </div>
                 )}
 
-                <div>
-                  <label className={labelClass}>{form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}</label>
-                  <input type="text" name="nombre_contacto" value={form.nombre_contacto} onChange={handleChange} className={`${inputClass} uppercase`} required />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>{form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}</label>
+                    <input type="text" name="nombre_contacto" value={form.nombre_contacto} onChange={handleChange} className={`${inputClass} uppercase`} required />
+                  </div>
+                  <div>
+                    <label className={labelClass}>{form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}</label>
+                    {form.tipo_cliente === "empresa" ? (
+                      <input type="text" name="ruc" value={form.ruc} onChange={handleChange} className={inputClass} />
+                    ) : (
+                      <input type="text" name="documento" value={form.documento} onChange={handleChange} className={inputClass} />
+                    )}
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Datos para factura</p>
                   <p className="mb-3 text-xs text-slate-500">
-                    Lo que sale en el documento tributario (SIFEN). Si se deja vacío, se factura con el nombre del cliente.
+                    Lo que sale en el documento tributario (SIFEN). La factura siempre se emite contra un RUC. Si se deja
+                    vacío, se factura con el nombre y documento del cliente.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -1683,12 +1698,8 @@ export default function ClienteDetalleClient({
                       <input type="text" name="razon_social" value={form.razon_social} onChange={handleChange} className={`${inputClass} uppercase`} />
                     </div>
                     <div>
-                      <label className={labelClass}>{form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}</label>
-                      {form.tipo_cliente === "empresa" ? (
-                        <input type="text" name="ruc" value={form.ruc} onChange={handleChange} className={inputClass} />
-                      ) : (
-                        <input type="text" name="documento" value={form.documento} onChange={handleChange} className={inputClass} />
-                      )}
+                      <label className={labelClass}>RUC</label>
+                      <input type="text" name="ruc_factura" value={form.ruc_factura} onChange={handleChange} className={inputClass} placeholder="00000000-0" />
                     </div>
                   </div>
                 </div>

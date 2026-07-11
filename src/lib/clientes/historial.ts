@@ -44,6 +44,7 @@ export async function registrarHistorialCliente(
 export const CAMPOS_AUDITABLES = [
   "empresa",
   "razon_social",
+  "ruc_factura",
   "nombre",
   "nombre_contacto",
   "ruc",

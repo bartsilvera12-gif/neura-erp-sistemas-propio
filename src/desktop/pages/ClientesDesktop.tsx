@@ -432,6 +432,9 @@ export default function ClientesPage() {
     if (q) {
       const match =
         nombre.includes(q) ||
+        (c.nombre_contacto ?? "").toLowerCase().includes(q) ||
+        (c.empresa         ?? "").toLowerCase().includes(q) ||
+        (c.razon_social    ?? "").toLowerCase().includes(q) ||
         (c.codigo_cliente ?? "").toLowerCase().includes(q) ||
         (c.email          ?? "").toLowerCase().includes(q) ||
         (c.telefono       ?? "").toLowerCase().includes(q) ||

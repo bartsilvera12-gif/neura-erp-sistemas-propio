@@ -36,6 +36,8 @@ export default function ClientesMobile() {
       return (
         nombre.includes(q) ||
         (c.empresa ?? "").toLowerCase().includes(q) ||
+        (c.nombre_contacto ?? "").toLowerCase().includes(q) ||
+        (c.razon_social ?? "").toLowerCase().includes(q) ||
         (c.ruc ?? "").toLowerCase().includes(q) ||
         (c.email ?? "").toLowerCase().includes(q)
       );

@@ -385,35 +385,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           </label>
         </div>
 
-        {!esAsesor && (
-        <details className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-700 select-none">
-            Filtros secundarios
-          </summary>
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-              Cerrado por
-              <select
-                value={closedByUsuarioId}
-                onChange={(e) => setClosedByUsuarioId(e.target.value)}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 bg-white"
-              >
-                <option value="">Todos</option>
-                {(filterOptions.closed_by_users ?? []).map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="text-xs text-slate-500 sm:col-span-2 self-end pb-1">
-              Usuarios que aparecen en cierres recientes (muestra). Para auditoría puntual del cierre, no del agente
-              asignado.
-            </p>
-          </div>
-        </details>
-        )}
-
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

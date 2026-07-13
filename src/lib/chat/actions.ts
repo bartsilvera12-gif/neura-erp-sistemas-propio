@@ -557,6 +557,12 @@ async function fetchChatConversationsUnsafe(
       if (safe) {
         const contactOr = [`name.ilike.*${safe}*`, `phone_number.ilike.*${safe}*`];
         if (digits.length >= 3) contactOr.push(`phone_normalized.ilike.*${digits}*`);
+        // Cap duro de contactos resueltos. Un término corto y numérico (p. ej. "982") matchea
+        // cientos de teléfonos; meter todos en `contact_id.in.(...)` hacía una URL PostgREST tan
+        // larga que el proxy devolvía 414 y el listado tiraba error (solo pasaba al buscar números).
+        // Con tope, la búsqueda por número funciona (top-N); si hay demasiados, el usuario agrega
+        // más dígitos para afinar.
+        const CONTACT_MATCH_CAP = 100;
         let contactIds: string[] = [];
         try {
           const { data: cRows } = await supabase
@@ -564,10 +570,11 @@ async function fetchChatConversationsUnsafe(
             .select("id")
             .eq("empresa_id", empresa_id)
             .or(contactOr.join(","))
-            .limit(500);
+            .limit(CONTACT_MATCH_CAP);
           contactIds = (cRows ?? [])
             .map((r) => String((r as { id?: string }).id ?? "").trim())
-            .filter(Boolean);
+            .filter(Boolean)
+            .slice(0, CONTACT_MATCH_CAP);
         } catch {
           /* sin contactos resueltos */
         }
@@ -610,6 +617,11 @@ async function fetchChatConversationsUnsafe(
 
   if (error) {
     console.warn("[fetchChatConversations] listado conversaciones no disponible:", error.message);
+    // Al buscar (sobre todo por número) un término amplio puede exceder límites del proxy pese al
+    // cap. En ese caso degradamos a vacío en vez de tirar la UI; el usuario afina agregando dígitos.
+    if (filters?.q?.trim()) {
+      return { conversations: [], base_row_count: 0, transient_list_error: true };
+    }
     throw new Error(`[fetchChatConversations] listado conversaciones: ${error.message}`);
   }
   let list = (convs ?? []) as Record<string, unknown>[];

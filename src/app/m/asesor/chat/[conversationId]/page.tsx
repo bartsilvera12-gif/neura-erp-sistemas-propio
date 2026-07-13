@@ -540,7 +540,11 @@ export default function MAsesorChatPage() {
 
   return (
     <div className="min-h-svh max-h-svh bg-slate-50 flex flex-col">
-      <header className="sticky top-0 z-10 bg-[#3F8E91] text-white px-2 py-2.5 shadow-sm flex items-center gap-2">
+      <header
+        className="sticky top-0 z-10 bg-[#3F8E91] text-white px-2 pb-2.5 shadow-sm flex items-center gap-2"
+        // iOS: respetar la barra de estado (notch). env(safe-area-inset-top)=0 en Android/web.
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.625rem)" }}
+      >
         <button onClick={() => router.push("/m/asesor")} aria-label="Volver" className="h-9 w-9 grid place-items-center rounded-full active:bg-white/15 text-lg">
           ‹
         </button>

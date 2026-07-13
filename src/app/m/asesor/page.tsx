@@ -86,7 +86,11 @@ export default function MAsesorInboxPage() {
     <div className="min-h-svh bg-slate-50 flex flex-col">
       {/* Registro de push FCM: solo actúa dentro de la APK (Capacitor nativo); no-op en web. */}
       <CapacitorPushRegister />
-      <header className="sticky top-0 z-10 bg-[#3F8E91] text-white px-4 py-3 shadow-sm">
+      <header
+        className="sticky top-0 z-10 bg-[#3F8E91] text-white px-4 pb-3 shadow-sm"
+        // iOS: respetar la barra de estado (notch). env(safe-area-inset-top)=0 en Android/web.
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+      >
         <h1 className="text-base font-semibold">Mis conversaciones</h1>
         <p className="text-[11px] text-white/80">Contact Center · Neura</p>
         <input

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import Link from "next/link";
+import { X, MessageSquarePlus } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   listFinalizedClosures,
@@ -548,14 +549,24 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">Conversación {detail.conversation_id}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setDetail(null)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                aria-label="Cerrar"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Link
+                  href={`/dashboard/conversaciones?buscar=${encodeURIComponent(detail.phone_number ?? "")}&cerradas=1`}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
+                  title="Ir al chat para escribir a este cliente (mensaje normal o plantilla)"
+                >
+                  <MessageSquarePlus className="h-4 w-4" />
+                  Nuevo mensaje
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setDetail(null)}
+                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                  aria-label="Cerrar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 text-sm">

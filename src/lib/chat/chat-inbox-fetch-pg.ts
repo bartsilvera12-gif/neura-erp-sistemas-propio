@@ -307,7 +307,7 @@ export async function fetchChatConversationsFromTenantPg(
 
   // Inbox/Bot muestran SOLO abiertas/pendientes, SIEMPRE (también al buscar). Las finalizadas no
   // aparecen en el inbox ni buscando (para verlas se usa el módulo Finalizadas). Historial = cerradas.
-  if (vista === "inbox" || vista === "bot") {
+  if ((vista === "inbox" || vista === "bot") && !filters?.include_closed) {
     whereParts.push(`status IN ('open','pending')`);
   } else if (vista === "historial") {
     whereParts.push(`status = 'closed'`);

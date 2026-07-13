@@ -110,6 +110,12 @@ export type ChatInboxFilters = {
    * y preview del último mensaje. NO limita a las ya cargadas en el cliente.
    */
   q?: string | null;
+  /**
+   * Deep-link "Nuevo mensaje" desde Finalizadas: incluye conversaciones CERRADAS en el resultado
+   * (normalmente el inbox solo trae open/pending). Se activa solo junto a un término de búsqueda `q`,
+   * así el inbox normal NO muestra finalizadas (se respeta "que no aparezcan sin aviso").
+   */
+  include_closed?: boolean;
 };
 
 export type InboxConversation = {
@@ -445,7 +451,7 @@ async function fetchChatConversationsUnsafe(
 
     // Inbox/Bot: SOLO abiertas/pendientes, siempre (también al buscar). Las finalizadas no salen
     // en el inbox ni buscando (se ven en el módulo Finalizadas). Inbox vs Bot se resuelve en memoria.
-    if (vista === "inbox" || vista === "bot") {
+    if ((vista === "inbox" || vista === "bot") && !filters?.include_closed) {
       qb = qb.in("status", ["open", "pending"]);
     } else if (vista === "historial") {
       qb = qb.eq("status", "closed");

@@ -639,6 +639,9 @@ export function ConversacionesClient({
         ...baseFilters,
         limit: listLimitRef.current,
         q: qNow ? qNow : null,
+        // Deep-link "Nuevo mensaje" desde Finalizadas (?cerradas=1): incluir cerradas en el resultado,
+        // pero SOLO junto a un término de búsqueda (así el inbox normal no muestra finalizadas).
+        include_closed: sp.get("cerradas") === "1" && Boolean(qNow),
       };
       const previousCount = conversationsRef.current.length;
       if (silent) {

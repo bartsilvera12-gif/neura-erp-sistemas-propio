@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         plazo_dias: body.plazo_dias != null && String(body.plazo_dias).trim() !== ""
           ? parseInt(String(body.plazo_dias), 10) || null : null,
         nro_timbrado: String(body.nro_timbrado).trim().toUpperCase(),
+        cuenta_contable_id: req("cuenta_contable_id") ? String(body.cuenta_contable_id) : null,
         created_by: ctx.auth.usuarioCatalogId ?? null,
         usuario_nombre: ctx.auth.user?.email ?? null,
       });

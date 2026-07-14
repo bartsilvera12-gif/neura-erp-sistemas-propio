@@ -8,6 +8,9 @@ interface CompraApiRow {
   subtotal: string | number; monto_iva: string | number; total: string | number;
   precio_venta: string | number; margen_venta: string | number | null;
   tipo_pago: string; plazo_dias: number | null; nro_timbrado: string; estado: string;
+  cuenta_contable_id?: string | null;
+  cuenta_contable_codigo?: string | null;
+  cuenta_contable_denominacion?: string | null;
   fecha: string;
 }
 
@@ -33,8 +36,57 @@ function mapRow(r: CompraApiRow): Compra {
     tipo_pago: r.tipo_pago as Compra["tipo_pago"],
     plazo_dias: r.plazo_dias ?? undefined,
     nro_timbrado: r.nro_timbrado,
+    cuenta_contable_id: r.cuenta_contable_id ?? null,
+    cuenta_contable_label:
+      r.cuenta_contable_codigo && r.cuenta_contable_denominacion
+        ? `${r.cuenta_contable_codigo} — ${r.cuenta_contable_denominacion}`
+        : null,
     fecha: r.fecha,
   };
+}
+
+export interface CuentaContableOpcion {
+  id: string;
+  cuenta: string;
+  denominacion: string;
+}
+
+/** Cuentas activas + asentables para el selector de compras. */
+export async function getCuentasContablesOpciones(): Promise<CuentaContableOpcion[]> {
+  try {
+    const r = await fetch("/api/plan-cuentas/opciones", { credentials: "include", cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.success) {
+      console.error("[compras] getCuentasContablesOpciones:", (j as { error?: string })?.error ?? r.status);
+      return [];
+    }
+    return ((j.data as { cuentas?: CuentaContableOpcion[] }).cuentas ?? []) as CuentaContableOpcion[];
+  } catch (e) {
+    console.error("[compras] getCuentasContablesOpciones:", e);
+    return [];
+  }
+}
+
+/** Edición acotada: cambia solo la cuenta contable de una compra. */
+export async function updateCompraCuentaContable(
+  compraId: string,
+  cuentaContableId: string | null
+): Promise<SaveCompraResult | SaveCompraError> {
+  try {
+    const r = await fetch(`/api/compras/${compraId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cuenta_contable_id: cuentaContableId }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.success) {
+      return { success: false, error: (j as { error?: string })?.error ?? `Error ${r.status}` };
+    }
+    return { success: true, compra: mapRow((j.data as { compra: CompraApiRow }).compra) };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Error de red" };
+  }
 }
 
 export async function getCompras(): Promise<Compra[]> {

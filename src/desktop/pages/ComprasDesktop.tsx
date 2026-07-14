@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getCompras } from "@/lib/compras/storage";
+import {
+  getCompras,
+  getCuentasContablesOpciones,
+  updateCompraCuentaContable,
+  type CuentaContableOpcion,
+} from "@/lib/compras/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import type { Compra, TipoPago } from "@/lib/compras/types";
 
@@ -42,12 +47,23 @@ export default function ComprasPage() {
   const [todas, setTodas] = useState<Compra[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtroTipoPago, setFiltroTipoPago] = useState<TipoPago | "">("");
+  const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
+  const [detalle, setDetalle] = useState<Compra | null>(null);
+
+  function recargar() {
+    getCompras().then((data) => {
+      setTodas([...data].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
+    });
+  }
 
   useEffect(() => {
     let cancel = false;
     getCompras().then((data) => {
       if (cancel) return;
       setTodas([...data].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
+    });
+    getCuentasContablesOpciones().then((c) => {
+      if (!cancel) setCuentas(c);
     });
     return () => { cancel = true; };
   }, []);
@@ -144,6 +160,7 @@ export default function ComprasPage() {
                 <th className="py-3 pr-4 font-medium">N° Control</th>
                 <th className="py-3 pr-4 font-medium">Proveedor</th>
                 <th className="py-3 pr-4 font-medium">Producto</th>
+                <th className="py-3 pr-4 font-medium">Cuenta contable</th>
                 <th className="py-3 pr-4 font-medium text-right">Cant.</th>
                 <th className="py-3 pr-4 font-medium text-right">Costo unit.</th>
                 <th className="py-3 pr-4 font-medium">IVA</th>
@@ -156,7 +173,7 @@ export default function ComprasPage() {
             <tbody>
               {filtradas.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-gray-400">
+                  <td colSpan={11} className="py-12 text-center text-gray-400">
                     {todas.length === 0
                       ? "No hay compras registradas"
                       : "Ninguna compra coincide con los filtros"}
@@ -164,7 +181,11 @@ export default function ComprasPage() {
                 </tr>
               ) : (
                 filtradas.map((c) => (
-                  <tr key={c.id} className="border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors">
+                  <tr
+                    key={c.id}
+                    onClick={() => setDetalle(c)}
+                    className="cursor-pointer border-b border-slate-200 last:border-0 hover:bg-slate-50 transition-colors"
+                  >
                     <td className="py-4 pr-4 font-mono text-xs text-gray-500">
                       {c.numero_control}
                     </td>
@@ -172,6 +193,13 @@ export default function ComprasPage() {
                       {c.proveedor_nombre}
                     </td>
                     <td className="py-4 pr-4 text-gray-600">{c.producto_nombre}</td>
+                    <td className="py-4 pr-4 text-xs">
+                      {c.cuenta_contable_label ? (
+                        <span className="text-gray-600">{c.cuenta_contable_label}</span>
+                      ) : (
+                        <span className="italic text-gray-400">Sin cuenta asignada</span>
+                      )}
+                    </td>
                     <td className="py-4 pr-4 text-right tabular-nums text-gray-700">
                       {c.cantidad}
                     </td>
@@ -212,6 +240,142 @@ export default function ComprasPage() {
 
       </section>
 
+      {detalle && (
+        <CompraDetalleModal
+          compra={detalle}
+          cuentas={cuentas}
+          onClose={() => setDetalle(null)}
+          onSaved={() => {
+            setDetalle(null);
+            recargar();
+          }}
+        />
+      )}
+
+    </div>
+  );
+}
+
+function CompraDetalleModal({
+  compra,
+  cuentas,
+  onClose,
+  onSaved,
+}: {
+  compra: Compra;
+  cuentas: CuentaContableOpcion[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [cuentaId, setCuentaId] = useState<string>(compra.cuenta_contable_id ?? "");
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const q = search.trim().toLowerCase();
+  const filtradas = cuentas.filter(
+    (c) => q === "" || c.cuenta.toLowerCase().includes(q) || c.denominacion.toLowerCase().includes(q)
+  );
+  const seleccionada = cuentas.find((c) => c.id === cuentaId);
+  const opciones =
+    seleccionada && !filtradas.some((c) => c.id === seleccionada.id) ? [seleccionada, ...filtradas] : filtradas;
+
+  async function guardar() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await updateCompraCuentaContable(compra.id, cuentaId || null);
+      if (!res.success) {
+        setError(res.error);
+        return;
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-20"
+      onClick={onClose}
+    >
+      <div
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-xl flex-col rounded-none border-0 bg-white shadow-2xl sm:h-auto sm:max-h-[85dvh] sm:rounded-2xl sm:border sm:border-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b p-5">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Detalle de compra</h2>
+            <p className="font-mono text-xs text-slate-400">{compra.numero_control}</p>
+          </div>
+          <button onClick={onClose} className="text-xl text-slate-400 hover:text-slate-700">
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Proveedor</dt>
+              <dd className="font-medium text-slate-800">{compra.proveedor_nombre}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Producto</dt>
+              <dd className="text-slate-700">{compra.producto_nombre}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Cantidad</dt>
+              <dd className="text-slate-700">{compra.cantidad}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Total</dt>
+              <dd className="font-semibold text-slate-800">Gs. {compra.total.toLocaleString("es-PY")}</dd>
+            </div>
+          </dl>
+
+          <div className="border-t pt-4">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Cuenta contable
+            </label>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por código o denominación..."
+              className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+            />
+            <select
+              value={cuentaId}
+              onChange={(e) => setCuentaId(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+            >
+              <option value="">Sin cuenta asignada</option>
+              {opciones.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.cuenta} — {c.denominacion}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-400">Solo cuentas activas e imputables (asentables).</p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t p-5">
+          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">
+            Cerrar
+          </button>
+          <button
+            onClick={guardar}
+            disabled={saving || (cuentaId || "") === (compra.cuenta_contable_id ?? "")}
+            className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50"
+          >
+            {saving ? "Guardando…" : "Guardar cuenta contable"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

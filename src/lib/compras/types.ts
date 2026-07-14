@@ -32,5 +32,10 @@ export interface Compra {
 
   nro_timbrado: string;
 
+  /** Cuenta contable del plan de cuentas asociada a la compra (opcional). */
+  cuenta_contable_id: string | null;
+  /** Etiqueta display "{cuenta} — {denominacion}" (solo lectura, derivada del join). */
+  cuenta_contable_label: string | null;
+
   fecha: string;                 // ISO string, generado automáticamente
 }

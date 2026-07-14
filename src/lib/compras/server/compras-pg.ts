@@ -44,6 +44,9 @@ export interface CompraRow {
   updated_at: string;
   created_by: string | null;
   usuario_nombre: string | null;
+  cuenta_contable_id: string | null;
+  cuenta_contable_codigo?: string | null;
+  cuenta_contable_denominacion?: string | null;
 }
 
 const COLS = `
@@ -51,7 +54,7 @@ const COLS = `
   cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
   iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
   tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
-  created_at, updated_at, created_by, usuario_nombre
+  created_at, updated_at, created_by, usuario_nombre, cuenta_contable_id
 `;
 
 export interface InsertCompraInput {
@@ -73,6 +76,7 @@ export interface InsertCompraInput {
   tipo_pago: string;
   plazo_dias: number | null;
   nro_timbrado: string;
+  cuenta_contable_id: string | null;
   created_by: string | null;
   usuario_nombre: string | null;
 }
@@ -83,11 +87,66 @@ export async function listCompras(
 ): Promise<CompraRow[]> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = quoteSchemaTable(schema, "compras");
+  const tPC = quoteSchemaTable(schema, "plan_cuentas");
+  const cols = COLS.split(",")
+    .map((c) => `c.${c.trim()}`)
+    .join(", ");
   const { rows } = await pool().query<CompraRow>(
-    `SELECT ${COLS} FROM ${t} WHERE empresa_id = $1::uuid ORDER BY fecha DESC LIMIT 500`,
+    `SELECT ${cols},
+            pc.cuenta AS cuenta_contable_codigo,
+            pc.denominacion AS cuenta_contable_denominacion
+       FROM ${t} c
+       LEFT JOIN ${tPC} pc ON pc.id = c.cuenta_contable_id
+      WHERE c.empresa_id = $1::uuid
+      ORDER BY c.fecha DESC LIMIT 500`,
     [empresaId]
   );
   return rows;
+}
+
+/**
+ * Actualiza SOLO la cuenta contable de una compra (edición acotada).
+ * `cuentaContableId` null desasocia. Si es no-null, valida que la cuenta
+ * pertenezca a la empresa y sea activa + asentable; si no, lanza error.
+ */
+export async function updateCompraCuentaContable(
+  schemaRaw: string,
+  empresaId: string,
+  compraId: string,
+  cuentaContableId: string | null
+): Promise<CompraRow | null> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const tC = quoteSchemaTable(schema, "compras");
+  const tPC = quoteSchemaTable(schema, "plan_cuentas");
+
+  if (cuentaContableId) {
+    const { rows: valid } = await pool().query<{ id: string }>(
+      `SELECT id FROM ${tPC}
+        WHERE id = $1::uuid AND empresa_id = $2::uuid AND activo = true AND asentable = true`,
+      [cuentaContableId, empresaId]
+    );
+    if (valid.length === 0) {
+      throw new Error("La cuenta contable seleccionada no es válida (debe estar activa y ser asentable).");
+    }
+  }
+
+  const cols = COLS.split(",")
+    .map((c) => `c.${c.trim()}`)
+    .join(", ");
+  const { rows } = await pool().query<CompraRow>(
+    `WITH upd AS (
+       UPDATE ${tC} SET cuenta_contable_id = $1::uuid, updated_at = now()
+        WHERE id = $2::uuid AND empresa_id = $3::uuid
+        RETURNING *
+     )
+     SELECT ${cols},
+            pc.cuenta AS cuenta_contable_codigo,
+            pc.denominacion AS cuenta_contable_denominacion
+       FROM upd c
+       LEFT JOIN ${tPC} pc ON pc.id = c.cuenta_contable_id`,
+    [cuentaContableId, compraId, empresaId]
+  );
+  return rows[0] ?? null;
 }
 
 /** Genera proximo COMP-XXXXXX leyendo el maximo existente. */
@@ -140,13 +199,13 @@ export async function insertCompraConImpacto(
          cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
          iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
          tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
-         created_by, usuario_nombre
+         created_by, usuario_nombre, cuenta_contable_id
        ) VALUES (
          $1::uuid, $2::uuid, $3, $4::uuid, $5,
          $6::numeric, $7, $8::numeric, $9::numeric, $10::numeric,
          $11, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16::numeric,
          $17, $18::integer, $19, $20, 'registrada', now(),
-         $21::uuid, $22
+         $21::uuid, $22, $23::uuid
        )
        RETURNING ${COLS}`,
       [
@@ -172,6 +231,7 @@ export async function insertCompraConImpacto(
         numero,
         d.created_by,
         d.usuario_nombre,
+        d.cuenta_contable_id,
       ]
     );
     const compra = compraRows[0];

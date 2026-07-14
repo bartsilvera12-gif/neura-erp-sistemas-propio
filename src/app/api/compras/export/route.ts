@@ -17,6 +17,14 @@ export async function GET(request: NextRequest) {
       { header: "FECHA", value: (r) => r.fecha ? new Date(r.fecha) : "", width: 18 },
       { header: "PROVEEDOR", value: (r) => r.proveedor_nombre, width: 30 },
       { header: "PRODUCTO", value: (r) => r.producto_nombre, width: 30 },
+      {
+        header: "CUENTA_CONTABLE",
+        value: (r) =>
+          r.cuenta_contable_codigo && r.cuenta_contable_denominacion
+            ? `${r.cuenta_contable_codigo} — ${r.cuenta_contable_denominacion}`
+            : "",
+        width: 30,
+      },
       { header: "CANTIDAD", value: (r) => Number(r.cantidad), width: 10 },
       { header: "MONEDA", value: (r) => r.moneda, width: 8 },
       { header: "TIPO_CAMBIO", value: (r) => Number(r.tipo_cambio), width: 10 },

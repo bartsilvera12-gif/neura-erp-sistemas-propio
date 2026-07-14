@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
-import { saveCompra } from "@/lib/compras/storage";
+import { saveCompra, getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
 import { getProveedores, proveedorExiste, createProveedor } from "@/lib/proveedores/storage";
 import {
   getProductos,
@@ -92,7 +92,12 @@ export default function NuevaCompraPage() {
     precio_venta: "",
     tipo_pago: "contado" as TipoPago,
     plazo_dias: "",
+    cuenta_contable_id: "",
   });
+
+  // ── Estado: CUENTA CONTABLE (selector con búsqueda) ──────────────────────
+  const [cuentasContables, setCuentasContables] = useState<CuentaContableOpcion[]>([]);
+  const [cuentaSearch, setCuentaSearch] = useState("");
 
   // ── Estado inline: PROVEEDOR ─────────────────────────────────────────────
 
@@ -133,6 +138,7 @@ export default function NuevaCompraPage() {
   useEffect(() => {
     recargarProveedores();
     recargarProductos();
+    getCuentasContablesOpciones().then(setCuentasContables);
   }, []);
 
   // ── Cálculos reactivos del formulario principal ──────────────────────────
@@ -161,6 +167,21 @@ export default function NuevaCompraPage() {
 
   const calculosListos = subtotal > 0 && precioVentaNum > 0;
   const productoSeleccionado = productos.find((p) => p.id === form.producto_id);
+
+  // Opciones de cuenta contable filtradas por búsqueda (código o denominación),
+  // garantizando que la seleccionada siga visible aunque no matchee el filtro.
+  const cuentaQuery = cuentaSearch.trim().toLowerCase();
+  const cuentasFiltradas = cuentasContables.filter(
+    (c) =>
+      cuentaQuery === "" ||
+      c.cuenta.toLowerCase().includes(cuentaQuery) ||
+      c.denominacion.toLowerCase().includes(cuentaQuery)
+  );
+  const cuentaSeleccionada = cuentasContables.find((c) => c.id === form.cuenta_contable_id);
+  const cuentasOpciones =
+    cuentaSeleccionada && !cuentasFiltradas.some((c) => c.id === cuentaSeleccionada.id)
+      ? [cuentaSeleccionada, ...cuentasFiltradas]
+      : cuentasFiltradas;
 
   // Margen preview dentro del formulario de nuevo producto
   const costoParaPreview = costoUnitarioPYG > 0 ? costoUnitarioPYG : 0;
@@ -232,6 +253,8 @@ export default function NuevaCompraPage() {
             ? parseInt(form.plazo_dias)
             : undefined,
         nro_timbrado: form.nro_timbrado,
+        cuenta_contable_id: form.cuenta_contable_id || null,
+        cuenta_contable_label: null,
       });
 
       if (!res.success) {
@@ -454,6 +477,37 @@ export default function NuevaCompraPage() {
                   </div>
                 </InlineFormBox>
               )}
+            </div>
+          </section>
+
+          {/* ── Cuenta contable (opcional) ────────────────────────────────── */}
+          <section className="space-y-3">
+            <SectionTitle>Cuenta contable</SectionTitle>
+            <div>
+              <label className={labelClass}>Cuenta contable (opcional)</label>
+              <input
+                type="text"
+                value={cuentaSearch}
+                onChange={(e) => setCuentaSearch(e.target.value)}
+                placeholder="Buscar por código o denominación..."
+                className={`${inputClass} mb-2`}
+              />
+              <select
+                name="cuenta_contable_id"
+                value={form.cuenta_contable_id}
+                onChange={handleChange}
+                className={inputClass}
+              >
+                <option value="">Sin cuenta contable</option>
+                {cuentasOpciones.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.cuenta} — {c.denominacion}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">
+                Solo se listan cuentas activas e imputables (asentables). Podés dejarlo vacío.
+              </p>
             </div>
           </section>
 

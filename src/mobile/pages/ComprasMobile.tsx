@@ -99,6 +99,9 @@ function CompraCard({ compra }: { compra: Compra }) {
             <p className="truncate text-[11px] text-slate-500">
               {compra.producto_nombre} · {compra.cantidad}
             </p>
+            <p className="truncate text-[11px] text-slate-400">
+              {compra.cuenta_contable_label ?? "Sin cuenta asignada"}
+            </p>
             <p className="mt-0.5 text-[11px] text-slate-500">{formatFecha(compra.fecha)}</p>
           </div>
           <div className="shrink-0 text-right">

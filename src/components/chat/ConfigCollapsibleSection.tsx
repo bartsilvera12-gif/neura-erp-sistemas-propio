@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 type ConfigCollapsibleSectionProps = {
   title: string;
@@ -52,14 +52,38 @@ export function ConfigCollapsibleSection({
   const expanded = controlled ? (expandedProp as boolean) : internalExpanded;
   const isActive = controlled ? Boolean(activeProp) : internalActive;
 
+  // Anti-salto de scroll: al prender/apagar o expandir/contraer, el body se agrega/quita y la
+  // página cambia de alto → el navegador recorta el scroll (salta hacia arriba). Capturamos la
+  // posición de esta sección antes del cambio y la restauramos tras el re-layout, así el usuario
+  // queda donde estaba.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const anchorTopRef = useRef<number | null>(null);
+  const withScrollAnchor = (fn: () => void) => {
+    anchorTopRef.current = rootRef.current?.getBoundingClientRect().top ?? null;
+    fn();
+  };
+  useLayoutEffect(() => {
+    const anchor = anchorTopRef.current;
+    if (anchor == null) return;
+    anchorTopRef.current = null;
+    const cur = rootRef.current?.getBoundingClientRect().top;
+    if (cur == null) return;
+    const delta = cur - anchor;
+    if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+  }, [isActive, expanded]);
+
   const setExpanded = (next: boolean) => {
-    if (controlled) onExpandedChange(next);
-    else setInternalExpanded(next);
+    withScrollAnchor(() => {
+      if (controlled) onExpandedChange(next);
+      else setInternalExpanded(next);
+    });
   };
 
   const setActive = (next: boolean) => {
-    if (controlled) onActiveChange(next);
-    else setInternalActive(next);
+    withScrollAnchor(() => {
+      if (controlled) onActiveChange(next);
+      else setInternalActive(next);
+    });
   };
 
   const headingId = useId();
@@ -74,6 +98,7 @@ export function ConfigCollapsibleSection({
 
   return (
     <div
+      ref={rootRef}
       className={`rounded-xl border shadow-sm overflow-hidden transition-[border-color,box-shadow,background-color,ring-color] duration-300 ease-out ${shellClass}`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4 px-4 py-4 sm:px-5 sm:py-4">

@@ -1,6 +1,13 @@
 "use server";
 
-import { pgChannelBelongsToEmpresa, pgListActiveQuickRepliesForChannel } from "@/lib/chat/chat-quick-replies-pg";
+import {
+  pgChannelBelongsToEmpresa,
+  pgListActiveQuickRepliesForChannel,
+  pgListAllQuickRepliesForChannel,
+  pgCreateQuickReply,
+  pgUpdateQuickReply,
+  pgDeleteQuickReply,
+} from "@/lib/chat/chat-quick-replies-pg";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
@@ -65,9 +72,17 @@ export async function listActiveQuickRepliesForChannel(channelId: string): Promi
 
 /** Gestión en configuración: todas las filas. */
 export async function listAllQuickRepliesForChannel(channelId: string): Promise<ChannelQuickReplyRow[]> {
-  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
   const cid = channelId.trim();
   if (!cid) return [];
+
+  const pool = getChatPostgresPool();
+  if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
+    const ok = await pgChannelBelongsToEmpresa(pool, dataSchema, empresa_id, cid);
+    if (!ok) throw new Error("Canal no encontrado o sin permiso.");
+    return (await pgListAllQuickRepliesForChannel(pool, dataSchema, empresa_id, cid)) as ChannelQuickReplyRow[];
+  }
+
   await assertChannelBelongsToEmpresa(supabase, empresa_id, cid);
 
   const { data, error } = await supabase
@@ -90,11 +105,20 @@ export async function createChannelQuickReply(input: {
   body: string;
   sortOrder?: number;
 }): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
   const channelId = input.channelId.trim();
   const title = input.title.trim();
   const body = input.body.trim();
   if (!channelId || !title || !body) throw new Error("Completá título y texto.");
+  const sortOrder = typeof input.sortOrder === "number" ? input.sortOrder : 0;
+
+  const pool = getChatPostgresPool();
+  if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
+    const ok = await pgChannelBelongsToEmpresa(pool, dataSchema, empresa_id, channelId);
+    if (!ok) throw new Error("Canal no encontrado o sin permiso.");
+    await pgCreateQuickReply(pool, dataSchema, empresa_id, { channelId, title, body, sortOrder });
+    return;
+  }
 
   await assertChannelBelongsToEmpresa(supabase, empresa_id, channelId);
 
@@ -103,7 +127,7 @@ export async function createChannelQuickReply(input: {
     channel_id: channelId,
     title,
     body,
-    sort_order: typeof input.sortOrder === "number" ? input.sortOrder : 0,
+    sort_order: sortOrder,
     is_active: true,
   });
 
@@ -117,7 +141,7 @@ export async function updateChannelQuickReply(input: {
   sortOrder?: number;
   isActive?: boolean;
 }): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
   const id = input.id.trim();
   if (!id) throw new Error("ID inválido.");
 
@@ -137,6 +161,18 @@ export async function updateChannelQuickReply(input: {
 
   if (Object.keys(patch).length === 0) return;
 
+  const pool = getChatPostgresPool();
+  if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
+    const okRow = await pgUpdateQuickReply(pool, dataSchema, empresa_id, id, {
+      title: patch.title as string | undefined,
+      body: patch.body as string | undefined,
+      sortOrder: patch.sort_order as number | undefined,
+      isActive: patch.is_active as boolean | undefined,
+    });
+    if (!okRow) throw new Error("Respuesta rápida no encontrada.");
+    return;
+  }
+
   const { data: existing, error: exErr } = await supabase
     .from("chat_channel_quick_replies")
     .select("id")
@@ -155,9 +191,15 @@ export async function updateChannelQuickReply(input: {
 }
 
 export async function deleteChannelQuickReply(id: string): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
   const rid = id.trim();
   if (!rid) throw new Error("ID inválido.");
+
+  const pool = getChatPostgresPool();
+  if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
+    await pgDeleteQuickReply(pool, dataSchema, empresa_id, rid);
+    return;
+  }
 
   const { error } = await supabase
     .from("chat_channel_quick_replies")

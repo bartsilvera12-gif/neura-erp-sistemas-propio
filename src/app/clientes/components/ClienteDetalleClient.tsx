@@ -29,6 +29,7 @@ import {
   type HistorialClienteFila,
 } from "@/lib/api/client";
 import { getFacturas, getSuscripciones } from "@/lib/facturacion/storage";
+import { AnularFacturaButton } from "@/components/facturas/AnularFacturaButton";
 import { getMarketingTasks, createMarketingTask, updateTaskStatus } from "@/lib/marketing/storage";
 import { getUsuariosActivosEmpresa, type UsuarioEmpresa } from "@/lib/usuarios/empresa";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -2196,21 +2197,32 @@ export default function ClienteDetalleClient({
                             <SifenEstadoBadge estadoSifen={sifenPorFactura[f.id]?.estado_sifen ?? null} />
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {f.saldo > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => { setFacturaPago(f); setFormPago({ factura_id: f.id, monto: String(f.saldo), fecha_pago: new Date().toISOString().slice(0, 10), metodo_pago: "efectivo", referencia: "" }); setModalPago(true); }}
-                                className="text-xs font-medium text-[#4FAEB2] hover:underline"
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              {f.saldo > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setFacturaPago(f); setFormPago({ factura_id: f.id, monto: String(f.saldo), fecha_pago: new Date().toISOString().slice(0, 10), metodo_pago: "efectivo", referencia: "" }); setModalPago(true); }}
+                                  className="text-xs font-medium text-[#4FAEB2] hover:underline"
+                                >
+                                  Registrar pago
+                                </button>
+                              )}
+                              <Link
+                                href={`/facturas/${f.id}`}
+                                className="text-xs font-medium text-slate-500 hover:text-[#4FAEB2] hover:underline"
                               >
-                                Registrar pago
-                              </button>
-                            )}
-                            <Link
-                              href={`/facturas/${f.id}`}
-                              className="text-xs font-medium text-slate-500 hover:text-[#4FAEB2] hover:underline ml-2"
-                            >
-                              Ver
-                            </Link>
+                                Ver
+                              </Link>
+                              {/* Anular: solo admin y solo si NO tiene documento SIFEN aprobado (ahí el camino es Nota de Crédito). */}
+                              {esAdmin && (sifenPorFactura[f.id]?.estado_sifen ?? null) !== "aprobado" && (
+                                <AnularFacturaButton
+                                  facturaId={f.id}
+                                  estado={f.estado}
+                                  variant="compact"
+                                  onAnulada={() => { void getFacturas(id).then(setFacturas); }}
+                                />
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

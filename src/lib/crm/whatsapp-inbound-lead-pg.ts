@@ -151,7 +151,8 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
 
     const advRes = await client.query(
       `SELECT trim(coalesce(u.nombre::text, '')) AS full_name,
-              u.email::text AS email
+              u.email::text AS email,
+              u.id::text AS usuario_id
        FROM ${conv} c
        LEFT JOIN ${ag} a ON a.id = c.assigned_agent_id AND a.empresa_id = c.empresa_id
        LEFT JOIN ${us} u ON u.id = a.usuario_id
@@ -159,9 +160,11 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
        LIMIT 1`,
       [input.conversation_id, input.empresa_id]
     );
-    const adv = advRes.rows[0] as { full_name?: string | null; email?: string | null } | undefined;
+    const adv = advRes.rows[0] as { full_name?: string | null; email?: string | null; usuario_id?: string | null } | undefined;
     const responsable =
       (adv?.full_name?.trim() || adv?.email?.trim() || null) as string | null;
+    // Fuente de verdad del scope: el id del usuario del agente asignado (no el nombre).
+    const responsableUsuarioId = (adv?.usuario_id?.trim() || null) as string | null;
 
     const phone = String(row0.phone_number ?? "").trim();
     const displayName = String(row0.name ?? "").trim() || phone || "Contacto WhatsApp";
@@ -190,11 +193,11 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
       `INSERT INTO ${cp} (
          empresa_id, numero_control, empresa, contacto, email, telefono,
          servicio, valor_estimado, etapa, proxima_accion, fecha_proxima_accion,
-         creado_por, origen_creacion, origen_detalle, responsable
+         creado_por, origen_creacion, origen_detalle, responsable, responsable_usuario_id
        ) VALUES (
          $1::uuid, $2::text, $3::text, $4::text, NULL, $5::text,
          $6::text, 0, $7::text, NULL, NULL,
-         $8::text, 'whatsapp', NULL, $9::text
+         $8::text, 'whatsapp', NULL, $9::text, $10::uuid
        )
        RETURNING id::text`,
       [
@@ -207,6 +210,7 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
         etapaCodigo,
         creadoPor,
         responsable,
+        responsableUsuarioId,
       ]
     );
     const prospectoId = (ins.rows[0] as { id?: string } | undefined)?.id;

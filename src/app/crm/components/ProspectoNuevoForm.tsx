@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getProspectos, saveProspecto } from "@/lib/crm/storage";
 import { getEtapas } from "@/lib/crm/etapas";
 import { getCurrentUser } from "@/lib/auth";
+import { getUsuariosActivosEmpresa, type UsuarioEmpresa } from "@/lib/usuarios/empresa";
 import { getPlanes } from "@/lib/planes/storage";
 import PlanSelector from "@/components/crm/PlanSelector";
 import { cleanTelefono, formatTelefonoDisplay, isValidTelefono } from "@/lib/telefono";
@@ -55,6 +56,7 @@ export default function ProspectoNuevoForm({
     proxima_accion: "",
     fecha_proxima_accion: "",
     responsable: "",
+    responsable_usuario_id: "",
     observaciones: "",
   });
 
@@ -63,6 +65,7 @@ export default function ProspectoNuevoForm({
   const [etapas, setEtapas] = useState<EtapaCrm[]>([]);
   const [cargandoPlanes, setCargandoPlanes] = useState(true);
   const [usuarioActual, setUsuarioActual] = useState<{ nombre?: string; email?: string } | null>(null);
+  const [usuariosEmpresa, setUsuariosEmpresa] = useState<UsuarioEmpresa[]>([]);
   const [telefonosHistorial, setTelefonosHistorial] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -71,6 +74,12 @@ export default function ProspectoNuevoForm({
       .then(setPlanes)
       .catch(() => setPlanes([]))
       .finally(() => setCargandoPlanes(false));
+  }, []);
+
+  useEffect(() => {
+    getUsuariosActivosEmpresa()
+      .then(setUsuariosEmpresa)
+      .catch(() => setUsuariosEmpresa([]));
   }, []);
 
   useEffect(() => {
@@ -177,6 +186,7 @@ export default function ProspectoNuevoForm({
         proxima_accion: form.proxima_accion.trim() || undefined,
         fecha_proxima_accion: form.fecha_proxima_accion || undefined,
         responsable: form.responsable.trim().toUpperCase() || undefined,
+        responsable_usuario_id: form.responsable_usuario_id || undefined,
         observaciones: form.observaciones.trim() || null,
       });
 
@@ -405,14 +415,29 @@ export default function ProspectoNuevoForm({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={LABEL_CLS}>Responsable</label>
-                <input
-                  type="text"
-                  name="responsable"
-                  value={form.responsable}
-                  onChange={handleChange}
-                  placeholder="Ej: JUAN PÉREZ"
-                  className={`${INPUT_CLS} uppercase`}
-                />
+                <select
+                  name="responsable_usuario_id"
+                  value={form.responsable_usuario_id}
+                  onChange={(e) => {
+                    const uid = e.target.value;
+                    const u = usuariosEmpresa.find((x) => x.id === uid);
+                    // Guardamos el id (fuente de verdad del scope) y el nombre (display/compat).
+                    setForm((prev) => ({
+                      ...prev,
+                      responsable_usuario_id: uid,
+                      responsable: u ? (u.nombre ?? "").trim() || u.email || "" : "",
+                    }));
+                  }}
+                  className={SELECT_CLS}
+                  style={CHEVRON_STYLE}
+                >
+                  <option value="">— Sin asignar —</option>
+                  {usuariosEmpresa.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {(u.nombre ?? "").trim() || u.email}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className={LABEL_CLS}>Creado por</label>

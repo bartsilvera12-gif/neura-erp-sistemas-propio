@@ -54,6 +54,7 @@ function rowToProspectoPg(row: ProspectoRowPg, notas: Nota[]): Prospecto {
     origen_creacion: (row.origen_creacion ?? "manual") as Prospecto["origen_creacion"],
     origen_detalle: od != null && String(od).trim() !== "" ? String(od) : null,
     responsable: row.responsable != null ? String(row.responsable) : undefined,
+    responsable_usuario_id: row.responsable_usuario_id != null ? String(row.responsable_usuario_id) : null,
     observaciones:
       row.observaciones != null && String(row.observaciones).trim() !== ""
         ? String(row.observaciones)
@@ -264,6 +265,7 @@ export async function insertProspectoForEmpresaPg(
     origen_creacion: string;
     origen_detalle: string | null;
     responsable: string | null;
+    responsable_usuario_id: string | null;
     observaciones: string | null;
   }
 ): Promise<{ id: string } | null> {
@@ -279,11 +281,11 @@ export async function insertProspectoForEmpresaPg(
       `INSERT INTO ${cp} (
          empresa_id, numero_control, empresa, contacto, email, telefono,
          servicio, valor_estimado, etapa, proxima_accion, fecha_proxima_accion,
-         creado_por, origen_creacion, origen_detalle, responsable, observaciones
+         creado_por, origen_creacion, origen_detalle, responsable, responsable_usuario_id, observaciones
        ) VALUES (
          $1::uuid, $2::text, $3::text, $4::text, $5::text, $6::text,
          $7::text, $8::numeric, $9::text, $10::text, $11::date,
-         $12::text, $13::text, $14::text, $15::text, $16::text
+         $12::text, $13::text, $14::text, $15::text, $16::uuid, $17::text
        )
        RETURNING id::text`,
       [
@@ -302,6 +304,7 @@ export async function insertProspectoForEmpresaPg(
         input.origen_creacion,
         input.origen_detalle,
         input.responsable,
+        input.responsable_usuario_id,
         input.observaciones,
       ]
     );

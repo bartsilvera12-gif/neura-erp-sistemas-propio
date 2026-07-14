@@ -34,7 +34,9 @@ export interface Prospecto {
     | "automatizacion"
     | "otro";
   origen_detalle?:      string | null;
-  responsable?:          string;       // nombre del responsable de seguimiento
+  responsable?:          string;       // nombre del responsable de seguimiento (display/compat)
+  /** ID del usuario responsable (fuente de verdad para el scope por perfil del CRM Funnel). */
+  responsable_usuario_id?: string | null;
   /** Texto libre interno (no es el timeline de crm_notas). */
   observaciones?:       string | null;
   notas:                 Nota[];

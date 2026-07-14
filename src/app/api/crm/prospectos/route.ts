@@ -119,6 +119,11 @@ export async function POST(request: NextRequest) {
       origen_creacion: "manual",
       origen_detalle: null,
       responsable: typeof body.responsable === "string" && body.responsable.trim() ? body.responsable.trim() : null,
+      responsable_usuario_id:
+        typeof body.responsable_usuario_id === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.responsable_usuario_id.trim())
+          ? body.responsable_usuario_id.trim()
+          : null,
       observaciones: typeof body.observaciones === "string" && body.observaciones.trim() ? body.observaciones.trim() : null,
     };
 
@@ -138,6 +143,7 @@ export async function POST(request: NextRequest) {
         origen_creacion: insert.origen_creacion,
         origen_detalle: insert.origen_detalle,
         responsable: insert.responsable,
+        responsable_usuario_id: insert.responsable_usuario_id,
         observaciones: insert.observaciones,
       });
       if (!created?.id) {

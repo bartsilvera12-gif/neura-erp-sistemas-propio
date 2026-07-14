@@ -29,6 +29,7 @@ interface ProspectoRow {
   creado_por: string | null;
   origen_creacion?: string | null;
   responsable: string | null;
+  responsable_usuario_id?: string | null;
   observaciones?: string | null;
   cliente_creado: boolean;
   fecha_creacion: string;
@@ -70,6 +71,7 @@ function rowToProspecto(row: ProspectoRow, notas: Nota[]): Prospecto {
     origen_creacion: (row.origen_creacion ?? "manual") as Prospecto["origen_creacion"],
     origen_detalle: (row as { origen_detalle?: string | null }).origen_detalle ?? null,
     responsable: row.responsable ?? undefined,
+    responsable_usuario_id: row.responsable_usuario_id ?? null,
     observaciones: row.observaciones != null && String(row.observaciones).trim() !== "" ? String(row.observaciones) : null,
     notas,
     fecha_creacion: row.fecha_creacion,
@@ -231,6 +233,7 @@ export async function saveProspecto(
         proxima_accion: datos.proxima_accion ?? null,
         fecha_proxima_accion: datos.fecha_proxima_accion ?? null,
         responsable: datos.responsable ?? null,
+        responsable_usuario_id: datos.responsable_usuario_id ?? null,
         observaciones: datos.observaciones?.trim() || null,
       }),
     });

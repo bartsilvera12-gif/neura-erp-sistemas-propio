@@ -7,6 +7,7 @@ import {
   GitBranch,
   Inbox,
   LayoutGrid,
+  Library,
   MessageCircle,
   Percent,
   PieChart,
@@ -143,6 +144,16 @@ export default function ConfiguracionPage() {
               icon={Percent}
               badge={editorBadge}
               href="/configuracion/comisiones"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
+              title="Plan de Cuentas"
+              subtitle="GLOBAL · CONTABILIDAD"
+              description="Administración de cuentas contables, niveles, naturaleza y configuración fiscal."
+              icon={Library}
+              badge={editorBadge}
+              href="/configuracion/plan-de-cuentas"
             />
           </li>
           <li>

@@ -114,41 +114,47 @@ export async function createChannelQuickReply(input: {
 
   const pool = getChatPostgresPool();
   const usePg = Boolean(pool) && useChatPgForTenantSchema(dataSchema);
-  console.info("[quick-replies][create] diag", {
-    dataSchema,
-    pool_available: Boolean(pool),
-    use_pg_for_schema: useChatPgForTenantSchema(dataSchema),
-    path: usePg ? "pg" : "postgrest",
-    channelId,
-  });
+
+  // ── DIAG TEMPORAL: hace el insert por el camino elegido y luego LANZA el resultado a la UI
+  //    (schema, camino, pool, y cuántas filas hay tras insertar) para diagnosticar sin depender de logs.
+  let pgErr: string | null = null;
+  let pgInserted = false;
+  let postgrestErr: string | null = null;
+  let postgrestInsertedCount = -1;
+
   if (usePg && pool) {
-    const ok = await pgChannelBelongsToEmpresa(pool, dataSchema, empresa_id, channelId);
-    if (!ok) throw new Error("Canal no encontrado o sin permiso.");
-    await pgCreateQuickReply(pool, dataSchema, empresa_id, { channelId, title, body, sortOrder });
-    console.info("[quick-replies][create] pg_insert_done", { dataSchema, channelId });
-    return;
+    try {
+      const ok = await pgChannelBelongsToEmpresa(pool, dataSchema, empresa_id, channelId);
+      if (!ok) throw new Error("Canal no pertenece a la empresa (PG).");
+      await pgCreateQuickReply(pool, dataSchema, empresa_id, { channelId, title, body, sortOrder });
+      pgInserted = true;
+    } catch (e) {
+      pgErr = e instanceof Error ? e.message : String(e);
+    }
+  } else {
+    try {
+      const { data: inserted, error } = await supabase
+        .from("chat_channel_quick_replies")
+        .insert({ empresa_id, channel_id: channelId, title, body, sort_order: sortOrder, is_active: true })
+        .select("id");
+      postgrestErr = error?.message ?? null;
+      postgrestInsertedCount = inserted?.length ?? 0;
+    } catch (e) {
+      postgrestErr = e instanceof Error ? e.message : String(e);
+    }
   }
 
-  await assertChannelBelongsToEmpresa(supabase, empresa_id, channelId);
+  // Cuenta real tras el intento (por PG directo, que sabemos que lee bien).
+  let countAfter = -1;
+  try {
+    if (pool) countAfter = (await pgListAllQuickRepliesForChannel(pool, dataSchema, empresa_id, channelId)).length;
+  } catch { /* ignore */ }
 
-  const { data: inserted, error } = await supabase
-    .from("chat_channel_quick_replies")
-    .insert({
-      empresa_id,
-      channel_id: channelId,
-      title,
-      body,
-      sort_order: sortOrder,
-      is_active: true,
-    })
-    .select("id");
-
-  console.info("[quick-replies][create] postgrest_insert_result", {
-    dataSchema,
-    error: error?.message ?? null,
-    inserted_count: inserted?.length ?? 0,
-  });
-  if (error) throw new Error(error.message);
+  throw new Error(
+    `DIAG → schema=${dataSchema} | pool=${Boolean(pool)} | usePg=${usePg} | ` +
+    (usePg ? `pgInserted=${pgInserted} pgErr=${pgErr ?? "-"}` : `postgrestCount=${postgrestInsertedCount} postgrestErr=${postgrestErr ?? "-"}`) +
+    ` | countAfter=${countAfter}`
+  );
 }
 
 export async function updateChannelQuickReply(input: {

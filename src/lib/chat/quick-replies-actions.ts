@@ -113,24 +113,41 @@ export async function createChannelQuickReply(input: {
   const sortOrder = typeof input.sortOrder === "number" ? input.sortOrder : 0;
 
   const pool = getChatPostgresPool();
-  if (pool && useChatPgForTenantSchema(dataSchema)) {
+  const usePg = Boolean(pool) && useChatPgForTenantSchema(dataSchema);
+  console.info("[quick-replies][create] diag", {
+    dataSchema,
+    pool_available: Boolean(pool),
+    use_pg_for_schema: useChatPgForTenantSchema(dataSchema),
+    path: usePg ? "pg" : "postgrest",
+    channelId,
+  });
+  if (usePg && pool) {
     const ok = await pgChannelBelongsToEmpresa(pool, dataSchema, empresa_id, channelId);
     if (!ok) throw new Error("Canal no encontrado o sin permiso.");
     await pgCreateQuickReply(pool, dataSchema, empresa_id, { channelId, title, body, sortOrder });
+    console.info("[quick-replies][create] pg_insert_done", { dataSchema, channelId });
     return;
   }
 
   await assertChannelBelongsToEmpresa(supabase, empresa_id, channelId);
 
-  const { error } = await supabase.from("chat_channel_quick_replies").insert({
-    empresa_id,
-    channel_id: channelId,
-    title,
-    body,
-    sort_order: sortOrder,
-    is_active: true,
-  });
+  const { data: inserted, error } = await supabase
+    .from("chat_channel_quick_replies")
+    .insert({
+      empresa_id,
+      channel_id: channelId,
+      title,
+      body,
+      sort_order: sortOrder,
+      is_active: true,
+    })
+    .select("id");
 
+  console.info("[quick-replies][create] postgrest_insert_result", {
+    dataSchema,
+    error: error?.message ?? null,
+    inserted_count: inserted?.length ?? 0,
+  });
   if (error) throw new Error(error.message);
 }
 

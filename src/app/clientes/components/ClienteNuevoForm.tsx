@@ -33,6 +33,8 @@ export type ClienteNuevoFormProps = {
   /** Si está definido, se llama con el id del nuevo cliente en lugar de hacer router.push */
   onCreated?: (id: string) => void;
   onCancel?: () => void;
+  /** Precargar desde un prospecto CRM (equivale a `?from_crm=<id>`, pero para uso como modal). */
+  fromProspectoId?: string;
 };
 
 // ── Estilos ────────────────────────────────────────────────────────────────────
@@ -52,10 +54,10 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ── Componente interno (necesita Suspense por useSearchParams) ─────────────────
 
-function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel }: ClienteNuevoFormProps) {
+function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromProspectoId }: ClienteNuevoFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const fromCrmId = searchParams?.get("from_crm");
+  const fromCrmId = fromProspectoId ?? searchParams?.get("from_crm");
 
   const isModal = variant === "modal";
 

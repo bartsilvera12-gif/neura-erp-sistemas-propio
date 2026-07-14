@@ -7,9 +7,14 @@ export type ClienteNuevoModalProps = {
   open: boolean;
   onClose: () => void;
   onCreated: (id: string) => void;
+  /** Precargar desde un prospecto CRM (transformar lead → cliente). */
+  fromProspectoId?: string;
+  /** Override del título del encabezado (por defecto "Crear cliente"). */
+  titulo?: string;
+  subtitulo?: string;
 };
 
-export default function ClienteNuevoModal({ open, onClose, onCreated }: ClienteNuevoModalProps) {
+export default function ClienteNuevoModal({ open, onClose, onCreated, fromProspectoId, titulo, subtitulo }: ClienteNuevoModalProps) {
   const requestClose = useCallback(() => {
     onClose();
   }, [onClose]);
@@ -66,10 +71,10 @@ export default function ClienteNuevoModal({ open, onClose, onCreated }: ClienteN
               id="cliente-nuevo-titulo"
               className="mt-1 truncate text-2xl font-semibold tracking-tight text-slate-900"
             >
-              Crear cliente
+              {titulo ?? "Crear cliente"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Registrá un cliente en la base de datos. Podés ajustar el resto del perfil después.
+              {subtitulo ?? "Registrá un cliente en la base de datos. Podés ajustar el resto del perfil después."}
             </p>
           </div>
           <button
@@ -82,7 +87,7 @@ export default function ClienteNuevoModal({ open, onClose, onCreated }: ClienteN
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          <ClienteNuevoForm variant="modal" onCreated={onCreated} onCancel={requestClose} />
+          <ClienteNuevoForm variant="modal" fromProspectoId={fromProspectoId} onCreated={onCreated} onCancel={requestClose} />
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import type { Prospecto } from "@/lib/crm/types";
 import ProspectoNuevoModal from "@/app/crm/components/ProspectoNuevoModal";
 import ProspectoDetalleModal from "@/app/crm/components/ProspectoDetalleModal";
+import ClienteNuevoModal from "@/app/clientes/components/ClienteNuevoModal";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -339,12 +340,14 @@ function ProspectoCard({
   onDragStart,
   onMoverEtapa,
   onEdit,
+  onTransformar,
 }: {
   prospecto: Prospecto;
   etapas: EtapaCrm[];
   onDragStart: (id: string) => void;
   onMoverEtapa: (id: string, etapaCodigo: string) => void;
   onEdit: (id: string) => void;
+  onTransformar: (p: Prospecto) => void;
 }) {
   const [phoneCopied, setPhoneCopied] = useState(false);
 
@@ -571,23 +574,26 @@ function ProspectoCard({
         </div>
       ) : null}
 
-      {esGanado ? (
-        <div className="mt-2 flex items-center justify-between gap-1 rounded-lg border border-emerald-200 bg-emerald-50/80 px-2 py-1">
-          <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
-            <IconCheck />
-            {prospecto.cliente_creado ? "Cliente creado" : "Ganado"}
-          </span>
-          {!prospecto.cliente_creado ? (
-            <Link
-              href={`/clientes/nuevo?from_crm=${prospecto.id}`}
-              onClick={(e) => e.stopPropagation()}
-              className="shrink-0 text-[10px] font-semibold text-emerald-700 underline-offset-2 hover:underline"
-            >
-              Crear cliente →
-            </Link>
-          ) : null}
+      {prospecto.cliente_creado ? (
+        <div className="mt-2 flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/80 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+          <IconCheck />
+          Cliente creado
         </div>
-      ) : null}
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTransformar(prospecto);
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg bg-[#4FAEB2] px-2 py-1 text-[10px] font-semibold text-white transition-colors hover:bg-[#3F8E91]"
+          title="Crear el cliente con estos datos y marcar el lead como Ganado"
+        >
+          <IconCheck />
+          Transformar a cliente
+        </button>
+      )}
     </div>
   );
 }
@@ -605,6 +611,7 @@ function Columna({
   onDragStart,
   onMoverEtapa,
   onEdit,
+  onTransformar,
 }: {
   etapa: EtapaCrm;
   prospectos: Prospecto[];
@@ -616,6 +623,7 @@ function Columna({
   onDragStart: (id: string) => void;
   onMoverEtapa: (id: string, etapaCodigo: string) => void;
   onEdit: (id: string) => void;
+  onTransformar: (p: Prospecto) => void;
 }) {
   const tone = getEtapaTone(etapa.color);
   const total = prospectos.reduce((s, p) => s + p.valor_estimado, 0);
@@ -675,6 +683,7 @@ function Columna({
               onDragStart={onDragStart}
               onMoverEtapa={onMoverEtapa}
               onEdit={onEdit}
+              onTransformar={onTransformar}
             />
           ))
         )}
@@ -846,11 +855,13 @@ function ProspectoLista({
   etapas,
   onMoverEtapa,
   onEdit,
+  onTransformar,
 }: {
   prospectos: Prospecto[];
   etapas: EtapaCrm[];
   onMoverEtapa: (id: string, etapaCodigo: string) => void;
   onEdit: (id: string) => void;
+  onTransformar: (p: Prospecto) => void;
 }) {
   const [pageSize, setPageSize] = useState<ListPageSize>(25);
   const [filtroEtapa, setFiltroEtapa] = useState<string>("");
@@ -915,12 +926,13 @@ function ProspectoLista({
               <th className="px-4 py-3 font-semibold">Etapa</th>
               <th className="px-4 py-3 font-semibold">Responsable</th>
               <th className="px-4 py-3 font-semibold">Fecha</th>
+              <th className="px-4 py-3 text-right font-semibold">Acción</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
                   Sin prospectos
                 </td>
               </tr>
@@ -967,6 +979,20 @@ function ProspectoLista({
                   </td>
                   <td className="px-4 py-2.5 text-[11px] text-slate-500 tabular-nums">
                     {formatFecha(p.fecha_creacion)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                    {p.cliente_creado ? (
+                      <span className="text-[11px] font-semibold text-emerald-600">Cliente creado</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onTransformar(p)}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-[#4FAEB2] px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#3F8E91]"
+                        title="Crear el cliente con estos datos y marcar el lead como Ganado"
+                      >
+                        Transformar a cliente
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -1043,6 +1069,8 @@ export default function CrmPage() {
   const [dragOverEtapa, setDragOverEtapa] = useState<string | null>(null);
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  /** Lead que se está transformando a cliente (abre el modal de Nuevo cliente precargado). */
+  const [transformProspecto, setTransformProspecto] = useState<Prospecto | null>(null);
   /** Vista del pipeline: "kanban" (cards por etapa) | "lista" (tabla de filas). Persiste por navegador. */
   const [vista, setVista] = useState<"kanban" | "lista">(() => {
     if (typeof window === "undefined") return "kanban";
@@ -1274,6 +1302,7 @@ export default function CrmPage() {
                 onDragStart={handleDragStart}
                 onMoverEtapa={handleMoverEtapa}
                 onEdit={(id) => setEditandoId(id)}
+                onTransformar={setTransformProspecto}
               />
             ))}
           </div>
@@ -1284,6 +1313,7 @@ export default function CrmPage() {
           etapas={etapas}
           onMoverEtapa={handleMoverEtapa}
           onEdit={(id) => setEditandoId(id)}
+          onTransformar={setTransformProspecto}
         />
       )}
 
@@ -1301,6 +1331,34 @@ export default function CrmPage() {
         open={editandoId != null}
         onClose={() => setEditandoId(null)}
         onUpdated={() => recargar()}
+      />
+
+      {/* Transformar lead → cliente: mismo form de Nuevo cliente, precargado. Al guardar: crea el
+          cliente, marca el lead como cliente_creado (lo hace el form) y lo pasa a GANADO, y refresca. */}
+      <ClienteNuevoModal
+        open={transformProspecto != null}
+        fromProspectoId={transformProspecto?.id}
+        titulo="Transformar a cliente"
+        subtitulo={
+          transformProspecto
+            ? `Lead ${transformProspecto.numero_control} — ${transformProspecto.contacto || transformProspecto.empresa || ""}`
+            : undefined
+        }
+        onClose={() => setTransformProspecto(null)}
+        onCreated={() => {
+          const pid = transformProspecto?.id;
+          setTransformProspecto(null);
+          void (async () => {
+            if (pid) {
+              try {
+                await moveProspecto(pid, "GANADO");
+              } catch (e) {
+                console.error("[crm] transformar->ganado", e);
+              }
+            }
+            recargar();
+          })();
+        }}
       />
     </div>
   );

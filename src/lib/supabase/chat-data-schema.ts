@@ -72,3 +72,14 @@ export function isLikelyUnexposedTenantChatSchema(schema: string): boolean {
   if (!s || s === SUPABASE_APP_SCHEMA || s === "public") return false;
   return RE_ERP.test(s) || RE_ER_UUID.test(s);
 }
+
+/**
+ * Para MUTACIONES de chat que fallan de forma silenciosa por PostgREST en schemas tenant dedicados
+ * (p. ej. `neura`: el SELECT anda pero el INSERT no persiste por GRANT/exposición): usar PG directo
+ * en cualquier schema tenant dedicado (todo lo que NO sea el schema compartido public / app).
+ * Más amplio que `isLikelyUnexposedTenantChatSchema` (que solo cubre `erp_*`/`er_<uuid>`).
+ */
+export function useChatPgForTenantSchema(schema: string): boolean {
+  const s = schema.trim();
+  return Boolean(s) && s !== "public" && s !== SUPABASE_APP_SCHEMA;
+}

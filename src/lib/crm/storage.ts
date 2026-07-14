@@ -105,16 +105,23 @@ export async function getProspectos(): Promise<Prospecto[]> {
   }
 }
 
-/** Prospectos + notas filtrados por empresa (p. ej. API con service role en schema tenant). */
+/**
+ * Prospectos + notas filtrados por empresa (p. ej. API con service role en schema tenant).
+ * `scopeResponsableUsuarioId`: si viene, restringe a los leads de ese usuario (asesor); si no, trae todos (admin).
+ */
 export async function listProspectosForEmpresa(
   supabase: AppSupabaseClient,
-  empresaId: string
+  empresaId: string,
+  scopeResponsableUsuarioId?: string | null
 ): Promise<Prospecto[]> {
-  const { data: prospectosData, error: errP } = await supabase
+  let q = supabase
     .from("crm_prospectos")
     .select("*")
-    .eq("empresa_id", empresaId)
-    .order("fecha_creacion", { ascending: false });
+    .eq("empresa_id", empresaId);
+  if (typeof scopeResponsableUsuarioId === "string" && scopeResponsableUsuarioId.trim() !== "") {
+    q = q.eq("responsable_usuario_id", scopeResponsableUsuarioId.trim());
+  }
+  const { data: prospectosData, error: errP } = await q.order("fecha_creacion", { ascending: false });
 
   if (errP) {
     console.error("[crm] listProspectosForEmpresa:", errP.message);

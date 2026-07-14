@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProspectoForEmpresa, listProspectosForEmpresa } from "@/lib/crm/storage";
 import { generarNumeroControlFromSupabase } from "@/lib/crm/numero-control";
-import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { getTenantSupabaseFromAuth, getTenantSupabaseFromAuthWithRol } from "@/lib/supabase/tenant-api";
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
@@ -20,14 +21,20 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    const ctx = await getTenantSupabaseFromAuth(request);
+    const ctx = await getTenantSupabaseFromAuthWithRol(request);
     if (!ctx) {
       return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
     }
+    // Scope por perfil: admin ve TODO; el resto (asesor) solo sus leads (responsable_usuario_id = él).
+    // Si un no-admin no tiene usuario resuelto, se usa un id imposible → no ve nada (no se filtra a "todos").
+    const esAdmin = esRolAdminEmpresaOGlobal(ctx.auth.rol);
+    const scopeUsuarioId = esAdmin
+      ? null
+      : (ctx.auth.usuarioCatalogId?.trim() || "00000000-0000-0000-0000-000000000000");
     const dataSchema = await fetchDataSchemaForEmpresaId(ctx.auth.empresa_id);
     const pool = getChatPostgresPool();
     if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
-      const pgList = await listProspectosForEmpresaPg(pool, dataSchema, ctx.auth.empresa_id);
+      const pgList = await listProspectosForEmpresaPg(pool, dataSchema, ctx.auth.empresa_id, scopeUsuarioId);
       if (pgList !== null) {
         await logCrmFunnelProspectStageMatch(
           pool,
@@ -50,7 +57,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const items = await listProspectosForEmpresa(ctx.supabase, ctx.auth.empresa_id);
+    const items = await listProspectosForEmpresa(ctx.supabase, ctx.auth.empresa_id, scopeUsuarioId);
     await logCrmFunnelProspectStageMatch(null, undefined, ctx.auth.empresa_id, items, "postgrest_schema");
     console.info("[crm-funnel][list]", "postgrest_ok", {
       empresa_id: ctx.auth.empresa_id,

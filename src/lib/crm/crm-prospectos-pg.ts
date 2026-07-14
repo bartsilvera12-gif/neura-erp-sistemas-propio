@@ -126,11 +126,16 @@ export async function resolveCrmProspectosSchemaForTenant(
   return null;
 }
 
-/** Lista prospectos + notas (misma forma que `listProspectosForEmpresa`). */
+/**
+ * Lista prospectos + notas (misma forma que `listProspectosForEmpresa`).
+ * `scopeResponsableUsuarioId`: si viene, restringe a los leads de ese usuario (asesor);
+ * si es null/undefined trae todos (admin). El scope se resuelve en la ruta según el rol.
+ */
 export async function listProspectosForEmpresaPg(
   pool: Pool,
   tenantDataSchema: string,
-  empresaId: string
+  empresaId: string,
+  scopeResponsableUsuarioId?: string | null
 ): Promise<Prospecto[] | null> {
   const resolved = await resolveCrmProspectosSchemaForTenant(pool, tenantDataSchema);
   if (!resolved) return null;
@@ -147,12 +152,14 @@ export async function listProspectosForEmpresaPg(
   });
 
   try {
+    const scoped = typeof scopeResponsableUsuarioId === "string" && scopeResponsableUsuarioId.trim() !== "";
     const pr = await pool.query(
       `SELECT *
        FROM ${cp}
        WHERE empresa_id = $1::uuid
+       ${scoped ? "AND responsable_usuario_id = $2::uuid" : ""}
        ORDER BY fecha_creacion DESC NULLS LAST`,
-      [empresaId]
+      scoped ? [empresaId, scopeResponsableUsuarioId!.trim()] : [empresaId]
     );
     const prospectos = (pr.rows ?? []) as ProspectoRowPg[];
     if (prospectos.length === 0) {

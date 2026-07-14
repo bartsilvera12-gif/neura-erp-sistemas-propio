@@ -12,15 +12,18 @@ export function GlobalConfigSubpageShell({
   description,
   /** Eyebrow opcional sobre el título. Default: "AJUSTES". */
   eyebrow = "Ajustes",
+  /** Ancho máximo del contenedor. Default `max-w-6xl`; pantallas con tablas anchas pueden pasar `max-w-none`. */
+  maxWidthClassName = "max-w-6xl",
   children,
 }: {
   title: string;
   description?: string;
   eyebrow?: string;
+  maxWidthClassName?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8 px-4 pb-10 pt-2 sm:px-6 lg:px-8">
+    <div className={`mx-auto w-full ${maxWidthClassName} space-y-8 px-4 pb-10 pt-2 sm:px-6 lg:px-8`}>
       {/* Breadcrumb */}
       <nav className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <Link

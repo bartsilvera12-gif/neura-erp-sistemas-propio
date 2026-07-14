@@ -210,6 +210,7 @@ export default function PlanDeCuentasPage() {
     <GlobalConfigSubpageShell
       title="Plan de Cuentas"
       description="Administración de cuentas contables, niveles, naturaleza y configuración fiscal."
+      maxWidthClassName="max-w-[1600px]"
     >
       {/* Indicadores */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -236,13 +237,13 @@ export default function PlanDeCuentasPage() {
         </button>
         <button
           onClick={expandAll}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm text-slate-600 hover:bg-slate-50"
         >
           <ChevronDown className="h-4 w-4" /> Expandir todo
         </button>
         <button
           onClick={collapseAll}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm text-slate-600 hover:bg-slate-50"
         >
           <ChevronRight className="h-4 w-4" /> Contraer todo
         </button>
@@ -254,7 +255,7 @@ export default function PlanDeCuentasPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por código, denominación o Cuenta SSET…"
-          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]"
+          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]"
         />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <select value={fNivel} onChange={(e) => setFNivel(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
@@ -307,20 +308,20 @@ export default function PlanDeCuentasPage() {
 
       {/* Tabla / árbol */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-3 py-2.5 text-left">Cuenta</th>
-              <th className="px-3 py-2.5 text-left">Denominación</th>
-              <th className="px-3 py-2.5 text-center">Nivel</th>
-              <th className="px-3 py-2.5 text-center">Naturaleza</th>
-              <th className="px-3 py-2.5 text-center">Asentable</th>
-              <th className="px-3 py-2.5 text-center">C. Costo</th>
-              <th className="px-3 py-2.5 text-left">Moneda</th>
-              <th className="px-3 py-2.5 text-left">T. Cambio</th>
-              <th className="px-3 py-2.5 text-left">Cuenta SSET</th>
-              <th className="px-3 py-2.5 text-center">Estado</th>
-              <th className="px-3 py-2.5 text-right">Acciones</th>
+              <th className="px-2 py-2.5 text-left">Cuenta</th>
+              <th className="px-2 py-2.5 text-left">Denominación</th>
+              <th className="px-2 py-2.5 text-center">Nivel</th>
+              <th className="px-2 py-2.5 text-center">Naturaleza</th>
+              <th className="px-2 py-2.5 text-center">Asentable</th>
+              <th className="px-2 py-2.5 text-center">C. Costo</th>
+              <th className="px-2 py-2.5 text-left">Moneda</th>
+              <th className="px-2 py-2.5 text-left">T. Cambio</th>
+              <th className="px-2 py-2.5 text-left">Cuenta SSET</th>
+              <th className="px-2 py-2.5 text-center">Estado</th>
+              <th className="px-2 py-2.5 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -343,7 +344,7 @@ export default function PlanDeCuentasPage() {
                 const isOpen = visibleIds ? true : expanded.has(c.id);
                 return (
                   <tr key={c.id} className={`border-b last:border-0 hover:bg-slate-50/60 ${!c.activo ? "opacity-50" : ""}`}>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       <div className="flex items-center" style={{ paddingLeft: depth * 18 }}>
                         {hasChildren ? (
                           <button
@@ -361,11 +362,11 @@ export default function PlanDeCuentasPage() {
                         </span>
                       </div>
                     </td>
-                    <td className={`px-3 py-2 ${c.asentable ? "text-slate-600" : "font-semibold text-slate-800"}`}>
+                    <td className={`px-2 py-2 ${c.asentable ? "text-slate-600" : "font-semibold text-slate-800"}`}>
                       {c.denominacion}
                     </td>
-                    <td className="px-3 py-2 text-center text-slate-500">{c.nivel}</td>
-                    <td className="px-3 py-2 text-center">
+                    <td className="px-2 py-2 text-center text-slate-500">{c.nivel}</td>
+                    <td className="px-2 py-2 text-center">
                       <span
                         className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
                           c.naturaleza === "D" ? "bg-blue-50 text-blue-700" : "bg-purple-50 text-purple-700"
@@ -374,25 +375,25 @@ export default function PlanDeCuentasPage() {
                         {c.naturaleza}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-center">
+                    <td className="px-2 py-2 text-center">
                       {c.asentable ? (
                         <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700">Sí</span>
                       ) : (
                         <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">Agrup.</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-center text-slate-500">{c.centro_costo ? "Sí" : "—"}</td>
-                    <td className="px-3 py-2 text-slate-600">{c.moneda ?? "—"}</td>
-                    <td className="px-3 py-2 text-slate-600">{c.tipo_cambio ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-slate-500">{c.cuenta_sset ?? "—"}</td>
-                    <td className="px-3 py-2 text-center">
+                    <td className="px-2 py-2 text-center text-slate-500">{c.centro_costo ? "Sí" : "—"}</td>
+                    <td className="px-2 py-2 text-slate-600">{c.moneda ?? "—"}</td>
+                    <td className="px-2 py-2 text-slate-600">{c.tipo_cambio ?? "—"}</td>
+                    <td className="px-2 py-2 font-mono text-xs text-slate-500">{c.cuenta_sset ?? "—"}</td>
+                    <td className="px-2 py-2 text-center">
                       {c.activo ? (
                         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Activa</span>
                       ) : (
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">Inactiva</span>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => openEditar(c)}
@@ -452,7 +453,7 @@ function SkeletonRows() {
     <>
       {Array.from({ length: 8 }).map((_, i) => (
         <tr key={i} className="border-b last:border-0">
-          <td colSpan={11} className="px-3 py-2.5">
+          <td colSpan={11} className="px-2 py-2.5">
             <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
           </td>
         </tr>

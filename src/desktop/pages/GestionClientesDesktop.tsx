@@ -13,7 +13,6 @@ import {
 import { ModalCambioPlanGestion } from "@/components/gestion-clientes/ModalCambioPlanGestion";
 import { ModalHistorialClienteGestion } from "@/components/gestion-clientes/ModalHistorialClienteGestion";
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
-import { AnularFacturaButton } from "@/components/facturas/AnularFacturaButton";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -149,18 +148,14 @@ function BadgeTipo({ tipo }: { tipo: string }) {
 
 function FacturaRowAccionesSifen({
   facturaId,
-  estado,
   puedeCobrar,
   onCobrar,
-  onAnulada,
   sifenAprobado,
 }: {
   facturaId: string;
-  estado: string;
   sifenAprobado: boolean;
   puedeCobrar: boolean;
   onCobrar?: () => void;
-  onAnulada?: () => void | Promise<void>;
 }) {
   const btnBase =
     "inline-flex items-center justify-center w-8 h-8 rounded-lg border border-transparent transition-colors text-slate-500 hover:border-[#4FAEB2]/40 hover:text-[#3F8E91] hover:bg-[#4FAEB2]/10";
@@ -191,7 +186,6 @@ function FacturaRowAccionesSifen({
           Cobrar
         </button>
       ) : null}
-      <AnularFacturaButton facturaId={facturaId} estado={estado} variant="compact" onAnulada={onAnulada} />
     </div>
   );
 }
@@ -1240,13 +1234,9 @@ function GestionClientesPageInner() {
                                 <td className="align-middle px-2 py-2.5 sm:px-3">
                                   <FacturaRowAccionesSifen
                                     facturaId={f.id}
-                                    estado={f.estado}
                                     sifenAprobado={sifenPorFactura[f.id]?.estado_sifen === "aprobado"}
                                     puedeCobrar={facturaPermiteCobro(f)}
                                     onCobrar={() => setFacturaCobroModal(f)}
-                                    onAnulada={() => {
-                                      if (selected) getFacturas(selected.id).then(setFacturas);
-                                    }}
                                   />
                                 </td>
                               </tr>

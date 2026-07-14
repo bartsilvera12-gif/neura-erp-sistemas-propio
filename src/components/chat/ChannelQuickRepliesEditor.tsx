@@ -47,8 +47,7 @@ export function ChannelQuickRepliesEditor({ channelId, disabled = false, hideInt
     void load();
   }, [load]);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleCreate() {
     const title = draftTitle.trim();
     const body = draftBody.trim();
     if (!title || !body) return;
@@ -91,10 +90,10 @@ export function ChannelQuickRepliesEditor({ channelId, disabled = false, hideInt
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       ) : null}
 
-      <form
-        onSubmit={(e) => void handleCreate(e)}
-        className="rounded-lg border border-slate-200 bg-white p-4 space-y-4"
-      >
+      {/* NO usar <form>: este bloque se renderiza DENTRO del <form> del canal (WhatsAppChannelForm).
+          Formularios anidados son inválidos en HTML y hacían que "Agregar" submitee el form de afuera
+          (guardaba el canal) en vez de crear la respuesta rápida. El botón llama a handleCreate directo. */}
+      <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
         <h4 className="text-sm font-semibold text-slate-800">Nueva respuesta rápida</h4>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -132,14 +131,15 @@ export function ChannelQuickRepliesEditor({ channelId, disabled = false, hideInt
         </div>
         <div className="flex justify-end pt-1">
           <button
-            type="submit"
+            type="button"
+            onClick={() => void handleCreate()}
             disabled={disabled || creating || !draftTitle.trim() || !draftBody.trim()}
             className="rounded-lg bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-50 text-white px-5 py-2 text-sm font-medium"
           >
             {creating ? "Guardando…" : "Agregar"}
           </button>
         </div>
-      </form>
+      </div>
 
       <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
         <div className="bg-slate-50/90 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-2">

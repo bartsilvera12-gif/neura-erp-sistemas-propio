@@ -51,6 +51,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse("Tipo de IVA inválido. Debe ser 'exenta', '5' o '10'."), { status: 400 });
     }
 
+    // Idempotencia: solo aceptar un uuid válido; cualquier otra cosa se ignora (no rompe).
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const idemRaw = req("idempotency_key") ? String(body.idempotency_key).trim() : "";
+    const idempotencyKey = UUID_RE.test(idemRaw) ? idemRaw : null;
+
     // Recalcular montos en backend (no confiar en el frontend). IVA aditivo sobre el subtotal.
     const cantidad = Number(body.cantidad) || 0;
     const costoUnitario = Number(body.costo_unitario) || 0;
@@ -81,7 +86,7 @@ export async function POST(request: NextRequest) {
         nro_timbrado: String(body.nro_timbrado).trim().toUpperCase(),
         cuenta_contable_id: req("cuenta_contable_id") ? String(body.cuenta_contable_id) : null,
         afecta_stock: body.afecta_stock === false ? false : true,
-        idempotency_key: req("idempotency_key") ? String(body.idempotency_key) : null,
+        idempotency_key: idempotencyKey,
         created_by: ctx.auth.usuarioCatalogId ?? null,
         usuario_nombre: ctx.auth.user?.email ?? null,
       });

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   buildCampaignTemplatePreviewText,
@@ -104,6 +104,15 @@ export default function CampanasDetailClient({
   const [busy, setBusy] = useState(false);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [showEvents, setShowEvents] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [importInfo, setImportInfo] = useState<{
+    fileName: string;
+    rows: number;
+    valid: number;
+    invalid: number;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetchWithSupabaseSession(`/api/campanas/${campaignId}`, { cache: "no-store" });
@@ -210,16 +219,6 @@ export default function CampanasDetailClient({
       mappedBySlot,
     });
   }, [campaign, mapping, placeholderSlots, recipients]);
-
-  const templateHasHeaderImage = useMemo(() => {
-    const vs = campaign?.template_components_json as unknown;
-    if (!vs || !Array.isArray(vs)) return false;
-    return (vs as { type?: string; format?: string }[]).some(
-      (c) =>
-        String(c.type ?? "").toUpperCase() === "HEADER" &&
-        String(c.format ?? "").toUpperCase() === "IMAGE"
-    );
-  }, [campaign]);
 
   const headerImageError =
     typeof campaign?.send_config_json?.header_image_error === "string"
@@ -372,6 +371,7 @@ export default function CampanasDetailClient({
   }
 
   async function uploadFile(file: File) {
+    setImporting(true);
     setBusy(true);
     setErr(null);
     const fd = new FormData();
@@ -380,13 +380,27 @@ export default function CampanasDetailClient({
       method: "POST",
       body: fd,
     });
-    const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
-    setBusy(false);
+    const json = (await res.json().catch(() => ({}))) as {
+      success?: boolean;
+      error?: string;
+      data?: { rows?: number; valid_count?: number; invalid_count?: number };
+    };
     if (!res.ok || !json.success) {
+      setImporting(false);
+      setBusy(false);
+      setImportInfo(null);
       setErr(json.error ?? "Importación fallida");
       return;
     }
+    setImportInfo({
+      fileName: file.name,
+      rows: Number(json.data?.rows ?? 0),
+      valid: Number(json.data?.valid_count ?? 0),
+      invalid: Number(json.data?.invalid_count ?? 0),
+    });
     await load();
+    setImporting(false);
+    setBusy(false);
   }
 
   async function saveMapping() {
@@ -604,22 +618,91 @@ export default function CampanasDetailClient({
           </h2>
         </div>
         <input
+          ref={fileInputRef}
           type="file"
           accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           disabled={!canImport || busy}
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) void uploadFile(f);
+            e.target.value = "";
           }}
-          className="block text-sm text-slate-600"
+          className="hidden"
         />
-        <p className="text-xs text-slate-500">Máximo 5.000 filas / 5 MB.</p>
-        {templateHasHeaderImage ? (
-          <p className="text-xs text-slate-600">
-            <strong>Imagen de cabecera (Meta):</strong> agregá una columna <code className="rounded bg-slate-100 px-1">header_image_url</code>{" "}
-            en el Excel con una URL <strong>https</strong> pública. En esta fase todas las filas válidas deben usar la
-            misma URL.
-          </p>
+        <button
+          type="button"
+          disabled={!canImport || busy}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (canImport && !busy) setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (!canImport || busy) return;
+            const f = e.dataTransfer.files?.[0];
+            if (f) void uploadFile(f);
+          }}
+          className={`flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+            dragOver
+              ? "border-[#4FAEB2] bg-[#4FAEB2]/[0.06]"
+              : "border-slate-300 hover:border-[#4FAEB2]/60 hover:bg-slate-50"
+          } disabled:cursor-not-allowed disabled:opacity-60`}
+        >
+          {importing ? (
+            <>
+              <svg
+                className="h-6 w-6 animate-spin text-[#4FAEB2]"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              <span className="text-sm font-medium text-slate-700">Cargando datos…</span>
+              <span className="text-xs text-slate-400">Procesando tu archivo, aguardá un momento</span>
+            </>
+          ) : (
+            <>
+              <svg
+                className="h-7 w-7 text-[#4FAEB2]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 16V4m0 0L7 9m5-5l5 5" />
+                <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+              </svg>
+              <span className="text-sm font-medium text-slate-700">Hacé clic para elegir tu archivo Excel</span>
+              <span className="text-xs text-slate-400">
+                o arrastralo aquí · .xlsx / .csv · máximo 5.000 filas / 5 MB
+              </span>
+            </>
+          )}
+        </button>
+        {importInfo && !importing ? (
+          <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            <svg className="mt-0.5 h-4 w-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path
+                fillRule="evenodd"
+                d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0L3.3 10.7a1 1 0 011.4-1.4l3.1 3.1 6.8-6.8a1 1 0 011.4 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>
+              <strong>Datos cargados.</strong> {importInfo.fileName} — {importInfo.rows}{" "}
+              {importInfo.rows === 1 ? "fila" : "filas"}
+              {importInfo.invalid > 0 ? ` (${importInfo.invalid} con error)` : ""}. Podés volver a cargar otro
+              archivo para reemplazarlas.
+            </span>
+          </div>
         ) : null}
       </section>
 

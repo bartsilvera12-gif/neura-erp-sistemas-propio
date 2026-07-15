@@ -22,6 +22,15 @@ const ESTADO_BADGE: Record<GastoEstado, string> = {
   historico: "bg-amber-50 text-amber-700",
 };
 
+/** Formatea el número de comprobante con guiones automáticos: 3-3-7 (001-001-0000001). */
+function formatComprobante(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 13);
+  let out = d.slice(0, 3);
+  if (d.length > 3) out += "-" + d.slice(3, 6);
+  if (d.length > 6) out += "-" + d.slice(6, 13);
+  return out;
+}
+
 function firstOfMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
@@ -341,7 +350,7 @@ function GastoFormModal({
                     {TIPO_COMPROBANTES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </Field>
-                <Field label="Número de comprobante"><input className={INPUT} value={form.numero_comprobante ?? ""} onChange={(e) => setField("numero_comprobante", e.target.value || null)} placeholder="001-001-0000001" /></Field>
+                <Field label="Número de comprobante"><input className={INPUT} inputMode="numeric" value={form.numero_comprobante ?? ""} onChange={(e) => setField("numero_comprobante", formatComprobante(e.target.value) || null)} placeholder="001-001-0000001" /></Field>
                 <Field label="Timbrado"><input className={INPUT} value={form.timbrado ?? ""} onChange={(e) => setField("timbrado", e.target.value || null)} /></Field>
                 <Field label="Fecha de comprobante"><input type="date" className={INPUT} value={form.fecha_comprobante ?? ""} onChange={(e) => setField("fecha_comprobante", e.target.value || null)} /></Field>
                 <Field label="Fecha contable"><input type="date" className={INPUT} value={form.fecha_contable ?? ""} onChange={(e) => setField("fecha_contable", e.target.value || null)} /></Field>

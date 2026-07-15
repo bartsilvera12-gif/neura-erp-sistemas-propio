@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { GlobalConfigSubpageShell } from "@/components/config/GlobalConfigSubpageShell";
-import { ConfigFormCard, ConfigSectionTitle, F_LABEL, F_SELECT } from "@/components/config/global-config-primitives";
+import { ConfigFormCard, ConfigSectionTitle, F_LABEL } from "@/components/config/global-config-primitives";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
+import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
 
 interface Config {
   cuenta_iva_credito_5_id: string | null;
@@ -80,10 +81,12 @@ export default function ConfiguracionContablePage() {
           {FIELDS.map((f) => (
             <div key={f.key}>
               <label className={F_LABEL}>{f.label}</label>
-              <select className={F_SELECT} value={(config[f.key] as string) ?? ""} onChange={(e) => setConfig((c) => ({ ...c, [f.key]: e.target.value || null }))} disabled={loading}>
-                <option value="">(Sin configurar)</option>
-                {cuentas.map((c) => <option key={c.id} value={c.id}>{c.cuenta} — {c.denominacion}</option>)}
-              </select>
+              <CuentaCombobox
+                cuentas={cuentas}
+                value={(config[f.key] as string) ?? null}
+                onChange={(id) => setConfig((c) => ({ ...c, [f.key]: id }))}
+                placeholder="(Sin configurar)"
+              />
             </div>
           ))}
         </div>

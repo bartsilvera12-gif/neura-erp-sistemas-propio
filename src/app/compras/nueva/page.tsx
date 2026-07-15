@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import { saveCompra, getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
+import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
 import { getProveedores, proveedorExiste, createProveedor } from "@/lib/proveedores/storage";
 import {
   getProductos,
@@ -677,13 +678,12 @@ export default function NuevaCompraPage() {
             {form.tipo_pago === "contado" && (
               <div>
                 <label className={labelClass}>Cuenta de pago <span className="text-red-500">*</span></label>
-                <select name="cuenta_contrapartida_id" value={form.cuenta_contrapartida_id}
-                  onChange={handleChange} className={inputClass}>
-                  <option value="">Seleccionar cuenta de pago…</option>
-                  {cuentasContables.map((c) => (
-                    <option key={c.id} value={c.id}>{c.cuenta} — {c.denominacion}</option>
-                  ))}
-                </select>
+                <CuentaCombobox
+                  cuentas={cuentasContables}
+                  value={form.cuenta_contrapartida_id || null}
+                  onChange={(id) => setForm((prev) => ({ ...prev, cuenta_contrapartida_id: id ?? "" }))}
+                  placeholder="Seleccionar cuenta de pago…"
+                />
                 <p className="mt-1 text-xs text-slate-400">Cuenta desde la que sale el dinero (Caja, Banco…). Se sugiere la predeterminada de Configuración Contable.</p>
               </div>
             )}

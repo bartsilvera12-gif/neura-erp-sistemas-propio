@@ -105,6 +105,7 @@ export default function CampanasDetailClient({
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [showEvents, setShowEvents] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [launching, setLaunching] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [importInfo, setImportInfo] = useState<{
     fileName: string;
@@ -456,18 +457,23 @@ export default function CampanasDetailClient({
   }
 
   async function launch() {
+    setLaunching(true);
     setBusy(true);
     setErr(null);
-    const res = await fetchWithSupabaseSession(`/api/campanas/${campaignId}/launch`, {
-      method: "POST",
-    });
-    const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
-    setBusy(false);
-    if (!res.ok || !json.success) {
-      setErr(json.error ?? "No se pudo iniciar envío");
-      return;
+    try {
+      const res = await fetchWithSupabaseSession(`/api/campanas/${campaignId}/launch`, {
+        method: "POST",
+      });
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || !json.success) {
+        setErr(json.error ?? "No se pudo iniciar envío");
+        return;
+      }
+      await load();
+    } finally {
+      setBusy(false);
+      setLaunching(false);
     }
-    await load();
   }
 
   async function cancelSend() {
@@ -1036,11 +1042,26 @@ export default function CampanasDetailClient({
         </button>
         <button
           type="button"
-          disabled={busy || !canLaunch || campaign.total_count === 0}
+          disabled={busy || launching || !canLaunch || campaign.total_count === 0}
           onClick={() => void launch()}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-70"
         >
-          Enviar ahora
+          {launching || campaign.status === "sending" ? (
+            <>
+              <svg
+                className="h-4 w-4 animate-spin text-white"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              Enviando…
+            </>
+          ) : (
+            "Enviar ahora"
+          )}
         </button>
       </div>
 

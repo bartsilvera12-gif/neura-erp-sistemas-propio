@@ -77,6 +77,10 @@ export interface InsertCompraInput {
   plazo_dias: number | null;
   nro_timbrado: string;
   cuenta_contable_id: string | null;
+  /** true = compra directa que aumenta stock (Fase 0). false = provendrá de recepción (Fase 4). */
+  afecta_stock: boolean;
+  /** Clave de idempotencia (uuid) para que un doble-envío no cree dos compras. */
+  idempotency_key: string | null;
   created_by: string | null;
   usuario_nombre: string | null;
 }
@@ -175,6 +179,30 @@ export interface CompraResult {
   movimiento_warning: string | null;
 }
 
+/** Busca una compra por su clave de idempotencia (fuera de transacción). */
+async function fetchCompraByIdempotency(
+  schema: string,
+  empresaId: string,
+  idempotencyKey: string
+): Promise<CompraRow | null> {
+  const tC = quoteSchemaTable(schema, "compras");
+  const { rows } = await pool().query<CompraRow>(
+    `SELECT ${COLS} FROM ${tC} WHERE empresa_id = $1::uuid AND idempotency_key = $2::uuid LIMIT 1`,
+    [empresaId, idempotencyKey]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Alta de compra + impacto de inventario, TODO en una única transacción real.
+ * Fase 0:
+ *  - Idempotencia: con `idempotency_key`, un doble-envío devuelve la compra ya creada
+ *    (no crea una segunda compra, movimiento ni stock).
+ *  - Atomicidad total: si falla el INSERT de compra, el movimiento o el UPDATE de stock,
+ *    se hace ROLLBACK completo (sin best-effort ni warning).
+ *  - Vínculo fuerte: el movimiento guarda `documento_tipo='compra'` y `documento_id=compra.id`.
+ *  - `afecta_stock=false` (futuras compras desde recepción) omite el movimiento/stock.
+ */
 export async function insertCompraConImpacto(
   schemaRaw: string,
   empresaId: string,
@@ -185,69 +213,89 @@ export async function insertCompraConImpacto(
   const tM = quoteSchemaTable(schema, "movimientos_inventario");
   const tP = quoteSchemaTable(schema, "productos");
 
+  // Fast-path idempotencia: si ya existe una compra con esta clave, devolverla.
+  if (d.idempotency_key) {
+    const existing = await fetchCompraByIdempotency(schema, empresaId, d.idempotency_key);
+    if (existing) return { compra: existing, movimiento_id: null, movimiento_warning: null };
+  }
+
   const client = await pool().connect();
   let movimientoId: string | null = null;
-  let movimientoWarning: string | null = null;
   try {
     await client.query("BEGIN");
 
     const numero = await nextNumeroControl(client, schema, empresaId);
 
-    const { rows: compraRows } = await client.query<CompraRow>(
-      `INSERT INTO ${tC} (
-         empresa_id, proveedor_id, proveedor_nombre, producto_id, producto_nombre,
-         cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
-         iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
-         tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
-         created_by, usuario_nombre, cuenta_contable_id
-       ) VALUES (
-         $1::uuid, $2::uuid, $3, $4::uuid, $5,
-         $6::numeric, $7, $8::numeric, $9::numeric, $10::numeric,
-         $11, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16::numeric,
-         $17, $18::integer, $19, $20, 'registrada', now(),
-         $21::uuid, $22, $23::uuid
-       )
-       RETURNING ${COLS}`,
-      [
-        empresaId,
-        d.proveedor_id,
-        d.proveedor_nombre,
-        d.producto_id,
-        d.producto_nombre,
-        d.cantidad,
-        d.moneda,
-        d.tipo_cambio,
-        d.costo_unitario_original,
-        d.costo_unitario,
-        d.iva_tipo,
-        d.subtotal,
-        d.monto_iva,
-        d.total,
-        d.precio_venta,
-        d.margen_venta,
-        d.tipo_pago,
-        d.plazo_dias,
-        d.nro_timbrado,
-        numero,
-        d.created_by,
-        d.usuario_nombre,
-        d.cuenta_contable_id,
-      ]
-    );
-    const compra = compraRows[0];
-
-    // Movimiento ENTRADA (origen=compra). Best-effort: si falla, la compra
-    // queda registrada pero anunciamos warning.
+    let compra: CompraRow;
     try {
+      const { rows: compraRows } = await client.query<CompraRow>(
+        `INSERT INTO ${tC} (
+           empresa_id, proveedor_id, proveedor_nombre, producto_id, producto_nombre,
+           cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
+           iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
+           tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
+           created_by, usuario_nombre, cuenta_contable_id, afecta_stock, idempotency_key
+         ) VALUES (
+           $1::uuid, $2::uuid, $3, $4::uuid, $5,
+           $6::numeric, $7, $8::numeric, $9::numeric, $10::numeric,
+           $11, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16::numeric,
+           $17, $18::integer, $19, $20, 'registrada', now(),
+           $21::uuid, $22, $23::uuid, $24::boolean, $25::uuid
+         )
+         RETURNING ${COLS}`,
+        [
+          empresaId,
+          d.proveedor_id,
+          d.proveedor_nombre,
+          d.producto_id,
+          d.producto_nombre,
+          d.cantidad,
+          d.moneda,
+          d.tipo_cambio,
+          d.costo_unitario_original,
+          d.costo_unitario,
+          d.iva_tipo,
+          d.subtotal,
+          d.monto_iva,
+          d.total,
+          d.precio_venta,
+          d.margen_venta,
+          d.tipo_pago,
+          d.plazo_dias,
+          d.nro_timbrado,
+          numero,
+          d.created_by,
+          d.usuario_nombre,
+          d.cuenta_contable_id,
+          d.afecta_stock,
+          d.idempotency_key,
+        ]
+      );
+      compra = compraRows[0];
+    } catch (insErr) {
+      // Carrera de idempotencia: dos envíos simultáneos con la misma clave.
+      const code = (insErr as { code?: string })?.code;
+      const constraint = String((insErr as { constraint?: string })?.constraint ?? "");
+      if (code === "23505" && constraint.includes("idempotency") && d.idempotency_key) {
+        await client.query("ROLLBACK").catch(() => null);
+        const existing = await fetchCompraByIdempotency(schema, empresaId, d.idempotency_key);
+        if (existing) return { compra: existing, movimiento_id: null, movimiento_warning: null };
+      }
+      throw insErr;
+    }
+
+    // Impacto de inventario SOLO si la compra afecta stock (Fase 0: siempre true).
+    // Parte atómica de la transacción: cualquier fallo aquí revierte la compra.
+    if (d.afecta_stock) {
       const { rows: movRows } = await client.query<{ id: string }>(
         `INSERT INTO ${tM} (
            empresa_id, producto_id, producto_nombre, producto_sku,
            tipo, cantidad, costo_unitario, origen, referencia, fecha,
-           created_by, usuario_nombre
+           created_by, usuario_nombre, documento_tipo, documento_id
          )
          SELECT $1::uuid, $2::uuid, $3, COALESCE(p.sku, ''),
                 'ENTRADA', $4::numeric, $5::numeric, 'compra', $6, now(),
-                $7::uuid, $8
+                $7::uuid, $8, 'compra', $9::uuid
          FROM ${tP} p WHERE p.id = $2::uuid
          RETURNING id`,
         [
@@ -259,33 +307,30 @@ export async function insertCompraConImpacto(
           numero,
           d.created_by,
           d.usuario_nombre,
+          compra.id,
         ]
       );
       movimientoId = movRows[0]?.id ?? null;
-    } catch (movErr) {
-      const msg = movErr instanceof Error ? movErr.message : String(movErr);
-      console.error("[compras-pg] movimiento ENTRADA fallo", {
-        schema, empresaId, numero, message: msg,
-        code: (movErr as { code?: string })?.code,
-        detail: (movErr as { detail?: string })?.detail,
-      });
-      movimientoWarning =
-        "La compra se guardó pero no se pudo registrar el movimiento de entrada en inventario.";
+      if (!movimientoId) {
+        throw new Error("No se pudo registrar el movimiento de inventario (producto inexistente).");
+      }
+
+      const upd = await client.query(
+        `UPDATE ${tP}
+            SET stock_actual = stock_actual + $1::numeric,
+                costo_promedio = $2::numeric,
+                precio_venta = $3::numeric,
+                updated_at = now()
+          WHERE id = $4::uuid AND empresa_id = $5::uuid`,
+        [d.cantidad, d.costo_unitario, d.precio_venta, d.producto_id, empresaId]
+      );
+      if (upd.rowCount === 0) {
+        throw new Error("No se pudo actualizar el stock del producto.");
+      }
     }
 
-    // Actualizar producto: stock + costo_promedio + precio_venta
-    await client.query(
-      `UPDATE ${tP}
-          SET stock_actual = stock_actual + $1::numeric,
-              costo_promedio = $2::numeric,
-              precio_venta = $3::numeric,
-              updated_at = now()
-        WHERE id = $4::uuid AND empresa_id = $5::uuid`,
-      [d.cantidad, d.costo_unitario, d.precio_venta, d.producto_id, empresaId]
-    );
-
     await client.query("COMMIT");
-    return { compra, movimiento_id: movimientoId, movimiento_warning: movimientoWarning };
+    return { compra, movimiento_id: movimientoId, movimiento_warning: null };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => null);
     throw err;

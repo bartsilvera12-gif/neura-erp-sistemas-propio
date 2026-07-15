@@ -45,21 +45,34 @@ export async function POST(request: NextRequest) {
     if (!req("nro_timbrado"))
       return NextResponse.json(errorResponse("Falta el N° de timbrado."), { status: 400 });
 
+    // IVA: aceptar SOLO 'exenta' | '5' | '10' (sin coerción silenciosa).
+    const ivaTipo = String(body.iva_tipo ?? "").trim();
+    if (!["exenta", "5", "10"].includes(ivaTipo)) {
+      return NextResponse.json(errorResponse("Tipo de IVA inválido. Debe ser 'exenta', '5' o '10'."), { status: 400 });
+    }
+
+    // Recalcular montos en backend (no confiar en el frontend). IVA aditivo sobre el subtotal.
+    const cantidad = Number(body.cantidad) || 0;
+    const costoUnitario = Number(body.costo_unitario) || 0;
+    const subtotal = cantidad * costoUnitario;
+    const montoIva = ivaTipo === "exenta" ? 0 : ivaTipo === "5" ? subtotal * 0.05 : subtotal * 0.1;
+    const total = subtotal + montoIva;
+
     try {
       const out = await insertCompraConImpacto(schema, empresaId, {
         proveedor_id: String(body.proveedor_id),
         proveedor_nombre: String(body.proveedor_nombre ?? ""),
         producto_id: String(body.producto_id),
         producto_nombre: String(body.producto_nombre ?? ""),
-        cantidad: Number(body.cantidad) || 0,
+        cantidad,
         moneda: body.moneda === "USD" ? "USD" : "PYG",
         tipo_cambio: Number(body.tipo_cambio) || 1,
-        costo_unitario_original: Number(body.costo_unitario_original) || Number(body.costo_unitario) || 0,
-        costo_unitario: Number(body.costo_unitario) || 0,
-        iva_tipo: ["0", "5", "10"].includes(String(body.iva_tipo)) ? String(body.iva_tipo) : "10",
-        subtotal: Number(body.subtotal) || 0,
-        monto_iva: Number(body.monto_iva) || 0,
-        total: Number(body.total) || 0,
+        costo_unitario_original: Number(body.costo_unitario_original) || costoUnitario || 0,
+        costo_unitario: costoUnitario,
+        iva_tipo: ivaTipo,
+        subtotal,
+        monto_iva: montoIva,
+        total,
         precio_venta: Number(body.precio_venta) || 0,
         margen_venta: body.margen_venta != null ? Number(body.margen_venta) : null,
         tipo_pago: body.tipo_pago === "credito" ? "credito" : "contado",
@@ -67,6 +80,8 @@ export async function POST(request: NextRequest) {
           ? parseInt(String(body.plazo_dias), 10) || null : null,
         nro_timbrado: String(body.nro_timbrado).trim().toUpperCase(),
         cuenta_contable_id: req("cuenta_contable_id") ? String(body.cuenta_contable_id) : null,
+        afecta_stock: body.afecta_stock === false ? false : true,
+        idempotency_key: req("idempotency_key") ? String(body.idempotency_key) : null,
         created_by: ctx.auth.usuarioCatalogId ?? null,
         usuario_nombre: ctx.auth.user?.email ?? null,
       });

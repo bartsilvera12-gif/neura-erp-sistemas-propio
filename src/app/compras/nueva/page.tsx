@@ -99,6 +99,15 @@ export default function NuevaCompraPage() {
   const [cuentasContables, setCuentasContables] = useState<CuentaContableOpcion[]>([]);
   const [cuentaSearch, setCuentaSearch] = useState("");
 
+  // Clave de idempotencia: una por ciclo de vida del formulario. Evita que un
+  // doble-clic o reintento cree dos compras. No es visible para el usuario.
+  const [idempotencyKey] = useState(() => {
+    try {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+    } catch {}
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
+
   // ── Estado inline: PROVEEDOR ─────────────────────────────────────────────
 
   const [mostrarFormProveedor, setMostrarFormProveedor] = useState(false);
@@ -255,7 +264,7 @@ export default function NuevaCompraPage() {
         nro_timbrado: form.nro_timbrado,
         cuenta_contable_id: form.cuenta_contable_id || null,
         cuenta_contable_label: null,
-      });
+      }, idempotencyKey);
 
       if (!res.success) {
         setErrorSubmit(res.error);

@@ -116,14 +116,15 @@ export interface SaveCompraError {
 }
 
 export async function saveCompra(
-  datos: Omit<Compra, "id" | "numero_control" | "fecha">
+  datos: Omit<Compra, "id" | "numero_control" | "fecha">,
+  idempotencyKey?: string
 ): Promise<SaveCompraResult | SaveCompraError> {
   try {
     const r = await fetch("/api/compras", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(datos),
+      body: JSON.stringify(idempotencyKey ? { ...datos, idempotency_key: idempotencyKey } : datos),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {

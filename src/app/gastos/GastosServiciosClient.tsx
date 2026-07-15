@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGastos, type Gasto } from "@/lib/gastos/actions";
 import { getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
 import { getProveedores } from "@/lib/proveedores/storage";
@@ -304,6 +304,17 @@ function GastoFormModal({
   function setItem(i: number, patch: Partial<GastoItemForm>) {
     setForm((f) => ({ ...f, items: f.items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) }));
   }
+  function setItemCuenta(i: number, id: string | null) {
+    const c = cuentas.find((x) => x.id === id);
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((it, idx) =>
+        idx === i
+          ? { ...it, cuenta_contable_id: id, descripcion: it.descripcion.trim() ? it.descripcion : (c?.denominacion ?? "") }
+          : it
+      ),
+    }));
+  }
   function addItem() { setForm((f) => ({ ...f, items: [...f.items, emptyItem()] })); }
   function removeItem(i: number) { setForm((f) => ({ ...f, items: f.items.length > 1 ? f.items.filter((_, idx) => idx !== i) : f.items })); }
 
@@ -378,21 +389,20 @@ function GastoFormModal({
                     const s = Number(it.subtotal) || 0;
                     const ivaLinea = s * IVA_RATE[it.iva_tipo];
                     return (
-                      <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2 sm:grid-cols-12">
-                        <input className={`${INPUT} sm:col-span-4`} placeholder="Descripción" value={it.descripcion} onChange={(e) => setItem(i, { descripcion: e.target.value })} />
-                        <select className={`${INPUT} sm:col-span-4`} value={it.cuenta_contable_id ?? ""} onChange={(e) => setItem(i, { cuenta_contable_id: e.target.value || null })}>
-                          <option value="">(Cuenta contable)</option>
-                          {cuentas.map((c) => <option key={c.id} value={c.id}>{c.cuenta} — {c.denominacion}</option>)}
-                        </select>
-                        <input type="number" className={`${INPUT} sm:col-span-2`} placeholder="Monto base" value={it.subtotal || ""} onChange={(e) => setItem(i, { subtotal: Number(e.target.value) || 0 })} />
-                        <select className={`${INPUT} sm:col-span-1`} value={it.iva_tipo} onChange={(e) => setItem(i, { iva_tipo: e.target.value as IvaTipo })}>
-                          <option value="exenta">Ex.</option>
-                          <option value="5">5%</option>
-                          <option value="10">10%</option>
-                        </select>
-                        <div className="flex items-center justify-between sm:col-span-1">
-                          <span className="text-[11px] text-slate-400">IVA {fmt(ivaLinea)}</span>
-                          {form.items.length > 1 && <button onClick={() => removeItem(i)} className="text-red-500 hover:text-red-700" title="Quitar">×</button>}
+                      <div key={i} className="space-y-2 rounded-lg border border-slate-100 bg-slate-50 p-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <CuentaCombobox cuentas={cuentas} value={it.cuenta_contable_id} onChange={(id) => setItemCuenta(i, id)} />
+                          <input className={INPUT} placeholder="Descripción" value={it.descripcion} onChange={(e) => setItem(i, { descripcion: e.target.value })} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input type="number" className={`${INPUT} flex-1`} placeholder="Monto base (sin IVA)" value={it.subtotal || ""} onChange={(e) => setItem(i, { subtotal: Number(e.target.value) || 0 })} />
+                          <select className={`${INPUT} w-20`} value={it.iva_tipo} onChange={(e) => setItem(i, { iva_tipo: e.target.value as IvaTipo })}>
+                            <option value="exenta">Ex.</option>
+                            <option value="5">5%</option>
+                            <option value="10">10%</option>
+                          </select>
+                          <span className="whitespace-nowrap text-[11px] text-slate-400">IVA {fmt(ivaLinea)}</span>
+                          {form.items.length > 1 && <button onClick={() => removeItem(i)} className="px-1 text-red-500 hover:text-red-700" title="Quitar línea">×</button>}
                         </div>
                       </div>
                     );
@@ -427,6 +437,88 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</label>
       {children}
+    </div>
+  );
+}
+
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+
+/** Combobox pequeño con buscador inteligente para elegir la cuenta contable. */
+function CuentaCombobox({
+  cuentas, value, onChange,
+}: {
+  cuentas: CuentaContableOpcion[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = cuentas.find((c) => c.id === value) ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const s = norm(q.trim());
+    const base = s
+      ? cuentas.filter((c) => c.cuenta.toLowerCase().includes(s) || norm(c.denominacion).includes(s))
+      : cuentas;
+    return base.slice(0, 40);
+  }, [cuentas, q]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${INPUT} flex items-center justify-between gap-2 text-left`}
+      >
+        <span className={`truncate ${selected ? "text-slate-700" : "text-slate-400"}`}>
+          {selected ? `${selected.cuenta} — ${selected.denominacion}` : "(Cuenta contable)"}
+        </span>
+        <span className="shrink-0 text-slate-400">▾</span>
+      </button>
+      {open && (
+        <div className="mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por código o denominación…"
+            className="w-full border-b border-slate-100 px-2.5 py-2 text-sm outline-none"
+          />
+          <ul className="max-h-56 overflow-y-auto py-1">
+            {selected && (
+              <li>
+                <button type="button" onClick={() => { onChange(null); setOpen(false); setQ(""); }}
+                  className="block w-full px-2.5 py-1.5 text-left text-xs text-slate-400 hover:bg-slate-50">
+                  (Quitar cuenta)
+                </button>
+              </li>
+            )}
+            {filtered.length === 0 ? (
+              <li className="px-2.5 py-2 text-xs text-slate-400">Sin resultados</li>
+            ) : filtered.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => { onChange(c.id); setOpen(false); setQ(""); }}
+                  className={`block w-full px-2.5 py-1.5 text-left text-xs hover:bg-[#4FAEB2]/10 ${c.id === value ? "bg-[#4FAEB2]/10 font-semibold" : ""}`}
+                >
+                  <span className="font-mono text-slate-600">{c.cuenta}</span> — {c.denominacion}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

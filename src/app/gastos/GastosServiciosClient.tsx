@@ -22,6 +22,15 @@ const ESTADO_BADGE: Record<GastoEstado, string> = {
   historico: "bg-amber-50 text-amber-700",
 };
 
+function firstOfMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+function today(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 type Mode = "nuevo" | "editar" | "completar";
 
 export default function GastosServiciosClient() {
@@ -30,6 +39,8 @@ export default function GastosServiciosClient() {
   const [error, setError] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>("");
   const [busqueda, setBusqueda] = useState("");
+  const [desde, setDesde] = useState<string>(firstOfMonth());
+  const [hasta, setHasta] = useState<string>(today());
 
   const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
@@ -60,6 +71,9 @@ export default function GastosServiciosClient() {
     const q = busqueda.trim().toLowerCase();
     return gastos.filter((g) => {
       if (filtroEstado && (g.estado ?? "") !== filtroEstado) return false;
+      const fechaG = (g.fecha_comprobante ?? g.fecha ?? "").slice(0, 10);
+      if (desde && fechaG && fechaG < desde) return false;
+      if (hasta && fechaG && fechaG > hasta) return false;
       if (!q) return true;
       return (
         (g.numero ?? "").toLowerCase().includes(q) ||
@@ -68,7 +82,7 @@ export default function GastosServiciosClient() {
         (g.numero_comprobante ?? "").toLowerCase().includes(q)
       );
     });
-  }, [gastos, filtroEstado, busqueda]);
+  }, [gastos, filtroEstado, busqueda, desde, hasta]);
 
   const resumen = useMemo(() => {
     const by = (e: GastoEstado) => gastos.filter((g) => g.estado === e).length;
@@ -103,13 +117,16 @@ export default function GastosServiciosClient() {
 
   return (
     <div className="space-y-6 pb-10">
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]" />
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Finanzas · Gastos y Servicios</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]" />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Finanzas · Gastos y Servicios</p>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Gastos y Servicios</h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">Documentos que no afectan inventario (servicios, alquiler, honorarios, etc.) con datos fiscales y contables.</p>
         </div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Gastos y Servicios</h1>
-        <p className="mt-1 text-sm text-slate-500">Documentos que no afectan inventario (servicios, alquiler, honorarios, etc.) con datos fiscales y contables.</p>
+        <button onClick={abrirNuevo} className="shrink-0 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#3F8E91]">+ Nuevo gasto o servicio</button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -128,9 +145,17 @@ export default function GastosServiciosClient() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={abrirNuevo} className="rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]">+ Nuevo gasto o servicio</button>
         <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por número, proveedor, comprobante…"
           className="min-w-[16rem] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40" />
+        <label className="flex items-center gap-1 text-xs text-slate-500">Desde
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="flex items-center gap-1 text-xs text-slate-500">Hasta
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+        </label>
+        {(desde || hasta) && (
+          <button onClick={() => { setDesde(""); setHasta(""); }} className="text-xs font-semibold text-[#3F8E91] underline-offset-2 hover:underline">Todas las fechas</button>
+        )}
         <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-2 text-sm">
           <option value="">Todos los estados</option>
           <option value="borrador">Borradores</option>

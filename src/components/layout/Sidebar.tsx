@@ -216,10 +216,14 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   {
     id: "comercial",
     title: "Comercial",
-    itemKeys: ["clientes", "crm", "gestion-clientes", "ventas", "comisiones", "planes", "agenda"],
+    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos"],
   },
-  { id: "finanzas", title: "Finanzas", itemKeys: ["pagos", "gastos", "notas_credito", "reportes"] },
-  { id: "operaciones", title: "Operaciones", itemKeys: ["cobranzas", "inventario", "compras", "proyectos"] },
+  {
+    id: "finanzas",
+    title: "Finanzas",
+    itemKeys: ["ventas", "cobranzas", "pagos", "gastos", "compras", "notas_credito", "reportes"],
+  },
+  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario"] },
   {
     id: "omnicanal",
     title: "Omnicanal",

@@ -73,13 +73,18 @@ export async function runCampaignProcessOnce(params: {
     return { processed: 0, remainingQueued: 0, campaignCompleted: st === "completed" || st === "cancelled" };
   }
 
+  // Recuperación de envíos "colgados": SOLO re-encolar los que quedaron en 'sending'
+  // hace más de 10 min sin wamid (p. ej. server caído a mitad de una tanda). NUNCA los
+  // recién despachados: re-encolar en vuelo era lo que causaba los reenvíos duplicados.
+  const staleCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   await supabase
     .from("chat_campaign_recipients")
     .update({ status: "queued", updated_at: new Date().toISOString() })
     .eq("empresa_id", empresaId)
     .eq("campaign_id", campaignId)
     .eq("status", "sending")
-    .is("provider_message_id", null);
+    .is("provider_message_id", null)
+    .lt("updated_at", staleCutoff);
 
   if ((campaign as { template_id?: string | null }).template_id) {
     const tid = (campaign as { template_id: string }).template_id;
@@ -111,16 +116,19 @@ export async function runCampaignProcessOnce(params: {
     }
   }
 
-  const { data: batch } = await supabase
-    .from("chat_campaign_recipients")
-    .select(
-      "id, phone_e164, mapped_variables_json, provider_message_id, status"
-    )
-    .eq("empresa_id", empresaId)
-    .eq("campaign_id", campaignId)
-    .eq("status", "queued")
-    .order("row_number", { ascending: true })
-    .limit(batchSize);
+  // CLAIM ATÓMICO: reclama hasta `batchSize` destinatarios 'queued' y los pasa a 'sending'
+  // en una sola operación con FOR UPDATE SKIP LOCKED. Procesos concurrentes (varias pestañas,
+  // ticks solapados del poll) obtienen conjuntos DISJUNTOS → nunca se envía dos veces al mismo.
+  const { data: batch, error: claimErr } = await supabase.rpc("claim_campaign_recipients", {
+    p_empresa_id: empresaId,
+    p_campaign_id: campaignId,
+    p_batch_size: batchSize,
+  });
+
+  if (claimErr) {
+    console.warn("[campaign-process] claim_failed", claimErr.message);
+    return { processed: 0, remainingQueued: 0, campaignCompleted: false };
+  }
 
   const rows = (batch ?? []) as Array<{
     id: string;
@@ -133,17 +141,15 @@ export async function runCampaignProcessOnce(params: {
   let processed = 0;
 
   for (const rec of rows) {
+    // Guarda defensiva: un destinatario ya enviado nunca debería llegar acá (el claim solo
+    // toma 'queued'), pero si tuviera wamid lo saltamos para no reenviar.
     if (rec.provider_message_id) {
       processed += 1;
       continue;
     }
 
+    // Ya está en 'sending' por el claim atómico; no hace falta volver a marcarlo.
     const ts = new Date().toISOString();
-    await supabase
-      .from("chat_campaign_recipients")
-      .update({ status: "sending", updated_at: ts })
-      .eq("id", rec.id)
-      .eq("empresa_id", empresaId);
 
     const send = await sendCampaignRecipientMessage({
       supabase,

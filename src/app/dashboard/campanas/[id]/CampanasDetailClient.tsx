@@ -113,6 +113,7 @@ export default function CampanasDetailClient({
     invalid: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const processingRef = useRef(false);
 
   const load = useCallback(async () => {
     const res = await fetchWithSupabaseSession(`/api/campanas/${campaignId}`, { cache: "no-store" });
@@ -153,19 +154,27 @@ export default function CampanasDetailClient({
   }, [load]);
 
   useEffect(() => {
-    if (!campaign || campaign.status !== "sending") return;
+    if (campaign?.status !== "sending") return;
     const t = window.setInterval(() => {
+      // Single-flight: si la tanda anterior sigue en vuelo, NO dispares otra. Solapar
+      // llamadas al procesador era parte de lo que causaba envíos duplicados.
+      if (processingRef.current) return;
+      processingRef.current = true;
       void (async () => {
-        await fetchWithSupabaseSession("/api/campanas/process", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ campaign_id: campaignId }),
-        });
-        await load();
+        try {
+          await fetchWithSupabaseSession("/api/campanas/process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ campaign_id: campaignId }),
+          });
+          await load();
+        } finally {
+          processingRef.current = false;
+        }
       })();
     }, 4000);
     return () => window.clearInterval(t);
-  }, [campaign?.status, campaignId, load, campaign]);
+  }, [campaign?.status, campaignId, load]);
 
   const placeholderSlots = useMemo(() => {
     const comps = campaign?.template_components_json as unknown;

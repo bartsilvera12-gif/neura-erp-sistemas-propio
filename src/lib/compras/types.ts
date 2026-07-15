@@ -34,6 +34,8 @@ export interface Compra {
 
   /** Cuenta contable del plan de cuentas asociada a la compra (opcional). */
   cuenta_contable_id: string | null;
+  /** Cuenta de pago (contrapartida) para compras al contado (opcional). */
+  cuenta_contrapartida_id?: string | null;
   /** Etiqueta display "{cuenta} — {denominacion}" (solo lectura, derivada del join). */
   cuenta_contable_label: string | null;
 

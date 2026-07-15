@@ -22,6 +22,7 @@ export interface GastoHeaderForm {
   plazo_dias: number | null;
   fecha_vencimiento: string | null;
   moneda: string | null;
+  cuenta_contrapartida_id: string | null;
   items: GastoItemForm[];
 }
 

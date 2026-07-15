@@ -5,6 +5,7 @@ import {
   CalendarClock,
   FileText,
   GitBranch,
+  Calculator,
   Inbox,
   LayoutGrid,
   Library,
@@ -154,6 +155,16 @@ export default function ConfiguracionPage() {
               icon={Library}
               badge={editorBadge}
               href="/configuracion/plan-de-cuentas"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
+              title="Configuración Contable"
+              subtitle="GLOBAL · CONTABILIDAD"
+              description="Cuentas por defecto (IVA crédito, proveedores, caja, banco) para los asientos automáticos, y apertura/cierre de períodos contables."
+              icon={Calculator}
+              badge={editorBadge}
+              href="/configuracion/contable"
             />
           </li>
           <li>

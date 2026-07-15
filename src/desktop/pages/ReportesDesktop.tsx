@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -19,6 +19,22 @@ const REPORTES: ReporteCard[] = [
       "Registro fiscal unificado de compras válidas y Gastos y Servicios confirmados: proveedor, comprobante, gravado 5%/10%, exento, IVA y totales. Exportable a Excel.",
     icon: BookText,
     href: "/reportes/libro-compras",
+  },
+  {
+    title: "Libro Diario",
+    subtitle: "Contabilidad",
+    description:
+      "Registro cronológico de los asientos contables generados por Compras y Gastos y Servicios, con cuentas, debe, haber y documento de origen.",
+    icon: BookOpen,
+    href: "/reportes/libro-diario",
+  },
+  {
+    title: "Libro Mayor",
+    subtitle: "Contabilidad",
+    description:
+      "Movimientos y saldos acumulados por cuenta contable, con saldo inicial, debe, haber y trazabilidad del documento de origen.",
+    icon: Layers,
+    href: "/reportes/libro-mayor",
   },
   {
     title: "Estado de cuenta empresa",

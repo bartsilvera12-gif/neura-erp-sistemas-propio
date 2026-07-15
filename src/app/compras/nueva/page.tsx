@@ -93,6 +93,7 @@ export default function NuevaCompraPage() {
     tipo_pago: "contado" as TipoPago,
     plazo_dias: "",
     cuenta_contable_id: "",
+    cuenta_contrapartida_id: "",
   });
 
   // ── Estado: CUENTA CONTABLE (selector con búsqueda) ──────────────────────
@@ -148,6 +149,16 @@ export default function NuevaCompraPage() {
     recargarProveedores();
     recargarProductos();
     getCuentasContablesOpciones().then(setCuentasContables);
+    // Sugerir cuenta de pago por defecto (Caja/Banco) desde Configuración Contable.
+    (async () => {
+      try {
+        const { apiFetch } = await import("@/lib/api/fetch-with-supabase-session");
+        const r = await apiFetch("/api/configuracion/contable");
+        const j = await r.json().catch(() => ({}));
+        const def = j?.data?.config?.cuenta_caja_id ?? j?.data?.config?.cuenta_banco_id ?? null;
+        if (def) setForm((prev) => (prev.cuenta_contrapartida_id ? prev : { ...prev, cuenta_contrapartida_id: def }));
+      } catch {}
+    })();
   }, []);
 
   // ── Cálculos reactivos del formulario principal ──────────────────────────
@@ -231,6 +242,8 @@ export default function NuevaCompraPage() {
     if (costoUnitarioPYG <= 0) return setErrorSubmit("El costo unitario debe ser mayor a 0.");
     if (precioVentaNum <= 0) return setErrorSubmit("El precio de venta debe ser mayor a 0.");
     if (!form.nro_timbrado?.trim()) return setErrorSubmit("Ingresá el N° de timbrado.");
+    if (!form.cuenta_contable_id) return setErrorSubmit("Seleccioná la cuenta contable de la compra.");
+    if (form.tipo_pago === "contado" && !form.cuenta_contrapartida_id) return setErrorSubmit("Seleccioná la cuenta de pago (contado).");
 
     const todosProductos = await getProductos();
     const proveedor = proveedores.find((p) => String(p.id) === form.proveedor_id);
@@ -263,6 +276,7 @@ export default function NuevaCompraPage() {
             : undefined,
         nro_timbrado: form.nro_timbrado,
         cuenta_contable_id: form.cuenta_contable_id || null,
+        cuenta_contrapartida_id: form.tipo_pago === "contado" ? (form.cuenta_contrapartida_id || null) : null,
         cuenta_contable_label: null,
       }, idempotencyKey);
 
@@ -659,6 +673,20 @@ export default function NuevaCompraPage() {
                 onChange={(v) => setForm((prev) => ({ ...prev, tipo_pago: v }))}
               />
             </div>
+
+            {form.tipo_pago === "contado" && (
+              <div>
+                <label className={labelClass}>Cuenta de pago <span className="text-red-500">*</span></label>
+                <select name="cuenta_contrapartida_id" value={form.cuenta_contrapartida_id}
+                  onChange={handleChange} className={inputClass}>
+                  <option value="">Seleccionar cuenta de pago…</option>
+                  {cuentasContables.map((c) => (
+                    <option key={c.id} value={c.id}>{c.cuenta} — {c.denominacion}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-400">Cuenta desde la que sale el dinero (Caja, Banco…). Se sugiere la predeterminada de Configuración Contable.</p>
+              </div>
+            )}
 
             {form.tipo_pago === "credito" && (
               <div>

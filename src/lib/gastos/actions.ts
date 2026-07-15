@@ -30,6 +30,8 @@ export type Gasto = {
   subtotal?: number | null;
   monto_iva?: number | null;
   total?: number | null;
+  estado_contable?: string | null;
+  asiento_contable_id?: string | null;
 };
 
 function n(v: unknown): number {
@@ -62,6 +64,8 @@ export function mapRow(r: Record<string, unknown>): Gasto {
     subtotal: r.subtotal != null ? n(r.subtotal) : null,
     monto_iva: r.monto_iva != null ? n(r.monto_iva) : null,
     total: r.total != null ? n(r.total) : null,
+    estado_contable: (r.estado_contable as string | null) ?? null,
+    asiento_contable_id: (r.asiento_contable_id as string | null) ?? null,
   };
 }
 

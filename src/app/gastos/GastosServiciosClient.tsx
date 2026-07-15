@@ -199,7 +199,12 @@ export default function GastosServiciosClient() {
               <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">No hay gastos o servicios que coincidan.</td></tr>
             ) : filtradas.map((g) => (
               <tr key={g.id} className={`border-b last:border-0 hover:bg-slate-50/60 ${g.estado === "anulado" ? "opacity-60" : ""}`}>
-                <td className="px-3 py-2 font-mono text-xs text-slate-600">{g.numero ?? "—"}</td>
+                <td className="px-3 py-2 text-xs">
+                  <span className="font-mono text-slate-600">{g.numero ?? "—"}</span>
+                  {(g.estado === "historico" || (g.estado === "confirmado" && g.estado_contable !== "contabilizado")) && (
+                    <span className="mt-0.5 block text-[10px] italic text-slate-400">Sin asiento contable</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-slate-800">{g.proveedor_nombre ?? <span className="italic text-slate-400">Sin proveedor</span>}</td>
                 <td className="px-3 py-2 text-xs text-slate-500">{[g.tipo_comprobante, g.numero_comprobante].filter(Boolean).join(" ") || "—"}</td>
                 <td className="px-3 py-2 text-xs text-slate-500">{(g.fecha_comprobante ?? g.fecha ?? "").slice(0, 10) || "—"}</td>
@@ -262,13 +267,27 @@ function GastoFormModal({
   const [form, setForm] = useState<GastoHeaderForm>({
     proveedor_id: null, descripcion: null, tipo_comprobante: "Factura", numero_comprobante: null,
     timbrado: null, fecha_comprobante: null, fecha_contable: null, tipo_pago: "contado",
-    plazo_dias: null, fecha_vencimiento: null, moneda: "PYG", items: [emptyItem()],
+    plazo_dias: null, fecha_vencimiento: null, moneda: "PYG", cuenta_contrapartida_id: null, items: [emptyItem()],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingDetalle, setLoadingDetalle] = useState(mode !== "nuevo");
   const [doneNumero, setDoneNumero] = useState<string | null>(null);
   const [idemKey] = useState(() => genIdemKey());
+
+  // Sugerencia de cuenta de pago por defecto (Caja/Banco) desde Configuración Contable.
+  useEffect(() => {
+    if (mode !== "nuevo") return;
+    (async () => {
+      try {
+        const { apiFetch } = await import("@/lib/api/fetch-with-supabase-session");
+        const r = await apiFetch("/api/configuracion/contable");
+        const j = await r.json().catch(() => ({}));
+        const def = j?.data?.config?.cuenta_caja_id ?? j?.data?.config?.cuenta_banco_id ?? null;
+        if (def) setForm((f) => (f.cuenta_contrapartida_id ? f : { ...f, cuenta_contrapartida_id: def }));
+      } catch {}
+    })();
+  }, [mode]);
 
   useEffect(() => {
     if (mode === "nuevo" || !gastoId) return;
@@ -287,6 +306,7 @@ function GastoFormModal({
         plazo_dias: h.plazo_dias ?? null,
         fecha_vencimiento: h.fecha_vencimiento ? String(h.fecha_vencimiento).slice(0, 10) : null,
         moneda: h.moneda ?? "PYG",
+        cuenta_contrapartida_id: (h.cuenta_contrapartida_id as string | null) ?? null,
         items: r.data.items.length
           ? r.data.items.map((it) => ({ descripcion: it.descripcion, cuenta_contable_id: it.cuenta_contable_id, subtotal: Number(it.subtotal), iva_tipo: it.iva_tipo }))
           : [emptyItem()],
@@ -332,6 +352,7 @@ function GastoFormModal({
     if (!has(form.fecha_contable)) return false;
     if (!has(form.tipo_pago)) return false;
     if (requiereTimbrado(form.tipo_comprobante) && !has(form.timbrado)) return false;
+    if (form.tipo_pago === "contado" && !has(form.cuenta_contrapartida_id)) return false;
     if (form.items.length === 0) return false;
     return form.items.every((it) => it.descripcion.trim() && it.cuenta_contable_id && Number(it.subtotal) > 0);
   }, [form]);
@@ -397,6 +418,11 @@ function GastoFormModal({
                         <option value="credito">Crédito</option>
                       </select>
                     </Field>
+                    {form.tipo_pago === "contado" && (
+                      <Field label="Cuenta de pago *">
+                        <CuentaCombobox cuentas={cuentas} value={form.cuenta_contrapartida_id} onChange={(id) => setField("cuenta_contrapartida_id", id)} />
+                      </Field>
+                    )}
                     {form.tipo_pago === "credito" && (
                       <div className="grid grid-cols-2 gap-2">
                         <Field label="Plazo (días)"><input type="number" className={INPUT} value={form.plazo_dias ?? ""} onChange={(e) => setField("plazo_dias", e.target.value ? parseInt(e.target.value) : null)} /></Field>

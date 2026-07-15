@@ -4,6 +4,7 @@ import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema"
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { listCompras, insertCompraConImpacto } from "@/lib/compras/server/compras-pg";
+import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 
 /**
  * GET /api/compras — lista via PG directo.
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
           ? parseInt(String(body.plazo_dias), 10) || null : null,
         nro_timbrado: String(body.nro_timbrado).trim().toUpperCase(),
         cuenta_contable_id: req("cuenta_contable_id") ? String(body.cuenta_contable_id) : null,
+        cuenta_contrapartida_id: req("cuenta_contrapartida_id") ? String(body.cuenta_contrapartida_id) : null,
         afecta_stock: body.afecta_stock === false ? false : true,
         idempotency_key: idempotencyKey,
         created_by: ctx.auth.usuarioCatalogId ?? null,
@@ -97,6 +99,9 @@ export async function POST(request: NextRequest) {
         warning: out.movimiento_warning,
       }));
     } catch (e) {
+      if (e instanceof ContabilidadError) {
+        return NextResponse.json(errorResponse(e.message), { status: e.status });
+      }
       const msg = e instanceof Error ? e.message : "";
       const code = (e as { code?: string })?.code;
       const detail = (e as { detail?: string })?.detail;

@@ -1,6 +1,9 @@
 import "server-only";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import {
+  getConfigContable, construirLineasDocumento, generarAsientoEnTx, getAsientoConDetalles, ContabilidadError,
+} from "@/lib/contabilidad/asientos-pg";
 
 /**
  * Gastos y Servicios — capa PG directa (transaccional), mismo patrón que compras-pg.
@@ -46,6 +49,8 @@ export interface GastoHeaderInput {
   fecha_vencimiento: string | null;
   moneda: string | null;
   tipo_cambio: number | null;
+  /** Cuenta de pago (contrapartida) para operaciones al contado. */
+  cuenta_contrapartida_id: string | null;
   items: GastoItemInput[];
 }
 
@@ -80,6 +85,7 @@ export function parseGastoHeaderInput(body: unknown): GastoHeaderInput {
     fecha_vencimiento: txt(b.fecha_vencimiento),
     moneda: txt(b.moneda) ?? "PYG",
     tipo_cambio: b.tipo_cambio != null && String(b.tipo_cambio).trim() !== "" ? Number(b.tipo_cambio) || null : null,
+    cuenta_contrapartida_id: txt(b.cuenta_contrapartida_id),
     items,
   };
 }
@@ -125,6 +131,9 @@ export interface GastoRow {
   confirmado_at: string | null;
   anulado_at: string | null;
   motivo_anulacion: string | null;
+  estado_contable: string | null;
+  asiento_contable_id: string | null;
+  cuenta_contrapartida_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -134,7 +143,9 @@ const HEADER_COLS = `
   g.categoria, g.descripcion, g.tipo_comprobante, g.numero_comprobante, g.timbrado,
   g.fecha_comprobante, g.fecha_contable, g.tipo_pago, g.plazo_dias, g.fecha_vencimiento,
   g.moneda, g.tipo_cambio, g.subtotal, g.monto_iva, g.total, g.monto, g.fecha,
-  g.confirmado_at, g.anulado_at, g.motivo_anulacion, g.created_at, g.updated_at,
+  g.confirmado_at, g.anulado_at, g.motivo_anulacion,
+  g.estado_contable, g.asiento_contable_id, g.cuenta_contrapartida_id,
+  g.created_at, g.updated_at,
   p.nombre AS proveedor_nombre, p.ruc AS proveedor_ruc
 `;
 
@@ -263,11 +274,13 @@ function headerAssignments(h: GastoHeaderInput, totals: HeaderTotals) {
       "proveedor_id", "descripcion", "categoria", "tipo_comprobante", "numero_comprobante",
       "timbrado", "fecha_comprobante", "fecha_contable", "tipo_pago", "plazo_dias",
       "fecha_vencimiento", "moneda", "tipo_cambio", "subtotal", "monto_iva", "total", "monto",
+      "cuenta_contrapartida_id",
     ],
     vals: [
       h.proveedor_id, h.descripcion, h.categoria, h.tipo_comprobante, h.numero_comprobante,
       h.timbrado, h.fecha_comprobante, h.fecha_contable, h.tipo_pago, h.plazo_dias,
       h.fecha_vencimiento, h.moneda, h.tipo_cambio, totals.subtotal, totals.monto_iva, totals.total, totals.total,
+      h.cuenta_contrapartida_id,
     ],
   };
 }
@@ -401,11 +414,38 @@ export async function confirmarDirecto(schemaRaw: string, empresaId: string, opt
     }
 
     await insertItems(client, tI, empresaId, gastoId, computed);
+
+    // Asiento contable balanceado, dentro de la MISMA transacción (rollback total si falla).
+    const config = await getConfigContable(schema, empresaId);
+    const esContado = h.tipo_pago !== "credito";
+    const lineasFiscales = computed.map((it) => ({
+      cuenta_contable_id: it.cuenta_contable_id as string,
+      descripcion: it.descripcion,
+      subtotal: it.subtotal,
+      iva_tipo: it.iva_tipo,
+      monto_iva: it.monto_iva,
+    }));
+    const lineasAsiento = construirLineasDocumento({
+      config, lineasFiscales, total: totals.total, esContado,
+      contrapartidaContado: h.cuenta_contrapartida_id, proveedorId: h.proveedor_id,
+      documento_tipo: "gasto", documento_id: gastoId,
+    });
+    const asiento = await generarAsientoEnTx(client, schema, empresaId, {
+      origen_tipo: "gasto_servicio", origen_id: gastoId, evento_origen: "confirmacion",
+      fecha_contable: (h.fecha_contable ?? h.fecha_comprobante) as string,
+      glosa: `Gasto y Servicio ${numero}`, moneda: h.moneda ?? "PYG", tipo_cambio: h.tipo_cambio ?? 1,
+      lineas: lineasAsiento, createdBy: userId,
+    });
+    await client.query(
+      `UPDATE ${tG} SET estado_contable='contabilizado', asiento_contable_id = $3::uuid WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+      [gastoId, empresaId, asiento.id]
+    );
+
     await client.query("COMMIT");
     return (await getGasto(schema, empresaId, gastoId))!.header;
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
-    throw e;
+    throw e instanceof ContabilidadError ? new GastoError(e.message, e.status) : e;
   } finally {
     client.release();
   }
@@ -444,7 +484,7 @@ export async function updateBorrador(
     return full!.header;
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
-    throw e;
+    throw e instanceof ContabilidadError ? new GastoError(e.message, e.status) : e;
   } finally {
     client.release();
   }
@@ -466,7 +506,7 @@ export async function deleteBorrador(schemaRaw: string, empresaId: string, id: s
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
-    throw e;
+    throw e instanceof ContabilidadError ? new GastoError(e.message, e.status) : e;
   } finally {
     client.release();
   }
@@ -493,26 +533,57 @@ export async function anularGasto(schemaRaw: string, empresaId: string, id: stri
   const schema = assertAllowedChatDataSchema(schemaRaw);
   if (!motivo || motivo.trim().length < 3) throw new GastoError("El motivo de anulación es obligatorio (mín. 3 caracteres).");
   const tG = quoteSchemaTable(schema, "gastos");
+  const tA = quoteSchemaTable(schema, "asientos_contables");
   const client = await pool().connect();
   try {
     await client.query("BEGIN");
-    const { rows } = await client.query<{ estado: string }>(
-      `SELECT estado FROM ${tG} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+    const { rows } = await client.query<{ estado: string; estado_contable: string; asiento_contable_id: string | null; numero: string | null }>(
+      `SELECT estado, estado_contable, asiento_contable_id, numero FROM ${tG} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
       [id, empresaId]
     );
     if (!rows[0]) throw new GastoError("Documento no encontrado.", 404);
     if (rows[0].estado !== "confirmado") throw new GastoError("Solo se pueden anular documentos confirmados.", 409);
+
+    let estadoContable = "no_contabilizado";
+    // Reversión contable: crea un asiento inverso y marca el original como revertido.
+    if (rows[0].estado_contable === "contabilizado" && rows[0].asiento_contable_id) {
+      const orig = await getAsientoConDetalles(client, schema, empresaId, rows[0].asiento_contable_id);
+      if (orig) {
+        const revLineas = orig.detalles.map((d) => ({
+          cuenta_contable_id: d.cuenta_contable_id,
+          proveedor_id: d.proveedor_id ?? null,
+          descripcion: `Reversión: ${d.descripcion ?? ""}`.trim(),
+          debe: Number(d.haber) || 0,
+          haber: Number(d.debe) || 0,
+          documento_tipo: d.documento_tipo ?? null,
+          documento_id: d.documento_id ?? null,
+        }));
+        const rev = await generarAsientoEnTx(client, schema, empresaId, {
+          origen_tipo: "reversion", origen_id: id, evento_origen: "reversion",
+          fecha_contable: String(orig.cabecera.fecha_contable).slice(0, 10),
+          glosa: `Reversión Gasto y Servicio ${rows[0].numero ?? ""}`.trim(),
+          moneda: orig.cabecera.moneda, tipo_cambio: Number(orig.cabecera.tipo_cambio) || 1,
+          lineas: revLineas, createdBy: userId, asiento_original_id: rows[0].asiento_contable_id,
+        });
+        await client.query(
+          `UPDATE ${tA} SET estado='revertido', asiento_reversion_id = $2::uuid WHERE id = $1::uuid`,
+          [rows[0].asiento_contable_id, rev.id]
+        );
+        estadoContable = "revertido";
+      }
+    }
+
     await client.query(
-      `UPDATE ${tG} SET estado='anulado', anulado_at = now(), anulado_by = $3::uuid, motivo_anulacion = $4
+      `UPDATE ${tG} SET estado='anulado', estado_contable = $5, anulado_at = now(), anulado_by = $3::uuid, motivo_anulacion = $4
         WHERE id = $1::uuid AND empresa_id = $2::uuid`,
-      [id, empresaId, userId, motivo.trim()]
+      [id, empresaId, userId, motivo.trim(), estadoContable]
     );
     await client.query("COMMIT");
     const full = await getGasto(schema, empresaId, id);
     return full!.header;
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
-    throw e;
+    throw e instanceof ContabilidadError ? new GastoError(e.message, e.status) : e;
   } finally {
     client.release();
   }

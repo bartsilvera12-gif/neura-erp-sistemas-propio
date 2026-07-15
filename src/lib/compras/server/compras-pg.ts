@@ -9,6 +9,7 @@
  */
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { getConfigContable, construirLineasDocumento, generarAsientoEnTx, ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 
 function pool() {
   const p = getChatPostgresPool();
@@ -77,6 +78,8 @@ export interface InsertCompraInput {
   plazo_dias: number | null;
   nro_timbrado: string;
   cuenta_contable_id: string | null;
+  /** Cuenta de pago (contrapartida) para compras al contado. */
+  cuenta_contrapartida_id: string | null;
   /** true = compra directa que aumenta stock (Fase 0). false = provendrá de recepción (Fase 4). */
   afecta_stock: boolean;
   /** Clave de idempotencia (uuid) para que un doble-envío no cree dos compras. */
@@ -234,13 +237,13 @@ export async function insertCompraConImpacto(
            cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
            iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
            tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
-           created_by, usuario_nombre, cuenta_contable_id, afecta_stock, idempotency_key
+           created_by, usuario_nombre, cuenta_contable_id, afecta_stock, idempotency_key, cuenta_contrapartida_id
          ) VALUES (
            $1::uuid, $2::uuid, $3, $4::uuid, $5,
            $6::numeric, $7, $8::numeric, $9::numeric, $10::numeric,
            $11, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16::numeric,
            $17, $18::integer, $19, $20, 'registrada', now(),
-           $21::uuid, $22, $23::uuid, $24::boolean, $25::uuid
+           $21::uuid, $22, $23::uuid, $24::boolean, $25::uuid, $26::uuid
          )
          RETURNING ${COLS}`,
         [
@@ -269,6 +272,7 @@ export async function insertCompraConImpacto(
           d.cuenta_contable_id,
           d.afecta_stock,
           d.idempotency_key,
+          d.cuenta_contrapartida_id,
         ]
       );
       compra = compraRows[0];
@@ -328,6 +332,32 @@ export async function insertCompraConImpacto(
         throw new Error("No se pudo actualizar el stock del producto.");
       }
     }
+
+    // Asiento contable de la compra (misma transacción). Requiere cuenta contable.
+    if (!d.cuenta_contable_id) {
+      throw new ContabilidadError("La compra requiere una cuenta contable para contabilizarse.");
+    }
+    const config = await getConfigContable(schema, empresaId);
+    const esContado = d.tipo_pago !== "credito";
+    const ivaTipo = d.iva_tipo === "5" ? "5" : d.iva_tipo === "10" ? "10" : "exenta";
+    const lineasAsiento = construirLineasDocumento({
+      config,
+      lineasFiscales: [{ cuenta_contable_id: d.cuenta_contable_id, descripcion: d.producto_nombre, subtotal: d.subtotal, iva_tipo: ivaTipo, monto_iva: d.monto_iva }],
+      total: d.total, esContado, contrapartidaContado: d.cuenta_contrapartida_id, proveedorId: d.proveedor_id,
+      documento_tipo: "compra", documento_id: compra.id,
+    });
+    const now = new Date();
+    const fechaContable = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const asiento = await generarAsientoEnTx(client, schema, empresaId, {
+      origen_tipo: "compra", origen_id: compra.id, evento_origen: "confirmacion",
+      fecha_contable: fechaContable, glosa: `Compra ${compra.numero_control}`,
+      moneda: d.moneda === "USD" ? "USD" : "PYG", tipo_cambio: d.tipo_cambio ?? 1,
+      lineas: lineasAsiento, createdBy: d.created_by,
+    });
+    await client.query(
+      `UPDATE ${tC} SET estado_contable='contabilizado', asiento_contable_id = $3::uuid WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+      [compra.id, empresaId, asiento.id]
+    );
 
     await client.query("COMMIT");
     return { compra, movimiento_id: movimientoId, movimiento_warning: null };

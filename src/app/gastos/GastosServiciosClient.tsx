@@ -5,15 +5,24 @@ import { getGastos, type Gasto } from "@/lib/gastos/actions";
 import { getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
 import { getProveedores } from "@/lib/proveedores/storage";
 import type { Proveedor } from "@/lib/proveedores/types";
+import MontoInput from "@/components/ui/MontoInput";
 import {
-  crearBorrador, editarBorrador, eliminarBorrador, confirmarGasto, anularGasto,
-  completarHistorico, getGastoDetalle,
+  confirmarNuevo, confirmarExistente, eliminarBorrador, anularGasto, getGastoDetalle,
   type GastoHeaderForm, type GastoItemForm, type IvaTipo, type GastoEstado,
 } from "@/lib/gastos/servicios-client";
 
 const IVA_RATE: Record<IvaTipo, number> = { exenta: 0, "5": 0.05, "10": 0.1 };
 const TIPO_COMPROBANTES = ["Factura", "Factura Electrónica", "Factura Virtual", "Factura de Exportación", "Autofactura", "Boleta", "Nota de Crédito", "Nota de Débito", "Recibo", "Otro"];
 const fmt = (n: number) => `₲ ${Math.round(n).toLocaleString("es-PY")}`;
+/** Timbrado no requerido para Recibo / Otro (coincide con la regla del backend). */
+function requiereTimbrado(tipo: string | null): boolean {
+  const t = (tipo ?? "").trim().toLowerCase();
+  return !(t === "" || t === "recibo" || t === "otro");
+}
+function genIdemKey(): string {
+  try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch {}
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 const ESTADO_BADGE: Record<GastoEstado, string> = {
   borrador: "bg-slate-100 text-slate-600",
@@ -102,12 +111,6 @@ export default function GastosServiciosClient() {
   function abrirEditar(id: string) { setMode("editar"); setEditId(id); setFormOpen(true); }
   function abrirCompletar(id: string) { setMode("completar"); setEditId(id); setFormOpen(true); }
 
-  async function accionConfirmar(g: Gasto) {
-    setError(null);
-    const r = await confirmarGasto(g.id);
-    if (!r.ok) { setError(r.error); return; }
-    await load();
-  }
   async function accionEliminar(g: Gasto) {
     if (!window.confirm(`¿Eliminar el borrador? Esta acción no se puede deshacer.`)) return;
     setError(null);
@@ -210,8 +213,7 @@ export default function GastosServiciosClient() {
                   <div className="flex items-center justify-end gap-1.5 text-xs">
                     {g.estado === "borrador" && (
                       <>
-                        <button onClick={() => abrirEditar(g.id)} className="rounded px-2 py-1 text-[#3F8E91] hover:bg-slate-100">Editar</button>
-                        <button onClick={() => accionConfirmar(g)} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-700">Confirmar</button>
+                        <button onClick={() => abrirEditar(g.id)} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-700">Abrir y confirmar</button>
                         <button onClick={() => accionEliminar(g)} className="rounded px-2 py-1 text-red-600 hover:bg-red-50">Eliminar</button>
                       </>
                     )}
@@ -265,6 +267,8 @@ function GastoFormModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingDetalle, setLoadingDetalle] = useState(mode !== "nuevo");
+  const [doneNumero, setDoneNumero] = useState<string | null>(null);
+  const [idemKey] = useState(() => genIdemKey());
 
   useEffect(() => {
     if (mode === "nuevo" || !gastoId) return;
@@ -318,18 +322,31 @@ function GastoFormModal({
   function addItem() { setForm((f) => ({ ...f, items: [...f.items, emptyItem()] })); }
   function removeItem(i: number) { setForm((f) => ({ ...f, items: f.items.length > 1 ? f.items.filter((_, idx) => idx !== i) : f.items })); }
 
-  async function guardar() {
+  // Requisitos mínimos para habilitar "Confirmar" (mismos que valida el backend).
+  const canSubmit = useMemo(() => {
+    const has = (v: string | null) => !!v && String(v).trim() !== "";
+    if (!has(form.proveedor_id)) return false;
+    if (!has(form.tipo_comprobante)) return false;
+    if (!has(form.numero_comprobante)) return false;
+    if (!has(form.fecha_comprobante)) return false;
+    if (!has(form.fecha_contable)) return false;
+    if (!has(form.tipo_pago)) return false;
+    if (requiereTimbrado(form.tipo_comprobante) && !has(form.timbrado)) return false;
+    if (form.items.length === 0) return false;
+    return form.items.every((it) => it.descripcion.trim() && it.cuenta_contable_id && Number(it.subtotal) > 0);
+  }, [form]);
+
+  async function confirmar() {
+    if (busy) return; // evita doble clic
     setBusy(true); setError(null);
     try {
-      const r = mode === "nuevo" ? await crearBorrador(form)
-        : mode === "completar" ? await completarHistorico(gastoId!, form)
-        : await editarBorrador(gastoId!, form);
+      const r = mode === "nuevo" ? await confirmarNuevo(form, idemKey) : await confirmarExistente(gastoId!, form);
       if (!r.ok) { setError(r.error); return; }
-      onSaved();
+      setDoneNumero((r.data.gasto?.numero as string) ?? "");
     } finally { setBusy(false); }
   }
 
-  const titulo = mode === "nuevo" ? "Nuevo gasto o servicio" : mode === "completar" ? "Completar histórico" : "Editar borrador";
+  const titulo = mode === "nuevo" ? "Nuevo gasto o servicio" : mode === "completar" ? "Completar histórico" : "Revisar y confirmar";
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-900/60 px-0 pt-0 backdrop-blur-sm sm:px-4 sm:pt-10" onClick={onClose}>
@@ -340,90 +357,132 @@ function GastoFormModal({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-          {loadingDetalle ? (
-            <p className="text-sm text-slate-400">Cargando…</p>
+          {doneNumero !== null ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-3xl text-emerald-600">✓</div>
+              <p className="text-lg font-semibold text-slate-800">Gasto o servicio confirmado</p>
+              <p className="text-sm text-slate-500">Número generado: <b className="font-mono text-[#3F8E91]">{doneNumero || "—"}</b></p>
+              <p className="text-xs text-slate-400">Ya aparece en el Libro de Compras.</p>
+            </div>
           ) : (
             <>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-                El control financiero de deuda (Cuentas por Pagar y pagos a proveedores) se habilitará en la Fase 3. Aquí solo se registra el documento fiscal.
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="Proveedor">
-                  <select className={INPUT} value={form.proveedor_id ?? ""} onChange={(e) => setField("proveedor_id", e.target.value || null)}>
-                    <option value="">(Sin proveedor)</option>
-                    {proveedores.map((p) => <option key={p.id} value={String(p.id)}>{p.nombre}{p.ruc ? ` — ${p.ruc}` : ""}</option>)}
-                  </select>
-                </Field>
-                <Field label="Tipo de comprobante">
-                  <select className={INPUT} value={form.tipo_comprobante ?? ""} onChange={(e) => setField("tipo_comprobante", e.target.value || null)}>
-                    {TIPO_COMPROBANTES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Field>
-                <Field label="Número de comprobante"><input className={INPUT} inputMode="numeric" value={form.numero_comprobante ?? ""} onChange={(e) => setField("numero_comprobante", formatComprobante(e.target.value) || null)} placeholder="001-001-0000001" /></Field>
-                <Field label="Timbrado"><input className={INPUT} value={form.timbrado ?? ""} onChange={(e) => setField("timbrado", e.target.value || null)} /></Field>
-                <Field label="Fecha de comprobante"><input type="date" className={INPUT} value={form.fecha_comprobante ?? ""} onChange={(e) => setField("fecha_comprobante", e.target.value || null)} /></Field>
-                <Field label="Fecha contable"><input type="date" className={INPUT} value={form.fecha_contable ?? ""} onChange={(e) => setField("fecha_contable", e.target.value || null)} /></Field>
-                <Field label="Condición">
-                  <select className={INPUT} value={form.tipo_pago ?? "contado"} onChange={(e) => setField("tipo_pago", e.target.value as "contado" | "credito")}>
-                    <option value="contado">Contado</option>
-                    <option value="credito">Crédito</option>
-                  </select>
-                </Field>
-                {form.tipo_pago === "credito" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Field label="Plazo (días)"><input type="number" className={INPUT} value={form.plazo_dias ?? ""} onChange={(e) => setField("plazo_dias", e.target.value ? parseInt(e.target.value) : null)} /></Field>
-                    <Field label="Vencimiento"><input type="date" className={INPUT} value={form.fecha_vencimiento ?? ""} onChange={(e) => setField("fecha_vencimiento", e.target.value || null)} /></Field>
+              {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+              {loadingDetalle ? (
+                <p className="text-sm text-slate-400">Cargando…</p>
+              ) : (
+                <>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+                    El control financiero de deuda (Cuentas por Pagar y pagos a proveedores) se habilitará en la Fase 3. Aquí solo se registra el documento fiscal.
                   </div>
-                )}
-              </div>
 
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Líneas (cuenta contable por línea)</h3>
-                  <button onClick={addItem} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-[#3F8E91] hover:bg-slate-50">+ Agregar línea</button>
-                </div>
-                <div className="space-y-2">
-                  {form.items.map((it, i) => {
-                    const s = Number(it.subtotal) || 0;
-                    const ivaLinea = s * IVA_RATE[it.iva_tipo];
-                    return (
-                      <div key={i} className="space-y-2 rounded-lg border border-slate-100 bg-slate-50 p-2">
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          <CuentaCombobox cuentas={cuentas} value={it.cuenta_contable_id} onChange={(id) => setItemCuenta(i, id)} />
-                          <input className={INPUT} placeholder="Descripción" value={it.descripcion} onChange={(e) => setItem(i, { descripcion: e.target.value })} />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input type="number" className={`${INPUT} flex-1`} placeholder="Monto base (sin IVA)" value={it.subtotal || ""} onChange={(e) => setItem(i, { subtotal: Number(e.target.value) || 0 })} />
-                          <select className={`${INPUT} w-20`} value={it.iva_tipo} onChange={(e) => setItem(i, { iva_tipo: e.target.value as IvaTipo })}>
-                            <option value="exenta">Ex.</option>
-                            <option value="5">5%</option>
-                            <option value="10">10%</option>
-                          </select>
-                          <span className="whitespace-nowrap text-[11px] text-slate-400">IVA {fmt(ivaLinea)}</span>
-                          {form.items.length > 1 && <button onClick={() => removeItem(i)} className="px-1 text-red-500 hover:text-red-700" title="Quitar línea">×</button>}
-                        </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Proveedor *">
+                      <select className={INPUT} value={form.proveedor_id ?? ""} onChange={(e) => setField("proveedor_id", e.target.value || null)}>
+                        <option value="">(Elegir proveedor)</option>
+                        {proveedores.map((p) => <option key={p.id} value={String(p.id)}>{p.nombre}{p.ruc ? ` — ${p.ruc}` : ""}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Tipo de comprobante *">
+                      <select className={INPUT} value={form.tipo_comprobante ?? ""} onChange={(e) => setField("tipo_comprobante", e.target.value || null)}>
+                        {TIPO_COMPROBANTES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Número de comprobante *"><input className={INPUT} inputMode="numeric" value={form.numero_comprobante ?? ""} onChange={(e) => setField("numero_comprobante", formatComprobante(e.target.value) || null)} placeholder="001-001-0000001" /></Field>
+                    <Field label={`Timbrado${requiereTimbrado(form.tipo_comprobante) ? " *" : ""}`}><input className={INPUT} value={form.timbrado ?? ""} onChange={(e) => setField("timbrado", e.target.value || null)} /></Field>
+                    <Field label="Fecha de comprobante *"><input type="date" className={INPUT} value={form.fecha_comprobante ?? ""} onChange={(e) => setField("fecha_comprobante", e.target.value || null)} /></Field>
+                    <Field label="Fecha contable *"><input type="date" className={INPUT} value={form.fecha_contable ?? ""} onChange={(e) => setField("fecha_contable", e.target.value || null)} /></Field>
+                    <Field label="Condición *">
+                      <select className={INPUT} value={form.tipo_pago ?? "contado"} onChange={(e) => setField("tipo_pago", e.target.value as "contado" | "credito")}>
+                        <option value="contado">Contado</option>
+                        <option value="credito">Crédito</option>
+                      </select>
+                    </Field>
+                    {form.tipo_pago === "credito" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field label="Plazo (días)"><input type="number" className={INPUT} value={form.plazo_dias ?? ""} onChange={(e) => setField("plazo_dias", e.target.value ? parseInt(e.target.value) : null)} /></Field>
+                        <Field label="Vencimiento"><input type="date" className={INPUT} value={form.fecha_vencimiento ?? ""} onChange={(e) => setField("fecha_vencimiento", e.target.value || null)} /></Field>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                    )}
+                  </div>
 
-              <div className="flex flex-wrap justify-end gap-4 rounded-lg bg-slate-50 p-3 text-sm">
-                <span className="text-slate-500">Gravado/Exento: <b className="text-slate-800">{fmt(totals.sub)}</b></span>
-                <span className="text-slate-500">IVA: <b className="text-slate-800">{fmt(totals.iva)}</b></span>
-                <span className="text-slate-500">Total: <b className="text-slate-900">{fmt(totals.total)}</b></span>
-              </div>
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Líneas (cuenta contable por línea)</h3>
+                      <button onClick={addItem} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-[#3F8E91] hover:bg-slate-50">+ Agregar línea</button>
+                    </div>
+                    <div className="space-y-2">
+                      {form.items.map((it, i) => {
+                        const s = Number(it.subtotal) || 0;
+                        const ivaLinea = s * IVA_RATE[it.iva_tipo];
+                        const ivaLbl = it.iva_tipo === "exenta" ? "Exento" : `IVA ${it.iva_tipo}%`;
+                        return (
+                          <div key={i} className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <div>
+                                <label className={LBL}>Cuenta contable *</label>
+                                <CuentaCombobox cuentas={cuentas} value={it.cuenta_contable_id} onChange={(id) => setItemCuenta(i, id)} />
+                              </div>
+                              <div>
+                                <label className={LBL}>Descripción *</label>
+                                <input className={INPUT} placeholder="Detalle de la línea" value={it.descripcion} onChange={(e) => setItem(i, { descripcion: e.target.value })} />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                              <div>
+                                <label className={LBL}>Monto sin IVA *</label>
+                                <div className="relative">
+                                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">₲</span>
+                                  <MontoInput value={it.subtotal} onChange={(n) => setItem(i, { subtotal: n })} decimals={false} placeholder="0" className={`${INPUT} pl-6 text-right tabular-nums`} />
+                                </div>
+                              </div>
+                              <div>
+                                <label className={LBL}>Tipo de IVA</label>
+                                <select className={INPUT} value={it.iva_tipo} onChange={(e) => setItem(i, { iva_tipo: e.target.value as IvaTipo })}>
+                                  <option value="exenta">Exenta</option>
+                                  <option value="5">5%</option>
+                                  <option value="10">10%</option>
+                                </select>
+                              </div>
+                              <div className="flex flex-col justify-end text-right text-xs text-slate-500">
+                                <span>{ivaLbl}: <b className="text-slate-700">{fmt(ivaLinea)}</b></span>
+                                <span>Total de la línea: <b className="text-slate-800">{fmt(s + ivaLinea)}</b></span>
+                              </div>
+                            </div>
+                            {form.items.length > 1 && (
+                              <div className="flex justify-end">
+                                <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:text-red-700">Eliminar línea</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1 text-sm">
+                      <span className="text-slate-500">Subtotal: <b className="text-slate-800">{fmt(totals.sub)}</b></span>
+                      <span className="text-slate-500">IVA: <b className="text-slate-800">{fmt(totals.iva)}</b></span>
+                      <span className="text-slate-600">Total de la operación: <b className="text-base text-slate-900">{fmt(totals.total)}</b></span>
+                    </div>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
 
         <div className="flex justify-end gap-2 border-t p-5">
-          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Cancelar</button>
-          <button onClick={guardar} disabled={busy || loadingDetalle} className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">
-            {busy ? "Guardando…" : mode === "completar" ? "Guardar como borrador" : "Guardar borrador"}
-          </button>
+          {doneNumero !== null ? (
+            <button onClick={onSaved} className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]">Cerrar</button>
+          ) : (
+            <>
+              <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Cancelar</button>
+              <button onClick={confirmar} disabled={busy || loadingDetalle || !canSubmit} className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">
+                {busy ? "Confirmando…" : "Confirmar gasto o servicio"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -431,6 +490,7 @@ function GastoFormModal({
 }
 
 const INPUT = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 bg-white";
+const LBL = "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

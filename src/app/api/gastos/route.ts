@@ -4,7 +4,9 @@ import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema"
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { requireContabilidadApiAccess } from "@/lib/contabilidad/contabilidad-auth";
-import { listGastos, createBorrador, parseGastoHeaderInput, GastoError } from "@/lib/gastos/server/gastos-pg";
+import { listGastos, confirmarDirecto, parseGastoHeaderInput, GastoError } from "@/lib/gastos/server/gastos-pg";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const runtime = "nodejs";
 
@@ -28,19 +30,25 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** POST /api/gastos — crea un borrador (requiere permiso contabilidad). */
+/** POST /api/gastos — crea y CONFIRMA en un solo paso (requiere permiso contabilidad). */
 export async function POST(request: NextRequest) {
   const auth = await requireContabilidadApiAccess(request);
   if (!auth.ok) return NextResponse.json(errorResponse(auth.message), { status: auth.status });
   try {
     const schema = await fetchDataSchemaForEmpresaId(auth.empresaId);
-    const body = await request.json().catch(() => ({}));
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const input = parseGastoHeaderInput(body);
-    const header = await createBorrador(schema, auth.empresaId, input, auth.usuarioCatalogId);
+    const idemRaw = body.idempotency_key != null ? String(body.idempotency_key).trim() : "";
+    const idempotencyKey = UUID_RE.test(idemRaw) ? idemRaw : null;
+    const header = await confirmarDirecto(schema, auth.empresaId, {
+      header: input,
+      userId: auth.usuarioCatalogId,
+      idempotencyKey,
+    });
     return NextResponse.json(successResponse({ gasto: header }), { status: 201 });
   } catch (e) {
     if (e instanceof GastoError) return NextResponse.json(errorResponse(e.message), { status: e.status });
     console.error("[/api/gastos POST]", e instanceof Error ? e.message : e);
-    return NextResponse.json(errorResponse("No se pudo crear el borrador."), { status: 500 });
+    return NextResponse.json(errorResponse("No se pudo confirmar el gasto o servicio."), { status: 500 });
   }
 }

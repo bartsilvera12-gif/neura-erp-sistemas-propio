@@ -70,10 +70,17 @@ const jsonInit = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+type GastoResult = { gasto: Record<string, unknown> };
+
 export const getGastoDetalle = (id: string) => call<GastoDetalle>(`/api/gastos/${id}`);
-export const crearBorrador = (h: GastoHeaderForm) => call<{ gasto: Record<string, unknown> }>(`/api/gastos`, jsonInit("POST", h));
-export const editarBorrador = (id: string, h: GastoHeaderForm) => call<{ gasto: Record<string, unknown> }>(`/api/gastos/${id}`, jsonInit("PATCH", h));
+
+/** Crea y confirma en un solo paso (con idempotencia anti doble-clic). */
+export const confirmarNuevo = (h: GastoHeaderForm, idempotencyKey: string) =>
+  call<GastoResult>(`/api/gastos`, jsonInit("POST", { ...h, idempotency_key: idempotencyKey }));
+
+/** Guarda + confirma un documento existente (borrador o histórico → confirmado). */
+export const confirmarExistente = (id: string, h: GastoHeaderForm) =>
+  call<GastoResult>(`/api/gastos/${id}/confirmar`, jsonInit("POST", h));
+
 export const eliminarBorrador = (id: string) => call<{ deleted: boolean }>(`/api/gastos/${id}`, { method: "DELETE" });
-export const confirmarGasto = (id: string) => call<{ gasto: Record<string, unknown> }>(`/api/gastos/${id}/confirmar`, jsonInit("POST", {}));
-export const anularGasto = (id: string, motivo: string) => call<{ gasto: Record<string, unknown> }>(`/api/gastos/${id}/anular`, jsonInit("POST", { motivo }));
-export const completarHistorico = (id: string, h: GastoHeaderForm) => call<{ gasto: Record<string, unknown> }>(`/api/gastos/${id}/completar-historico`, jsonInit("POST", h));
+export const anularGasto = (id: string, motivo: string) => call<GastoResult>(`/api/gastos/${id}/anular`, jsonInit("POST", { motivo }));

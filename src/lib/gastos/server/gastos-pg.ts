@@ -272,35 +272,137 @@ function headerAssignments(h: GastoHeaderInput, totals: HeaderTotals) {
   };
 }
 
-export async function createBorrador(
-  schemaRaw: string, empresaId: string, h: GastoHeaderInput, userId: string | null
-): Promise<GastoRow> {
+/** Timbrado exigido salvo comprobantes que no lo llevan (Recibo, Otro). */
+function requiereTimbrado(tipo: string | null): boolean {
+  const t = (tipo ?? "").trim().toLowerCase();
+  return !(t === "" || t === "recibo" || t === "otro");
+}
+
+/** Validación estricta de líneas para confirmar (cuenta + descripción + monto > 0 + IVA). */
+function validateItemsForConfirm(items: GastoItemInput[]): void {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new GastoError("El documento debe tener al menos una línea.");
+  }
+  for (const it of items) {
+    if (!it.descripcion || !String(it.descripcion).trim()) throw new GastoError("Cada línea requiere una descripción.");
+    if (!it.cuenta_contable_id) throw new GastoError("Cada línea requiere una cuenta contable.");
+    if (!(["exenta", "5", "10"] as string[]).includes(String(it.iva_tipo))) throw new GastoError("Tipo de IVA inválido en una línea (exenta, 5 o 10).");
+    if (!(Number(it.subtotal) > 0)) throw new GastoError("El monto de cada línea debe ser mayor que cero.");
+  }
+}
+
+async function fetchGastoIdByIdempotency(schema: string, empresaId: string, key: string): Promise<string | null> {
+  const tG = quoteSchemaTable(schema, "gastos");
+  const { rows } = await pool().query<{ id: string }>(
+    `SELECT id FROM ${tG} WHERE empresa_id = $1::uuid AND idempotency_key = $2::uuid LIMIT 1`,
+    [empresaId, key]
+  );
+  return rows[0]?.id ?? null;
+}
+
+export interface ConfirmarDirectoOpts {
+  id?: string | null;
+  header: GastoHeaderInput;
+  userId: string | null;
+  idempotencyKey?: string | null;
+}
+
+/**
+ * Guarda y CONFIRMA en un solo paso atómico (sin borrador intermedio).
+ *  - Sin `id`: crea la cabecera confirmada (idempotente por `idempotencyKey`).
+ *  - `id` en 'borrador': actualiza + confirma.
+ *  - `id` en 'historico': completa (sin pisar categoria/descripcion/monto originales) + confirma.
+ * Reserva el correlativo GS dentro de la transacción; cualquier fallo hace ROLLBACK total
+ * (sin cabecera ni líneas parciales, sin consumir número).
+ */
+export async function confirmarDirecto(schemaRaw: string, empresaId: string, opts: ConfirmarDirectoOpts): Promise<GastoRow> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
-  validateItems(h.items);
+  const h = opts.header;
+  const id = opts.id ?? null;
+  const idem = opts.idempotencyKey ?? null;
+  const userId = opts.userId;
+
+  const faltan = faltantesFiscales(h);
+  if (faltan.length > 0) throw new GastoError(`Faltan datos para confirmar: ${faltan.join(", ")}.`);
+  validateItemsForConfirm(h.items);
   await assertCuentasValidas(schema, empresaId, h.items.map((i) => i.cuenta_contable_id ?? "").filter(Boolean));
   const { computed, totals } = sumTotals(h.items);
+
   const tG = quoteSchemaTable(schema, "gastos");
   const tI = quoteSchemaTable(schema, "gasto_items");
+
+  // Idempotencia (solo alta nueva): un doble-envío devuelve el gasto ya creado.
+  if (!id && idem) {
+    const existingId = await fetchGastoIdByIdempotency(schema, empresaId, idem);
+    if (existingId) return (await getGasto(schema, empresaId, existingId))!.header;
+  }
+
   const client = await pool().connect();
   try {
     await client.query("BEGIN");
-    const a = headerAssignments(h, totals);
-    const fechaFallback = h.fecha_comprobante ?? h.fecha_contable ?? null;
-    void userId; // la cabecera de gastos no tiene created_by; el actor se registra al confirmar/anular
-    const cols = [...a.cols, "estado", "tipo", "fecha"];
-    const vals = [...a.vals, "borrador", "variable", fechaFallback];
-    const ph = vals.map((_, i) => `$${i + 2}`);
-    const { rows } = await client.query<GastoRow>(
-      `INSERT INTO ${tG} (empresa_id, ${cols.join(", ")})
-       VALUES ($1::uuid, ${ph.join(", ")})
-       RETURNING id`,
-      [empresaId, ...vals]
+    let gastoId = "";
+    let preserveHistorico = false;
+
+    if (id) {
+      const { rows } = await client.query<{ estado: string }>(
+        `SELECT estado FROM ${tG} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+        [id, empresaId]
+      );
+      if (!rows[0]) throw new GastoError("Documento no encontrado.", 404);
+      const est = rows[0].estado;
+      if (est !== "borrador" && est !== "historico") throw new GastoError("Solo se pueden confirmar borradores o históricos.", 409);
+      preserveHistorico = est === "historico";
+      gastoId = id;
+    }
+
+    // Reserva del correlativo DENTRO de la transacción (un rollback lo revierte).
+    const { rows: num } = await client.query<{ numero: string }>(
+      `SELECT neura.next_numero_gasto_empresa($1::uuid) AS numero`, [empresaId]
     );
-    const gastoId = rows[0].id;
+    const numero = num[0].numero;
+
+    const a = headerAssignments(h, totals);
+    if (id) {
+      let cols = a.cols, vals = a.vals;
+      if (preserveHistorico) {
+        const skip = new Set(["categoria", "descripcion", "monto"]);
+        const kept = a.cols.map((c, i) => ({ c, v: a.vals[i] })).filter((x) => !skip.has(x.c));
+        cols = kept.map((x) => x.c); vals = kept.map((x) => x.v);
+      }
+      const setSql = cols.map((c, i) => `${c} = $${i + 3}`).join(", ");
+      const p = cols.length + 3;
+      await client.query(
+        `UPDATE ${tG} SET ${setSql}, estado='confirmado', numero = $${p}, confirmado_at = now(), confirmado_by = $${p + 1}::uuid
+          WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+        [id, empresaId, ...vals, numero, userId]
+      );
+      await client.query(`DELETE FROM ${tI} WHERE gasto_id = $1::uuid AND empresa_id = $2::uuid`, [id, empresaId]);
+    } else {
+      const fechaFallback = h.fecha_comprobante ?? h.fecha_contable ?? null;
+      const cols = [...a.cols, "estado", "tipo", "fecha", "numero", "confirmado_by", "idempotency_key"];
+      const vals = [...a.vals, "confirmado", "variable", fechaFallback, numero, userId, idem];
+      const ph = vals.map((_, i) => `$${i + 2}`);
+      try {
+        const { rows } = await client.query<{ id: string }>(
+          `INSERT INTO ${tG} (empresa_id, ${cols.join(", ")}, confirmado_at) VALUES ($1::uuid, ${ph.join(", ")}, now()) RETURNING id`,
+          [empresaId, ...vals]
+        );
+        gastoId = rows[0].id;
+      } catch (insErr) {
+        const code = (insErr as { code?: string })?.code;
+        const constraint = String((insErr as { constraint?: string })?.constraint ?? "");
+        if (code === "23505" && constraint.includes("idempotency") && idem) {
+          await client.query("ROLLBACK").catch(() => null);
+          const existingId = await fetchGastoIdByIdempotency(schema, empresaId, idem);
+          if (existingId) return (await getGasto(schema, empresaId, existingId))!.header;
+        }
+        throw insErr;
+      }
+    }
+
     await insertItems(client, tI, empresaId, gastoId, computed);
     await client.query("COMMIT");
-    const full = await getGasto(schema, empresaId, gastoId);
-    return full!.header;
+    return (await getGasto(schema, empresaId, gastoId))!.header;
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
     throw e;
@@ -372,58 +474,19 @@ export async function deleteBorrador(schemaRaw: string, empresaId: string, id: s
 
 /** Requisitos fiscales mínimos para confirmar y aparecer en el Libro de Compras. */
 export function faltantesFiscales(h: {
-  proveedor_id: string | null; tipo_comprobante: string | null;
-  numero_comprobante: string | null; timbrado: string | null; fecha_comprobante: string | null;
+  proveedor_id: string | null; tipo_comprobante: string | null; numero_comprobante: string | null;
+  timbrado: string | null; fecha_comprobante: string | null; fecha_contable: string | null; tipo_pago: string | null;
 }): string[] {
   const faltan: string[] = [];
+  const has = (v: string | null) => !!v && String(v).trim() !== "";
   if (!h.proveedor_id) faltan.push("proveedor");
-  if (!h.tipo_comprobante || !String(h.tipo_comprobante).trim()) faltan.push("tipo de comprobante");
-  if (!h.numero_comprobante || !String(h.numero_comprobante).trim()) faltan.push("número de comprobante");
-  if (!h.timbrado || !String(h.timbrado).trim()) faltan.push("timbrado");
+  if (!has(h.tipo_comprobante)) faltan.push("tipo de comprobante");
+  if (!has(h.numero_comprobante)) faltan.push("número de comprobante");
   if (!h.fecha_comprobante) faltan.push("fecha de comprobante");
+  if (!h.fecha_contable) faltan.push("fecha contable");
+  if (!has(h.tipo_pago)) faltan.push("condición");
+  if (requiereTimbrado(h.tipo_comprobante) && !has(h.timbrado)) faltan.push("timbrado");
   return faltan;
-}
-
-export async function confirmarGasto(schemaRaw: string, empresaId: string, id: string, userId: string | null): Promise<GastoRow> {
-  const schema = assertAllowedChatDataSchema(schemaRaw);
-  const tG = quoteSchemaTable(schema, "gastos");
-  const tI = quoteSchemaTable(schema, "gasto_items");
-  const client = await pool().connect();
-  try {
-    await client.query("BEGIN");
-    const { rows: cur } = await client.query<GastoRow>(
-      `SELECT g.id, g.estado, g.proveedor_id, g.tipo_comprobante, g.numero_comprobante, g.timbrado, g.fecha_comprobante
-         FROM ${tG} g WHERE g.id = $1::uuid AND g.empresa_id = $2::uuid FOR UPDATE`,
-      [id, empresaId]
-    );
-    if (!cur[0]) throw new GastoError("Documento no encontrado.", 404);
-    if (cur[0].estado !== "borrador") throw new GastoError("Solo se pueden confirmar documentos en borrador.", 409);
-    const faltan = faltantesFiscales(cur[0]);
-    if (faltan.length > 0) throw new GastoError(`Faltan datos fiscales para confirmar: ${faltan.join(", ")}.`);
-    const { rows: cnt } = await client.query<{ n: string }>(
-      `SELECT count(*) AS n FROM ${tI} WHERE gasto_id = $1::uuid AND empresa_id = $2::uuid`,
-      [id, empresaId]
-    );
-    if (Number(cnt[0]?.n ?? 0) === 0) throw new GastoError("El documento no tiene líneas.");
-
-    const { rows: num } = await client.query<{ numero: string }>(
-      `SELECT neura.next_numero_gasto_empresa($1::uuid) AS numero`,
-      [empresaId]
-    );
-    await client.query(
-      `UPDATE ${tG} SET estado='confirmado', numero = COALESCE(numero, $3), confirmado_at = now(), confirmado_by = $4::uuid
-        WHERE id = $1::uuid AND empresa_id = $2::uuid`,
-      [id, empresaId, num[0].numero, userId]
-    );
-    await client.query("COMMIT");
-    const full = await getGasto(schema, empresaId, id);
-    return full!.header;
-  } catch (e) {
-    await client.query("ROLLBACK").catch(() => null);
-    throw e;
-  } finally {
-    client.release();
-  }
 }
 
 export async function anularGasto(schemaRaw: string, empresaId: string, id: string, motivo: string, userId: string | null): Promise<GastoRow> {
@@ -455,46 +518,3 @@ export async function anularGasto(schemaRaw: string, empresaId: string, id: stri
   }
 }
 
-/**
- * Completar un histórico: rellena datos fiscales + líneas SIN sobrescribir los
- * datos originales (categoria/descripcion/monto/fecha se conservan) y lo pasa a
- * 'borrador' para que luego se confirme de forma explícita (nunca automática).
- */
-export async function completarHistorico(schemaRaw: string, empresaId: string, id: string, h: GastoHeaderInput): Promise<GastoRow> {
-  const schema = assertAllowedChatDataSchema(schemaRaw);
-  validateItems(h.items);
-  await assertCuentasValidas(schema, empresaId, h.items.map((i) => i.cuenta_contable_id ?? "").filter(Boolean));
-  const { computed, totals } = sumTotals(h.items);
-  const tG = quoteSchemaTable(schema, "gastos");
-  const tI = quoteSchemaTable(schema, "gasto_items");
-  const client = await pool().connect();
-  try {
-    await client.query("BEGIN");
-    const { rows } = await client.query<{ estado: string }>(
-      `SELECT estado FROM ${tG} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
-      [id, empresaId]
-    );
-    if (!rows[0]) throw new GastoError("Documento no encontrado.", 404);
-    if (rows[0].estado !== "historico") throw new GastoError("Solo aplica a documentos históricos.", 409);
-    // Rellena SOLO campos fiscales nuevos; NO toca categoria/descripcion/monto/tipo/fecha originales.
-    const a = headerAssignments({ ...h, categoria: null, descripcion: null }, totals);
-    // Excluir categoria/descripcion/monto para no pisar el histórico original.
-    const skip = new Set(["categoria", "descripcion", "monto"]);
-    const kept = a.cols.map((c, i) => ({ c, v: a.vals[i] })).filter((x) => !skip.has(x.c));
-    const setSql = kept.map((x, i) => `${x.c} = $${i + 3}`).join(", ");
-    await client.query(
-      `UPDATE ${tG} SET ${setSql}, estado='borrador' WHERE id = $1::uuid AND empresa_id = $2::uuid`,
-      [id, empresaId, ...kept.map((x) => x.v)]
-    );
-    await client.query(`DELETE FROM ${tI} WHERE gasto_id = $1::uuid AND empresa_id = $2::uuid`, [id, empresaId]);
-    await insertItems(client, tI, empresaId, id, computed);
-    await client.query("COMMIT");
-    const full = await getGasto(schema, empresaId, id);
-    return full!.header;
-  } catch (e) {
-    await client.query("ROLLBACK").catch(() => null);
-    throw e;
-  } finally {
-    client.release();
-  }
-}

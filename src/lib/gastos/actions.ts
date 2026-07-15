@@ -1,8 +1,10 @@
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { getEmpresaId } from "@/lib/db/empresa";
 import { ymdInicioFinMesLocal } from "@/lib/fechas/calendario";
 import { getBrowserSupabaseForEmpresaData } from "@/lib/supabase/browser-data-client";
 
+export type GastoEstado = "borrador" | "confirmado" | "anulado" | "historico";
+
+/** Cabecera de Gastos y Servicios (compatibilidad con consumidores previos + campos nuevos). */
 export type Gasto = {
   id: string;
   empresa_id: string;
@@ -14,57 +16,73 @@ export type Gasto = {
   frecuencia?: string;
   fecha: string;
   created_at: string;
+  // Campos Fase 1 (opcionales para compatibilidad):
+  numero?: string | null;
+  estado?: GastoEstado;
+  proveedor_id?: string | null;
+  proveedor_nombre?: string | null;
+  proveedor_ruc?: string | null;
+  tipo_comprobante?: string | null;
+  numero_comprobante?: string | null;
+  timbrado?: string | null;
+  fecha_comprobante?: string | null;
+  tipo_pago?: string | null;
+  subtotal?: number | null;
+  monto_iva?: number | null;
+  total?: number | null;
 };
 
-export type GastoInput = {
-  categoria: string;
-  descripcion: string;
-  monto: number;
-  tipo: "fijo" | "variable";
-  recurrente: boolean;
-  frecuencia?: string;
-  fecha: string;
-};
+function n(v: unknown): number {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
 
-function mapRow(r: Record<string, unknown>): Gasto {
+export function mapRow(r: Record<string, unknown>): Gasto {
   return {
     id: r.id as string,
     empresa_id: r.empresa_id as string,
     categoria: (r.categoria as string) ?? "",
     descripcion: (r.descripcion as string) ?? "",
-    monto: Number(r.monto) ?? 0,
+    monto: n(r.monto),
     tipo: (r.tipo as "fijo" | "variable") ?? "variable",
     recurrente: Boolean(r.recurrente),
     frecuencia: r.frecuencia as string | undefined,
     fecha: (r.fecha as string) ?? "",
     created_at: (r.created_at as string) ?? "",
+    numero: (r.numero as string | null) ?? null,
+    estado: (r.estado as GastoEstado) ?? undefined,
+    proveedor_id: (r.proveedor_id as string | null) ?? null,
+    proveedor_nombre: (r.proveedor_nombre as string | null) ?? null,
+    proveedor_ruc: (r.proveedor_ruc as string | null) ?? null,
+    tipo_comprobante: (r.tipo_comprobante as string | null) ?? null,
+    numero_comprobante: (r.numero_comprobante as string | null) ?? null,
+    timbrado: (r.timbrado as string | null) ?? null,
+    fecha_comprobante: (r.fecha_comprobante as string | null) ?? null,
+    tipo_pago: (r.tipo_pago as string | null) ?? null,
+    subtotal: r.subtotal != null ? n(r.subtotal) : null,
+    monto_iva: r.monto_iva != null ? n(r.monto_iva) : null,
+    total: r.total != null ? n(r.total) : null,
   };
 }
 
-/** Obtiene todos los gastos de la empresa, ordenados por fecha desc. */
+/** Lista de Gastos y Servicios (vía API server-side). Acepta ambas formas de respuesta. */
 export async function getGastos(): Promise<Gasto[]> {
-  if (typeof window !== "undefined") {
-    const res = await fetchWithSupabaseSession("/api/gastos", { cache: "no-store" });
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(t || `Error ${res.status}`);
-    }
-    const json = (await res.json()) as { success?: boolean; data?: Record<string, unknown>[] };
-    if (!json.success || !Array.isArray(json.data)) return [];
-    return json.data.map(mapRow);
+  const res = await fetchWithSupabaseSession("/api/gastos", { cache: "no-store" });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(t || `Error ${res.status}`);
   }
-
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const { data, error } = await supabase
-    .from("gastos")
-    .select("*")
-    .order("fecha", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(mapRow);
+  const json = (await res.json()) as { success?: boolean; data?: unknown };
+  if (!json.success) return [];
+  const d = json.data as Record<string, unknown> | Record<string, unknown>[];
+  const arr = Array.isArray(d) ? d : ((d?.gastos as Record<string, unknown>[]) ?? []);
+  return arr.map(mapRow);
 }
 
-/** Obtiene los gastos del mes actual (para Dashboard). RLS filtra por empresa. */
+/**
+ * Gastos del mes actual (Dashboard). RLS filtra por empresa. Excluye borradores y
+ * anulados para no inflar totales; incluye confirmados e históricos (gastos reales).
+ */
 export async function getGastosMesActual(): Promise<Gasto[]> {
   const supabase = await getBrowserSupabaseForEmpresaData();
   const hoy = new Date();
@@ -75,64 +93,9 @@ export async function getGastosMesActual(): Promise<Gasto[]> {
     .select("*")
     .gte("fecha", inicioMes)
     .lte("fecha", finMes)
+    .not("estado", "in", "(borrador,anulado)")
     .order("fecha", { ascending: false });
 
   if (error) throw new Error(error.message);
   return (data ?? []).map(mapRow);
-}
-
-export async function createGasto(input: GastoInput): Promise<Gasto> {
-  if (input.monto <= 0) throw new Error("El monto debe ser mayor a 0");
-
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const empresa_id = await getEmpresaId();
-
-  const { data, error } = await supabase
-    .from("gastos")
-    .insert({
-      empresa_id,
-      categoria: input.categoria.trim() || null,
-      descripcion: input.descripcion.trim() || null,
-      monto: input.monto,
-      tipo: input.tipo,
-      recurrente: input.recurrente,
-      frecuencia: input.frecuencia?.trim() || null,
-      fecha: input.fecha,
-    })
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return mapRow(data as Record<string, unknown>);
-}
-
-export async function updateGasto(id: string, input: Partial<GastoInput>): Promise<Gasto> {
-  if (input.monto !== undefined && input.monto <= 0) throw new Error("El monto debe ser mayor a 0");
-
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const update: Record<string, unknown> = {};
-  if (input.categoria !== undefined) update.categoria = input.categoria.trim() || null;
-  if (input.descripcion !== undefined) update.descripcion = input.descripcion.trim() || null;
-  if (input.monto !== undefined) update.monto = input.monto;
-  if (input.tipo !== undefined) update.tipo = input.tipo;
-  if (input.recurrente !== undefined) update.recurrente = input.recurrente;
-  if (input.frecuencia !== undefined) update.frecuencia = input.frecuencia?.trim() || null;
-  if (input.fecha !== undefined) update.fecha = input.fecha;
-
-  const { data, error } = await supabase
-    .from("gastos")
-    .update(update)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return mapRow(data as Record<string, unknown>);
-}
-
-export async function deleteGasto(id: string): Promise<void> {
-  const supabase = await getBrowserSupabaseForEmpresaData();
-  const { error } = await supabase.from("gastos").delete().eq("id", id);
-
-  if (error) throw new Error(error.message);
 }

@@ -139,7 +139,7 @@ const MENU_STRUCTURE: MenuItem[] = [
       { label: "Proveedores", href: "/proveedores" },
     ],
   },
-  { key: "gastos", slug: "gastos", label: "Gastos", href: "/gastos", icon: Receipt },
+  { key: "gastos", slug: "gastos", label: "Gastos y Servicios", href: "/gastos", icon: Receipt },
   { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
   { key: "cobranzas", slug: "cobranzas", label: "Cobranzas", href: "/cobranzas", icon: HandCoins },
   { key: "comisiones", slug: "comisiones", label: "Comisiones", href: "/comisiones", icon: Percent },

@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -12,6 +12,14 @@ type ReporteCard = {
 };
 
 const REPORTES: ReporteCard[] = [
+  {
+    title: "Libro de Compras",
+    subtitle: "Contabilidad",
+    description:
+      "Registro fiscal unificado de compras válidas y Gastos y Servicios confirmados: proveedor, comprobante, gravado 5%/10%, exento, IVA y totales. Exportable a Excel.",
+    icon: BookText,
+    href: "/reportes/libro-compras",
+  },
   {
     title: "Estado de cuenta empresa",
     subtitle: "Finanzas",

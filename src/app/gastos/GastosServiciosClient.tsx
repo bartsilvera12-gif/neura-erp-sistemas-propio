@@ -12,7 +12,7 @@ import {
 } from "@/lib/gastos/servicios-client";
 
 const IVA_RATE: Record<IvaTipo, number> = { exenta: 0, "5": 0.05, "10": 0.1 };
-const TIPO_COMPROBANTES = ["Factura", "Autofactura", "Boleta", "Nota de Crédito", "Nota de Débito", "Recibo", "Otro"];
+const TIPO_COMPROBANTES = ["Factura", "Factura Electrónica", "Factura Virtual", "Factura de Exportación", "Autofactura", "Boleta", "Nota de Crédito", "Nota de Débito", "Recibo", "Otro"];
 const fmt = (n: number) => `₲ ${Math.round(n).toLocaleString("es-PY")}`;
 
 const ESTADO_BADGE: Record<GastoEstado, string> = {

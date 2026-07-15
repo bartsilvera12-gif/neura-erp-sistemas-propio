@@ -286,8 +286,9 @@ export async function createBorrador(
     await client.query("BEGIN");
     const a = headerAssignments(h, totals);
     const fechaFallback = h.fecha_comprobante ?? h.fecha_contable ?? null;
-    const cols = [...a.cols, "estado", "tipo", "fecha", "created_by"];
-    const vals = [...a.vals, "borrador", "variable", fechaFallback, userId];
+    void userId; // la cabecera de gastos no tiene created_by; el actor se registra al confirmar/anular
+    const cols = [...a.cols, "estado", "tipo", "fecha"];
+    const vals = [...a.vals, "borrador", "variable", fechaFallback];
     const ph = vals.map((_, i) => `$${i + 2}`);
     const { rows } = await client.query<GastoRow>(
       `INSERT INTO ${tG} (empresa_id, ${cols.join(", ")})

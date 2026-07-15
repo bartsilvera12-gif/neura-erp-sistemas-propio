@@ -57,12 +57,14 @@ export async function POST(request: NextRequest) {
     const idemRaw = req("idempotency_key") ? String(body.idempotency_key).trim() : "";
     const idempotencyKey = UUID_RE.test(idemRaw) ? idemRaw : null;
 
-    // Recalcular montos en backend (no confiar en el frontend). IVA aditivo sobre el subtotal.
+    // Recalcular montos en backend (no confiar en el frontend). IVA INCLUIDO: el costo
+    // es el total con IVA; el IVA se DEDUCE. base = total − IVA.
     const cantidad = Number(body.cantidad) || 0;
     const costoUnitario = Number(body.costo_unitario) || 0;
-    const subtotal = cantidad * costoUnitario;
-    const montoIva = ivaTipo === "exenta" ? 0 : ivaTipo === "5" ? subtotal * 0.05 : subtotal * 0.1;
-    const total = subtotal + montoIva;
+    const bruto = cantidad * costoUnitario;
+    const montoIva = ivaTipo === "exenta" ? 0 : Math.round(bruto * (ivaTipo === "5" ? 5 / 105 : 10 / 110));
+    const subtotal = bruto - montoIva;
+    const total = bruto;
 
     try {
       const out = await insertCompraConImpacto(schema, empresaId, {

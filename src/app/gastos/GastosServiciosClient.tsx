@@ -11,7 +11,8 @@ import {
   type GastoHeaderForm, type GastoItemForm, type IvaTipo, type GastoEstado,
 } from "@/lib/gastos/servicios-client";
 
-const IVA_RATE: Record<IvaTipo, number> = { exenta: 0, "5": 0.05, "10": 0.1 };
+// IVA INCLUIDO: el monto ingresado es el total (con IVA); el IVA se deduce.
+const IVA_FACTOR: Record<IvaTipo, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
 const TIPO_COMPROBANTES = ["Factura", "Factura Electrónica", "Factura Virtual", "Factura de Exportación", "Autofactura", "Boleta", "Nota de Crédito", "Nota de Débito", "Recibo", "Otro"];
 const fmt = (n: number) => `₲ ${Math.round(n).toLocaleString("es-PY")}`;
 /** Timbrado no requerido para Recibo / Otro (coincide con la regla del backend). */
@@ -316,12 +317,13 @@ function GastoFormModal({
   }, [mode, gastoId]);
 
   const totals = useMemo(() => {
-    let sub = 0, iva = 0;
+    let sub = 0, iva = 0, total = 0;
     for (const it of form.items) {
-      const s = Number(it.subtotal) || 0;
-      sub += s; iva += s * IVA_RATE[it.iva_tipo];
+      const monto = Number(it.subtotal) || 0; // total con IVA
+      const ivaLinea = Math.round(monto * IVA_FACTOR[it.iva_tipo]);
+      sub += monto - ivaLinea; iva += ivaLinea; total += monto;
     }
-    return { sub, iva, total: sub + iva };
+    return { sub, iva, total };
   }, [form.items]);
 
   function setField<K extends keyof GastoHeaderForm>(k: K, v: GastoHeaderForm[K]) { setForm((f) => ({ ...f, [k]: v })); }
@@ -438,8 +440,8 @@ function GastoFormModal({
                     </div>
                     <div className="space-y-2">
                       {form.items.map((it, i) => {
-                        const s = Number(it.subtotal) || 0;
-                        const ivaLinea = s * IVA_RATE[it.iva_tipo];
+                        const s = Number(it.subtotal) || 0; // total con IVA (incluido)
+                        const ivaLinea = Math.round(s * IVA_FACTOR[it.iva_tipo]);
                         const ivaLbl = it.iva_tipo === "exenta" ? "Exento" : `IVA ${it.iva_tipo}%`;
                         return (
                           <div key={i} className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
@@ -455,7 +457,7 @@ function GastoFormModal({
                             </div>
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                               <div>
-                                <label className={LBL}>Monto sin IVA *</label>
+                                <label className={LBL}>Monto (IVA incluido) *</label>
                                 <div className="relative">
                                   <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">₲</span>
                                   <MontoInput value={it.subtotal} onChange={(n) => setItem(i, { subtotal: n })} decimals={false} placeholder="0" className={`${INPUT} pl-6 text-right tabular-nums`} />
@@ -471,7 +473,7 @@ function GastoFormModal({
                               </div>
                               <div className="flex flex-col justify-end text-right text-xs text-slate-500">
                                 <span>{ivaLbl}: <b className="text-slate-700">{fmt(ivaLinea)}</b></span>
-                                <span>Total de la línea: <b className="text-slate-800">{fmt(s + ivaLinea)}</b></span>
+                                <span>Total de la línea: <b className="text-slate-800">{fmt(s)}</b></span>
                               </div>
                             </div>
                             {form.items.length > 1 && (

@@ -172,14 +172,16 @@ export default function NuevaCompraPage() {
   const costoUnitarioPYG = costoInputNum * tipoCambioNum;
   const precioVentaNum = parseFloat(form.precio_venta) || 0;
 
-  const subtotal = cantidadNum > 0 && costoUnitarioPYG > 0
+  // IVA INCLUIDO: el costo es el total con IVA; el IVA se deduce (base = total − IVA).
+  const brutoCompra = cantidadNum > 0 && costoUnitarioPYG > 0
     ? cantidadNum * costoUnitarioPYG
     : 0;
   const montoIva =
     form.iva_tipo === "exenta" ? 0
-    : form.iva_tipo === "5"    ? subtotal * 0.05
-    :                            subtotal * 0.10;
-  const total = subtotal + montoIva;
+    : form.iva_tipo === "5"    ? Math.round(brutoCompra * (5 / 105))
+    :                            Math.round(brutoCompra * (10 / 110));
+  const subtotal = brutoCompra - montoIva;
+  const total = brutoCompra;
 
   const margenVenta =
     precioVentaNum > 0 && costoUnitarioPYG > 0

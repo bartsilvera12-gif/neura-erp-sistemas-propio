@@ -149,13 +149,14 @@ const HEADER_COLS = `
   p.nombre AS proveedor_nombre, p.ruc AS proveedor_ruc
 `;
 
-const IVA_RATE: Record<IvaTipo, number> = { exenta: 0, "5": 0.05, "10": 0.1 };
+// IVA INCLUIDO (Paraguay): el monto ingresado es el total (con IVA); el IVA se DEDUCE.
+const IVA_FACTOR_INCL: Record<IvaTipo, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
 
-/** Calcula IVA aditivo de una línea (base gravada → +IVA). */
-function calcItem(subtotalRaw: number, iva: IvaTipo) {
-  const subtotal = Number.isFinite(subtotalRaw) ? subtotalRaw : 0;
-  const monto_iva = subtotal * IVA_RATE[iva];
-  return { subtotal, monto_iva, total_linea: subtotal + monto_iva };
+/** Deduce el IVA incluido de una línea: base = monto − IVA; total de línea = monto ingresado. */
+function calcItem(montoRaw: number, iva: IvaTipo) {
+  const monto = Number.isFinite(montoRaw) ? montoRaw : 0; // total con IVA
+  const monto_iva = Math.round(monto * IVA_FACTOR_INCL[iva]);
+  return { subtotal: monto - monto_iva, monto_iva, total_linea: monto };
 }
 
 function validateItems(items: GastoItemInput[]): void {

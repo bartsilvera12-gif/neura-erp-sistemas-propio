@@ -165,13 +165,15 @@ function FacturaRowAccionesSifen({
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       {sifenAprobado ? (
-        <Link
-          href={`/facturas/${facturaId}?print=1`}
+        <a
+          href={`/api/facturas/${facturaId}/sifen/kude`}
+          target="_blank"
+          rel="noopener noreferrer"
           className={btnBase}
-          title="Imprimir factura"
+          title="Imprimir factura (KuDE)"
         >
           <Printer className="w-4 h-4" strokeWidth={1.75} />
-        </Link>
+        </a>
       ) : (
         <button type="button" disabled title="KuDE solo si SIFEN aprobado" className={`${btnBase} ${disabledCls}`}>
           <Printer className="w-4 h-4" strokeWidth={1.75} />

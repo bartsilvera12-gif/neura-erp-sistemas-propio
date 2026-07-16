@@ -394,6 +394,14 @@ export async function updateProspectoForEmpresaPg(
         : null
     );
   }
+  if (Object.prototype.hasOwnProperty.call(patch, "responsable_usuario_id")) {
+    push(
+      "responsable_usuario_id",
+      typeof patch.responsable_usuario_id === "string" && patch.responsable_usuario_id.trim()
+        ? patch.responsable_usuario_id.trim()
+        : null
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(patch, "observaciones")) {
     push(
       "observaciones",

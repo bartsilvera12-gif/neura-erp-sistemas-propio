@@ -11,6 +11,7 @@ import {
 } from "@/lib/crm/storage";
 import { getEtapas, getEtapaClasses } from "@/lib/crm/etapas";
 import { getPlanes } from "@/lib/planes/storage";
+import { getUsuariosActivosEmpresa, type UsuarioEmpresa } from "@/lib/usuarios/empresa";
 import PlanSelector from "@/components/crm/PlanSelector";
 import { getBrowserSupabaseForEmpresaData } from "@/lib/supabase/browser-data-client";
 import type { EtapaCrm } from "@/lib/crm/etapas";
@@ -94,9 +95,11 @@ export default function ProspectoDetalleForm({
     fecha_proxima_accion: "",
     creado_por: "",
     responsable: "",
+    responsable_usuario_id: "",
     observaciones: "",
   });
 
+  const [usuariosEmpresa, setUsuariosEmpresa] = useState<UsuarioEmpresa[]>([]);
   const [nuevaNota, setNuevaNota] = useState("");
   const [guardandoNota, setGuardandoNota] = useState(false);
   const notaInputRef = useRef<HTMLTextAreaElement>(null);
@@ -197,6 +200,7 @@ export default function ProspectoDetalleForm({
         fecha_proxima_accion: p.fecha_proxima_accion ?? "",
         creado_por: p.creado_por ?? "",
         responsable: p.responsable ?? "",
+        responsable_usuario_id: p.responsable_usuario_id ?? "",
         observaciones: p.observaciones ?? "",
       }));
     } finally {
@@ -211,6 +215,20 @@ export default function ProspectoDetalleForm({
       setCargando(false);
     }
   }, [id, cargar]);
+
+  useEffect(() => {
+    let vivo = true;
+    getUsuariosActivosEmpresa()
+      .then((us) => {
+        if (vivo) setUsuariosEmpresa(us);
+      })
+      .catch(() => {
+        if (vivo) setUsuariosEmpresa([]);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -263,6 +281,7 @@ export default function ProspectoDetalleForm({
         proxima_accion: form.proxima_accion.trim() || undefined,
         fecha_proxima_accion: form.fecha_proxima_accion || undefined,
         responsable: form.responsable.trim().toUpperCase() || undefined,
+        responsable_usuario_id: form.responsable_usuario_id || null,
         observaciones: form.observaciones.trim() ? form.observaciones.trim() : null,
       });
       if (actualizado) {
@@ -613,14 +632,28 @@ export default function ProspectoDetalleForm({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={LABEL_CLS}>Responsable</label>
-                <input
-                  type="text"
-                  name="responsable"
-                  value={form.responsable}
-                  onChange={handleChange}
-                  placeholder="Ej: JUAN PÉREZ"
-                  className={`${INPUT_CLS} uppercase`}
-                />
+                <select
+                  name="responsable_usuario_id"
+                  value={form.responsable_usuario_id}
+                  onChange={(e) => {
+                    const uid = e.target.value;
+                    const u = usuariosEmpresa.find((x) => x.id === uid);
+                    setForm((prev) => ({
+                      ...prev,
+                      responsable_usuario_id: uid,
+                      responsable: u ? (u.nombre ?? "").trim() || u.email || "" : "",
+                    }));
+                  }}
+                  className={INPUT_CLS}
+                >
+                  <option value="">— Sin asignar —</option>
+                  {usuariosEmpresa.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {(u.nombre ?? "").trim() || u.email}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">Cambiar el responsable transfiere el lead a ese asesor.</p>
               </div>
               <div>
                 <label className={LABEL_CLS}>Creado por</label>

@@ -120,6 +120,12 @@ export async function PATCH(
         patch.responsable =
           typeof body.responsable === "string" && body.responsable.trim() ? body.responsable.trim() : null;
       }
+      if (body.responsable_usuario_id !== undefined) {
+        patch.responsable_usuario_id =
+          typeof body.responsable_usuario_id === "string" && body.responsable_usuario_id.trim()
+            ? body.responsable_usuario_id.trim()
+            : null;
+      }
       if (body.observaciones !== undefined) {
         patch.observaciones =
           typeof body.observaciones === "string" && body.observaciones.trim() ? body.observaciones.trim() : null;

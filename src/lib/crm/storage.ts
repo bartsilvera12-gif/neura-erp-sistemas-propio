@@ -342,6 +342,8 @@ export async function updateProspecto(
   if (datos.fecha_proxima_accion !== undefined) patch.fecha_proxima_accion = datos.fecha_proxima_accion ?? null;
   // creado_por no se actualiza: queda fijo con quien creó el lead
   if (datos.responsable !== undefined) patch.responsable = datos.responsable ?? null;
+  if (datos.responsable_usuario_id !== undefined)
+    patch.responsable_usuario_id = datos.responsable_usuario_id ?? null;
   if (datos.cliente_creado !== undefined) patch.cliente_creado = datos.cliente_creado;
   patch.fecha_actualizacion = new Date().toISOString();
 

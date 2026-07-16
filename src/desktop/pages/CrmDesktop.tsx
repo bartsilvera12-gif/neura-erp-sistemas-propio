@@ -1085,6 +1085,8 @@ export default function CrmPage() {
   }, [vista]);
   /** Filtro rápido: solo leads creados hoy (toggle desde la card "Leads Hoy"). */
   const [filtroHoy, setFiltroHoy] = useState(false);
+  /** Buscador: por número de teléfono (dígitos normalizados) o texto (empresa/contacto/control). */
+  const [busqueda, setBusqueda] = useState("");
   const dragIdRef = useRef<string | null>(null);
 
   function recargar() {
@@ -1145,10 +1147,21 @@ export default function CrmPage() {
    * más nuevos al final). Decisión de UX local — la API sigue devolviendo
    * DESC para el resto de consumidores.
    */
-  /** Base de la vista: aplica el filtro "solo hoy" (afecta Kanban y Lista). */
-  const prospectosVista = filtroHoy
-    ? prospectos.filter((p) => esHoy(p.fecha_creacion))
-    : prospectos;
+  /** Base de la vista: aplica el filtro "solo hoy" + buscador (afecta Kanban y Lista). */
+  const q = busqueda.trim().toLowerCase();
+  const qDigits = cleanTelefono(busqueda);
+  const matchBusqueda = (p: Prospecto) => {
+    if (!q) return true;
+    // Por número: dígitos normalizados (así "0981" o "981" matchean "595981…").
+    if (qDigits.length >= 3 && cleanTelefono(p.telefono ?? "").includes(qDigits)) return true;
+    // Por texto: empresa / contacto / nro. de control.
+    return [p.empresa, p.contacto, p.numero_control, p.telefono].some((campo) =>
+      String(campo ?? "").toLowerCase().includes(q),
+    );
+  };
+  const prospectosVista = prospectos
+    .filter((p) => (filtroHoy ? esHoy(p.fecha_creacion) : true))
+    .filter(matchBusqueda);
 
   const porEtapa = (codigo: string) =>
     prospectosVista
@@ -1280,6 +1293,47 @@ export default function CrmPage() {
           icon={<IconTrophy />}
           accent="success"
         />
+      </div>
+
+      {/* Buscador por número / empresa / contacto / nro. de control */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <svg
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            type="search"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por número, empresa, contacto o nro. de control…"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm shadow-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+          />
+          {busqueda ? (
+            <button
+              type="button"
+              onClick={() => setBusqueda("")}
+              aria-label="Limpiar búsqueda"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md px-1.5 py-0.5 text-sm text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+        {q ? (
+          <span className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-600 tabular-nums">
+            {prospectosVista.length} resultado{prospectosVista.length === 1 ? "" : "s"}
+          </span>
+        ) : null}
       </div>
 
       {/* Pipeline: Kanban (cards) o Lista (tabla) según la vista elegida */}

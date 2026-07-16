@@ -112,6 +112,25 @@ export async function POST(request: NextRequest) {
     }
     const tasaIvaItem = tasaIvaDesdeIvaTipo(ivaTipoRaw);
 
+    /**
+     * Comisión por factura (opcional). Al emitir una venta comisionable, el asesor
+     * marca `comisionable=true` y elige el `vendedor_usuario_id` que se lleva la
+     * comisión (override por factura sobre el vendedor del cliente). Si no viene
+     * `comisionable`, queda null (lo resuelve la regla automática de comisiones).
+     */
+    const comisionable: boolean | null =
+      typeof body.comisionable === "boolean" ? body.comisionable : null;
+    const vendedorUsuarioId =
+      typeof body.vendedor_usuario_id === "string" && body.vendedor_usuario_id.trim()
+        ? body.vendedor_usuario_id.trim()
+        : null;
+    if (comisionable === true && !vendedorUsuarioId) {
+      return NextResponse.json(
+        errorResponse("Elegí el vendedor que se lleva la comisión para marcar la factura como comisionable."),
+        { status: 400 }
+      );
+    }
+
     if (!String(cliente_id ?? "").trim()) {
       return NextResponse.json(errorResponse("cliente_id es obligatorio"), { status: 400 });
     }
@@ -156,6 +175,8 @@ export async function POST(request: NextRequest) {
       estado: "Pendiente",
       tipo: tipoFac,
       moneda: moneda === "USD" ? "USD" : "GS",
+      ...(comisionable !== null ? { comisionable } : {}),
+      ...(vendedorUsuarioId ? { vendedor_usuario_id: vendedorUsuarioId } : {}),
     };
 
     const { data, error } = await supabase

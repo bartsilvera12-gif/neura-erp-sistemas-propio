@@ -363,6 +363,10 @@ export async function apiCreateFactura(data: {
   dia_vencimiento?: number;
   /** IVA puntual por factura (default `iva_10` para preservar comportamiento). */
   iva_tipo?: "exenta" | "iva_5" | "iva_10";
+  /** Marca la factura como comisionable (override durable). Requiere `vendedor_usuario_id`. */
+  comisionable?: boolean;
+  /** Vendedor que se lleva la comisión de esta factura (obligatorio si `comisionable`). */
+  vendedor_usuario_id?: string | null;
 }): Promise<{ id: string; [key: string]: unknown } | null> {
   const result = await apiPost<{ id: string; [key: string]: unknown }>("/api/facturas", data);
   return result.success ? result.data : null;

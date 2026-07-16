@@ -13,6 +13,7 @@ import {
 import { ModalCambioPlanGestion } from "@/components/gestion-clientes/ModalCambioPlanGestion";
 import { ModalHistorialClienteGestion } from "@/components/gestion-clientes/ModalHistorialClienteGestion";
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
+import FacturarVentaModal from "@/components/facturacion/FacturarVentaModal";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -681,6 +682,7 @@ function GestionClientesPageInner() {
   const [facturas,  setFacturas]  = useState<Factura[]>([]);
   const [modalFacturacion, setModalFacturacion] = useState(false);
   const [modalCambioPlan, setModalCambioPlan] = useState(false);
+  const [modalFacturarVenta, setModalFacturarVenta] = useState(false);
   const [modalHistorialCliente, setModalHistorialCliente] = useState(false);
   const [facturaCobroModal, setFacturaCobroModal] = useState<Factura | null>(null);
   const [facturasDetalleAbierto, setFacturasDetalleAbierto] = useState(true);
@@ -1040,6 +1042,12 @@ function GestionClientesPageInner() {
                     activo
                     onClick={() => setModalFacturacion(true)}
                   />
+                  <BotonOperativo
+                    label="Facturar venta"
+                    icon="🧾"
+                    activo
+                    onClick={() => setModalFacturarVenta(true)}
+                  />
                   <BotonOperativo label="Servicios asociados" icon="🔗" />
                   <BotonOperativo
                     label="Cambio de plan"
@@ -1294,6 +1302,17 @@ function GestionClientesPageInner() {
           clienteId={selected.id}
           clienteNombre={clienteNombre(selected)}
           onClose={() => setModalHistorialCliente(false)}
+        />
+      )}
+      {modalFacturarVenta && selected && (
+        <FacturarVentaModal
+          clienteId={selected.id}
+          clienteNombre={clienteNombre(selected)}
+          moneda={selected.moneda_preferida === "USD" ? "USD" : "GS"}
+          onClose={() => setModalFacturarVenta(false)}
+          onCreated={() => {
+            getFacturas(selected.id).then(setFacturas);
+          }}
         />
       )}
       <RegistrarPagoModal

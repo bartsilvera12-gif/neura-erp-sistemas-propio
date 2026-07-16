@@ -53,6 +53,8 @@ type LineaPreview = {
   cliente_alta?: string | null;
   /** Monto total de la factura asociada. */
   factura_monto_total?: number | null;
+  /** Vendedor que se lleva la comisión de esta línea: factura.vendedor_usuario_id ?? cliente.vendedor_usuario_id. */
+  vendedor_usuario_id?: string | null;
 };
 
 type OverrideRow = {
@@ -403,6 +405,15 @@ export async function GET(request: Request) {
 
     const netFact = (f: FacturaPreviewRow) => montoFacturaNetoValorComercialPreview(f, ncMap);
 
+    /** Vendedor fijado a nivel de FACTURA (override sobre el vendedor del cliente). */
+    const facVendedorId = (f: FacturaPreviewRow): string | null => {
+      const v = (f as { vendedor_usuario_id?: unknown }).vendedor_usuario_id;
+      return typeof v === "string" && v.trim() ? v.trim() : null;
+    };
+    /** Vendedor efectivo de una línea: el de la factura si existe, si no el del cliente. */
+    const vendedorDeFactura = (f: FacturaPreviewRow, clienteId: string): string | null =>
+      facVendedorId(f) ?? clienteVendedor.get(clienteId) ?? null;
+
     if (baseCalculo === "pago_registrado") {
       const pagos: Record<string, unknown>[] = [];
       for (let from = 0; ; from += PAGE) {
@@ -470,7 +481,7 @@ export async function GET(request: Request) {
         const fac = facturasPorId.get(fid);
         if (!fac || esFacturaAnuladaPreview(fac.estado) || esFacturaCorregidaNcPreview(fac.estado)) continue;
         const clienteId = String(fac.cliente_id ?? "");
-        const vid = clienteVendedor.get(clienteId) ?? null;
+        const vid = vendedorDeFactura(fac, clienteId);
         const monto = Number(p.monto) || 0;
         const net = netFact(fac);
         const saldoPendiente = saldoPendienteFactura(fac, net);
@@ -506,6 +517,7 @@ export async function GET(request: Request) {
             override_at: override?.decidido_at ?? null,
             cliente_alta: clienteAlta.get(clienteId) ?? null,
             factura_monto_total: Number(fac.monto) || 0,
+            vendedor_usuario_id: vid,
           },
           Boolean(vid),
           "pago"
@@ -550,7 +562,7 @@ export async function GET(request: Request) {
         const fac = row as unknown as FacturaPreviewRow;
         if (esFacturaAnuladaPreview(fac.estado) || esFacturaCorregidaNcPreview(fac.estado)) continue;
         const clienteId = String(fac.cliente_id ?? "");
-        const vid = clienteVendedor.get(clienteId) ?? null;
+        const vid = vendedorDeFactura(fac, clienteId);
         const net = netFact(fac);
         if (net <= 0) continue;
         const fid = String(fac.id);
@@ -574,6 +586,7 @@ export async function GET(request: Request) {
             origen: "auto",
             cliente_alta: clienteAlta.get(clienteId) ?? null,
             factura_monto_total: Number(fac.monto) || 0,
+            vendedor_usuario_id: vid,
           },
           Boolean(vid),
           "factura"
@@ -631,7 +644,7 @@ export async function GET(request: Request) {
           if (!liquidada || net <= 0) continue;
 
           const clienteId = String(fac.cliente_id ?? "");
-          const vid = clienteVendedor.get(clienteId) ?? null;
+          const vid = vendedorDeFactura(fac, clienteId);
           const ultima = maxFechaPorFactura.get(fid) ?? null;
           const saldoPendiente = saldoPendienteFactura(fac, net, sumPag);
 
@@ -664,9 +677,9 @@ export async function GET(request: Request) {
     const filtradas =
       vendedorScopeId != null
         ? lineas.filter((l) => {
-            const cid = l.cliente_id;
-            if (!cid) return false;
-            return clienteVendedor.get(cid) === vendedorScopeId;
+            if (!l.cliente_id) return false;
+            // El asesor ve una línea si es el vendedor efectivo (de la factura o, si no, del cliente).
+            return (l.vendedor_usuario_id ?? null) === vendedorScopeId;
           })
         : lineas;
 
@@ -688,7 +701,8 @@ export async function GET(request: Request) {
     for (const ln of filtradas) {
       const cid = ln.cliente_id;
       if (!cid) continue;
-      const vid = clienteVendedor.get(cid);
+      // Atribución por vendedor EFECTIVO de la línea (factura ?? cliente), no solo el del cliente.
+      const vid = ln.vendedor_usuario_id ?? null;
       if (!vid) continue;
       let agg = porVendor.get(vid);
       if (!agg) {

@@ -45,7 +45,22 @@ import { INBOX_HEARTBEAT_INTERVAL_MS } from "@/lib/chat/agent-presence";
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
-import { ArrowLeftRight, FileText, Flame, Mic, Paperclip, RefreshCw, Square, UserRound, Zap } from "lucide-react";
+import { ArrowLeftRight, FileText, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
+
+/** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
+const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
+  { grupo: "Caras", items: ["😀","😃","😄","😁","😊","🙂","😉","😍","🥰","😘","😂","🤣","😅","😎","🤩","🥳","🤔","😌","😴","😢","😭","😡","😱","🥺","🙄","😬"] },
+  { grupo: "Gestos", items: ["👍","👎","👌","🙌","👏","🙏","💪","🤝","👋","✌️","🤞","☝️","👉","👈","✋","🤙"] },
+  { grupo: "Símbolos", items: ["❤️","🧡","💚","💙","💜","🔥","⭐","✨","✅","❌","⚠️","❓","❗","💯","🎉","🎁"] },
+  { grupo: "Trabajo", items: ["📌","📎","📅","⏰","💰","💳","🧾","📞","📧","📦","🚀","📲","💻","📝","🔎","🏷️"] },
+];
+
+/** mm:ss para el contador de grabación. */
+function formatRecordTime(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 import {
   extractBodyPlaceholderKeysOrdered,
   getBodyComponentText,
@@ -430,6 +445,16 @@ export function ConversacionesClient({
   const [uploadingFile, setUploadingFile] = useState(false);
   /** Grabación de nota de voz (MediaRecorder) antes de subir a /api/chat/send-media. */
   const [recordingVoice, setRecordingVoice] = useState(false);
+  /** Segundos transcurridos de la grabación en curso (para el contador tipo WhatsApp). */
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  /**
+   * Nota de voz YA grabada y esperando confirmación del usuario. Antes el audio se
+   * enviaba solo al detener la grabación; ahora queda en preview (se puede escuchar,
+   * descartar o enviar con Enter / botón Enviar), como en WhatsApp.
+   */
+  const [pendingVoice, setPendingVoice] = useState<{ file: File; url: string } | null>(null);
+  /** Panel de emojis del composer (escritorio). */
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [releasingBot, setReleasingBot] = useState(false);
   const [resendFlowStepLoading, setResendFlowStepLoading] = useState(false);
   const [resendFlowNotice, setResendFlowNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -614,6 +639,11 @@ export function ConversacionesClient({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordChunksRef = useRef<Blob[]>([]);
+  /** Interval del contador de segundos mientras se graba. */
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** true = el stop() vino de "Cancelar": se descarta el audio en vez de dejarlo en preview. */
+  const discardRecordingRef = useRef(false);
+  const emojiPanelRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   /** Si el usuario está cerca del final, los mensajes nuevos hacen scroll; si subió a leer historial, no. */
   const stickBottomRef = useRef(true);
@@ -877,19 +907,49 @@ export function ConversacionesClient({
     }
   }, []);
 
-  async function toggleVoiceNote() {
-    const cid = selectedIdRef.current;
-    if (!cid || uploadingFile) return;
+  function stopRecordTimer() {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  }
+
+  /** Descarta la nota de voz ya grabada que estaba esperando confirmación. */
+  function discardPendingVoice() {
+    setPendingVoice((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  }
+
+  /** Detiene la grabación: el audio queda en PREVIEW (no se envía hasta confirmar). */
+  function stopVoiceRecording() {
     const mr = mediaRecorderRef.current;
     if (mr && mr.state === "recording") {
+      discardRecordingRef.current = false;
       mr.stop();
-      return;
     }
+  }
+
+  /** Cancela la grabación en curso y descarta el audio. */
+  function cancelVoiceRecording() {
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state === "recording") {
+      discardRecordingRef.current = true;
+      mr.stop();
+    }
+  }
+
+  async function startVoiceRecording() {
+    const cid = selectedIdRef.current;
+    if (!cid || uploadingFile || recordingVoice) return;
+    discardPendingVoice();
     setSendError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       recordChunksRef.current = [];
+      discardRecordingRef.current = false;
       const mime =
         typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
@@ -905,15 +965,23 @@ export function ConversacionesClient({
         stream.getTracks().forEach((t) => t.stop());
         mediaRecorderRef.current = null;
         streamRef.current = null;
+        stopRecordTimer();
         const blob = new Blob(recordChunksRef.current, { type: rec.mimeType || "audio/webm" });
         recordChunksRef.current = [];
         setRecordingVoice(false);
-        if (blob.size < 300) return;
+        const descartada = discardRecordingRef.current;
+        discardRecordingRef.current = false;
+        // Cancelada por el usuario o demasiado corta → no queda nada.
+        if (descartada || blob.size < 300) return;
         const ext = blob.type.includes("ogg") ? "ogg" : "webm";
         const voiceFile = new File([blob], `nota-voz.${ext}`, { type: blob.type || "audio/webm" });
-        void sendMediaFile(voiceFile);
+        // NO se envía acá: queda en preview y el usuario confirma con Enter / botón Enviar.
+        setPendingVoice({ file: voiceFile, url: URL.createObjectURL(voiceFile) });
       };
+      setRecordSeconds(0);
       setRecordingVoice(true);
+      stopRecordTimer();
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
       // SIN timeslice: MediaRecorder acumula todo y emite UN solo blob completo al stop().
       // Con timeslice (start(400)) el WebView de Android arma un webm con header roto / cluster
       // final truncado → ffmpeg falla ("EBML header parsing failed") o el audio sale cortado.
@@ -921,6 +989,7 @@ export function ConversacionesClient({
     } catch (e) {
       setSendError(e instanceof Error ? e.message : "No se pudo acceder al micrófono");
       setRecordingVoice(false);
+      stopRecordTimer();
     }
   }
 
@@ -932,6 +1001,7 @@ export function ConversacionesClient({
         /* noop */
       }
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     };
   }, []);
 
@@ -1840,9 +1910,20 @@ export function ConversacionesClient({
   }
 
   function submitCurrentText() {
-    const text = input.trim();
     const cid = selectedId;
-    if (!cid || !text) return;
+    if (!cid) return;
+    // Si hay una nota de voz grabada esperando confirmación, ESA es la que se envía.
+    if (pendingVoice) {
+      const file = pendingVoice.file;
+      URL.revokeObjectURL(pendingVoice.url);
+      setPendingVoice(null);
+      setSendError(null);
+      stickBottomRef.current = true;
+      void sendMediaFile(file);
+      return;
+    }
+    const text = input.trim();
+    if (!text) return;
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     setInput(""); // el textarea se limpia YA (el auto-size lo vuelve a 1 línea)
     setSendError(null);
@@ -2040,6 +2121,26 @@ export function ConversacionesClient({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [quickReplyOpen]);
 
+  useEffect(() => {
+    if (!emojiOpen) return;
+    function onDoc(ev: MouseEvent) {
+      const el = emojiPanelRef.current;
+      if (!el) return;
+      const t = ev.target;
+      if (t instanceof Node && el.contains(t)) return;
+      setEmojiOpen(false);
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setEmojiOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [emojiOpen]);
+
   const filteredQuickReplies = useMemo(() => {
     const q = quickReplySearch.trim().toLowerCase();
     if (!q) return channelQuickReplies;
@@ -2049,6 +2150,23 @@ export function ConversacionesClient({
         r.body.toLowerCase().includes(q)
     );
   }, [channelQuickReplies, quickReplySearch]);
+
+  /** Inserta un emoji en la posición del cursor del composer (o al final si no hay foco). */
+  function insertEmoji(emoji: string) {
+    const el = composerRef.current;
+    if (!el) {
+      setInput((prev) => prev + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? input.length;
+    const end = el.selectionEnd ?? input.length;
+    setInput(input.slice(0, start) + emoji + input.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
 
   function insertQuickReplyBody(text: string) {
     const t = text.trim();
@@ -3658,28 +3776,59 @@ export function ConversacionesClient({
                         <Paperclip className="w-[18px] h-[18px]" aria-hidden />
                       )}
                     </button>
-                    <button
-                      type="button"
-                      disabled={uploadingFile || !selectedId}
-                      onClick={() => void toggleVoiceNote()}
-                      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border text-slate-600 disabled:opacity-50 ${
-                        recordingVoice
-                          ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
-                          : "border-slate-200 hover:bg-slate-50"
-                      }`}
-                      title={
-                        recordingVoice
-                          ? "Detener y enviar nota de voz"
-                          : "Grabar nota de voz"
-                      }
-                      aria-label={recordingVoice ? "Detener grabación y enviar" : "Grabar nota de voz"}
-                    >
-                      {recordingVoice ? (
-                        <Square className="w-[16px] h-[16px] fill-current" aria-hidden />
-                      ) : (
+                    {!recordingVoice && !pendingVoice ? (
+                      <button
+                        type="button"
+                        disabled={uploadingFile || !selectedId}
+                        onClick={() => void startVoiceRecording()}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        title="Grabar nota de voz"
+                        aria-label="Grabar nota de voz"
+                      >
                         <Mic className="w-[18px] h-[18px]" aria-hidden />
-                      )}
-                    </button>
+                      </button>
+                    ) : null}
+                    <div ref={emojiPanelRef} className="relative">
+                      <button
+                        type="button"
+                        disabled={!selectedId || recordingVoice || !!pendingVoice}
+                        onClick={() => setEmojiOpen((o) => !o)}
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border disabled:opacity-50 ${
+                          emojiOpen
+                            ? "border-[#4FAEB2]/50 bg-[#4FAEB2]/10 text-[#3F8E91]"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }`}
+                        title="Emojis"
+                        aria-label="Insertar emoji"
+                        aria-expanded={emojiOpen}
+                      >
+                        <Smile className="w-[18px] h-[18px]" aria-hidden />
+                      </button>
+                      {emojiOpen ? (
+                        <div className="absolute bottom-full left-0 z-30 mb-1 w-[min(calc(100vw-2rem),18rem)] max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                          {EMOJI_GRUPOS.map((g) => (
+                            <div key={g.grupo} className="mb-2 last:mb-0">
+                              <p className="mb-1 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                {g.grupo}
+                              </p>
+                              <div className="grid grid-cols-8 gap-0.5">
+                                {g.items.map((em) => (
+                                  <button
+                                    key={em}
+                                    type="button"
+                                    onClick={() => insertEmoji(em)}
+                                    className="flex h-8 w-8 items-center justify-center rounded-md text-lg leading-none transition-colors hover:bg-slate-100"
+                                    title={em}
+                                  >
+                                    {em}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                     {vista !== "bot" && selected?.channel.quick_replies_inbox_enabled !== false ? (
                       <>
                         <button
@@ -3873,18 +4022,65 @@ export function ConversacionesClient({
                       </>
                     ) : null}
                   </div>
-                  <textarea
-                    ref={composerRef}
-                    rows={1}
-                    className="flex-1 min-w-0 resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 outline-none min-h-[2.25rem] max-h-[140px] overflow-y-auto leading-snug"
-                    placeholder="Escribí un mensaje…  (Enter envía · Shift+Enter salto de línea)"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleComposerKeyDown}
-                  />
+                  {recordingVoice ? (
+                    /* Grabando: barra tipo WhatsApp con contador. No se envía hasta confirmar. */
+                    <div className="flex flex-1 min-w-0 items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 min-h-[2.25rem]">
+                      <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden>
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+                      </span>
+                      <span className="text-sm font-semibold tabular-nums text-red-700">
+                        {formatRecordTime(recordSeconds)}
+                      </span>
+                      <span className="truncate text-xs text-red-600">Grabando nota de voz…</span>
+                      <button
+                        type="button"
+                        onClick={cancelVoiceRecording}
+                        className="ml-auto inline-flex h-7 items-center gap-1 rounded-lg border border-red-200 bg-white px-2 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100"
+                        title="Cancelar grabación"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopVoiceRecording}
+                        className="inline-flex h-7 items-center gap-1 rounded-lg bg-red-600 px-2.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+                        title="Detener grabación"
+                      >
+                        <Square className="h-3 w-3 fill-current" aria-hidden />
+                        Listo
+                      </button>
+                    </div>
+                  ) : pendingVoice ? (
+                    /* Grabada y esperando confirmación: se puede escuchar, descartar o enviar. */
+                    <div className="flex flex-1 min-w-0 items-center gap-2 rounded-xl border border-[#4FAEB2]/40 bg-[#4FAEB2]/[0.06] px-2.5 py-1.5 min-h-[2.25rem]">
+                      <Mic className="h-4 w-4 shrink-0 text-[#3F8E91]" aria-hidden />
+                      <audio src={pendingVoice.url} controls className="h-8 min-w-0 flex-1" />
+                      <button
+                        type="button"
+                        onClick={discardPendingVoice}
+                        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-red-600"
+                        title="Descartar nota de voz"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        Descartar
+                      </button>
+                    </div>
+                  ) : (
+                    <textarea
+                      ref={composerRef}
+                      rows={1}
+                      className="flex-1 min-w-0 resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 outline-none min-h-[2.25rem] max-h-[140px] overflow-y-auto leading-snug"
+                      placeholder="Escribí un mensaje…  (Enter envía · Shift+Enter salto de línea)"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleComposerKeyDown}
+                    />
+                  )}
                   <button
                     type="submit"
-                    disabled={!input.trim()}
+                    disabled={recordingVoice || (!input.trim() && !pendingVoice)}
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none min-h-[2.25rem]"
                   >
                     <span>Enviar</span>

@@ -98,10 +98,18 @@ export default function ComprasPage() {
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Compras</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Registro de órdenes de compra a proveedores
+            Facturas de compra registradas: directas (aumentan stock) o provenientes de una recepción.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link href="/compras/ordenes"
+            className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/5">
+            Órdenes de Compra
+          </Link>
+          <Link href="/compras/recepciones"
+            className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/5">
+            Recepciones
+          </Link>
           <ExportExcelButton url="/api/compras/export" />
         </div>
       </div>

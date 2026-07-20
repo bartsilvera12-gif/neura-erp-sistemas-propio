@@ -88,7 +88,10 @@ const SECTIONS: Section[] = [
     title: "Finanzas",
     items: [
       { href: "/pagos", label: "Pagos", icon: Banknote },
-      { href: "/gastos", label: "Gastos", icon: Receipt },
+      { href: "/gastos", label: "Gastos y Servicios", icon: Receipt },
+      { href: "/compras", label: "Compras", icon: Package },
+      { href: "/compras/ordenes", label: "Órdenes de Compra", icon: Package },
+      { href: "/compras/recepciones", label: "Recepciones", icon: Package },
       { href: "/notas-credito", label: "Notas de crédito", icon: ScrollText },
       { href: "/reportes", label: "Reportes", icon: BarChart3 },
     ],

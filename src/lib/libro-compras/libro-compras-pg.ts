@@ -58,6 +58,7 @@ function pool() {
 export async function listLibroCompras(schemaRaw: string, empresaId: string, f: LibroFilters = {}): Promise<LibroCompraRow[]> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const tC = quoteSchemaTable(schema, "compras");
+  const tCItems = quoteSchemaTable(schema, "compra_items");
   const tG = quoteSchemaTable(schema, "gastos");
   const tI = quoteSchemaTable(schema, "gasto_items");
   const tPr = quoteSchemaTable(schema, "proveedores");
@@ -80,13 +81,23 @@ export async function listLibroCompras(schemaRaw: string, empresaId: string, f: 
              c.fecha::date AS fecha, c.proveedor_nombre AS proveedor, pr.ruc AS ruc,
              NULL::text AS tipo_comprobante, c.nro_timbrado AS timbrado, c.numero_control AS numero,
              c.tipo_pago AS condicion,
-             CASE WHEN c.iva_tipo='exenta' THEN c.subtotal ELSE 0 END AS exento,
-             CASE WHEN c.iva_tipo='5'      THEN c.subtotal ELSE 0 END AS gravado5,
-             CASE WHEN c.iva_tipo='5'      THEN c.monto_iva ELSE 0 END AS iva5,
-             CASE WHEN c.iva_tipo='10'     THEN c.subtotal ELSE 0 END AS gravado10,
-             CASE WHEN c.iva_tipo='10'     THEN c.monto_iva ELSE 0 END AS iva10,
+             -- Desglose por línea (compras multilínea). Fallback a la cabecera
+             -- para compras históricas sin ítems.
+             COALESCE(ci.exento,    CASE WHEN c.iva_tipo='exenta' THEN c.subtotal ELSE 0 END) AS exento,
+             COALESCE(ci.gravado5,  CASE WHEN c.iva_tipo='5'      THEN c.subtotal ELSE 0 END) AS gravado5,
+             COALESCE(ci.iva5,      CASE WHEN c.iva_tipo='5'      THEN c.monto_iva ELSE 0 END) AS iva5,
+             COALESCE(ci.gravado10, CASE WHEN c.iva_tipo='10'     THEN c.subtotal ELSE 0 END) AS gravado10,
+             COALESCE(ci.iva10,     CASE WHEN c.iva_tipo='10'     THEN c.monto_iva ELSE 0 END) AS iva10,
              c.total AS total, c.estado AS estado, c.proveedor_id AS proveedor_id
         FROM ${tC} c LEFT JOIN ${tPr} pr ON pr.id = c.proveedor_id
+        LEFT JOIN LATERAL (
+          SELECT SUM(CASE WHEN i.iva_tipo='exenta' THEN i.subtotal  ELSE 0 END) AS exento,
+                 SUM(CASE WHEN i.iva_tipo='5'      THEN i.subtotal  ELSE 0 END) AS gravado5,
+                 SUM(CASE WHEN i.iva_tipo='5'      THEN i.monto_iva ELSE 0 END) AS iva5,
+                 SUM(CASE WHEN i.iva_tipo='10'     THEN i.subtotal  ELSE 0 END) AS gravado10,
+                 SUM(CASE WHEN i.iva_tipo='10'     THEN i.monto_iva ELSE 0 END) AS iva10
+            FROM ${tCItems} i WHERE i.compra_id = c.id
+        ) ci ON true
        WHERE c.empresa_id = $1::uuid AND COALESCE(c.estado,'') <> 'anulada'
              AND c.nro_timbrado IS NOT NULL AND btrim(c.nro_timbrado) <> ''
       UNION ALL

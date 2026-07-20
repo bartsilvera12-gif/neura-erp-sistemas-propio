@@ -10,6 +10,8 @@
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { getConfigContable, construirLineasDocumento, generarAsientoEnTx, ContabilidadError } from "@/lib/contabilidad/asientos-pg";
+import { recalcularEstadoOrdenEnTx } from "@/lib/ordenes/server/ordenes-pg";
+import { recalcularFacturacionRecepcionEnTx } from "@/lib/recepciones/server/recepciones-pg";
 
 function pool() {
   const p = getChatPostgresPool();
@@ -182,6 +184,49 @@ export interface CompraResult {
   movimiento_warning: string | null;
 }
 
+export type IvaTipo = "exenta" | "5" | "10";
+
+export interface CompraItemInput {
+  producto_id: string | null;
+  producto_nombre: string;
+  descripcion: string | null;
+  cantidad: number;
+  costo_unitario: number;
+  iva_tipo: IvaTipo;
+  cuenta_contable_id: string;
+  /** Si viene de una recepción: la línea NO impacta inventario (ya entró con la recepción). */
+  recepcion_item_id: string | null;
+  /** Solo para compra directa: actualiza el precio de venta del producto. */
+  precio_venta?: number | null;
+  margen_venta?: number | null;
+}
+
+export interface CompraMultilineaInput {
+  proveedor_id: string;
+  proveedor_nombre: string;
+  orden_compra_id: string | null;
+  origen_compra: "directa" | "recepcion";
+  moneda: string;
+  tipo_cambio: number;
+  tipo_pago: string;
+  plazo_dias: number | null;
+  nro_timbrado: string;
+  cuenta_contrapartida_id: string | null;
+  items: CompraItemInput[];
+  idempotency_key: string | null;
+  created_by: string | null;
+  usuario_nombre: string | null;
+}
+
+/** IVA INCLUIDO: el costo cargado es el total con IVA; el IVA se DEDUCE. */
+const IVA_FACTOR_INCL: Record<IvaTipo, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
+
+function calcLinea(cantidad: number, costoUnitario: number, iva: IvaTipo) {
+  const bruto = (Number(cantidad) || 0) * (Number(costoUnitario) || 0);
+  const monto_iva = Math.round(bruto * IVA_FACTOR_INCL[iva]);
+  return { subtotal: bruto - monto_iva, monto_iva, total_linea: bruto };
+}
+
 /** Busca una compra por su clave de idempotencia (fuera de transacción). */
 async function fetchCompraByIdempotency(
   schema: string,
@@ -197,30 +242,61 @@ async function fetchCompraByIdempotency(
 }
 
 /**
- * Alta de compra + impacto de inventario, TODO en una única transacción real.
- * Fase 0:
- *  - Idempotencia: con `idempotency_key`, un doble-envío devuelve la compra ya creada
- *    (no crea una segunda compra, movimiento ni stock).
- *  - Atomicidad total: si falla el INSERT de compra, el movimiento o el UPDATE de stock,
- *    se hace ROLLBACK completo (sin best-effort ni warning).
- *  - Vínculo fuerte: el movimiento guarda `documento_tipo='compra'` y `documento_id=compra.id`.
- *  - `afecta_stock=false` (futuras compras desde recepción) omite el movimiento/stock.
+ * Alta de compra MULTILÍNEA (cabecera + ítems), TODO en una única transacción.
+ *
+ *  - origen_compra='directa'   → afecta_stock=true: crea 1 movimiento por producto
+ *                                (documento_tipo='compra') y actualiza stock/precio.
+ *  - origen_compra='recepcion' → afecta_stock=false: NO crea movimiento (el stock ya
+ *                                entró con la recepción) y consume cantidad recibida
+ *                                pendiente de facturar, con lock FOR UPDATE.
+ *  - Siempre genera el asiento contable usando la cuenta de CADA línea y aparece
+ *    en Libro de Compras / Diario / Mayor.
+ *  - Idempotencia por `idempotency_key`: un doble-envío devuelve la compra ya creada.
  */
-export async function insertCompraConImpacto(
+export async function insertCompraMultilinea(
   schemaRaw: string,
   empresaId: string,
-  d: InsertCompraInput
+  d: CompraMultilineaInput
 ): Promise<CompraResult> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const tC = quoteSchemaTable(schema, "compras");
+  const tCI = quoteSchemaTable(schema, "compra_items");
   const tM = quoteSchemaTable(schema, "movimientos_inventario");
   const tP = quoteSchemaTable(schema, "productos");
+  const tRI = quoteSchemaTable(schema, "recepcion_items");
+  const tOCI = quoteSchemaTable(schema, "orden_compra_items");
 
-  // Fast-path idempotencia: si ya existe una compra con esta clave, devolverla.
+  if (!Array.isArray(d.items) || d.items.length === 0) {
+    throw new ContabilidadError("La compra requiere al menos una línea.");
+  }
+  for (const [i, it] of d.items.entries()) {
+    if (!(Number(it.cantidad) > 0)) throw new ContabilidadError(`Línea ${i + 1}: la cantidad debe ser mayor a 0.`);
+    if (!(Number(it.costo_unitario) > 0)) throw new ContabilidadError(`Línea ${i + 1}: el costo unitario debe ser mayor a 0.`);
+    if (!["exenta", "5", "10"].includes(it.iva_tipo)) throw new ContabilidadError(`Línea ${i + 1}: tipo de IVA inválido.`);
+    if (!it.cuenta_contable_id) throw new ContabilidadError(`Línea ${i + 1}: falta la cuenta contable.`);
+  }
+  const desdeRecepcion = d.origen_compra === "recepcion";
+  const afectaStock = !desdeRecepcion;
+  if (desdeRecepcion && d.items.some((it) => !it.recepcion_item_id)) {
+    throw new ContabilidadError("Toda línea de una compra por recepción debe referenciar un ítem recibido.");
+  }
+
   if (d.idempotency_key) {
     const existing = await fetchCompraByIdempotency(schema, empresaId, d.idempotency_key);
     if (existing) return { compra: existing, movimiento_id: null, movimiento_warning: null };
   }
+
+  type LineaCalc = CompraItemInput & {
+    subtotal: number; monto_iva: number; total_linea: number;
+    _costo_ordenado?: number | null; _costo_recibido?: number | null;
+  };
+  const calculadas: LineaCalc[] = d.items.map((it) => ({ ...it, ...calcLinea(it.cantidad, it.costo_unitario, it.iva_tipo) }));
+  const subtotal = calculadas.reduce((s, l) => s + l.subtotal, 0);
+  const montoIva = calculadas.reduce((s, l) => s + l.monto_iva, 0);
+  const total = calculadas.reduce((s, l) => s + l.total_linea, 0);
+  const ivasDistintos = Array.from(new Set(calculadas.map((l) => l.iva_tipo)));
+  const ivaCabecera = ivasDistintos.length === 1 ? ivasDistintos[0] : "mixto";
+  const primera = calculadas[0];
 
   const client = await pool().connect();
   let movimientoId: string | null = null;
@@ -231,53 +307,34 @@ export async function insertCompraConImpacto(
 
     let compra: CompraRow;
     try {
-      const { rows: compraRows } = await client.query<CompraRow>(
+      const { rows } = await client.query<CompraRow>(
         `INSERT INTO ${tC} (
            empresa_id, proveedor_id, proveedor_nombre, producto_id, producto_nombre,
            cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
            iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
            tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
-           created_by, usuario_nombre, cuenta_contable_id, afecta_stock, idempotency_key, cuenta_contrapartida_id
+           created_by, usuario_nombre, cuenta_contable_id, afecta_stock, idempotency_key,
+           cuenta_contrapartida_id, orden_compra_id, origen_compra
          ) VALUES (
-           $1::uuid, $2::uuid, $3, $4::uuid, $5,
-           $6::numeric, $7, $8::numeric, $9::numeric, $10::numeric,
-           $11, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16::numeric,
-           $17, $18::integer, $19, $20, 'registrada', now(),
-           $21::uuid, $22, $23::uuid, $24::boolean, $25::uuid, $26::uuid
-         )
-         RETURNING ${COLS}`,
+           $1::uuid,$2::uuid,$3,$4::uuid,$5,
+           $6::numeric,$7,$8::numeric,$9::numeric,$10::numeric,
+           $11,$12::numeric,$13::numeric,$14::numeric,$15::numeric,$16::numeric,
+           $17,$18::integer,$19,$20,'registrada',now(),
+           $21::uuid,$22,$23::uuid,$24::boolean,$25::uuid,$26::uuid,$27::uuid,$28
+         ) RETURNING ${COLS}`,
         [
-          empresaId,
-          d.proveedor_id,
-          d.proveedor_nombre,
-          d.producto_id,
-          d.producto_nombre,
-          d.cantidad,
-          d.moneda,
-          d.tipo_cambio,
-          d.costo_unitario_original,
-          d.costo_unitario,
-          d.iva_tipo,
-          d.subtotal,
-          d.monto_iva,
-          d.total,
-          d.precio_venta,
-          d.margen_venta,
-          d.tipo_pago,
-          d.plazo_dias,
-          d.nro_timbrado,
-          numero,
-          d.created_by,
-          d.usuario_nombre,
-          d.cuenta_contable_id,
-          d.afecta_stock,
-          d.idempotency_key,
-          d.cuenta_contrapartida_id,
+          empresaId, d.proveedor_id, d.proveedor_nombre, primera.producto_id, primera.producto_nombre,
+          calculadas.reduce((s, l) => s + Number(l.cantidad), 0), d.moneda, d.tipo_cambio,
+          primera.costo_unitario, primera.costo_unitario,
+          ivaCabecera, subtotal, montoIva, total,
+          Number(primera.precio_venta) || 0, primera.margen_venta ?? null,
+          d.tipo_pago, d.plazo_dias, d.nro_timbrado, numero,
+          d.created_by, d.usuario_nombre, primera.cuenta_contable_id, afectaStock, d.idempotency_key,
+          d.cuenta_contrapartida_id, d.orden_compra_id, d.origen_compra,
         ]
       );
-      compra = compraRows[0];
+      compra = rows[0];
     } catch (insErr) {
-      // Carrera de idempotencia: dos envíos simultáneos con la misma clave.
       const code = (insErr as { code?: string })?.code;
       const constraint = String((insErr as { constraint?: string })?.constraint ?? "");
       if (code === "23505" && constraint.includes("idempotency") && d.idempotency_key) {
@@ -288,63 +345,122 @@ export async function insertCompraConImpacto(
       throw insErr;
     }
 
-    // Impacto de inventario SOLO si la compra afecta stock (Fase 0: siempre true).
-    // Parte atómica de la transacción: cualquier fallo aquí revierte la compra.
-    if (d.afecta_stock) {
-      const { rows: movRows } = await client.query<{ id: string }>(
-        `INSERT INTO ${tM} (
-           empresa_id, producto_id, producto_nombre, producto_sku,
-           tipo, cantidad, costo_unitario, origen, referencia, fecha,
-           created_by, usuario_nombre, documento_tipo, documento_id
-         )
-         SELECT $1::uuid, $2::uuid, $3, COALESCE(p.sku, ''),
-                'ENTRADA', $4::numeric, $5::numeric, 'compra', $6, now(),
-                $7::uuid, $8, 'compra', $9::uuid
-         FROM ${tP} p WHERE p.id = $2::uuid
-         RETURNING id`,
-        [
-          empresaId,
-          d.producto_id,
-          d.producto_nombre,
-          d.cantidad,
-          d.costo_unitario,
-          numero,
-          d.created_by,
-          d.usuario_nombre,
-          compra.id,
-        ]
-      );
-      movimientoId = movRows[0]?.id ?? null;
-      if (!movimientoId) {
-        throw new Error("No se pudo registrar el movimiento de inventario (producto inexistente).");
-      }
+    // ── Consumo de lo recibido pendiente de facturar (anti doble facturación) ──
+    const recepcionesTocadas = new Set<string>();
+    const ordenesTocadas = new Set<string>();
+    if (d.orden_compra_id) ordenesTocadas.add(d.orden_compra_id);
+    if (desdeRecepcion) {
+      for (const l of calculadas) {
+        const { rows: ri } = await client.query<{
+          id: string; recepcion_id: string; cantidad_recibida: string; cantidad_facturada: string;
+          producto_nombre: string | null; orden_item_id: string | null; costo_unitario_recibido: string;
+        }>(
+          `SELECT id, recepcion_id, cantidad_recibida::text, cantidad_facturada::text,
+                  producto_nombre, orden_item_id, costo_unitario_recibido::text
+             FROM ${tRI} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+          [l.recepcion_item_id, empresaId]
+        );
+        if (!ri[0]) throw new ContabilidadError("El ítem de recepción indicado no existe.", 404);
+        const recibida = Number(ri[0].cantidad_recibida);
+        const yaFact = Number(ri[0].cantidad_facturada);
+        const pendiente = recibida - yaFact;
+        if (Number(l.cantidad) > pendiente + 1e-9) {
+          throw new ContabilidadError(
+            `"${ri[0].producto_nombre ?? "Ítem"}": pendiente de facturar ${pendiente}; estás facturando ${l.cantidad}.`,
+            409
+          );
+        }
+        await client.query(
+          `UPDATE ${tRI} SET cantidad_facturada = cantidad_facturada + $1::numeric, updated_at = now()
+            WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+          [l.cantidad, ri[0].id, empresaId]
+        );
+        recepcionesTocadas.add(ri[0].recepcion_id);
 
-      const upd = await client.query(
-        `UPDATE ${tP}
-            SET stock_actual = stock_actual + $1::numeric,
-                costo_promedio = $2::numeric,
-                precio_venta = $3::numeric,
-                updated_at = now()
-          WHERE id = $4::uuid AND empresa_id = $5::uuid`,
-        [d.cantidad, d.costo_unitario, d.precio_venta, d.producto_id, empresaId]
-      );
-      if (upd.rowCount === 0) {
-        throw new Error("No se pudo actualizar el stock del producto.");
+        // Trazabilidad de diferencias: costo ordenado / recibido / facturado.
+        let costoOrdenado: number | null = null;
+        if (ri[0].orden_item_id) {
+          const { rows: oi } = await client.query<{ costo_unitario_estimado: string; orden_id: string }>(
+            `SELECT costo_unitario_estimado::text, orden_id FROM ${tOCI} WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+            [ri[0].orden_item_id, empresaId]
+          );
+          if (oi[0]) { costoOrdenado = Number(oi[0].costo_unitario_estimado); ordenesTocadas.add(oi[0].orden_id); }
+        }
+        l._costo_ordenado = costoOrdenado;
+        l._costo_recibido = Number(ri[0].costo_unitario_recibido);
       }
     }
 
-    // Asiento contable de la compra (misma transacción). Requiere cuenta contable.
-    if (!d.cuenta_contable_id) {
-      throw new ContabilidadError("La compra requiere una cuenta contable para contabilizarse.");
+    // ── Ítems de la compra ──
+    for (const [i, l] of calculadas.entries()) {
+      await client.query(
+        `INSERT INTO ${tCI} (empresa_id, compra_id, producto_id, producto_nombre, descripcion, cantidad,
+           costo_unitario, iva_tipo, subtotal, monto_iva, total_linea, cuenta_contable_id,
+           recepcion_item_id, afecta_inventario, costo_unitario_ordenado, costo_unitario_recibido, orden_linea)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::numeric,$7::numeric,$8,$9::numeric,$10::numeric,
+                 $11::numeric,$12::uuid,$13::uuid,$14::boolean,$15::numeric,$16::numeric,$17)`,
+        [empresaId, compra.id, l.producto_id, l.producto_nombre, l.descripcion, l.cantidad,
+         l.costo_unitario, l.iva_tipo, l.subtotal, l.monto_iva, l.total_linea, l.cuenta_contable_id,
+         l.recepcion_item_id, afectaStock && !!l.producto_id,
+         l._costo_ordenado ?? null, l._costo_recibido ?? null, i + 1]
+      );
     }
+
+    // ── Inventario: SOLO compra directa. Un movimiento por producto. ──
+    if (afectaStock) {
+      const porProducto = new Map<string, { cantidad: number; costoPonderado: number; nombre: string; precioVenta: number | null }>();
+      for (const l of calculadas) {
+        if (!l.producto_id) continue;
+        const prev = porProducto.get(l.producto_id) ?? { cantidad: 0, costoPonderado: 0, nombre: l.producto_nombre, precioVenta: null };
+        prev.cantidad += Number(l.cantidad);
+        prev.costoPonderado += Number(l.cantidad) * Number(l.costo_unitario);
+        if (l.precio_venta != null && Number(l.precio_venta) > 0) prev.precioVenta = Number(l.precio_venta);
+        porProducto.set(l.producto_id, prev);
+      }
+      for (const [productoId, agg] of porProducto) {
+        const costoUnit = agg.cantidad > 0 ? agg.costoPonderado / agg.cantidad : 0;
+        const { rows: mov } = await client.query<{ id: string }>(
+          `INSERT INTO ${tM} (empresa_id, producto_id, producto_nombre, producto_sku, tipo, cantidad,
+             costo_unitario, origen, referencia, fecha, created_by, usuario_nombre, documento_tipo, documento_id)
+           SELECT $1::uuid,$2::uuid,$3,COALESCE(p.sku,''),'ENTRADA',$4::numeric,$5::numeric,
+                  'compra',$6,now(),$7::uuid,$8,'compra',$9::uuid
+             FROM ${tP} p WHERE p.id = $2::uuid AND p.empresa_id = $1::uuid
+           RETURNING id`,
+          [empresaId, productoId, agg.nombre, agg.cantidad, costoUnit, numero, d.created_by, d.usuario_nombre, compra.id]
+        );
+        if (!mov[0]?.id) throw new Error("No se pudo registrar el movimiento de inventario (producto inexistente).");
+        movimientoId = movimientoId ?? mov[0].id;
+
+        const upd = await client.query(
+          `UPDATE ${tP}
+              SET stock_actual = COALESCE(stock_actual,0) + $1::numeric,
+                  costo_promedio = $2::numeric,
+                  precio_venta = COALESCE($3::numeric, precio_venta),
+                  updated_at = now()
+            WHERE id = $4::uuid AND empresa_id = $5::uuid`,
+          [agg.cantidad, costoUnit, agg.precioVenta, productoId, empresaId]
+        );
+        if (upd.rowCount === 0) throw new Error("No se pudo actualizar el stock del producto.");
+      }
+    }
+
+    // ── Contabilidad: cuenta de CADA línea al Debe + IVA Crédito; Haber caja/banco o proveedores ──
     const config = await getConfigContable(schema, empresaId);
-    const esContado = d.tipo_pago !== "credito";
-    const ivaTipo = d.iva_tipo === "5" ? "5" : d.iva_tipo === "10" ? "10" : "exenta";
     const lineasAsiento = construirLineasDocumento({
       config,
-      lineasFiscales: [{ cuenta_contable_id: d.cuenta_contable_id, descripcion: d.producto_nombre, subtotal: d.subtotal, iva_tipo: ivaTipo, monto_iva: d.monto_iva }],
-      total: d.total, esContado, contrapartidaContado: d.cuenta_contrapartida_id, proveedorId: d.proveedor_id,
-      documento_tipo: "compra", documento_id: compra.id,
+      lineasFiscales: calculadas.map((l) => ({
+        cuenta_contable_id: l.cuenta_contable_id,
+        descripcion: l.descripcion || l.producto_nombre,
+        subtotal: l.subtotal,
+        iva_tipo: l.iva_tipo,
+        monto_iva: l.monto_iva,
+      })),
+      total,
+      esContado: d.tipo_pago !== "credito",
+      contrapartidaContado: d.cuenta_contrapartida_id,
+      proveedorId: d.proveedor_id,
+      documento_tipo: "compra",
+      documento_id: compra.id,
     });
     const now = new Date();
     const fechaContable = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -355,9 +471,18 @@ export async function insertCompraConImpacto(
       lineas: lineasAsiento, createdBy: d.created_by,
     });
     await client.query(
-      `UPDATE ${tC} SET estado_contable='contabilizado', asiento_contable_id = $3::uuid WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+      `UPDATE ${tC} SET estado_contable='contabilizado', asiento_contable_id=$3::uuid
+        WHERE id=$1::uuid AND empresa_id=$2::uuid`,
       [compra.id, empresaId, asiento.id]
     );
+
+    // ── Estados aguas arriba (recepciones y orden) ──
+    for (const recepcionId of recepcionesTocadas) {
+      await recalcularFacturacionRecepcionEnTx(client, schema, empresaId, recepcionId);
+    }
+    for (const ordenId of ordenesTocadas) {
+      await recalcularEstadoOrdenEnTx(client, schema, empresaId, ordenId);
+    }
 
     await client.query("COMMIT");
     return { compra, movimiento_id: movimientoId, movimiento_warning: null };
@@ -367,4 +492,46 @@ export async function insertCompraConImpacto(
   } finally {
     client.release();
   }
+}
+
+/**
+ * Compatibilidad: alta de compra directa monoproducto. Delega en la versión
+ * multilínea con una sola línea (mismo comportamiento de Fase 0).
+ */
+export async function insertCompraConImpacto(
+  schemaRaw: string,
+  empresaId: string,
+  d: InsertCompraInput
+): Promise<CompraResult> {
+  if (!d.cuenta_contable_id) {
+    throw new ContabilidadError("La compra requiere una cuenta contable para contabilizarse.");
+  }
+  const iva: IvaTipo = d.iva_tipo === "5" ? "5" : d.iva_tipo === "10" ? "10" : "exenta";
+  return insertCompraMultilinea(schemaRaw, empresaId, {
+    proveedor_id: d.proveedor_id,
+    proveedor_nombre: d.proveedor_nombre,
+    orden_compra_id: null,
+    origen_compra: "directa",
+    moneda: d.moneda,
+    tipo_cambio: d.tipo_cambio,
+    tipo_pago: d.tipo_pago,
+    plazo_dias: d.plazo_dias,
+    nro_timbrado: d.nro_timbrado,
+    cuenta_contrapartida_id: d.cuenta_contrapartida_id,
+    items: [{
+      producto_id: d.producto_id,
+      producto_nombre: d.producto_nombre,
+      descripcion: d.producto_nombre,
+      cantidad: d.cantidad,
+      costo_unitario: d.costo_unitario,
+      iva_tipo: iva,
+      cuenta_contable_id: d.cuenta_contable_id,
+      recepcion_item_id: null,
+      precio_venta: d.precio_venta,
+      margen_venta: d.margen_venta,
+    }],
+    idempotency_key: d.idempotency_key,
+    created_by: d.created_by,
+    usuario_nombre: d.usuario_nombre,
+  });
 }

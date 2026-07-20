@@ -3,8 +3,96 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
-import { listCompras, insertCompraConImpacto } from "@/lib/compras/server/compras-pg";
+import { listCompras, insertCompraConImpacto, insertCompraMultilinea, type CompraItemInput, type IvaTipo } from "@/lib/compras/server/compras-pg";
 import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
+
+type TenantCtx = Awaited<ReturnType<typeof getTenantSupabaseFromAuth>>;
+
+/**
+ * Compra multilínea. `origen_compra`:
+ *  - 'directa'   → aumenta stock (afecta_stock=true) como la compra directa de siempre.
+ *  - 'recepcion' → NO aumenta stock: consume cantidades ya recibidas pendientes de
+ *                  facturar y solo registra lo fiscal/contable.
+ * En ambos casos genera asiento y aparece en Libro de Compras, Diario y Mayor.
+ */
+async function postMultilinea(
+  body: Record<string, unknown>,
+  schema: string,
+  empresaId: string,
+  ctx: NonNullable<TenantCtx>,
+  UUID_RE: RegExp
+) {
+  const s = (v: unknown) => (v == null ? "" : String(v).trim());
+  const origen = body.origen_compra === "recepcion" ? "recepcion" : "directa";
+
+  if (!UUID_RE.test(s(body.proveedor_id))) {
+    return NextResponse.json(errorResponse("Falta el proveedor."), { status: 400 });
+  }
+  if (!s(body.nro_timbrado)) {
+    return NextResponse.json(errorResponse("Falta el N° de timbrado."), { status: 400 });
+  }
+
+  const items: CompraItemInput[] = [];
+  for (const [i, raw] of (body.items as unknown[]).entries()) {
+    const o = (raw ?? {}) as Record<string, unknown>;
+    const iva = s(o.iva_tipo);
+    if (!["exenta", "5", "10"].includes(iva)) {
+      return NextResponse.json(errorResponse(`Línea ${i + 1}: tipo de IVA inválido.`), { status: 400 });
+    }
+    if (!UUID_RE.test(s(o.cuenta_contable_id))) {
+      return NextResponse.json(errorResponse(`Línea ${i + 1}: seleccioná la cuenta contable.`), { status: 400 });
+    }
+    if (!(Number(o.cantidad) > 0)) {
+      return NextResponse.json(errorResponse(`Línea ${i + 1}: la cantidad debe ser mayor a 0.`), { status: 400 });
+    }
+    if (!(Number(o.costo_unitario) > 0)) {
+      return NextResponse.json(errorResponse(`Línea ${i + 1}: el costo unitario debe ser mayor a 0.`), { status: 400 });
+    }
+    items.push({
+      producto_id: UUID_RE.test(s(o.producto_id)) ? s(o.producto_id) : null,
+      producto_nombre: s(o.producto_nombre),
+      descripcion: s(o.descripcion) || null,
+      cantidad: Number(o.cantidad),
+      costo_unitario: Number(o.costo_unitario),
+      iva_tipo: iva as IvaTipo,
+      cuenta_contable_id: s(o.cuenta_contable_id),
+      recepcion_item_id: UUID_RE.test(s(o.recepcion_item_id)) ? s(o.recepcion_item_id) : null,
+      precio_venta: o.precio_venta != null ? Number(o.precio_venta) : null,
+      margen_venta: o.margen_venta != null ? Number(o.margen_venta) : null,
+    });
+  }
+
+  const idem = s(body.idempotency_key);
+  try {
+    const out = await insertCompraMultilinea(schema, empresaId, {
+      proveedor_id: s(body.proveedor_id),
+      proveedor_nombre: s(body.proveedor_nombre),
+      orden_compra_id: UUID_RE.test(s(body.orden_compra_id)) ? s(body.orden_compra_id) : null,
+      origen_compra: origen,
+      moneda: body.moneda === "USD" ? "USD" : "PYG",
+      tipo_cambio: Number(body.tipo_cambio) || 1,
+      tipo_pago: body.tipo_pago === "credito" ? "credito" : "contado",
+      plazo_dias: s(body.plazo_dias) ? parseInt(s(body.plazo_dias), 10) || null : null,
+      nro_timbrado: s(body.nro_timbrado).toUpperCase(),
+      cuenta_contrapartida_id: UUID_RE.test(s(body.cuenta_contrapartida_id)) ? s(body.cuenta_contrapartida_id) : null,
+      items,
+      idempotency_key: UUID_RE.test(idem) ? idem : null,
+      created_by: ctx.auth.usuarioCatalogId ?? null,
+      usuario_nombre: ctx.auth.user?.email ?? null,
+    });
+    return NextResponse.json(successResponse({ compra: out.compra, movimiento_id: out.movimiento_id }));
+  } catch (e) {
+    if (e instanceof ContabilidadError) {
+      return NextResponse.json(errorResponse(e.message), { status: e.status });
+    }
+    const code = (e as { code?: string })?.code;
+    console.error("[/api/compras POST multilinea]", { schema, empresaId, code, msg: e instanceof Error ? e.message : e });
+    if (code === "23503") {
+      return NextResponse.json(errorResponse("Proveedor, producto o cuenta inválidos."), { status: 400 });
+    }
+    return NextResponse.json(errorResponse("No se pudo guardar la compra."), { status: 500 });
+  }
+}
 
 /**
  * GET /api/compras — lista via PG directo.
@@ -34,6 +122,12 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const req = (k: string) => body[k] != null && String(body[k]).trim() !== "";
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // ── Camino MULTILÍNEA (compra directa multiproducto o compra desde recepción) ──
+    if (Array.isArray(body.items) && body.items.length > 0) {
+      return await postMultilinea(body, schema, empresaId, ctx, UUID_RE);
+    }
 
     if (!req("proveedor_id")) return NextResponse.json(errorResponse("Falta el proveedor."), { status: 400 });
     if (!req("producto_id")) return NextResponse.json(errorResponse("Falta el producto."), { status: 400 });
@@ -53,7 +147,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Idempotencia: solo aceptar un uuid válido; cualquier otra cosa se ignora (no rompe).
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const idemRaw = req("idempotency_key") ? String(body.idempotency_key).trim() : "";
     const idempotencyKey = UUID_RE.test(idemRaw) ? idemRaw : null;
 

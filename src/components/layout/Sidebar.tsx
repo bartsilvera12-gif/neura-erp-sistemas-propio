@@ -135,7 +135,9 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/compras",
     icon: Package,
     children: [
-      { label: "Órdenes", href: "/compras" },
+      { label: "Compras", href: "/compras" },
+      { label: "Órdenes de Compra", href: "/compras/ordenes" },
+      { label: "Recepciones", href: "/compras/recepciones" },
       { label: "Proveedores", href: "/proveedores" },
     ],
   },

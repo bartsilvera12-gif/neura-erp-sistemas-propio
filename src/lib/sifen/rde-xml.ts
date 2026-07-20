@@ -431,6 +431,18 @@ export function buildOfficialRdeFacturaElectronicaXml(
   gEmisParts.push("</gActEco>");
   gEmisParts.push("</gEmis>");
 
+  /**
+   * Número de casa del receptor. SIFEN exige `dNumCasRec` SIEMPRE que se informe
+   * `dDirRec` (si mandás dirección sin número de casa, la SET rechaza con
+   * "Es obligatorio informar el número de casa del receptor").
+   * Cuando el cliente no lo tiene cargado se envía 0 — mismo criterio que ya usaba
+   * la rama de receptor manual. No hace falta pedirle el dato al cliente.
+   */
+  const casaRecAuto = (() => {
+    const cr = receptor.sifen_d_num_cas_rec;
+    return cr == null || !Number.isFinite(Number(cr)) ? 0 : Math.max(0, Math.floor(Number(cr)));
+  })();
+
   const recParts: string[] = ["<gDatRec>"];
   if (
     receptor.sifen_receptor_config_manual === true &&
@@ -504,7 +516,11 @@ export function buildOfficialRdeFacturaElectronicaXml(
     recParts.push(textEl("dDTipIDRec", dDesTipo));
     recParts.push(textEl("dNumIDRec", num));
     recParts.push(textEl("dNomRec", receptor.nombre.trim()));
-    if (receptor.direccion?.trim()) recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+    if (receptor.direccion?.trim()) {
+      recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+      // dNumCasRec es obligatorio cuando se informa dDirRec (ver casaRecAuto).
+      recParts.push(textEl("dNumCasRec", String(casaRecAuto)));
+    }
     if (receptor.telefono?.trim()) {
       const tr = receptor.telefono.replace(/\D/g, "");
       if (tr.length >= 8) recParts.push(textEl("dTelRec", tr.slice(0, 15)));
@@ -521,7 +537,11 @@ export function buildOfficialRdeFacturaElectronicaXml(
     recParts.push(textEl("dRucRec", formatoCuerpoRucTipoTruc(dRucRec)));
     recParts.push(textEl("dDVRec", dDVRec));
     recParts.push(textEl("dNomRec", receptor.nombre.trim()));
-    if (receptor.direccion?.trim()) recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+    if (receptor.direccion?.trim()) {
+      recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+      // dNumCasRec es obligatorio cuando se informa dDirRec (ver casaRecAuto).
+      recParts.push(textEl("dNumCasRec", String(casaRecAuto)));
+    }
     if (receptor.telefono?.trim()) {
       const tr = receptor.telefono.replace(/\D/g, "");
       if (tr.length >= 8) recParts.push(textEl("dTelRec", tr.slice(0, 15)));
@@ -541,7 +561,11 @@ export function buildOfficialRdeFacturaElectronicaXml(
     recParts.push(textEl("dDTipIDRec", XSD_DES_DOC_CI_PY));
     recParts.push(textEl("dNumIDRec", doc.slice(0, 20)));
     recParts.push(textEl("dNomRec", receptor.nombre.trim()));
-    if (receptor.direccion?.trim()) recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+    if (receptor.direccion?.trim()) {
+      recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+      // dNumCasRec es obligatorio cuando se informa dDirRec (ver casaRecAuto).
+      recParts.push(textEl("dNumCasRec", String(casaRecAuto)));
+    }
     if (receptor.telefono?.trim()) {
       const tr = receptor.telefono.replace(/\D/g, "");
       if (tr.length >= 8) recParts.push(textEl("dTelRec", tr.slice(0, 15)));

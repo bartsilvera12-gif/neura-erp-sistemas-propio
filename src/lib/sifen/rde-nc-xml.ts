@@ -251,6 +251,16 @@ export function buildOfficialRdeNotaCreditoElectronicaXml(
   gEmisParts.push("</gActEco>");
   gEmisParts.push("</gEmis>");
 
+  /**
+   * SIFEN exige `dNumCasRec` siempre que se informe `dDirRec` (si va la dirección
+   * sin número de casa, la SET rechaza: "Es obligatorio informar el número de casa
+   * del receptor"). Si el cliente no lo tiene cargado se envía 0.
+   */
+  const casaRecAuto = (() => {
+    const cr = (receptor as { sifen_d_num_cas_rec?: unknown }).sifen_d_num_cas_rec;
+    return cr == null || !Number.isFinite(Number(cr)) ? 0 : Math.max(0, Math.floor(Number(cr)));
+  })();
+
   const recParts: string[] = ["<gDatRec>"];
   if (receptor.ruc?.trim()) {
     const { cuerpo: dRucRec, dDV: dDVRec } = splitRucParaXml(receptor.ruc.trim());
@@ -263,7 +273,11 @@ export function buildOfficialRdeNotaCreditoElectronicaXml(
     recParts.push(textEl("dRucRec", formatoCuerpoRucTipoTruc(dRucRec)));
     recParts.push(textEl("dDVRec", dDVRec));
     recParts.push(textEl("dNomRec", receptor.nombre.trim()));
-    if (receptor.direccion?.trim()) recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+    if (receptor.direccion?.trim()) {
+      recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+      // dNumCasRec es obligatorio cuando se informa dDirRec (ver casaRecAuto).
+      recParts.push(textEl("dNumCasRec", String(casaRecAuto)));
+    }
     if (receptor.telefono?.trim()) {
       const tr = receptor.telefono.replace(/\D/g, "");
       if (tr.length >= 8) recParts.push(textEl("dTelRec", tr.slice(0, 15)));
@@ -281,7 +295,11 @@ export function buildOfficialRdeNotaCreditoElectronicaXml(
     recParts.push(textEl("dDTipIDRec", XSD_DES_DOC_CI_PY));
     recParts.push(textEl("dNumIDRec", doc.slice(0, 20)));
     recParts.push(textEl("dNomRec", receptor.nombre.trim()));
-    if (receptor.direccion?.trim()) recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+    if (receptor.direccion?.trim()) {
+      recParts.push(textEl("dDirRec", receptor.direccion.trim()));
+      // dNumCasRec es obligatorio cuando se informa dDirRec (ver casaRecAuto).
+      recParts.push(textEl("dNumCasRec", String(casaRecAuto)));
+    }
     if (receptor.telefono?.trim()) {
       const tr = receptor.telefono.replace(/\D/g, "");
       if (tr.length >= 8) recParts.push(textEl("dTelRec", tr.slice(0, 15)));

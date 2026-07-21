@@ -74,6 +74,8 @@ async function postMultilinea(
       tipo_pago: body.tipo_pago === "credito" ? "credito" : "contado",
       plazo_dias: s(body.plazo_dias) ? parseInt(s(body.plazo_dias), 10) || null : null,
       nro_timbrado: s(body.nro_timbrado).toUpperCase(),
+      numero_comprobante: s(body.numero_comprobante) || null,
+      tipo_comprobante: s(body.tipo_comprobante) || null,
       cuenta_contrapartida_id: UUID_RE.test(s(body.cuenta_contrapartida_id)) ? s(body.cuenta_contrapartida_id) : null,
       items,
       idempotency_key: UUID_RE.test(idem) ? idem : null,
@@ -180,6 +182,8 @@ export async function POST(request: NextRequest) {
         plazo_dias: body.plazo_dias != null && String(body.plazo_dias).trim() !== ""
           ? parseInt(String(body.plazo_dias), 10) || null : null,
         nro_timbrado: String(body.nro_timbrado).trim().toUpperCase(),
+        numero_comprobante: req("numero_comprobante") ? String(body.numero_comprobante).trim() : null,
+        tipo_comprobante: req("tipo_comprobante") ? String(body.tipo_comprobante).trim() : null,
         cuenta_contable_id: req("cuenta_contable_id") ? String(body.cuenta_contable_id) : null,
         cuenta_contrapartida_id: req("cuenta_contrapartida_id") ? String(body.cuenta_contrapartida_id) : null,
         afecta_stock: body.afecta_stock === false ? false : true,

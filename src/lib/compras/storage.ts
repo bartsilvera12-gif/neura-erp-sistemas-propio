@@ -8,6 +8,10 @@ interface CompraApiRow {
   subtotal: string | number; monto_iva: string | number; total: string | number;
   precio_venta: string | number; margen_venta: string | number | null;
   tipo_pago: string; plazo_dias: number | null; nro_timbrado: string; estado: string;
+  numero_comprobante?: string | null;
+  tipo_comprobante?: string | null;
+  documento_path?: string | null;
+  documento_mime?: string | null;
   cuenta_contable_id?: string | null;
   cuenta_contable_codigo?: string | null;
   cuenta_contable_denominacion?: string | null;
@@ -41,6 +45,9 @@ function mapRow(r: CompraApiRow): Compra {
       r.cuenta_contable_codigo && r.cuenta_contable_denominacion
         ? `${r.cuenta_contable_codigo} — ${r.cuenta_contable_denominacion}`
         : null,
+    numero_comprobante: r.numero_comprobante ?? null,
+    tipo_comprobante: r.tipo_comprobante ?? null,
+    documento_path: r.documento_path ?? null,
     fecha: r.fecha,
   };
 }
@@ -141,5 +148,37 @@ export async function saveCompra(
     const msg = e instanceof Error ? e.message : "Error de red";
     console.error("[compras] saveCompra:", e);
     return { success: false, error: msg };
+  }
+}
+
+/** Sube la foto/PDF de la factura de una compra ya creada. */
+export async function uploadCompraComprobante(
+  compraId: string,
+  file: File
+): Promise<{ ok: true; url: string | null } | { ok: false; error: string }> {
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(`/api/compras/${compraId}/comprobante`, { method: "POST", credentials: "include", body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.success) {
+      return { ok: false, error: (j as { error?: string })?.error ?? `Error ${r.status}` };
+    }
+    return { ok: true, url: (j.data as { documento_url?: string | null })?.documento_url ?? null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Error de red" };
+  }
+}
+
+/** Obtiene una URL firmada del comprobante de una compra (o null si no tiene). */
+export async function getCompraComprobante(compraId: string): Promise<{ url: string | null; mime: string | null }> {
+  try {
+    const r = await fetch(`/api/compras/${compraId}/comprobante`, { credentials: "include", cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.success) return { url: null, mime: null };
+    const d = j.data as { documento_url?: string | null; documento_mime?: string | null };
+    return { url: d?.documento_url ?? null, mime: d?.documento_mime ?? null };
+  } catch {
+    return { url: null, mime: null };
   }
 }

@@ -79,7 +79,9 @@ export async function listLibroCompras(schemaRaw: string, empresaId: string, f: 
     WITH unificado AS (
       SELECT 'compra'::text AS origen_tipo, 'Compra'::text AS origen,
              c.fecha::date AS fecha, c.proveedor_nombre AS proveedor, pr.ruc AS ruc,
-             NULL::text AS tipo_comprobante, c.nro_timbrado AS timbrado, c.numero_control AS numero,
+             COALESCE(NULLIF(c.tipo_comprobante,''),'Factura') AS tipo_comprobante,
+             c.nro_timbrado AS timbrado,
+             COALESCE(NULLIF(c.numero_comprobante,''), c.numero_control) AS numero,
              c.tipo_pago AS condicion,
              -- Desglose por línea (compras multilínea). Fallback a la cabecera
              -- para compras históricas sin ítems.

@@ -48,6 +48,10 @@ export interface CompraRow {
   created_by: string | null;
   usuario_nombre: string | null;
   cuenta_contable_id: string | null;
+  numero_comprobante: string | null;
+  tipo_comprobante: string | null;
+  documento_path: string | null;
+  documento_mime: string | null;
   cuenta_contable_codigo?: string | null;
   cuenta_contable_denominacion?: string | null;
 }
@@ -57,7 +61,8 @@ const COLS = `
   cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
   iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
   tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
-  created_at, updated_at, created_by, usuario_nombre, cuenta_contable_id
+  created_at, updated_at, created_by, usuario_nombre, cuenta_contable_id,
+  numero_comprobante, tipo_comprobante, documento_path, documento_mime
 `;
 
 export interface InsertCompraInput {
@@ -79,6 +84,10 @@ export interface InsertCompraInput {
   tipo_pago: string;
   plazo_dias: number | null;
   nro_timbrado: string;
+  /** N° de la factura del proveedor (001-001-0000001). */
+  numero_comprobante?: string | null;
+  /** Tipo de comprobante ('Factura' por defecto). */
+  tipo_comprobante?: string | null;
   cuenta_contable_id: string | null;
   /** Cuenta de pago (contrapartida) para compras al contado. */
   cuenta_contrapartida_id: string | null;
@@ -211,6 +220,8 @@ export interface CompraMultilineaInput {
   tipo_pago: string;
   plazo_dias: number | null;
   nro_timbrado: string;
+  numero_comprobante: string | null;
+  tipo_comprobante: string | null;
   cuenta_contrapartida_id: string | null;
   items: CompraItemInput[];
   idempotency_key: string | null;
@@ -314,13 +325,15 @@ export async function insertCompraMultilinea(
            iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
            tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
            created_by, usuario_nombre, cuenta_contable_id, afecta_stock, idempotency_key,
-           cuenta_contrapartida_id, orden_compra_id, origen_compra
+           cuenta_contrapartida_id, orden_compra_id, origen_compra,
+           numero_comprobante, tipo_comprobante
          ) VALUES (
            $1::uuid,$2::uuid,$3,$4::uuid,$5,
            $6::numeric,$7,$8::numeric,$9::numeric,$10::numeric,
            $11,$12::numeric,$13::numeric,$14::numeric,$15::numeric,$16::numeric,
            $17,$18::integer,$19,$20,'registrada',now(),
-           $21::uuid,$22,$23::uuid,$24::boolean,$25::uuid,$26::uuid,$27::uuid,$28
+           $21::uuid,$22,$23::uuid,$24::boolean,$25::uuid,$26::uuid,$27::uuid,$28,
+           $29,COALESCE(NULLIF($30,''),'Factura')
          ) RETURNING ${COLS}`,
         [
           empresaId, d.proveedor_id, d.proveedor_nombre, primera.producto_id, primera.producto_nombre,
@@ -331,6 +344,7 @@ export async function insertCompraMultilinea(
           d.tipo_pago, d.plazo_dias, d.nro_timbrado, numero,
           d.created_by, d.usuario_nombre, primera.cuenta_contable_id, afectaStock, d.idempotency_key,
           d.cuenta_contrapartida_id, d.orden_compra_id, d.origen_compra,
+          d.numero_comprobante, d.tipo_comprobante,
         ]
       );
       compra = rows[0];
@@ -517,6 +531,8 @@ export async function insertCompraConImpacto(
     tipo_pago: d.tipo_pago,
     plazo_dias: d.plazo_dias,
     nro_timbrado: d.nro_timbrado,
+    numero_comprobante: d.numero_comprobante ?? null,
+    tipo_comprobante: d.tipo_comprobante ?? null,
     cuenta_contrapartida_id: d.cuenta_contrapartida_id,
     items: [{
       producto_id: d.producto_id,
@@ -534,4 +550,37 @@ export async function insertCompraConImpacto(
     created_by: d.created_by,
     usuario_nombre: d.usuario_nombre,
   });
+}
+
+/** Lee una compra por id (para validar ownership antes de tocar su documento). */
+export async function getCompraById(
+  schemaRaw: string,
+  empresaId: string,
+  compraId: string
+): Promise<CompraRow | null> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const tC = quoteSchemaTable(schema, "compras");
+  const { rows } = await pool().query<CompraRow>(
+    `SELECT ${COLS} FROM ${tC} WHERE id = $1::uuid AND empresa_id = $2::uuid LIMIT 1`,
+    [compraId, empresaId]
+  );
+  return rows[0] ?? null;
+}
+
+/** Asocia (o desasocia con null) el documento adjunto de la compra. */
+export async function updateCompraDocumento(
+  schemaRaw: string,
+  empresaId: string,
+  compraId: string,
+  documentoPath: string | null,
+  documentoMime: string | null
+): Promise<CompraRow | null> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const tC = quoteSchemaTable(schema, "compras");
+  const { rows } = await pool().query<CompraRow>(
+    `UPDATE ${tC} SET documento_path = $1, documento_mime = $2, updated_at = now()
+      WHERE id = $3::uuid AND empresa_id = $4::uuid RETURNING ${COLS}`,
+    [documentoPath, documentoMime, compraId, empresaId]
+  );
+  return rows[0] ?? null;
 }

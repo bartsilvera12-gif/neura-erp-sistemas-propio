@@ -32,6 +32,13 @@ export interface Compra {
 
   nro_timbrado: string;
 
+  /** N° de la factura del proveedor (001-001-0000001). */
+  numero_comprobante?: string | null;
+  /** Tipo de comprobante ('Factura' por defecto). */
+  tipo_comprobante?: string | null;
+  /** Ruta en Storage del comprobante adjunto (foto/PDF), si hay. */
+  documento_path?: string | null;
+
   /** Cuenta contable del plan de cuentas asociada a la compra (opcional). */
   cuenta_contable_id: string | null;
   /** Cuenta de pago (contrapartida) para compras al contado (opcional). */

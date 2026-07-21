@@ -6,6 +6,7 @@ import {
   getCompras,
   getCuentasContablesOpciones,
   updateCompraCuentaContable,
+  getCompraComprobante,
   type CuentaContableOpcion,
 } from "@/lib/compras/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
@@ -289,6 +290,19 @@ function CompraDetalleModal({
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [docUrl, setDocUrl] = useState<string | null>(null);
+  const [docLoading, setDocLoading] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    if (compra.documento_path) {
+      setDocLoading(true);
+      getCompraComprobante(compra.id)
+        .then((d) => { if (!cancel) setDocUrl(d.url); })
+        .finally(() => { if (!cancel) setDocLoading(false); });
+    }
+    return () => { cancel = true; };
+  }, [compra.id, compra.documento_path]);
 
   const q = search.trim().toLowerCase();
   const filtradas = cuentas.filter(
@@ -352,7 +366,31 @@ function CompraDetalleModal({
               <dt className="text-xs uppercase tracking-wide text-slate-400">Total</dt>
               <dd className="font-semibold text-slate-800">Gs. {compra.total.toLocaleString("es-PY")}</dd>
             </div>
+            {(compra.numero_comprobante || compra.tipo_comprobante) && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-400">Comprobante</dt>
+                <dd className="text-slate-700">{[compra.tipo_comprobante, compra.numero_comprobante].filter(Boolean).join(" ")}</dd>
+              </div>
+            )}
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Timbrado</dt>
+              <dd className="text-slate-700">{compra.nro_timbrado || "—"}</dd>
+            </div>
           </dl>
+
+          {compra.documento_path && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Comprobante adjunto</p>
+              {docLoading ? (
+                <span className="text-sm text-slate-400">Cargando…</span>
+              ) : docUrl ? (
+                <a href={docUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-sm font-semibold text-[#3F8E91] hover:underline">📄 Ver / descargar la factura</a>
+              ) : (
+                <span className="text-sm text-slate-400">No se pudo abrir el archivo.</span>
+              )}
+            </div>
+          )}
 
           <div className="border-t pt-4">
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">

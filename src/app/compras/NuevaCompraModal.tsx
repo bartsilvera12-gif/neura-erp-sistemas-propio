@@ -74,7 +74,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     tipo_comprobante: "Factura", numero_comprobante: "",
     cantidad: "", moneda: "PYG" as Moneda, tipo_cambio: "", costo_unitario_input: "",
     iva_tipo: "10" as TipoIva, precio_venta: "", tipo_pago: "contado" as TipoPago,
-    plazo_dias: "", cuotas: "1", cuenta_contable_id: "", cuenta_contrapartida_id: "",
+    plazo_dias: "", cuotas: "1", cuenta_contable_id: "", cuenta_contrapartida_id: "", cuenta_proveedores_id: "",
   });
   const set = (patch: Partial<typeof form>) => setForm((p) => ({ ...p, ...patch }));
 
@@ -111,7 +111,12 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
         const r = await apiFetch("/api/configuracion/contable");
         const j = await r.json().catch(() => ({}));
         const def = j?.data?.config?.cuenta_caja_id ?? j?.data?.config?.cuenta_banco_id ?? null;
-        if (def) setForm((prev) => (prev.cuenta_contrapartida_id ? prev : { ...prev, cuenta_contrapartida_id: def }));
+        const prov = j?.data?.config?.cuenta_proveedores_id ?? null;
+        setForm((prev) => ({
+          ...prev,
+          cuenta_contrapartida_id: prev.cuenta_contrapartida_id || def || "",
+          cuenta_proveedores_id: prev.cuenta_proveedores_id || prov || "",
+        }));
       } catch {}
     })();
   }, []);
@@ -154,6 +159,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     if (!form.nro_timbrado?.trim()) return setErrorSubmit("Ingresá el N° de timbrado.");
     if (!form.cuenta_contable_id) return setErrorSubmit("Seleccioná la cuenta contable de la compra.");
     if (form.tipo_pago === "contado" && !form.cuenta_contrapartida_id) return setErrorSubmit("Seleccioná la cuenta de pago (contado).");
+    if (form.tipo_pago === "credito" && !form.cuenta_proveedores_id) return setErrorSubmit("Seleccioná la cuenta a pagar (Proveedores).");
 
     const todosProductos = await getProductos();
     const proveedor = proveedores.find((p) => String(p.id) === form.proveedor_id);
@@ -176,7 +182,9 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
         numero_comprobante: form.numero_comprobante.trim() || null,
         tipo_comprobante: form.tipo_comprobante || "Factura",
         cuenta_contable_id: form.cuenta_contable_id || null,
-        cuenta_contrapartida_id: form.tipo_pago === "contado" ? (form.cuenta_contrapartida_id || null) : null,
+        cuenta_contrapartida_id: form.tipo_pago === "contado"
+          ? (form.cuenta_contrapartida_id || null)
+          : (form.cuenta_proveedores_id || null),
         cuenta_contable_label: null,
       }, idempotencyKey);
       if (!res.success) { setErrorSubmit(res.error); return; }
@@ -480,19 +488,11 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
               )}
             </div>
             {form.tipo_pago === "credito" && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
-                <span className="mt-0.5 leading-none">ℹ️</span>
-                <span>
-                  En crédito no sale dinero ahora: la deuda se registra automáticamente en{" "}
-                  <strong>Proveedores (Cuentas por Pagar)</strong> y vas a verla en{" "}
-                  <strong>Reportes → Cuentas por Pagar</strong>.
-                  {(() => {
-                    const c = Math.max(1, parseInt(form.cuotas) || 1);
-                    return total > 0 && c > 1
-                      ? ` Serían ${c} cuotas de ~${fmt(Math.round(total / c))} c/u.`
-                      : "";
-                  })()}
-                </span>
+              <div>
+                <label className={LABEL}>Cuenta de pago (Proveedores / a pagar) <span className="text-red-500">*</span></label>
+                <CuentaCombobox cuentas={cuentas} value={form.cuenta_proveedores_id || null}
+                  onChange={(id) => set({ cuenta_proveedores_id: id ?? "" })} placeholder="Proveedores, Cuentas a Pagar…" />
+                <p className="mt-1 text-[11px] text-slate-400">Cuenta donde queda registrada la deuda. La vas a ver en Reportes → Cuentas por Pagar.</p>
               </div>
             )}
           </section>

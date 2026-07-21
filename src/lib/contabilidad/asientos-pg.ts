@@ -197,8 +197,11 @@ export function construirLineasDocumento(opts: {
     if (!contrapartidaContado) throw new ContabilidadError("Falta la cuenta de pago (contrapartida) para la operación al contado.");
     lineas.push({ cuenta_contable_id: contrapartidaContado, descripcion: "Pago", debe: 0, haber: total, documento_tipo, documento_id });
   } else {
-    if (!config?.cuenta_proveedores_id) throw new ContabilidadError("Configurá la cuenta general de Proveedores en Configuración Contable.");
-    lineas.push({ cuenta_contable_id: config.cuenta_proveedores_id, proveedor_id: proveedorId, descripcion: "Proveedores", debe: 0, haber: total, documento_tipo, documento_id });
+    // Crédito: se acredita la cuenta de Proveedores / Cuentas por Pagar. Si el
+    // documento indicó una cuenta explícita, se respeta; si no, la general de config.
+    const ctaPagar = contrapartidaContado || config?.cuenta_proveedores_id;
+    if (!ctaPagar) throw new ContabilidadError("Seleccioná la cuenta a pagar (Proveedores) o configurá la general en Configuración Contable.");
+    lineas.push({ cuenta_contable_id: ctaPagar, proveedor_id: proveedorId, descripcion: "Proveedores", debe: 0, haber: total, documento_tipo, documento_id });
   }
   return lineas;
 }

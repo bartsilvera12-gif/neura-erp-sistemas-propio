@@ -9,6 +9,7 @@ import {
   type CuentaContableOpcion,
 } from "@/lib/compras/storage";
 import ExportExcelButton from "@/components/ui/ExportExcelButton";
+import NuevaCompraModal from "@/app/compras/NuevaCompraModal";
 import type { Compra, TipoPago } from "@/lib/compras/types";
 
 const inputFilterClass =
@@ -49,6 +50,7 @@ export default function ComprasPage() {
   const [filtroTipoPago, setFiltroTipoPago] = useState<TipoPago | "">("");
   const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
   const [detalle, setDetalle] = useState<Compra | null>(null);
+  const [modalNueva, setModalNueva] = useState(false);
 
   function recargar() {
     getCompras().then((data) => {
@@ -123,12 +125,13 @@ export default function ComprasPage() {
               Órdenes de compra
             </h2>
           </div>
-          <Link
-            href="/compras/nueva"
+          <button
+            type="button"
+            onClick={() => setModalNueva(true)}
             className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
           >
             + Nueva compra
-          </Link>
+          </button>
 
           {/* Filtros inline */}
           <input
@@ -257,6 +260,13 @@ export default function ComprasPage() {
             setDetalle(null);
             recargar();
           }}
+        />
+      )}
+
+      {modalNueva && (
+        <NuevaCompraModal
+          onClose={() => setModalNueva(false)}
+          onSaved={() => { setModalNueva(false); recargar(); }}
         />
       )}
 

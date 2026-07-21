@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Plus, Search, ShoppingBasket } from "lucide-react";
 import { useCompras } from "@/shared/hooks/useCompras";
+import NuevaCompraModal from "@/app/compras/NuevaCompraModal";
 import type { Compra, TipoPago } from "@/lib/compras/types";
 
 /**
@@ -14,8 +14,9 @@ import type { Compra, TipoPago } from "@/lib/compras/types";
  *  - Cards con proveedor, producto, fecha, total y tipo de pago.
  */
 export default function ComprasMobile() {
-  const { compras, isLoading, error } = useCompras();
+  const { compras, isLoading, error, mutate } = useCompras();
   const [query, setQuery] = useState("");
+  const [modalNueva, setModalNueva] = useState(false);
 
   const totalMonto = useMemo(() => compras.reduce((s, c) => s + Number(c.total ?? 0), 0), [compras]);
 
@@ -41,13 +42,14 @@ export default function ComprasMobile() {
               {compras.length === 0 ? "Sin compras registradas." : `${compras.length} compras · ${formatGs(totalMonto)} total`}
             </p>
           </div>
-          <Link
-            href="/compras/nueva"
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0EA5E9] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#0284C7]"
+          <button
+            type="button"
+            onClick={() => setModalNueva(true)}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#3F8E91]"
           >
             <Plus className="h-4 w-4" />
             Nueva
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -78,6 +80,13 @@ export default function ComprasMobile() {
             <CompraCard key={c.id} compra={c} />
           ))}
         </ul>
+      )}
+
+      {modalNueva && (
+        <NuevaCompraModal
+          onClose={() => setModalNueva(false)}
+          onSaved={() => { setModalNueva(false); mutate(); }}
+        />
       )}
     </div>
   );

@@ -338,22 +338,28 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
             )}
           </section>
 
-          {/* Moneda y costos */}
+          {/* Moneda, costos y precio de venta */}
           <section className="space-y-3">
-            <Titulo>Moneda y costos</Titulo>
+            <Titulo>Moneda, costos y precio</Titulo>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label className={LABEL}>Moneda</label>
+              <div>
+                <label className={LABEL}>Moneda</label>
                 <Seg<Moneda> value={form.moneda}
                   options={[{ value: "PYG", label: "Guaraníes (₲)" }, { value: "USD", label: "Dólares (USD)" }]}
-                  onChange={(v) => set({ moneda: v, tipo_cambio: "" })} /></div>
-              {form.moneda === "USD" && (
-                <div><label className={LABEL}>Tipo de cambio (USD → Gs.) <span className="text-red-500">*</span></label>
-                  <MontoInput value={form.tipo_cambio} onChange={(nn) => set({ tipo_cambio: String(nn) })}
-                    placeholder="Ej: 7500" className={INPUT} decimals={false} /></div>
-              )}
+                  onChange={(v) => set({ moneda: v, tipo_cambio: "" })} />
+                {form.moneda === "USD" && (
+                  <div className="mt-2">
+                    <label className={SUBLABEL}>Tipo de cambio (USD → Gs.) <span className="text-red-500">*</span></label>
+                    <MontoInput value={form.tipo_cambio} onChange={(nn) => set({ tipo_cambio: String(nn) })}
+                      placeholder="Ej: 7500" className={INPUT} decimals={false} />
+                  </div>
+                )}
+              </div>
               <div><label className={LABEL}>Cantidad <span className="text-red-500">*</span></label>
                 <input type="number" min={1} step={1} value={form.cantidad}
                   onChange={(e) => set({ cantidad: e.target.value })} placeholder="Ej: 50" className={INPUT} /></div>
+
+              {/* Par costo ↔ precio, siempre lado a lado */}
               <div><label className={LABEL}>Costo unitario ({form.moneda === "USD" ? "USD" : "Gs."}) <span className="text-red-500">*</span></label>
                 <MontoInput value={form.costo_unitario_input} onChange={(nn) => set({ costo_unitario_input: String(nn) })}
                   placeholder={form.moneda === "USD" ? "Ej: 12" : "Ej: 35000"} className={INPUT} decimals={form.moneda === "USD"} />
@@ -361,7 +367,22 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   <p className="mt-1 text-[11px] text-slate-400">≈ {fmt(costoUnitarioPYG)} por unidad</p>
                 )}
               </div>
+              <div><label className={LABEL}>Precio de venta (Gs.) <span className="text-red-500">*</span></label>
+                <MontoInput value={form.precio_venta} onChange={(nn) => set({ precio_venta: String(nn) })}
+                  placeholder="Ej: 75000" className={INPUT} decimals={false} />
+                <p className="mt-1 text-[11px] text-slate-400">Se actualizará en inventario al guardar.</p>
+              </div>
             </div>
+
+            {margenVenta !== null && calculosListos && (
+              <div className={`flex items-center justify-between rounded-lg border px-4 py-2.5 ${
+                margenVenta < 0 ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50"}`}>
+                <span className="text-sm text-slate-600">Margen sobre venta</span>
+                <span className={`text-lg font-bold tabular-nums ${margenColor(margenVenta)}`}>
+                  {margenVenta < 0 ? "⚠ " : ""}{margenVenta.toFixed(2)}%
+                </span>
+              </div>
+            )}
 
             {/* IVA */}
             <div>
@@ -378,27 +399,6 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                 <Stat label="Total" value={fmt(total)} highlight />
               </div>
             )}
-          </section>
-
-          {/* Precio de venta */}
-          <section className="space-y-3">
-            <Titulo>Precio de venta</Titulo>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><label className={LABEL}>Precio de venta (Gs.) <span className="text-red-500">*</span></label>
-                <MontoInput value={form.precio_venta} onChange={(nn) => set({ precio_venta: String(nn) })}
-                  placeholder="Ej: 75000" className={INPUT} decimals={false} />
-                <p className="mt-1 text-[11px] text-slate-400">Se actualizará en inventario al guardar.</p>
-              </div>
-              {margenVenta !== null && calculosListos && (
-                <div className={`flex items-center justify-between self-start rounded-lg border px-4 py-3 ${
-                  margenVenta < 0 ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50"}`}>
-                  <span className="text-sm text-slate-600">Margen s/venta</span>
-                  <span className={`text-lg font-bold tabular-nums ${margenColor(margenVenta)}`}>
-                    {margenVenta < 0 ? "⚠ " : ""}{margenVenta.toFixed(2)}%
-                  </span>
-                </div>
-              )}
-            </div>
           </section>
 
           {/* Condiciones de pago */}

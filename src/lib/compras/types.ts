@@ -29,6 +29,7 @@ export interface Compra {
 
   tipo_pago: TipoPago;
   plazo_dias?: number;           // solo si tipo_pago === "credito"
+  cuotas?: number;               // cantidad de cuotas si es crédito (default 1)
 
   nro_timbrado: string;
 

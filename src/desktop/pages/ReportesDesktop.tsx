@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -35,6 +35,14 @@ const REPORTES: ReporteCard[] = [
       "Movimientos y saldos acumulados por cuenta contable, con saldo inicial, debe, haber y trazabilidad del documento de origen.",
     icon: Layers,
     href: "/reportes/libro-mayor",
+  },
+  {
+    title: "Cuentas por Pagar",
+    subtitle: "Finanzas",
+    description:
+      "Deuda con proveedores originada en compras a crédito: vencimiento, plazo, cuotas, monto por cuota y total adeudado, con vencidas y por vencer.",
+    icon: HandCoins,
+    href: "/reportes/cuentas-por-pagar",
   },
   {
     title: "Estado de cuenta empresa",

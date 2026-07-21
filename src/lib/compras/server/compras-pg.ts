@@ -39,6 +39,7 @@ export interface CompraRow {
   margen_venta: string | number | null;
   tipo_pago: string;
   plazo_dias: number | null;
+  cuotas: number | null;
   nro_timbrado: string;
   numero_control: string;
   estado: string;
@@ -60,7 +61,7 @@ const COLS = `
   id, empresa_id, proveedor_id, proveedor_nombre, producto_id, producto_nombre,
   cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
   iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
-  tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
+  tipo_pago, plazo_dias, cuotas, nro_timbrado, numero_control, estado, fecha,
   created_at, updated_at, created_by, usuario_nombre, cuenta_contable_id,
   numero_comprobante, tipo_comprobante, documento_path, documento_mime
 `;
@@ -83,6 +84,7 @@ export interface InsertCompraInput {
   margen_venta: number | null;
   tipo_pago: string;
   plazo_dias: number | null;
+  cuotas: number | null;
   nro_timbrado: string;
   /** N° de la factura del proveedor (001-001-0000001). */
   numero_comprobante?: string | null;
@@ -219,6 +221,7 @@ export interface CompraMultilineaInput {
   tipo_cambio: number;
   tipo_pago: string;
   plazo_dias: number | null;
+  cuotas: number | null;
   nro_timbrado: string;
   numero_comprobante: string | null;
   tipo_comprobante: string | null;
@@ -323,7 +326,7 @@ export async function insertCompraMultilinea(
            empresa_id, proveedor_id, proveedor_nombre, producto_id, producto_nombre,
            cantidad, moneda, tipo_cambio, costo_unitario_original, costo_unitario,
            iva_tipo, subtotal, monto_iva, total, precio_venta, margen_venta,
-           tipo_pago, plazo_dias, nro_timbrado, numero_control, estado, fecha,
+           tipo_pago, plazo_dias, cuotas, nro_timbrado, numero_control, estado, fecha,
            created_by, usuario_nombre, cuenta_contable_id, afecta_stock, idempotency_key,
            cuenta_contrapartida_id, orden_compra_id, origen_compra,
            numero_comprobante, tipo_comprobante
@@ -331,7 +334,7 @@ export async function insertCompraMultilinea(
            $1::uuid,$2::uuid,$3,$4::uuid,$5,
            $6::numeric,$7,$8::numeric,$9::numeric,$10::numeric,
            $11,$12::numeric,$13::numeric,$14::numeric,$15::numeric,$16::numeric,
-           $17,$18::integer,$19,$20,'registrada',now(),
+           $17,$18::integer,$31::integer,$19,$20,'registrada',now(),
            $21::uuid,$22,$23::uuid,$24::boolean,$25::uuid,$26::uuid,$27::uuid,$28,
            $29,COALESCE(NULLIF($30,''),'Factura')
          ) RETURNING ${COLS}`,
@@ -345,6 +348,7 @@ export async function insertCompraMultilinea(
           d.created_by, d.usuario_nombre, primera.cuenta_contable_id, afectaStock, d.idempotency_key,
           d.cuenta_contrapartida_id, d.orden_compra_id, d.origen_compra,
           d.numero_comprobante, d.tipo_comprobante,
+          d.tipo_pago === "credito" ? Math.max(1, Number(d.cuotas) || 1) : 1,
         ]
       );
       compra = rows[0];
@@ -530,6 +534,7 @@ export async function insertCompraConImpacto(
     tipo_cambio: d.tipo_cambio,
     tipo_pago: d.tipo_pago,
     plazo_dias: d.plazo_dias,
+    cuotas: d.cuotas ?? null,
     nro_timbrado: d.nro_timbrado,
     numero_comprobante: d.numero_comprobante ?? null,
     tipo_comprobante: d.tipo_comprobante ?? null,

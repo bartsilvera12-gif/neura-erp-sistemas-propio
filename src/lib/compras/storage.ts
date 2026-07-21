@@ -7,7 +7,7 @@ interface CompraApiRow {
   costo_unitario: string | number; iva_tipo: string;
   subtotal: string | number; monto_iva: string | number; total: string | number;
   precio_venta: string | number; margen_venta: string | number | null;
-  tipo_pago: string; plazo_dias: number | null; nro_timbrado: string; estado: string;
+  tipo_pago: string; plazo_dias: number | null; cuotas?: number | null; nro_timbrado: string; estado: string;
   numero_comprobante?: string | null;
   tipo_comprobante?: string | null;
   documento_path?: string | null;
@@ -39,6 +39,7 @@ function mapRow(r: CompraApiRow): Compra {
     margen_venta: r.margen_venta != null ? Number(r.margen_venta) : 0,
     tipo_pago: r.tipo_pago as Compra["tipo_pago"],
     plazo_dias: r.plazo_dias ?? undefined,
+    cuotas: r.cuotas ?? undefined,
     nro_timbrado: r.nro_timbrado,
     cuenta_contable_id: r.cuenta_contable_id ?? null,
     cuenta_contable_label:

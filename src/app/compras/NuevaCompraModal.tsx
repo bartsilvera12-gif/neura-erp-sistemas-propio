@@ -74,7 +74,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     tipo_comprobante: "Factura", numero_comprobante: "",
     cantidad: "", moneda: "PYG" as Moneda, tipo_cambio: "", costo_unitario_input: "",
     iva_tipo: "10" as TipoIva, precio_venta: "", tipo_pago: "contado" as TipoPago,
-    plazo_dias: "", cuenta_contable_id: "", cuenta_contrapartida_id: "",
+    plazo_dias: "", cuotas: "1", cuenta_contable_id: "", cuenta_contrapartida_id: "",
   });
   const set = (patch: Partial<typeof form>) => setForm((p) => ({ ...p, ...patch }));
 
@@ -171,6 +171,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
         iva_tipo: form.iva_tipo, subtotal, monto_iva: montoIva, total,
         precio_venta: precioVentaNum, margen_venta: margenVenta ?? 0, tipo_pago: form.tipo_pago,
         plazo_dias: form.tipo_pago === "credito" && form.plazo_dias ? parseInt(form.plazo_dias) : undefined,
+        cuotas: form.tipo_pago === "credito" ? Math.max(1, parseInt(form.cuotas) || 1) : undefined,
         nro_timbrado: form.nro_timbrado,
         numero_comprobante: form.numero_comprobante.trim() || null,
         tipo_comprobante: form.tipo_comprobante || "Factura",
@@ -468,11 +469,32 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                     onChange={(id) => set({ cuenta_contrapartida_id: id ?? "" })} placeholder="Caja, Banco…" />
                 </div>
               ) : (
-                <div><label className={LABEL}>Plazo (días)</label>
-                  <input type="number" min={1} value={form.plazo_dias}
-                    onChange={(e) => set({ plazo_dias: e.target.value })} placeholder="Ej: 30" className={INPUT} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={LABEL}>Plazo (días)</label>
+                    <input type="number" min={1} value={form.plazo_dias}
+                      onChange={(e) => set({ plazo_dias: e.target.value })} placeholder="Ej: 30" className={INPUT} /></div>
+                  <div><label className={LABEL}>Cuotas</label>
+                    <input type="number" min={1} value={form.cuotas}
+                      onChange={(e) => set({ cuotas: e.target.value })} placeholder="Ej: 3" className={INPUT} /></div>
+                </div>
               )}
             </div>
+            {form.tipo_pago === "credito" && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-800">
+                <span className="mt-0.5 leading-none">ℹ️</span>
+                <span>
+                  En crédito no sale dinero ahora: la deuda se registra automáticamente en{" "}
+                  <strong>Proveedores (Cuentas por Pagar)</strong> y vas a verla en{" "}
+                  <strong>Reportes → Cuentas por Pagar</strong>.
+                  {(() => {
+                    const c = Math.max(1, parseInt(form.cuotas) || 1);
+                    return total > 0 && c > 1
+                      ? ` Serían ${c} cuotas de ~${fmt(Math.round(total / c))} c/u.`
+                      : "";
+                  })()}
+                </span>
+              </div>
+            )}
           </section>
 
           {calculosListos && productoSel && (

@@ -73,6 +73,7 @@ async function postMultilinea(
       tipo_cambio: Number(body.tipo_cambio) || 1,
       tipo_pago: body.tipo_pago === "credito" ? "credito" : "contado",
       plazo_dias: s(body.plazo_dias) ? parseInt(s(body.plazo_dias), 10) || null : null,
+      cuotas: s(body.cuotas) ? parseInt(s(body.cuotas), 10) || null : null,
       nro_timbrado: s(body.nro_timbrado).toUpperCase(),
       numero_comprobante: s(body.numero_comprobante) || null,
       tipo_comprobante: s(body.tipo_comprobante) || null,
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest) {
         tipo_pago: body.tipo_pago === "credito" ? "credito" : "contado",
         plazo_dias: body.plazo_dias != null && String(body.plazo_dias).trim() !== ""
           ? parseInt(String(body.plazo_dias), 10) || null : null,
+        cuotas: req("cuotas") ? parseInt(String(body.cuotas), 10) || null : null,
         nro_timbrado: String(body.nro_timbrado).trim().toUpperCase(),
         numero_comprobante: req("numero_comprobante") ? String(body.numero_comprobante).trim() : null,
         tipo_comprobante: req("tipo_comprobante") ? String(body.tipo_comprobante).trim() : null,

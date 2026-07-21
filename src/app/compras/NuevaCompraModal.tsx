@@ -9,7 +9,7 @@ import { getProveedores, proveedorExiste, createProveedor } from "@/lib/proveedo
 import { getProductos, productoExiste, saveProducto } from "@/lib/inventario/storage";
 import type { TipoIva, TipoPago, Moneda } from "@/lib/compras/types";
 import type { Proveedor } from "@/lib/proveedores/types";
-import type { MetodoValuacion, Producto } from "@/lib/inventario/types";
+import type { Producto } from "@/lib/inventario/types";
 
 const fmt = (v: number) => `₲ ${Math.round(v).toLocaleString("es-PY")}`;
 function margenColor(m: number) {
@@ -92,8 +92,7 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
   const [errRuc, setErrRuc] = useState<string | null>(null);
   // Inline: producto
   const [nvProd, setNvProd] = useState(false);
-  const [fProd, setFProd] = useState({ nombre: "", sku: "", unidad_medida: "Unidad",
-    metodo_valuacion: "CPP" as MetodoValuacion, stock_minimo: "0", precio_venta_sugerido: "" });
+  const [fProd, setFProd] = useState({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0" });
   const [errSku, setErrSku] = useState<string | null>(null);
 
   async function recargarProveedores() {
@@ -137,10 +136,6 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     () => proveedores.map((p) => ({ id: p.id, label: p.nombre, sub: p.ruc ? `RUC ${p.ruc}` : null })), [proveedores]);
   const prodOpts: ComboOption[] = useMemo(
     () => productos.map((p) => ({ id: p.id, label: p.nombre, sub: `${p.sku} · stock ${p.stock_actual}` })), [productos]);
-
-  const precioSugeridoNum = parseFloat(fProd.precio_venta_sugerido) || 0;
-  const margenPreview = precioSugeridoNum > 0 && costoUnitarioPYG > 0
-    ? ((precioSugeridoNum - costoUnitarioPYG) / precioSugeridoNum) * 100 : null;
 
   function seleccionarProducto(id: string | null) {
     const p = productos.find((x) => x.id === id);
@@ -230,15 +225,16 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
     if (dup) { setErrSku(`Ya existe un producto con ese SKU o nombre ("${dup.nombre}" — ${dup.sku}).`); return; }
     const creado = await saveProducto({
       nombre: fProd.nombre.trim().toUpperCase(), sku: fProd.sku.trim().toUpperCase(),
-      unidad_medida: fProd.unidad_medida.toUpperCase(), metodo_valuacion: fProd.metodo_valuacion,
+      unidad_medida: fProd.unidad_medida.toUpperCase(), metodo_valuacion: "CPP",
       stock_actual: 0, stock_minimo: parseInt(fProd.stock_minimo) || 0,
-      costo_promedio: costoUnitarioPYG || 0, precio_venta: precioSugeridoNum || 0,
+      // El precio de venta se toma del campo del formulario principal al guardar la compra.
+      costo_promedio: costoUnitarioPYG || 0, precio_venta: 0,
     });
     if (!creado) return;
     await recargarProductos();
-    set({ producto_id: creado.id, precio_venta: fProd.precio_venta_sugerido || form.precio_venta });
+    set({ producto_id: creado.id });
     setNvProd(false);
-    setFProd({ nombre: "", sku: "", unidad_medida: "Unidad", metodo_valuacion: "CPP", stock_minimo: "0", precio_venta_sugerido: "" });
+    setFProd({ nombre: "", sku: "", unidad_medida: "Unidad", stock_minimo: "0" });
   }
 
   return (
@@ -389,21 +385,8 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   <div><label className={SUBLABEL}>Stock mínimo</label>
                     <input type="number" min={0} value={fProd.stock_minimo}
                       onChange={(e) => setFProd((p) => ({ ...p, stock_minimo: e.target.value }))} placeholder="Ej: 5" className={INPUT} /></div>
-                  <div className="sm:col-span-2"><label className={SUBLABEL}>Método de valuación</label>
-                    <Seg<MetodoValuacion> value={fProd.metodo_valuacion}
-                      options={[{ value: "CPP", label: "CPP" }, { value: "FIFO", label: "FIFO" }, { value: "LIFO", label: "LIFO" }]}
-                      onChange={(v) => setFProd((p) => ({ ...p, metodo_valuacion: v }))} /></div>
-                  <div className="sm:col-span-2"><label className={SUBLABEL}>Precio de venta sugerido (Gs.)</label>
-                    <MontoInput value={fProd.precio_venta_sugerido}
-                      onChange={(nn) => setFProd((p) => ({ ...p, precio_venta_sugerido: String(nn) }))}
-                      placeholder="Ej: 75000" className={INPUT} decimals={false} />
-                    {margenPreview !== null && (
-                      <p className={`mt-1 text-[11px] font-medium ${margenColor(margenPreview)}`}>
-                        Margen s/venta: {margenPreview.toFixed(2)}% (costo: {fmt(costoUnitarioPYG)})
-                      </p>
-                    )}
-                  </div>
                 </div>
+                <p className="text-[11px] text-slate-400">El costo y el precio de venta se toman de los campos de la compra.</p>
               </InlineBox>
             )}
           </section>

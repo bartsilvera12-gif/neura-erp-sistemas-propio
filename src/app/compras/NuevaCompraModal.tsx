@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import MontoInput from "@/components/ui/MontoInput";
-import { saveCompra, getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
+import { saveCompra, uploadCompraComprobante, getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
 import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
 import { getProveedores, proveedorExiste, createProveedor } from "@/lib/proveedores/storage";
@@ -21,6 +21,17 @@ function genIdemKey(): string {
   try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch {}
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+/** Máscara del N° de factura: 3-3-7 (001-001-0000001). */
+function formatComprobante(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 13);
+  let out = d.slice(0, 3);
+  if (d.length > 3) out += "-" + d.slice(3, 6);
+  if (d.length > 6) out += "-" + d.slice(6, 13);
+  return out;
+}
+const TIPOS_COMPROBANTE = ["Factura", "Factura Electrónica", "Factura Virtual", "Factura de Exportación", "Autofactura", "Boleta", "Otro"];
+const MAX_COMPROBANTE_MB = 8;
+const ALLOWED_COMPROBANTE = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
 const INPUT = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 focus:border-[#4FAEB2] bg-white";
 const LABEL = "mb-1 block text-xs font-semibold text-slate-500";
@@ -60,11 +71,17 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
 
   const [form, setForm] = useState({
     proveedor_id: "", producto_id: "", nro_timbrado: "",
+    tipo_comprobante: "Factura", numero_comprobante: "",
     cantidad: "", moneda: "PYG" as Moneda, tipo_cambio: "", costo_unitario_input: "",
     iva_tipo: "10" as TipoIva, precio_venta: "", tipo_pago: "contado" as TipoPago,
     plazo_dias: "", cuenta_contable_id: "", cuenta_contrapartida_id: "",
   });
   const set = (patch: Partial<typeof form>) => setForm((p) => ({ ...p, ...patch }));
+
+  // Foto/PDF de la factura (se sube después de crear la compra).
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [errArchivo, setErrArchivo] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const [errorSubmit, setErrorSubmit] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -159,16 +176,35 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
         iva_tipo: form.iva_tipo, subtotal, monto_iva: montoIva, total,
         precio_venta: precioVentaNum, margen_venta: margenVenta ?? 0, tipo_pago: form.tipo_pago,
         plazo_dias: form.tipo_pago === "credito" && form.plazo_dias ? parseInt(form.plazo_dias) : undefined,
-        nro_timbrado: form.nro_timbrado, cuenta_contable_id: form.cuenta_contable_id || null,
+        nro_timbrado: form.nro_timbrado,
+        numero_comprobante: form.numero_comprobante.trim() || null,
+        tipo_comprobante: form.tipo_comprobante || "Factura",
+        cuenta_contable_id: form.cuenta_contable_id || null,
         cuenta_contrapartida_id: form.tipo_pago === "contado" ? (form.cuenta_contrapartida_id || null) : null,
         cuenta_contable_label: null,
       }, idempotencyKey);
       if (!res.success) { setErrorSubmit(res.error); return; }
+
+      // Subir la foto/PDF de la factura (best-effort: la compra ya quedó guardada).
+      if (archivo) {
+        const up = await uploadCompraComprobante(res.compra.id, archivo);
+        if (!up.ok) {
+          alert(`La compra se guardó, pero no se pudo adjuntar el comprobante: ${up.error}. Podés volver a adjuntarlo desde el detalle.`);
+        }
+      }
       if (res.warning) alert(res.warning);
       onSaved();
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function elegirArchivo(f: File | null) {
+    setErrArchivo(null);
+    if (!f) { setArchivo(null); return; }
+    if (!ALLOWED_COMPROBANTE.has(f.type)) { setErrArchivo("Formato no permitido. Usá JPG, PNG, WebP o PDF."); return; }
+    if (f.size > MAX_COMPROBANTE_MB * 1024 * 1024) { setErrArchivo(`El archivo supera ${MAX_COMPROBANTE_MB} MB.`); return; }
+    setArchivo(f);
   }
 
   async function agregarProveedor() {
@@ -232,9 +268,22 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
             <Titulo>Comprobante y proveedor</Titulo>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className={LABEL}>N° de timbrado <span className="text-red-500">*</span></label>
-                <input value={form.nro_timbrado} onChange={(e) => set({ nro_timbrado: e.target.value })}
+                <label className={LABEL}>Tipo de comprobante</label>
+                <select value={form.tipo_comprobante} onChange={(e) => set({ tipo_comprobante: e.target.value })} className={INPUT}>
+                  {TIPOS_COMPROBANTE.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>N° de factura</label>
+                <input value={form.numero_comprobante} inputMode="numeric"
+                  onChange={(e) => set({ numero_comprobante: formatComprobante(e.target.value) })}
                   placeholder="Ej: 001-001-0000001" className={INPUT} />
+              </div>
+              <div>
+                <label className={LABEL}>N° de timbrado <span className="text-red-500">*</span></label>
+                <input value={form.nro_timbrado} inputMode="numeric"
+                  onChange={(e) => set({ nro_timbrado: e.target.value.replace(/\D/g, "").slice(0, 8) })}
+                  placeholder="Ej: 12345678 (8 dígitos)" className={INPUT} />
               </div>
               <div>
                 <label className={LABEL}>Proveedor <span className="text-red-500">*</span></label>
@@ -247,6 +296,27 @@ export default function NuevaCompraModal({ onClose, onSaved }: { onClose: () => 
                   </button>
                 ) : null}
               </div>
+            </div>
+
+            {/* Foto / PDF de la factura */}
+            <div>
+              <label className={LABEL}>Foto de la factura (opcional)</label>
+              {!archivo ? (
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/5">
+                  <span className="text-base leading-none">📎</span> Adjuntar foto o PDF
+                </button>
+              ) : (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                  <span className="truncate text-slate-700">📄 {archivo.name}</span>
+                  <button type="button" onClick={() => { setArchivo(null); if (fileRef.current) fileRef.current.value = ""; }}
+                    className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">Quitar</button>
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                onChange={(e) => elegirArchivo(e.target.files?.[0] ?? null)} />
+              {errArchivo && <p className="mt-1 text-[11px] text-red-600">{errArchivo}</p>}
+              <p className="mt-1 text-[11px] text-slate-400">JPG, PNG, WebP o PDF · máx. {MAX_COMPROBANTE_MB} MB.</p>
             </div>
 
             {nvProv && (

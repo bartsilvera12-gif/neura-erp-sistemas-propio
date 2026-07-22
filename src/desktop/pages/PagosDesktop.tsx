@@ -104,6 +104,7 @@ export default function PagosPage() {
   const [filtroDesde, setFiltroDesde] = useState("");
   const [filtroHasta, setFiltroHasta] = useState("");
   const [filtroTipoCliente, setFiltroTipoCliente] = useState("");
+  const [filtroNombre, setFiltroNombre] = useState("");
 
   const rangoFechas = useMemo(
     () => rangoDesdeHastaInputs(filtroDesde, filtroHasta),
@@ -190,23 +191,30 @@ export default function PagosPage() {
       if (ae !== 0) return ae;
       return (a.numero_factura ?? "").localeCompare(b.numero_factura ?? "");
     };
-    if (filtroTipoCliente === "") return [...pendientesPorFecha].sort(cmp);
-    if (filtroTipoCliente === "__sin__") {
-      return pendientesPorFecha
-        .filter((f) => {
-          const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
-          return !c || !(c.tipo_servicio_cliente ?? "").trim();
-        })
-        .sort(cmp);
-    }
-    const slug = filtroTipoCliente.toLowerCase();
-    return pendientesPorFecha
-      .filter((f) => {
+    const nombreDe = (f: Factura) => {
+      const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
+      return ((c?.empresa ?? c?.nombre_contacto) ?? "").toString().toLowerCase();
+    };
+    const q = filtroNombre.trim().toLowerCase();
+    const porNombre = (f: Factura) => q === "" || nombreDe(f).includes(q);
+
+    let base: Factura[];
+    if (filtroTipoCliente === "") {
+      base = pendientesPorFecha;
+    } else if (filtroTipoCliente === "__sin__") {
+      base = pendientesPorFecha.filter((f) => {
+        const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
+        return !c || !(c.tipo_servicio_cliente ?? "").trim();
+      });
+    } else {
+      const slug = filtroTipoCliente.toLowerCase();
+      base = pendientesPorFecha.filter((f) => {
         const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
         return (c?.tipo_servicio_cliente ?? "").trim().toLowerCase() === slug;
-      })
-      .sort(cmp);
-  }, [pendientesPorFecha, filtroTipoCliente, clientes]);
+      });
+    }
+    return base.filter(porNombre).sort(cmp);
+  }, [pendientesPorFecha, filtroTipoCliente, filtroNombre, clientes]);
 
   const cobradosPorFecha = useMemo(() => {
     if (!rangoFechas) return cobrados;
@@ -214,12 +222,19 @@ export default function PagosPage() {
   }, [cobrados, rangoFechas, fechaEnRangoCalendario]);
 
   const cobradosVista = useMemo(() => {
-    if (filtroTipoCliente === "") return cobradosPorFecha;
-    if (filtroTipoCliente === "__sin__")
-      return cobradosPorFecha.filter((p) => p.cliente_tipo_slug == null);
-    const slug = filtroTipoCliente.toLowerCase();
-    return cobradosPorFecha.filter((p) => p.cliente_tipo_slug === slug);
-  }, [cobradosPorFecha, filtroTipoCliente]);
+    const q = filtroNombre.trim().toLowerCase();
+    const porNombre = (p: PagoCobrado) =>
+      q === "" || (p.cliente_nombre ?? "").toLowerCase().includes(q);
+    let base: PagoCobrado[];
+    if (filtroTipoCliente === "") base = cobradosPorFecha;
+    else if (filtroTipoCliente === "__sin__")
+      base = cobradosPorFecha.filter((p) => p.cliente_tipo_slug == null);
+    else {
+      const slug = filtroTipoCliente.toLowerCase();
+      base = cobradosPorFecha.filter((p) => p.cliente_tipo_slug === slug);
+    }
+    return base.filter(porNombre);
+  }, [cobradosPorFecha, filtroTipoCliente, filtroNombre]);
 
   const opcionesTipoFiltro = useMemo(() => {
     const s = new Set<string>();
@@ -276,31 +291,50 @@ export default function PagosPage() {
     otro: "Otro",
   };
 
-  const hasFilters = Boolean(filtroDesde || filtroHasta || filtroTipoCliente);
+  const hasFilters = Boolean(filtroDesde || filtroHasta || filtroTipoCliente || filtroNombre.trim());
 
   function limpiarFiltros() {
     setFiltroDesde("");
     setFiltroHasta("");
     setFiltroTipoCliente("");
+    setFiltroNombre("");
   }
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-6">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
-          />
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
-            Cobranzas
+      {/* Header: título a la izquierda, tabs Pendientes/Cobrados a la derecha (ahorra espacio) */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
+              Cobranzas
+            </p>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Pagos</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Registrar pagos de facturas pendientes de cobro
           </p>
         </div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Pagos</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Registrar pagos de facturas pendientes de cobro
-        </p>
+        <div className="flex shrink-0 flex-wrap gap-1 rounded-2xl border border-[#4FAEB2]/45 bg-white p-1.5 shadow-sm">
+          <TabButton
+            active={tab === "pendientes"}
+            onClick={() => setTab("pendientes")}
+            icon={<IconClock />}
+            label="Pendientes"
+            count={pendientesVista.length}
+          />
+          <TabButton
+            active={tab === "cobrados"}
+            onClick={() => setTab("cobrados")}
+            icon={<IconCheckCircle />}
+            label="Cobrados"
+            count={cobrados.length > 0 ? cobradosVista.length : null}
+          />
+        </div>
       </div>
 
       {/* KPIs strip */}
@@ -334,40 +368,19 @@ export default function PagosPage() {
         />
       </div>
 
-      {/* Tabs */}
-      <div className="flex w-full flex-wrap gap-1 rounded-2xl border border-[#4FAEB2]/45 bg-white p-1.5 shadow-sm sm:w-fit">
-        <TabButton
-          active={tab === "pendientes"}
-          onClick={() => setTab("pendientes")}
-          icon={<IconClock />}
-          label="Pendientes"
-          count={pendientesVista.length}
-        />
-        <TabButton
-          active={tab === "cobrados"}
-          onClick={() => setTab("cobrados")}
-          icon={<IconCheckCircle />}
-          label="Cobrados"
-          count={cobrados.length > 0 ? cobradosVista.length : null}
-        />
-      </div>
-
-      {/* Filtros */}
-      <div className="rounded-2xl border border-[#4FAEB2]/45 bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-2">
-          <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
-          <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
-            Filtros
-          </h3>
-        </div>
-        <p className="mt-1 pl-3 text-[11px] text-slate-500">
-          {tab === "pendientes"
-            ? "El rango filtra por fecha de vencimiento de la factura."
-            : "El rango filtra por fecha de pago registrada."}{" "}
-          Los totales se recalculan con la vista visible.
-        </p>
-        <div className="mt-4 flex flex-wrap items-end gap-3">
+      {/* Filtros (compacto: sin encabezado ni descripción para ganar espacio) */}
+      <div className="rounded-2xl border border-[#4FAEB2]/45 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[14rem] flex-1">
+            <label className={LABEL_CLS}>Buscar por nombre de cliente</label>
+            <input
+              type="search"
+              value={filtroNombre}
+              onChange={(e) => setFiltroNombre(e.target.value)}
+              placeholder="Nombre del cliente…"
+              className={INPUT_CLS}
+            />
+          </div>
           <div className="min-w-[10rem]">
             <label className={LABEL_CLS}>
               Desde {tab === "pendientes" ? "(vencimiento)" : "(fecha de pago)"}

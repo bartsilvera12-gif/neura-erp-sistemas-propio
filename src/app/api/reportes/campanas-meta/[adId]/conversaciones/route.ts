@@ -3,6 +3,15 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { inferirRedSocial } from "@/lib/reportes/red-social";
+import { toCalendarDateStr } from "@/lib/fechas/calendario";
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** hasta + 1 día (YYYY-MM-DD) para usar rango [desde, hastaEx) inclusivo del último día. */
+function plusOneDay(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 /**
  * GET /api/reportes/campanas-meta/{adId}/conversaciones
@@ -61,6 +70,14 @@ export async function GET(
     const targetAdId = isUrlFallback ? null : decoded;
     const targetSourceUrl = isUrlFallback ? decoded.slice(4) : null;
 
+    // Rango de fechas: DEBE coincidir con el del reporte (KPI). Si el front no lo
+    // manda, no se filtra por fecha (comportamiento histórico: todo el período).
+    const { searchParams } = new URL(request.url);
+    const dRaw = toCalendarDateStr(searchParams.get("desde") ?? "");
+    const hRaw = toCalendarDateStr(searchParams.get("hasta") ?? "");
+    const desde = DATE_RE.test(dRaw) ? dRaw : null;
+    const hasta = DATE_RE.test(hRaw) ? hRaw : null;
+
     // 1) Atribuciones del anuncio
     type AttrRow = {
       conversation_id: string;
@@ -86,7 +103,10 @@ export async function GET(
       )
       .eq("empresa_id", empresaId)
       .order("first_message_at", { ascending: false })
-      .limit(500);
+      .limit(2000);
+    // Mismo criterio de rango que el KPI del reporte: [desde 00:00, hasta+1día 00:00).
+    if (desde) q = q.gte("first_message_at", `${desde}T00:00:00Z`);
+    if (hasta) q = q.lt("first_message_at", `${plusOneDay(hasta)}T00:00:00Z`);
     if (targetAdId) q = q.eq("meta_ad_id", targetAdId);
     else if (targetSourceUrl) q = q.eq("meta_source_url", targetSourceUrl).is("meta_ad_id", null);
 

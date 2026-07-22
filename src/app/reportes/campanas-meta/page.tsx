@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Megaphone,
   Users,
@@ -203,8 +203,14 @@ export default function ReporteCampanasMetaPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drill, setDrill] = useState<{ campana: Campana; detalle: Detalle | null; loading: boolean } | null>(null);
+  /** Rango que generó el reporte visible; el detalle de anuncio usa el MISMO para coincidir con los KPIs. */
+  const appliedRangeRef = useRef<{ desde: string; hasta: string }>({
+    desde: mesActual.inicioYmd,
+    hasta: mesActual.finYmd,
+  });
 
   const cargar = useCallback(async (d: string, h: string, oc: string, ad: string, red: string) => {
+    appliedRangeRef.current = { desde: d, hasta: h };
     setCargando(true);
     setError(null);
     try {
@@ -240,8 +246,12 @@ export default function ReporteCampanasMetaPage() {
     setDrill({ campana: c, detalle: null, loading: true });
     try {
       const adKey = c.meta_ad_id ?? c.key;
+      const { desde: dRange, hasta: hRange } = appliedRangeRef.current;
+      const qs = new URLSearchParams();
+      if (dRange) qs.set("desde", dRange);
+      if (hRange) qs.set("hasta", hRange);
       const res = await fetchWithSupabaseSession(
-        `/api/reportes/campanas-meta/${encodeURIComponent(adKey)}/conversaciones`,
+        `/api/reportes/campanas-meta/${encodeURIComponent(adKey)}/conversaciones?${qs.toString()}`,
         { cache: "no-store" }
       );
       const json = await res.json();

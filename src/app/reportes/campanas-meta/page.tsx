@@ -648,6 +648,41 @@ function Drawer({
   onClose: () => void;
 }) {
   const { campana: c, detalle, loading } = drill;
+
+  /** Exporta los leads/conversaciones de este anuncio a CSV (se abre en Excel). Número primero. */
+  function exportarExcel() {
+    if (!detalle || detalle.conversaciones.length === 0) return;
+    const headers = ["Numero", "Nombre", "CRM", "Primer mensaje", "Ultimo mensaje", "Mensajes", "Estado"];
+    const esc = (v: unknown) => {
+      const s = String(v ?? "").replace(/"/g, '""');
+      return /[",\n;]/.test(s) ? `"${s}"` : s;
+    };
+    const filas = detalle.conversaciones.map((cv) =>
+      [
+        cv.telefono ?? "",
+        (cv.nombre ?? cv.prospecto_contacto ?? "").trim(),
+        cv.numero_control ?? "",
+        (cv.first_message_at ?? "").slice(0, 10),
+        (cv.last_message_at ?? "").slice(0, 10),
+        cv.message_count ?? 0,
+        cv.cierre_estado ?? "Sin tipificar",
+      ]
+        .map(esc)
+        .join(",")
+    );
+    // BOM UTF-8 para que Excel respete acentos.
+    const csv = "﻿" + [headers.join(","), ...filas].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-${c.meta_ad_id ?? "anuncio"}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   return (
     <div
       role="dialog"
@@ -727,9 +762,24 @@ function Drawer({
                 Leads / Conversaciones
               </h4>
               {detalle ? (
-                <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                   {detalle.conversaciones.length}
                 </span>
+              ) : null}
+              {detalle && detalle.conversaciones.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={exportarExcel}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/10"
+                  title="Descargar los números en Excel (CSV)"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Exportar Excel
+                </button>
               ) : null}
             </div>
 

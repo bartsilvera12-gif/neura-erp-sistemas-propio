@@ -2992,7 +2992,7 @@ export function ConversacionesClient({
                   key={c.id}
                   type="button"
                   onClick={() => handleSelect(c.id)}
-                  className={`w-full text-left px-3 py-2 border-b border-slate-100 transition-colors ${
+                  className={`w-full text-left px-3 py-2 border-b border-slate-100 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_76px] ${
                     isSelected ? "bg-white border-l-[3px] border-l-[#4FAEB2]" : "hover:bg-white"
                   }`}
                 >
@@ -3567,7 +3567,10 @@ export function ConversacionesClient({
                     return (
                       <div
                         key={m.id}
-                        className={`flex ${m.from_me ? "justify-end" : "justify-start"} py-1.5 ${
+                        // content-visibility: el navegador NO pinta los mensajes fuera de
+                        // pantalla (menos jank al scrollear). `auto` en contain-intrinsic-size
+                        // hace que recuerde la altura real de cada uno → sin saltos de scroll.
+                        className={`flex ${m.from_me ? "justify-end" : "justify-start"} py-1.5 [content-visibility:auto] [contain-intrinsic-size:auto_56px] ${
                           idx > 0 ? "border-t border-slate-200/55" : ""
                         }`}
                       >

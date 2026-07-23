@@ -304,6 +304,20 @@ export async function handleSifenConsultaLotePost(
     );
   }
 
+  // Hook contable (best-effort): si el DTE quedó recién APROBADO, generar el
+  // asiento de venta. Nunca lanza ni altera el DTE aprobado; el backfill/sweep
+  // es la red de seguridad idempotente para cualquier aprobación no cubierta.
+  if (marcaAprobacion != null) {
+    try {
+      const { fetchDataSchemaForEmpresaId } = await import("@/lib/supabase/empresa-data-schema");
+      const { contabilizarFacturaVenta } = await import("@/lib/contabilidad/ventas-asientos-pg");
+      const schema = await fetchDataSchemaForEmpresaId(auth.empresa_id);
+      await contabilizarFacturaVenta(schema, auth.empresa_id, fid, null);
+    } catch (e) {
+      console.error("[consulta-lote] hook contable factura", e instanceof Error ? e.message : e);
+    }
+  }
+
   const dto = toFacturaElectronicaDto(updatedRow as Record<string, unknown>);
   const loteEnProcesamiento =
     !resp.soapFault && resp.detalle_por_cdc.length === 0 && estadoFinal === "enviado";

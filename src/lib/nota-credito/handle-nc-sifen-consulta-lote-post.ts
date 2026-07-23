@@ -282,6 +282,15 @@ export async function handleNcSifenConsultaLotePost(
       return NextResponse.json(errorResponse(`RPC aprobación NC: ${rpcErr.message}`), { status: 409 });
     }
 
+    // Hook contable (best-effort): asiento inverso de la NC recién aprobada.
+    // Nunca lanza; el backfill/sweep es la red de seguridad idempotente.
+    try {
+      const { contabilizarNotaCreditoVenta } = await import("@/lib/contabilidad/ventas-asientos-pg");
+      await contabilizarNotaCreditoVenta(dataSchema, auth.empresa_id, nid, null);
+    } catch (e) {
+      console.error("[nc consulta-lote] hook contable NC", e instanceof Error ? e.message : e);
+    }
+
     const { data: facPost } = await supabase
       .from("facturas")
       .select("estado, saldo")

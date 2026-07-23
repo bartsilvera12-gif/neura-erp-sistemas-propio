@@ -70,8 +70,17 @@ function sameAdvisorWindowMs(value: number, unit: "hours" | "days"): number {
  */
 export async function assignConversation(
   supabase: SupabaseAdmin,
-  conversationId: string
+  conversationId: string,
+  opts?: {
+    /**
+     * Fuerza el reparto equitativo aunque la conversación YA tenga asesor, e ignora
+     * la ventana "mismo asesor" (sticky). Se usa en campañas para redistribuir
+     * conversaciones INACTIVAS entre los asesores ready (no respeta dueño previo).
+     */
+    forzarReparto?: boolean;
+  }
 ): Promise<AssignConversationResult> {
+  const forzarReparto = opts?.forzarReparto === true;
   const cid = conversationId.trim();
   if (!cid) return { ok: false, error: "conversation_id vacío" };
 
@@ -86,7 +95,8 @@ export async function assignConversation(
   if (convErr) return { ok: false, error: convErr.message };
   if (!conv?.id) return { ok: false, error: "Conversación no encontrada" };
 
-  if (conv.assigned_agent_id) {
+  // Con forzarReparto se redistribuye aunque ya tenga asesor (campañas → conversación inactiva).
+  if (conv.assigned_agent_id && !forzarReparto) {
     return { ok: true, assigned: false, reason: "already_assigned" };
   }
 
@@ -205,7 +215,8 @@ export async function assignConversation(
   /** Misma asesor: ancla = última asignación persistida en el contacto para este canal (last_routed_at). */
   let sameAdvisorPick: EligibleAgent | null = null;
   const sa = routing.same_advisor_window;
-  if (sa?.enabled && contactId && channelId) {
+  // Con forzarReparto se ignora el sticky "mismo asesor" para repartir parejo.
+  if (!forzarReparto && sa?.enabled && contactId && channelId) {
     const { data: cRow, error: ctErr } = await supabase
       .from("chat_contacts")
       .select("last_routed_chat_agent_id, last_routed_at, last_routed_channel_id")

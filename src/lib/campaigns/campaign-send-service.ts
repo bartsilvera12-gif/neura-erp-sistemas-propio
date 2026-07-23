@@ -19,6 +19,13 @@ import { ensureCentralChatConversationMirror } from "@/lib/chat/central-chat-con
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 
+/**
+ * Días sin movimiento (mensaje entrante o saliente) para considerar una conversación
+ * INACTIVA y redistribuirla equitativamente cuando una campaña la toca. Las cerradas
+ * también se consideran inactivas siempre. Ver `ensureContactAndConversationForCampaign`.
+ */
+const CAMPANA_REPARTO_INACTIVA_DIAS = 15;
+
 export type CampaignOutboundRow = {
   id: string;
   empresa_id: string;
@@ -69,12 +76,45 @@ async function ensureContactAndConversationForCampaign(
 
   const { data: existingConv } = await supabase
     .from("chat_conversations")
-    .select("id")
+    .select("id, status, last_message_at")
     .eq("contact_id", contactId)
     .eq("channel_id", campaign.channel_id)
     .maybeSingle();
 
   if (existingConv?.id) {
+    // Reparto equitativo en campañas: si la conversación está INACTIVA (cerrada, o sin
+    // ningún mensaje —entrante o saliente— hace más de N días), se redistribuye entre los
+    // asesores ready en vez de quedar con su dueño histórico (levantar chats muertos y
+    // repartirlos parejo). Las ACTIVAS (abiertas con movimiento reciente) NO se tocan:
+    // alguien las está trabajando. La inactividad se mide ANTES de mandar el mensaje.
+    const st = String((existingConv as { status?: string | null }).status ?? "").toLowerCase();
+    const lastMsg = (existingConv as { last_message_at?: string | null }).last_message_at ?? null;
+    const sinMovimiento =
+      !lastMsg ||
+      Date.now() - new Date(lastMsg).getTime() > CAMPANA_REPARTO_INACTIVA_DIAS * 86_400_000;
+    const inactiva = st === "closed" || sinMovimiento;
+
+    if (inactiva) {
+      // Si estaba cerrada, reabrirla para que el asesor asignado la vea como chat activo.
+      if (st === "closed") {
+        await supabase
+          .from("chat_conversations")
+          .update({
+            status: "open",
+            closed_at: null,
+            closed_by_usuario_id: null,
+            human_taken_over: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingConv.id as string)
+          .eq("empresa_id", campaign.empresa_id);
+      }
+      const ar = await assignConversation(supabase, existingConv.id as string, {
+        forzarReparto: true,
+      });
+      if (!ar.ok) console.warn("[campaign-send] reparto conversación inactiva:", ar.error);
+    }
+
     const tenantDs = await fetchDataSchemaForEmpresaId(campaign.empresa_id);
     await ensureCentralChatConversationMirror({
       pool: getChatPostgresPool(),

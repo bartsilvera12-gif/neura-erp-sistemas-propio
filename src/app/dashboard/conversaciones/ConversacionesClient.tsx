@@ -5,6 +5,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
+  readInboxList,
+  writeInboxList,
+  readThread,
+  writeThread,
+} from "@/lib/chat/inbox-local-cache";
+import {
   trackInboxPollingList,
   trackInboxPollingThread,
   trackInboxRealtimeEvent,
@@ -726,6 +732,8 @@ export function ConversacionesClient({
             filters: filters ?? null,
           });
           setConversations(rows);
+          // Cache local del inbox por defecto (sin búsqueda) → apertura instantánea al volver.
+          if (!qNow) writeInboxList(vista, rows);
         }
         if (!silent && previousCount === 0) {
           chatListUiLog("initial-data", {
@@ -770,7 +778,15 @@ export function ConversacionesClient({
 
     if (!silent) {
       setMessagesError(null);
-      const cached = messagesSessionCacheRef.current.get(conversationId);
+      let cached = messagesSessionCacheRef.current.get(conversationId);
+      // Fallback al cache local persistente (sobrevive recargas) → chat instantáneo al reabrir.
+      if (!cached || cached.length === 0) {
+        const persisted = readThread<ChatMessage>(conversationId);
+        if (persisted && persisted.length > 0) {
+          cached = persisted;
+          messagesSessionCacheRef.current.set(conversationId, persisted);
+        }
+      }
       if (cached && cached.length > 0) {
         setMessages(cached);
         setLoadingMsg(false);
@@ -811,6 +827,7 @@ export function ConversacionesClient({
       }
       const mapped = json.data.map(mapRowToMessage);
       messagesSessionCacheRef.current.set(conversationId, mapped);
+      writeThread(conversationId, mapped); // persistir → reapertura instantánea tras recarga
 
       if (silent) {
         if (selectedIdRef.current !== conversationId) return;
@@ -1013,8 +1030,19 @@ export function ConversacionesClient({
   }, [vista]);
 
   useEffect(() => {
-    setLoadingList(true);
-    void loadConversations();
+    // Apertura instantánea: si hay cache local del inbox por defecto (sin búsqueda), lo
+    // pintamos YA y refrescamos en segundo plano (silent). Si no, carga normal con spinner.
+    const noQuery = !debouncedQRef.current.trim();
+    const cached = noQuery ? readInboxList<InboxConversation>(vista) : null;
+    if (cached && cached.length > 0) {
+      setConversations(cached);
+      setLoadingList(false);
+      void loadConversations({ silent: true });
+    } else {
+      setLoadingList(true);
+      void loadConversations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadConversations, inboxFilterKey]);
 
   // Debounce del buscador (300ms) → término server-side. Resetea la ventana a la primera página.

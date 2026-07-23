@@ -664,6 +664,9 @@ export function ConversacionesClient({
   const messagesLoadGenRef = useRef(0);
   /** Cache en memoria por sesión: reabrir conversación muestra historial al instante y refresca después. */
   const messagesSessionCacheRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  /** Prefetch al hover: conversaciones ya precargadas (dedupe) + timer del delay. */
+  const prefetchedRef = useRef<Set<string>>(new Set());
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadConversations = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -1019,6 +1022,7 @@ export function ConversacionesClient({
       }
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
     };
   }, []);
 
@@ -1644,6 +1648,36 @@ export function ConversacionesClient({
     const el = messagesScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [pendingSends.length]);
+
+  /**
+   * Prefetch al pasar el mouse: precarga (silencioso) los mensajes de la conversación al
+   * cache, para que al hacer clic abra INSTANTÁNEO. Silent + no seleccionada = puebla el
+   * cache sin tocar la UI. Dedupe por conversación y salteo si ya está cacheada.
+   */
+  const prefetchConversation = useCallback((id: string) => {
+    const cid = id.trim();
+    if (!cid || cid === selectedIdRef.current) return;
+    if (prefetchedRef.current.has(cid)) return;
+    if ((messagesSessionCacheRef.current.get(cid)?.length ?? 0) > 0) return;
+    prefetchedRef.current.add(cid);
+    void loadMessagesRef.current(cid, { silent: true });
+  }, []);
+
+  const onHoverConversation = useCallback(
+    (id: string) => {
+      if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+      // pequeño delay: evita precargar en pasadas rápidas del cursor.
+      prefetchTimerRef.current = setTimeout(() => prefetchConversation(id), 120);
+    },
+    [prefetchConversation]
+  );
+
+  const onLeaveConversation = useCallback(() => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  }, []);
 
   const handleSelect = useCallback(
     async (id: string) => {
@@ -2992,6 +3026,9 @@ export function ConversacionesClient({
                   key={c.id}
                   type="button"
                   onClick={() => handleSelect(c.id)}
+                  onMouseEnter={() => onHoverConversation(c.id)}
+                  onMouseLeave={onLeaveConversation}
+                  onFocus={() => prefetchConversation(c.id)}
                   className={`w-full text-left px-3 py-2 border-b border-slate-100 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_76px] ${
                     isSelected ? "bg-white border-l-[3px] border-l-[#4FAEB2]" : "hover:bg-white"
                   }`}

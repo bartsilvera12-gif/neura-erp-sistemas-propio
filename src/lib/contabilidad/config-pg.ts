@@ -10,34 +10,40 @@ function pool() {
 }
 
 const CONFIG_FIELDS = [
+  // Compras
   "cuenta_iva_credito_5_id",
   "cuenta_iva_credito_10_id",
   "cuenta_proveedores_id",
   "cuenta_caja_id",
   "cuenta_banco_id",
+  // Ventas (Fase 0)
+  "cuenta_iva_debito_5_id",
+  "cuenta_iva_debito_10_id",
+  "cuenta_ventas_gravadas_id",
+  "cuenta_ventas_exentas_id",
+  "cuenta_ventas_servicios_id",
+  "cuenta_clientes_id",
 ] as const;
 type ConfigField = (typeof CONFIG_FIELDS)[number];
 
-export interface ConfigContableView {
-  cuenta_iva_credito_5_id: string | null;
-  cuenta_iva_credito_10_id: string | null;
-  cuenta_proveedores_id: string | null;
-  cuenta_caja_id: string | null;
-  cuenta_banco_id: string | null;
-}
+const EMPTY_CONFIG: ConfigContableView = {
+  cuenta_iva_credito_5_id: null, cuenta_iva_credito_10_id: null, cuenta_proveedores_id: null,
+  cuenta_caja_id: null, cuenta_banco_id: null,
+  cuenta_iva_debito_5_id: null, cuenta_iva_debito_10_id: null, cuenta_ventas_gravadas_id: null,
+  cuenta_ventas_exentas_id: null, cuenta_ventas_servicios_id: null, cuenta_clientes_id: null,
+};
+
+export type ConfigContableView = Record<ConfigField, string | null>;
 
 export async function getConfigView(schemaRaw: string, empresaId: string): Promise<ConfigContableView> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = quoteSchemaTable(schema, "configuracion_contable");
+  const cols = CONFIG_FIELDS.join(", ");
   const { rows } = await pool().query<ConfigContableView>(
-    `SELECT cuenta_iva_credito_5_id, cuenta_iva_credito_10_id, cuenta_proveedores_id, cuenta_caja_id, cuenta_banco_id
-       FROM ${t} WHERE empresa_id = $1::uuid`,
+    `SELECT ${cols} FROM ${t} WHERE empresa_id = $1::uuid`,
     [empresaId]
   );
-  return rows[0] ?? {
-    cuenta_iva_credito_5_id: null, cuenta_iva_credito_10_id: null, cuenta_proveedores_id: null,
-    cuenta_caja_id: null, cuenta_banco_id: null,
-  };
+  return rows[0] ?? { ...EMPTY_CONFIG };
 }
 
 /** Guarda la configuración; valida que cada cuenta elegida sea activa + asentable. */
@@ -46,10 +52,7 @@ export async function saveConfig(schemaRaw: string, empresaId: string, body: Rec
   const t = quoteSchemaTable(schema, "configuracion_contable");
   const tPC = quoteSchemaTable(schema, "plan_cuentas");
 
-  const values: Record<ConfigField, string | null> = {
-    cuenta_iva_credito_5_id: null, cuenta_iva_credito_10_id: null, cuenta_proveedores_id: null,
-    cuenta_caja_id: null, cuenta_banco_id: null,
-  };
+  const values: Record<ConfigField, string | null> = { ...EMPTY_CONFIG };
   const idsToValidate: string[] = [];
   for (const f of CONFIG_FIELDS) {
     const v = body[f];
@@ -69,17 +72,19 @@ export async function saveConfig(schemaRaw: string, empresaId: string, body: Rec
     }
   }
 
+  // INSERT/UPDATE dinámico sobre todos los campos (compras + ventas).
+  // $1 = empresa_id; $2..$(n+1) = campos; $(n+2) = updated_by.
+  const cols = CONFIG_FIELDS.join(", ");
+  const insertVals = CONFIG_FIELDS.map((_, i) => `$${i + 2}::uuid`).join(", ");
+  const updateSet = CONFIG_FIELDS.map((f) => `${f} = EXCLUDED.${f}`).join(", ");
+  const params = [empresaId, ...CONFIG_FIELDS.map((f) => values[f]), userId];
   await pool().query(
-    `INSERT INTO ${t} (empresa_id, cuenta_iva_credito_5_id, cuenta_iva_credito_10_id, cuenta_proveedores_id, cuenta_caja_id, cuenta_banco_id, updated_by)
-     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $7::uuid)
+    `INSERT INTO ${t} (empresa_id, ${cols}, updated_by)
+     VALUES ($1::uuid, ${insertVals}, $${CONFIG_FIELDS.length + 2}::uuid)
      ON CONFLICT (empresa_id) DO UPDATE SET
-       cuenta_iva_credito_5_id = EXCLUDED.cuenta_iva_credito_5_id,
-       cuenta_iva_credito_10_id = EXCLUDED.cuenta_iva_credito_10_id,
-       cuenta_proveedores_id = EXCLUDED.cuenta_proveedores_id,
-       cuenta_caja_id = EXCLUDED.cuenta_caja_id,
-       cuenta_banco_id = EXCLUDED.cuenta_banco_id,
+       ${updateSet},
        updated_by = EXCLUDED.updated_by, updated_at = now()`,
-    [empresaId, values.cuenta_iva_credito_5_id, values.cuenta_iva_credito_10_id, values.cuenta_proveedores_id, values.cuenta_caja_id, values.cuenta_banco_id, userId]
+    params
   );
   return getConfigView(schema, empresaId);
 }

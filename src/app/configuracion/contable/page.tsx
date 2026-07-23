@@ -13,20 +13,41 @@ interface Config {
   cuenta_proveedores_id: string | null;
   cuenta_caja_id: string | null;
   cuenta_banco_id: string | null;
+  cuenta_iva_debito_5_id: string | null;
+  cuenta_iva_debito_10_id: string | null;
+  cuenta_ventas_gravadas_id: string | null;
+  cuenta_ventas_exentas_id: string | null;
+  cuenta_ventas_servicios_id: string | null;
+  cuenta_clientes_id: string | null;
 }
 interface Periodo { id: string; anio: number; mes: number; estado: string; cerrado_at: string | null }
 
-const FIELDS: { key: keyof Config; label: string }[] = [
+const EMPTY: Config = {
+  cuenta_iva_credito_5_id: null, cuenta_iva_credito_10_id: null, cuenta_proveedores_id: null,
+  cuenta_caja_id: null, cuenta_banco_id: null,
+  cuenta_iva_debito_5_id: null, cuenta_iva_debito_10_id: null, cuenta_ventas_gravadas_id: null,
+  cuenta_ventas_exentas_id: null, cuenta_ventas_servicios_id: null, cuenta_clientes_id: null,
+};
+
+const FIELDS_COMPRAS: { key: keyof Config; label: string }[] = [
   { key: "cuenta_iva_credito_5_id", label: "Cuenta de IVA Crédito 5%" },
   { key: "cuenta_iva_credito_10_id", label: "Cuenta de IVA Crédito 10%" },
   { key: "cuenta_proveedores_id", label: "Cuenta general de Proveedores" },
   { key: "cuenta_caja_id", label: "Cuenta predeterminada de Caja" },
   { key: "cuenta_banco_id", label: "Cuenta predeterminada de Banco" },
 ];
+const FIELDS_VENTAS: { key: keyof Config; label: string }[] = [
+  { key: "cuenta_iva_debito_5_id", label: "Cuenta de IVA Débito 5%" },
+  { key: "cuenta_iva_debito_10_id", label: "Cuenta de IVA Débito 10%" },
+  { key: "cuenta_ventas_gravadas_id", label: "Cuenta de Ventas Gravadas" },
+  { key: "cuenta_ventas_exentas_id", label: "Cuenta de Ventas Exentas" },
+  { key: "cuenta_ventas_servicios_id", label: "Cuenta de Ventas de Servicios" },
+  { key: "cuenta_clientes_id", label: "Cuenta general de Clientes (CxC)" },
+];
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 export default function ConfiguracionContablePage() {
-  const [config, setConfig] = useState<Config>({ cuenta_iva_credito_5_id: null, cuenta_iva_credito_10_id: null, cuenta_proveedores_id: null, cuenta_caja_id: null, cuenta_banco_id: null });
+  const [config, setConfig] = useState<Config>(EMPTY);
   const [cuentas, setCuentas] = useState<CuentaContableOpcion[]>([]);
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,21 +96,32 @@ export default function ConfiguracionContablePage() {
       {msg && <div className={`rounded-lg border p-3 text-sm ${msg.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>{msg.text}</div>}
 
       <ConfigFormCard>
-        <ConfigSectionTitle>Cuentas por defecto</ConfigSectionTitle>
-        <p className="mb-4 text-xs text-slate-400">Solo se listan cuentas activas y asentables (imputables). Si falta una cuenta adecuada (Proveedores, Caja, Banco o IVA), creá una subcuenta asentable desde el Plan de Cuentas.</p>
+        <ConfigSectionTitle>Cuentas de Compras</ConfigSectionTitle>
+        <p className="mb-4 text-xs text-slate-400">Solo se listan cuentas activas y asentables (imputables). Si falta una cuenta adecuada, creá una subcuenta asentable desde el Plan de Cuentas.</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {FIELDS.map((f) => (
+          {FIELDS_COMPRAS.map((f) => (
             <div key={f.key}>
               <label className={F_LABEL}>{f.label}</label>
-              <CuentaCombobox
-                cuentas={cuentas}
-                value={(config[f.key] as string) ?? null}
-                onChange={(id) => setConfig((c) => ({ ...c, [f.key]: id }))}
-                placeholder="(Sin configurar)"
-              />
+              <CuentaCombobox cuentas={cuentas} value={(config[f.key] as string) ?? null}
+                onChange={(id) => setConfig((c) => ({ ...c, [f.key]: id }))} placeholder="(Sin configurar)" />
             </div>
           ))}
         </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <ConfigSectionTitle>Cuentas de Ventas</ConfigSectionTitle>
+          <p className="mb-4 text-xs text-slate-400">Se usarán para los asientos de venta (IVA Débito y cuentas de ingreso). El Libro de Ventas no las requiere para listar.</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {FIELDS_VENTAS.map((f) => (
+              <div key={f.key}>
+                <label className={F_LABEL}>{f.label}</label>
+                <CuentaCombobox cuentas={cuentas} value={(config[f.key] as string) ?? null}
+                  onChange={(id) => setConfig((c) => ({ ...c, [f.key]: id }))} placeholder="(Sin configurar)" />
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="mt-4 flex justify-end">
           <button onClick={guardar} disabled={saving || loading} className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">{saving ? "Guardando…" : "Guardar configuración"}</button>
         </div>

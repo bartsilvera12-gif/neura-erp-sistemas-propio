@@ -210,7 +210,14 @@ export async function assignConversation(
   const eligibleOnline = filterAgentsUnderCap(onlineAgents, loadById);
   const eligibleReady = filterAgentsUnderCap(readyAgents, loadById);
   const usedFallback = eligibleOnline.length === 0 && eligibleReady.length > 0;
-  const eligible = eligibleOnline.length > 0 ? eligibleOnline : eligibleReady;
+  // Campañas (forzarReparto): repartir entre TODOS los ready por igual, sin priorizar a los
+  // que tienen el inbox abierto (online). Así el round-robin no depende de quién esté con la
+  // app abierta y se reparte parejo. El inbox orgánico sí mantiene la prioridad online.
+  const eligible = forzarReparto
+    ? eligibleReady
+    : eligibleOnline.length > 0
+      ? eligibleOnline
+      : eligibleReady;
 
   /** Misma asesor: ancla = última asignación persistida en el contacto para este canal (last_routed_at). */
   let sameAdvisorPick: EligibleAgent | null = null;

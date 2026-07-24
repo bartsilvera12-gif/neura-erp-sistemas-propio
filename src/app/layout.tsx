@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import AppShell from "../components/AppShell";
 import MobileAppShell from "../mobile/layout/MobileAppShell";
@@ -22,6 +22,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Neura ERP",
   description: "Sistema de gestión empresarial de Neura",
+};
+
+/**
+ * `viewport-fit=cover` habilita las variables `env(safe-area-inset-*)` en iOS (notch/barra de
+ * estado). Sin esto devuelven 0 y los headers con padding de safe-area se solapaban con el reloj
+ * del iPhone. Los inset valen 0 en desktop/Android sin notch, así que no afecta esas plataformas.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

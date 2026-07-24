@@ -1629,7 +1629,14 @@ export function ConversacionesClient({
     if (!el) return;
     if (!stickBottomRef.current && prev !== null) return;
 
+    const abrirChat = prev === null; // primera carga del hilo → siempre abrir al fondo
     el.scrollTop = el.scrollHeight;
+    // Re-scroll en el siguiente frame: cubre layout tardío (imágenes que cargan, hidratación
+    // desde cache) para que SIEMPRE quede al fondo al abrir. En mensajes nuevos solo si sigue pegado.
+    requestAnimationFrame(() => {
+      const el2 = messagesScrollRef.current;
+      if (el2 && (abrirChat || stickBottomRef.current)) el2.scrollTop = el2.scrollHeight;
+    });
   }, [messages, selectedId]);
 
   // Auto-alto del composer (tipo WhatsApp): crece con el texto hasta ~6 líneas y luego hace
@@ -3604,10 +3611,11 @@ export function ConversacionesClient({
                     return (
                       <div
                         key={m.id}
-                        // content-visibility: el navegador NO pinta los mensajes fuera de
-                        // pantalla (menos jank al scrollear). `auto` en contain-intrinsic-size
-                        // hace que recuerde la altura real de cada uno → sin saltos de scroll.
-                        className={`flex ${m.from_me ? "justify-end" : "justify-start"} py-1.5 [content-visibility:auto] [contain-intrinsic-size:auto_56px] ${
+                        // Nota: NO usar content-visibility acá. El hilo abre con scroll-al-fondo
+                        // (scrollTop = scrollHeight) y content-visibility hace que scrollHeight
+                        // se calcule con alturas ESTIMADAS de los mensajes fuera de pantalla →
+                        // el scroll no llegaba al final. Se mantiene solo en la LISTA (segura).
+                        className={`flex ${m.from_me ? "justify-end" : "justify-start"} py-1.5 ${
                           idx > 0 ? "border-t border-slate-200/55" : ""
                         }`}
                       >

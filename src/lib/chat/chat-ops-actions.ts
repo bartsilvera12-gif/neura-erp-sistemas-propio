@@ -568,6 +568,10 @@ async function loadMonitoringDashboardForContext(
         .eq("empresa_id", empresa_id)
         .not("assigned_agent_id", "is", null)
         .is("first_human_response_at", null)
+        // Solo cuentan los chats donde el CLIENTE escribió y espera respuesta. Excluye
+        // conversaciones "outbound-only" (campañas masivas donde el contacto nunca respondió),
+        // que antes ensuciaban esta vista tras el reparto de campañas.
+        .not("last_customer_message_at", "is", null)
         .in("status", ["open", "pending"]);
       q = (await scopedConv(q)).builder;
       return await q;
@@ -581,6 +585,10 @@ async function loadMonitoringDashboardForContext(
         .eq("empresa_id", empresa_id)
         .not("assigned_agent_id", "is", null)
         .is("first_human_response_at", null)
+        // Solo cuentan los chats donde el CLIENTE escribió y espera respuesta. Excluye
+        // conversaciones "outbound-only" (campañas masivas donde el contacto nunca respondió),
+        // que antes ensuciaban esta vista tras el reparto de campañas.
+        .not("last_customer_message_at", "is", null)
         .in("status", ["open", "pending"]);
       q = (await scopedConv(q)).builder;
       const r = await q.order("last_message_at", { ascending: false, nullsFirst: false }).limit(150);
@@ -1141,7 +1149,9 @@ async function loadSupervisorAgentLoadsWithContext(
       tally.set(aid, (tally.get(aid) ?? 0) + 1);
       const st = row.status;
       const fh = row.first_human_response_at;
-      if ((st === "open" || st === "pending") && (fh == null || fh === "")) {
+      const lcm = (row as { last_customer_message_at?: string | null }).last_customer_message_at;
+      // Solo si el CLIENTE escribió y espera (excluye outbound-only de campañas).
+      if ((st === "open" || st === "pending") && (fh == null || fh === "") && lcm != null) {
         pendingFirst.set(aid, (pendingFirst.get(aid) ?? 0) + 1);
       }
     }
@@ -1170,7 +1180,7 @@ async function loadSupervisorAgentLoadsWithContext(
   const agentIds = agents.map((a) => a.id);
   let cq = supabase
     .from("chat_conversations")
-    .select("assigned_agent_id, first_human_response_at, status")
+    .select("assigned_agent_id, first_human_response_at, status, last_customer_message_at")
     .eq("empresa_id", empresa_id)
     .in("assigned_agent_id", agentIds)
     .neq("status", "closed");
@@ -1200,7 +1210,9 @@ async function loadSupervisorAgentLoadsWithContext(
     tally.set(aid, (tally.get(aid) ?? 0) + 1);
     const st = (row as { status?: string }).status;
     const fh = (row as { first_human_response_at?: string | null }).first_human_response_at;
-    if ((st === "open" || st === "pending") && (fh == null || fh === "")) {
+    const lcm = (row as { last_customer_message_at?: string | null }).last_customer_message_at;
+    // Solo si el CLIENTE escribió y espera (excluye outbound-only de campañas).
+    if ((st === "open" || st === "pending") && (fh == null || fh === "") && lcm != null) {
       pendingFirst.set(aid, (pendingFirst.get(aid) ?? 0) + 1);
     }
   }
@@ -1318,17 +1330,22 @@ export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRo
   const agentIds = rows.map((r) => String(r.id));
   const { data: convRows } = await supabase
     .from("chat_conversations")
-    .select("assigned_agent_id, status, first_human_response_at")
+    .select("assigned_agent_id, status, first_human_response_at, last_customer_message_at")
     .eq("empresa_id", empresa_id)
     .in("assigned_agent_id", agentIds)
     .neq("status", "closed");
   const tally = new Map<string, number>();
   const pendingFirst = new Map<string, number>();
-  for (const c of (convRows ?? []) as Array<{ assigned_agent_id: string | null; status?: string; first_human_response_at?: string | null }>) {
+  for (const c of (convRows ?? []) as Array<{ assigned_agent_id: string | null; status?: string; first_human_response_at?: string | null; last_customer_message_at?: string | null }>) {
     const aid = c.assigned_agent_id;
     if (!aid) continue;
     tally.set(aid, (tally.get(aid) ?? 0) + 1);
-    if ((c.status === "open" || c.status === "pending") && (c.first_human_response_at == null || c.first_human_response_at === "")) {
+    // pending_first_reply solo si el CLIENTE escribió y espera (excluye outbound-only de campañas).
+    if (
+      (c.status === "open" || c.status === "pending") &&
+      (c.first_human_response_at == null || c.first_human_response_at === "") &&
+      c.last_customer_message_at != null
+    ) {
       pendingFirst.set(aid, (pendingFirst.get(aid) ?? 0) + 1);
     }
   }

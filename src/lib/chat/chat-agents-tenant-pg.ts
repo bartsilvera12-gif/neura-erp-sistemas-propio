@@ -337,7 +337,12 @@ export async function pgLoadSupervisorAgentConversationStats(
   bypass: boolean,
   agentIds: string[]
 ): Promise<
-  Array<{ assigned_agent_id: string | null; first_human_response_at: string | null; status: string | null }>
+  Array<{
+    assigned_agent_id: string | null;
+    first_human_response_at: string | null;
+    status: string | null;
+    last_customer_message_at: string | null;
+  }>
 > {
   const ids = [...new Set(agentIds.map((x) => String(x ?? "").trim()).filter(Boolean))];
   if (ids.length === 0) return [];
@@ -349,7 +354,7 @@ export async function pgLoadSupervisorAgentConversationStats(
   const qt = quoteSchemaTable(schema, "chat_conversations");
   const params: unknown[] = [empresaId, ids, ...scopeClause.params];
   const q = `
-    SELECT assigned_agent_id::text, first_human_response_at, status::text
+    SELECT assigned_agent_id::text, first_human_response_at, status::text, last_customer_message_at
     FROM ${qt}
     WHERE empresa_id = $1::uuid
       AND assigned_agent_id = ANY($2::uuid[])
@@ -361,5 +366,6 @@ export async function pgLoadSupervisorAgentConversationStats(
     assigned_agent_id: row.assigned_agent_id != null ? String(row.assigned_agent_id) : null,
     first_human_response_at: isoPg(row.first_human_response_at),
     status: row.status != null ? String(row.status) : null,
+    last_customer_message_at: isoPg(row.last_customer_message_at),
   }));
 }

@@ -69,12 +69,12 @@ const REPORTES: ReporteCard[] = [
     href: "/reportes/ventas",
   },
   {
-    title: "Conciliación entre cuentas",
-    subtitle: "Control",
+    title: "Conciliación bancaria",
+    subtitle: "Cobranzas",
     description:
-      "Comparación y control de movimientos entre caja, bancos, transferencias, efectivo y registros del ERP.",
+      "Aprobá o rechazá las transferencias pendientes de conciliación. Al aprobar, se registra el cobro y su asiento contable.",
     icon: Scale,
-    href: "/reportes/conciliacion",
+    href: "/cobranzas/conciliacion",
   },
   {
     title: "Campañas Meta",

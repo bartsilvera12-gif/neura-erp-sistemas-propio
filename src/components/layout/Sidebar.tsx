@@ -143,7 +143,13 @@ const MENU_STRUCTURE: MenuItem[] = [
   },
   { key: "gastos", slug: "gastos", label: "Gastos y Servicios", href: "/gastos", icon: Receipt },
   { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
-  { key: "cobranzas", slug: "cobranzas", label: "Cobranzas", href: "/cobranzas", icon: HandCoins },
+  {
+    key: "cobranzas", slug: "cobranzas", label: "Cobranzas", href: "/cobranzas", icon: HandCoins,
+    children: [
+      { label: "Cobranzas", href: "/cobranzas" },
+      { label: "Conciliación bancaria", href: "/cobranzas/conciliacion" },
+    ],
+  },
   { key: "comisiones", slug: "comisiones", label: "Comisiones", href: "/comisiones", icon: Percent },
   {
     key: "notas_credito",

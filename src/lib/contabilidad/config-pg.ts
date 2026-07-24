@@ -23,6 +23,7 @@ const CONFIG_FIELDS = [
   "cuenta_ventas_exentas_id",
   "cuenta_ventas_servicios_id",
   "cuenta_clientes_id",
+  "cuenta_anticipos_clientes_id",
 ] as const;
 type ConfigField = (typeof CONFIG_FIELDS)[number];
 
@@ -31,6 +32,7 @@ const EMPTY_CONFIG: ConfigContableView = {
   cuenta_caja_id: null, cuenta_banco_id: null,
   cuenta_iva_debito_5_id: null, cuenta_iva_debito_10_id: null, cuenta_ventas_gravadas_id: null,
   cuenta_ventas_exentas_id: null, cuenta_ventas_servicios_id: null, cuenta_clientes_id: null,
+  cuenta_anticipos_clientes_id: null,
 };
 
 export type ConfigContableView = Record<ConfigField, string | null>;

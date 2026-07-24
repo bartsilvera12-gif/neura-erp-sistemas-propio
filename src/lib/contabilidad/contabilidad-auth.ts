@@ -15,7 +15,11 @@ export type ContabilidadApiAuth =
   | { ok: true; empresaId: string; usuarioCatalogId: string; usuarioEmail: string | null; rol: string | null }
   | { ok: false; status: number; message: string };
 
-export async function requireContabilidadApiAccess(request: Request): Promise<ContabilidadApiAuth> {
+/**
+ * Guard genérico: admin/super_admin/bootstrap, o cualquiera de los módulos
+ * `allowedSlugs`. `label` se usa en los mensajes 403.
+ */
+export async function requireModulosApiAccess(request: Request, allowedSlugs: string[], label: string): Promise<ContabilidadApiAuth> {
   const user = await getAuthUserForApiRoute(request);
   if (!user?.id) {
     return { ok: false, status: 401, message: "No autenticado" };
@@ -26,7 +30,7 @@ export async function requireContabilidadApiAccess(request: Request): Promise<Co
 
   if (!usuario?.empresa_id) {
     if (isBootstrapSuperAdminEmail(user.email)) {
-      return { ok: false, status: 403, message: "Seleccioná una empresa para usar Contabilidad" };
+      return { ok: false, status: 403, message: `Seleccioná una empresa para usar ${label}` };
     }
     return { ok: false, status: 403, message: "Usuario sin empresa" };
   }
@@ -45,16 +49,24 @@ export async function requireContabilidadApiAccess(request: Request): Promise<Co
     return ok;
   }
 
-  // Usuario con el módulo/permiso explícito `contabilidad`.
   const modulos = await resolveEffectiveModules(catalog, {
     id: usuario.id,
     empresa_id: usuario.empresa_id,
     rol: usuario.rol,
   });
   const slugs = new Set(modulos.map((m) => (m.slug ?? "").trim().toLowerCase()));
-  if (slugs.has("contabilidad")) {
+  if (allowedSlugs.some((s) => slugs.has(s))) {
     return ok;
   }
 
-  return { ok: false, status: 403, message: "Sin permiso de Contabilidad" };
+  return { ok: false, status: 403, message: `Sin permiso de ${label}` };
+}
+
+export function requireContabilidadApiAccess(request: Request): Promise<ContabilidadApiAuth> {
+  return requireModulosApiAccess(request, ["contabilidad"], "Contabilidad");
+}
+
+/** Acceso a Conciliación bancaria / cobros: Cobranzas o Contabilidad (o admin). */
+export function requireCobranzasApiAccess(request: Request): Promise<ContabilidadApiAuth> {
+  return requireModulosApiAccess(request, ["contabilidad", "cobranzas", "pagos"], "Cobranzas");
 }

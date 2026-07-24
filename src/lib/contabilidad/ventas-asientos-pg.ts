@@ -207,6 +207,14 @@ export async function contabilizarFacturaVenta(schemaRaw: string, empresaId: str
       [facturaId, empresaId, asiento.id]
     );
     await client.query("COMMIT");
+    // Hook best-effort: reclasificar anticipos de cobros de esta factura (Debe
+    // Anticipos / Haber Clientes). El backfill de anticipos es la red de seguridad.
+    try {
+      const { reclasificarAnticiposDeFactura } = await import("@/lib/cobranzas/conciliacion-pg");
+      await reclasificarAnticiposDeFactura(schema, empresaId, facturaId, createdBy);
+    } catch (e2) {
+      console.error("[contabilizarFacturaVenta] hook reclasificacion anticipos", e2 instanceof Error ? e2.message : e2);
+    }
     return { status: "contabilizado", asientoId: asiento.id };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);

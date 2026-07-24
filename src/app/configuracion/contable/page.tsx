@@ -19,6 +19,7 @@ interface Config {
   cuenta_ventas_exentas_id: string | null;
   cuenta_ventas_servicios_id: string | null;
   cuenta_clientes_id: string | null;
+  cuenta_anticipos_clientes_id: string | null;
 }
 interface Periodo { id: string; anio: number; mes: number; estado: string; cerrado_at: string | null }
 
@@ -27,6 +28,7 @@ const EMPTY: Config = {
   cuenta_caja_id: null, cuenta_banco_id: null,
   cuenta_iva_debito_5_id: null, cuenta_iva_debito_10_id: null, cuenta_ventas_gravadas_id: null,
   cuenta_ventas_exentas_id: null, cuenta_ventas_servicios_id: null, cuenta_clientes_id: null,
+  cuenta_anticipos_clientes_id: null,
 };
 
 const FIELDS_COMPRAS: { key: keyof Config; label: string }[] = [
@@ -43,6 +45,7 @@ const FIELDS_VENTAS: { key: keyof Config; label: string }[] = [
   { key: "cuenta_ventas_exentas_id", label: "Cuenta de Ventas Exentas" },
   { key: "cuenta_ventas_servicios_id", label: "Cuenta de Ventas de Servicios" },
   { key: "cuenta_clientes_id", label: "Cuenta general de Clientes (CxC)" },
+  { key: "cuenta_anticipos_clientes_id", label: "Cuenta de Anticipos de Clientes" },
 ];
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 

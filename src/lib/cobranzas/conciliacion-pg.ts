@@ -175,13 +175,14 @@ export async function aprobarTransferencia(schemaRaw: string, empresaId: string,
 
     const esAnticipo = f.estado_contable !== "contabilizado";
 
-    // 1) Nace el pago (reduce saldo).
+    // 1) Nace el pago (reduce saldo). usuario_id se omite: FK a auth.users y el
+    //    userId acá es el id de catálogo ERP. La auditoría queda en cobros_pendientes.aprobado_by.
     const { rows: pr } = await client.query<{ id: string }>(
       `INSERT INTO ${tP} (empresa_id, factura_id, cliente_id, monto, fecha_pago, metodo_pago, referencia,
-         usuario_id, es_anticipo, cobro_pendiente_id)
-       VALUES ($1::uuid,$2::uuid,$3::uuid,$4::numeric,$5::date,'transferencia',$6,$7::uuid,$8::boolean,$9::uuid)
+         es_anticipo, cobro_pendiente_id)
+       VALUES ($1::uuid,$2::uuid,$3::uuid,$4::numeric,$5::date,'transferencia',$6,$7::boolean,$8::uuid)
        RETURNING id`,
-      [empresaId, c.factura_id, f.cliente_id, monto, c.fecha, c.numero_operacion, userId, esAnticipo, cobroId]
+      [empresaId, c.factura_id, f.cliente_id, monto, c.fecha, c.numero_operacion, esAnticipo, cobroId]
     );
     const pagoId = pr[0].id;
 

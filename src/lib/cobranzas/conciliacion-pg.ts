@@ -275,7 +275,7 @@ export async function reclasificarAnticipoPago(schemaRaw: string, empresaId: str
       fecha_contable: p.fecha_pago, glosa: `Aplicación anticipo ${fr[0].numero_factura}`,
       moneda: fr[0].moneda === "USD" ? "USD" : "PYG", tipo_cambio: 1, lineas, createdBy: userId,
     });
-    await client.query(`UPDATE ${tP} SET es_anticipo=false, updated_at=now() WHERE id=$1::uuid AND empresa_id=$2::uuid`, [pagoId, empresaId]);
+    await client.query(`UPDATE ${tP} SET es_anticipo=false WHERE id=$1::uuid AND empresa_id=$2::uuid`, [pagoId, empresaId]);
     await client.query("COMMIT");
     return "reclasificado";
   } catch (e) {

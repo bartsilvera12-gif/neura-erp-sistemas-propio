@@ -243,7 +243,7 @@ export async function rechazarTransferencia(schemaRaw: string, empresaId: string
 // ── Reclasificación de anticipos (al aprobarse el DTE de la factura) ─────────
 
 /** Reclasifica UN pago-anticipo (Debe Anticipos / Haber Clientes). Idempotente. Best-effort. */
-export async function reclasificarAnticipoPago(schemaRaw: string, empresaId: string, pagoId: string, userId: string | null): Promise<"reclasificado" | "omitido" | "error"> {
+export async function reclasificarAnticipoPago(schemaRaw: string, empresaId: string, pagoId: string, userId: string | null): Promise<"reclasificado" | "omitido" | { error: string }> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const tP = quoteSchemaTable(schema, "pagos");
   const tF = quoteSchemaTable(schema, "facturas");
@@ -280,8 +280,9 @@ export async function reclasificarAnticipoPago(schemaRaw: string, empresaId: str
     return "reclasificado";
   } catch (e) {
     await client.query("ROLLBACK").catch(() => null);
-    console.error("[reclasificarAnticipoPago]", e instanceof Error ? e.message : e);
-    return "error";
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[reclasificarAnticipoPago]", msg);
+    return { error: msg };
   } finally {
     client.release();
   }
@@ -298,7 +299,7 @@ export async function reclasificarAnticiposDeFactura(schemaRaw: string, empresaI
   for (const r of rows) await reclasificarAnticipoPago(schema, empresaId, r.id, userId);
 }
 
-export interface SweepAnticiposResult { reclasificados: number; omitidos: number; errores: number }
+export interface SweepAnticiposResult { reclasificados: number; omitidos: number; errores: number; errores_detalle: string[] }
 
 /** Backfill idempotente: reclasifica todo anticipo cuya factura ya tenga asiento de venta. */
 export async function sweepReclasificarAnticipos(schemaRaw: string, empresaId: string, userId: string | null): Promise<SweepAnticiposResult> {
@@ -310,11 +311,11 @@ export async function sweepReclasificarAnticipos(schemaRaw: string, empresaId: s
       WHERE p.empresa_id=$1::uuid AND p.es_anticipo=true AND p.estado_contable='contabilizado' AND f.estado_contable='contabilizado'`,
     [empresaId]
   );
-  const res: SweepAnticiposResult = { reclasificados: 0, omitidos: 0, errores: 0 };
+  const res: SweepAnticiposResult = { reclasificados: 0, omitidos: 0, errores: 0, errores_detalle: [] };
   for (const r of rows) {
     const out = await reclasificarAnticipoPago(schema, empresaId, r.id, userId);
     if (out === "reclasificado") res.reclasificados++;
-    else if (out === "error") res.errores++;
+    else if (typeof out === "object") { res.errores++; res.errores_detalle.push(`${r.id}: ${out.error}`); }
     else res.omitidos++;
   }
   return res;

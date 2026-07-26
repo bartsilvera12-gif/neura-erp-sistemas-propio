@@ -156,20 +156,22 @@ export async function DELETE(
       return NextResponse.json(errorResponse("id inválido"), { status: 400 });
     }
 
-    // Guard: la FK suscripciones.plan_id es ON DELETE SET NULL, así que borrar un plan con
-    // suscripciones las dejaría HUÉRFANAS (plan_id=null → pierden su clasificación de tipo y su
-    // nombre en las facturas). Bloqueamos el borrado; el plan se puede desactivar en su lugar.
-    const { count: subCount, error: subErr } = await supabase
+    // Guard: la FK suscripciones.plan_id es ON DELETE SET NULL, así que borrar un plan dejaría sus
+    // suscripciones con plan_id=null. Eso solo hace daño en las suscripciones VIVAS (activa/pausada),
+    // que perderían su facturación/clasificación. Las canceladas son históricas (clientes dados de
+    // baja/borrados) y es seguro desvincularlas. Por eso bloqueamos solo si hay vivas.
+    const { count: vivasCount, error: subErr } = await supabase
       .from("suscripciones")
       .select("id", { count: "exact", head: true })
-      .eq("plan_id", id);
+      .eq("plan_id", id)
+      .in("estado", ["activa", "pausada"]);
     if (subErr) {
       return NextResponse.json(errorResponse(subErr.message), { status: 400 });
     }
-    if ((subCount ?? 0) > 0) {
+    if ((vivasCount ?? 0) > 0) {
       return NextResponse.json(
         errorResponse(
-          `No se puede eliminar: el plan tiene ${subCount} suscripción(es) asociada(s). ` +
+          `No se puede eliminar: el plan tiene ${vivasCount} suscripción(es) activa(s)/pausada(s). ` +
             `Reasigná esas suscripciones a otro plan o desactivá el plan en lugar de borrarlo.`
         ),
         { status: 409 }

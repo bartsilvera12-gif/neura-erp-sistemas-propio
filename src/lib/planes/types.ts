@@ -33,6 +33,10 @@ export interface Plan {
 
   estado:           EstadoPlan;
 
+  /** Tipo de servicio del plan (slug del catálogo: saas, otro/contable, web, marketing, branding).
+   *  Determina en qué equipo de Cobranzas cae el servicio y cómo se clasifica el ingreso. */
+  tipo_servicio?:   string | null;
+
   /** Si es plan de marketing (genera tareas operativas) */
   es_plan_marketing?: boolean;
   /** Plantilla operativa cuando es_plan_marketing = true */

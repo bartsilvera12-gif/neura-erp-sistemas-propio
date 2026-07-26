@@ -17,6 +17,7 @@ interface PlanRow {
   limite_clientes: number | null;
   limite_facturas: number | null;
   estado: string;
+  tipo_servicio: string | null;
   es_plan_marketing: boolean | null;
   plantilla_operativa: unknown;
   created_at: string;
@@ -39,6 +40,7 @@ function rowToPlan(row: PlanRow): Plan {
     limite_clientes: row.limite_clientes,
     limite_facturas: row.limite_facturas,
     estado: row.estado as EstadoPlan,
+    tipo_servicio: row.tipo_servicio ?? null,
     es_plan_marketing: Boolean(row.es_plan_marketing),
     plantilla_operativa: Array.isArray((plantilla as { items?: unknown })?.items)
       ? (plantilla as PlanMarketingPlantilla)
@@ -138,6 +140,7 @@ export async function savePlan(datos: NuevoPlanData): Promise<PlanGuardadoOk | P
         limite_clientes: datos.limite_clientes,
         limite_facturas: datos.limite_facturas,
         estado: datos.estado,
+        tipo_servicio: datos.tipo_servicio,
         es_plan_marketing: datos.es_plan_marketing,
         plantilla_operativa: datos.plantilla_operativa,
       }),
@@ -171,6 +174,7 @@ export async function updatePlan(
   if (datos.limite_clientes !== undefined) body.limite_clientes = datos.limite_clientes ?? null;
   if (datos.limite_facturas !== undefined) body.limite_facturas = datos.limite_facturas ?? null;
   if (datos.estado !== undefined) body.estado = datos.estado;
+  if (datos.tipo_servicio !== undefined) body.tipo_servicio = datos.tipo_servicio ?? null;
   if (datos.es_plan_marketing !== undefined) body.es_plan_marketing = datos.es_plan_marketing;
   if (datos.plantilla_operativa !== undefined) body.plantilla_operativa = datos.plantilla_operativa;
 

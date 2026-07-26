@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getPlanes, toggleEstadoPlan } from "@/lib/planes/storage";
+import { getPlanes, toggleEstadoPlan, deletePlan } from "@/lib/planes/storage";
 import type { Plan } from "@/lib/planes/types";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import EdgeScrollArea from "@/components/ui/EdgeScrollArea";
 import PlanDetalleModal from "@/app/planes/components/PlanDetalleModal";
 import PlanNuevoModal from "@/app/planes/components/PlanNuevoModal";
+import { fetchTiposFormCliente } from "@/lib/clientes/fetch-tipos-servicio-form";
+import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,6 +73,28 @@ function BadgePeriodicidad({ p }: { p: Plan["periodicidad"] }) {
   );
 }
 
+function BadgeTipo({
+  tipo,
+  labels,
+}: {
+  tipo: string | null | undefined;
+  labels: Record<string, string>;
+}) {
+  const slug = (tipo ?? "").trim();
+  if (!slug) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+        Sin tipo
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+      {etiquetaVisibleTipoServicio(slug, labels)}
+    </span>
+  );
+}
+
 // ── Página ────────────────────────────────────────────────────────────────────
 
 export default function PlanesPage() {
@@ -83,6 +107,14 @@ export default function PlanesPage() {
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [detalleEditing, setDetalleEditing] = useState(false);
+  const [tipoLabels, setTipoLabels] = useState<Record<string, string>>({});
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetchTiposFormCliente().then((filas) =>
+      setTipoLabels(Object.fromEntries(filas.map((f) => [f.slug, f.nombre])))
+    );
+  }, []);
 
   const recargar = () => {
     setCargando(true);
@@ -117,6 +149,8 @@ export default function PlanesPage() {
             p.periodicidad,
             p.moneda,
             formatPrecio(p),
+            p.tipo_servicio ?? "",
+            p.tipo_servicio ? etiquetaVisibleTipoServicio(p.tipo_servicio, tipoLabels) : "",
           ]
             .join(" ")
             .toLowerCase();
@@ -126,7 +160,7 @@ export default function PlanesPage() {
         if (filtroPer && p.periodicidad !== filtroPer) return false;
         return true;
       }),
-    [planes, busqueda, filtroEst, filtroPer]
+    [planes, busqueda, filtroEst, filtroPer, tipoLabels]
   );
 
   const activos = useMemo(
@@ -146,6 +180,26 @@ export default function PlanesPage() {
     const nuevo = plan.estado === "activo" ? "inactivo" : "activo";
     await toggleEstadoPlan(plan.id, nuevo);
     recargar();
+  }
+
+  async function handleEliminar(plan: Plan) {
+    const ok = window.confirm(
+      `¿Eliminar el plan "${plan.nombre}" de forma definitiva?\n\n` +
+        `Esta acción no se puede deshacer. Si el plan tiene suscripciones asociadas, ` +
+        `el sistema no lo va a permitir (desactivalo en su lugar).`
+    );
+    if (!ok) return;
+    setEliminandoId(plan.id);
+    try {
+      const r = await deletePlan(plan.id);
+      if (!r.ok) {
+        window.alert(r.error);
+        return;
+      }
+      recargar();
+    } finally {
+      setEliminandoId(null);
+    }
   }
 
   const hayFiltros = busqueda || filtroEst || filtroPer;
@@ -323,6 +377,7 @@ export default function PlanesPage() {
                   {[
                     "Código",
                     "Nombre",
+                    "Tipo",
                     "Precio",
                     "Periodicidad",
                     "Usuarios",
@@ -371,6 +426,10 @@ export default function PlanesPage() {
                             {plan.descripcion}
                           </p>
                         )}
+                      </td>
+                      {/* Tipo */}
+                      <td className="px-3 py-2.5">
+                        <BadgeTipo tipo={plan.tipo_servicio} labels={tipoLabels} />
                       </td>
                       {/* Precio */}
                       <td className="whitespace-nowrap px-3 py-2.5 tabular-nums font-semibold text-[#3F8E91]">
@@ -482,6 +541,26 @@ export default function PlanesPage() {
                                 />
                               </svg>
                             )}
+                          </button>
+                          <button
+                            type="button"
+                            title="Eliminar plan"
+                            disabled={eliminandoId === plan.id}
+                            onClick={() => void handleEliminar(plan)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="h-3.5 w-3.5"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M8.75 1a1 1 0 0 0-.96.727L7.51 3H4a.75.75 0 0 0 0 1.5h.322l.665 10.64A2 2 0 0 0 6.983 17h6.034a2 2 0 0 0 1.996-1.86L15.678 4.5H16A.75.75 0 0 0 16 3h-3.51l-.28-1.273A1 1 0 0 0 11.25 1h-2.5ZM9 6.75a.75.75 0 0 0-1.5 0v6a.75.75 0 0 0 1.5 0v-6Zm3.5 0a.75.75 0 0 0-1.5 0v6a.75.75 0 0 0 1.5 0v-6Z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
                           </button>
                         </div>
                       </td>

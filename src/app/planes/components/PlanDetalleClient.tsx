@@ -8,6 +8,14 @@ import { FancySelect, type FancySelectOption } from "@/app/dashboard/proyectos/c
 import { getPlan, updatePlan, toggleEstadoPlan, deletePlan } from "@/lib/planes/storage";
 import type { Plan, PlanMarketingItem } from "@/lib/planes/types";
 import { TIPOS_CONTENIDO } from "@/lib/marketing/types";
+import {
+  fetchTiposFormCliente,
+  filasTiposDesdeSistemaEstatico,
+} from "@/lib/clientes/fetch-tipos-servicio-form";
+import {
+  etiquetaVisibleTipoServicio,
+  type ClienteTipoServicioRow,
+} from "@/lib/clientes/tipo-servicio-catalogo";
 
 const fLabelClass = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
 const fInputClass =
@@ -134,9 +142,18 @@ export default function PlanDetalleClient({
     limite_clientes: "",
     limite_facturas: "",
     estado: "activo" as "activo" | "inactivo",
+    tipo_servicio: "",
     es_plan_marketing: false,
     plantilla_items: [] as PlanMarketingItem[],
   });
+
+  const [filasTipoServicio, setFilasTipoServicio] = useState<ClienteTipoServicioRow[]>(() =>
+    filasTiposDesdeSistemaEstatico()
+  );
+
+  useEffect(() => {
+    void fetchTiposFormCliente().then(setFilasTipoServicio);
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -158,6 +175,7 @@ export default function PlanDetalleClient({
           limite_clientes: p.limite_clientes !== null ? String(p.limite_clientes) : "",
           limite_facturas: p.limite_facturas !== null ? String(p.limite_facturas) : "",
           estado: p.estado,
+          tipo_servicio: p.tipo_servicio ?? "",
           es_plan_marketing: Boolean(p.es_plan_marketing),
           plantilla_items: p.plantilla_operativa?.items ?? [],
         });
@@ -194,6 +212,10 @@ export default function PlanDetalleClient({
       setFormError("El precio debe ser mayor a 0.");
       return;
     }
+    if (!form.tipo_servicio) {
+      setFormError("El tipo de servicio es obligatorio.");
+      return;
+    }
 
     const itemsNorm = form.plantilla_items.map((it) => {
       if (it.periodicidad === "semanal") {
@@ -214,6 +236,7 @@ export default function PlanDetalleClient({
         limite_clientes: form.limite_clientes ? parseInt(form.limite_clientes, 10) : null,
         limite_facturas: form.limite_facturas ? parseInt(form.limite_facturas, 10) : null,
         estado: form.estado,
+        tipo_servicio: form.tipo_servicio,
         es_plan_marketing: form.es_plan_marketing,
         plantilla_operativa: itemsNorm.length > 0 ? { items: itemsNorm } : undefined,
       });
@@ -309,6 +332,18 @@ export default function PlanDetalleClient({
               </span>
               <BadgeEstado estado={plan.estado} />
               <BadgePeriodicidad p={plan.periodicidad} />
+              {plan.tipo_servicio ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+                  {etiquetaVisibleTipoServicio(
+                    plan.tipo_servicio,
+                    Object.fromEntries(filasTipoServicio.map((f) => [f.slug, f.nombre]))
+                  )}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                  Sin tipo
+                </span>
+              )}
             </div>
             {plan.descripcion && (
               <p className="mt-1 text-sm text-slate-500">{plan.descripcion}</p>
@@ -448,17 +483,29 @@ export default function PlanDetalleClient({
                   className={fInputClass}
                 />
               </div>
-              <div>
-                <label className={fLabelClass}>Estado</label>
-                <FancySelect
-                  ariaLabel="Estado del plan"
-                  value={form.estado}
-                  onChange={(v) => setField("estado", v as "activo" | "inactivo")}
-                  options={[
-                    { value: "activo", label: "Activo" },
-                    { value: "inactivo", label: "Inactivo" },
-                  ]}
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={fLabelClass}>Tipo de servicio *</label>
+                  <FancySelect
+                    ariaLabel="Tipo de servicio"
+                    placeholder="— Elegí un tipo —"
+                    value={form.tipo_servicio}
+                    onChange={(v) => setField("tipo_servicio", v)}
+                    options={filasTipoServicio.map((f) => ({ value: f.slug, label: f.nombre }))}
+                  />
+                </div>
+                <div>
+                  <label className={fLabelClass}>Estado</label>
+                  <FancySelect
+                    ariaLabel="Estado del plan"
+                    value={form.estado}
+                    onChange={(v) => setField("estado", v as "activo" | "inactivo")}
+                    options={[
+                      { value: "activo", label: "Activo" },
+                      { value: "inactivo", label: "Inactivo" },
+                    ]}
+                  />
+                </div>
               </div>
             </div>
           </SectionCard>

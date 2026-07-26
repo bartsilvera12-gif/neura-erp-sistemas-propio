@@ -100,6 +100,16 @@ export async function PATCH(
           : parseInt(String(body.limite_facturas), 10) || null;
     }
     if (typeof body.estado === "string") patch.estado = body.estado.trim().toLowerCase();
+    if (body.tipo_servicio !== undefined) {
+      const t = typeof body.tipo_servicio === "string" ? body.tipo_servicio.trim().toLowerCase() : "";
+      if (!t) {
+        return NextResponse.json(errorResponse("El tipo de servicio no puede quedar vacío."), { status: 400 });
+      }
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(t) || t.length > 64) {
+        return NextResponse.json(errorResponse("Tipo de servicio inválido."), { status: 400 });
+      }
+      patch.tipo_servicio = t;
+    }
     if (typeof body.es_plan_marketing === "boolean") patch.es_plan_marketing = body.es_plan_marketing;
     if (body.plantilla_operativa !== undefined) patch.plantilla_operativa = body.plantilla_operativa;
 
@@ -144,6 +154,26 @@ export async function DELETE(
     const { id } = await params;
     if (!id || !uuidRe.test(id)) {
       return NextResponse.json(errorResponse("id inválido"), { status: 400 });
+    }
+
+    // Guard: la FK suscripciones.plan_id es ON DELETE SET NULL, así que borrar un plan con
+    // suscripciones las dejaría HUÉRFANAS (plan_id=null → pierden su clasificación de tipo y su
+    // nombre en las facturas). Bloqueamos el borrado; el plan se puede desactivar en su lugar.
+    const { count: subCount, error: subErr } = await supabase
+      .from("suscripciones")
+      .select("id", { count: "exact", head: true })
+      .eq("plan_id", id);
+    if (subErr) {
+      return NextResponse.json(errorResponse(subErr.message), { status: 400 });
+    }
+    if ((subCount ?? 0) > 0) {
+      return NextResponse.json(
+        errorResponse(
+          `No se puede eliminar: el plan tiene ${subCount} suscripción(es) asociada(s). ` +
+            `Reasigná esas suscripciones a otro plan o desactivá el plan en lugar de borrarlo.`
+        ),
+        { status: 409 }
+      );
     }
 
     const { data: deletedRows, error } = await supabase

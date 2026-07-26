@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { savePlan } from "@/lib/planes/storage";
+import {
+  fetchTiposFormCliente,
+  filasTiposDesdeSistemaEstatico,
+} from "@/lib/clientes/fetch-tipos-servicio-form";
+import type { ClienteTipoServicioRow } from "@/lib/clientes/tipo-servicio-catalogo";
 
 const fLabelClass = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
 const fInputClass =
@@ -56,10 +61,18 @@ export default function PlanNuevoForm({
     limite_clientes: "",
     limite_facturas: "",
     estado: "activo" as "activo" | "inactivo",
+    tipo_servicio: "",
   });
 
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [filasTipoServicio, setFilasTipoServicio] = useState<ClienteTipoServicioRow[]>(() =>
+    filasTiposDesdeSistemaEstatico()
+  );
+
+  useEffect(() => {
+    void fetchTiposFormCliente().then(setFilasTipoServicio);
+  }, []);
 
   const closeOrBack = () => {
     if (onClose) onClose();
@@ -93,6 +106,10 @@ export default function PlanNuevoForm({
       setError("El precio debe ser mayor a 0.");
       return;
     }
+    if (!form.tipo_servicio) {
+      setError("El tipo de servicio es obligatorio.");
+      return;
+    }
 
     setGuardando(true);
     try {
@@ -106,6 +123,7 @@ export default function PlanNuevoForm({
         limite_clientes: form.limite_clientes ? parseInt(form.limite_clientes, 10) : null,
         limite_facturas: form.limite_facturas ? parseInt(form.limite_facturas, 10) : null,
         estado: form.estado,
+        tipo_servicio: form.tipo_servicio,
       });
 
       if (!guardado.ok) {
@@ -177,6 +195,19 @@ export default function PlanNuevoForm({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={fLabelClass}>Tipo de servicio *</label>
+                <FancySelect
+                  ariaLabel="Tipo de servicio"
+                  placeholder="— Elegí un tipo —"
+                  value={form.tipo_servicio}
+                  onChange={(v) => setField("tipo_servicio", v)}
+                  options={filasTipoServicio.map((f) => ({ value: f.slug, label: f.nombre }))}
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Define en qué equipo cae el servicio (Cobranzas) y cómo se clasifica el ingreso.
+                </p>
+              </div>
               <div>
                 <label className={fLabelClass}>Estado</label>
                 <FancySelect

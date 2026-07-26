@@ -89,6 +89,17 @@ export async function POST(request: NextRequest) {
     }
 
     const estado = typeof body.estado === "string" ? body.estado.trim().toLowerCase() : "activo";
+
+    // Tipo de servicio del plan: OBLIGATORIO. Determina en qué equipo cae el servicio en
+    // Cobranzas y cómo se clasifica el ingreso. (Antes nacía NULL y había que adivinar.)
+    const tipoServicio =
+      typeof body.tipo_servicio === "string" ? body.tipo_servicio.trim().toLowerCase() : "";
+    if (!tipoServicio) {
+      return NextResponse.json(errorResponse("El tipo de servicio es obligatorio."), { status: 400 });
+    }
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(tipoServicio) || tipoServicio.length > 64) {
+      return NextResponse.json(errorResponse("Tipo de servicio inválido."), { status: 400 });
+    }
     if (!ESTADO.has(estado)) {
       return NextResponse.json(errorResponse("estado inválido."), { status: 400 });
     }
@@ -116,6 +127,7 @@ export async function POST(request: NextRequest) {
       limite_clientes: lim(body.limite_clientes),
       limite_facturas: lim(body.limite_facturas),
       estado,
+      tipo_servicio: tipoServicio,
     };
 
     if (typeof body.es_plan_marketing === "boolean") {

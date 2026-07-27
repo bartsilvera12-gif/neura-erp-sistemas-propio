@@ -259,13 +259,13 @@ export default function MAsesorChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
   }, [text]);
 
-  // Detección de soporte de grabación (client-only, evita mostrar un botón inútil).
+  // Soporte de grabación: gateamos SOLO por la existencia de MediaRecorder (presente en iOS 14.3+
+  // y Android/Chrome). No exigimos `navigator.mediaDevices.getUserMedia` acá porque en iOS puede
+  // venir `undefined` a la carga (Safari en ciertos contextos) y escondía el micrófono en iPhone,
+  // aunque el permiso sí funciona al pedirlo. Si al tocar el micro no hay acceso, startRec muestra
+  // un mensaje claro. (Antes: el botón directamente no aparecía en iOS.)
   useEffect(() => {
-    setMicSupported(
-      typeof navigator !== "undefined" &&
-        !!navigator.mediaDevices?.getUserMedia &&
-        typeof MediaRecorder !== "undefined"
-    );
+    setMicSupported(typeof MediaRecorder !== "undefined");
   }, []);
 
   // Limpieza: cortar grabación/stream/timer al desmontar.
@@ -397,7 +397,9 @@ export default function MAsesorChatPage() {
   const startRec = useCallback(async () => {
     setSendErr(null);
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setSendErr("No se pudo acceder al micrófono");
+      setSendErr(
+        "Este navegador no permite grabar audio. En iPhone: actualizá iOS y abrí la app desde Safari (no desde un navegador dentro de otra app)."
+      );
       return;
     }
     try {

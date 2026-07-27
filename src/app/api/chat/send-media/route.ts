@@ -184,10 +184,19 @@ export async function POST(request: NextRequest) {
     // envía como AUDIO NORMAL (no nota de voz). Las notas de voz por API (voice:true) llegan pero
     // son inestables para reproducir en el cliente ("audio ya no está disponible"), incluso
     // entregadas. El MP3 como audio normal se descarga al teléfono y se reproduce confiablemente.
-    const isAudioWebm =
+    // Cualquier audio GRABADO desde el navegador (webm/opus en Android/Chrome, mp4/aac en iOS)
+    // se transcodea a MP3. ffmpeg auto-detecta el contenedor de entrada por su contenido, así que
+    // no importa la extensión con la que venga nombrado. (Antes solo cubría webm → iOS no podía
+    // enviar notas de voz: llegaba como mp4 y no se transcodeaba/enrutaba bien.)
+    const isRecordedAudio =
       originalMime.startsWith("audio/") &&
-      (originalMime.includes("webm") || /\.webm$/i.test(file.name || ""));
-    if (isAudioWebm) {
+      (originalMime.includes("webm") ||
+        originalMime.includes("ogg") ||
+        originalMime.includes("mp4") ||
+        originalMime.includes("m4a") ||
+        originalMime.includes("aac") ||
+        /\.(webm|ogg|mp4|m4a|aac)$/i.test(file.name || ""));
+    if (isRecordedAudio) {
       try {
         buf = await transcodeAudioToMp3(buf);
       } catch (e) {
@@ -206,7 +215,7 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-      origName = (origName.replace(/\.webm$/i, "") || "audio") + ".mp3";
+      origName = (origName.replace(/\.(webm|ogg|mp4|m4a|aac)$/i, "") || "audio") + ".mp3";
       uploadMime = "audio/mpeg";
     }
 

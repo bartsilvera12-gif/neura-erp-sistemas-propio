@@ -50,6 +50,7 @@ import {
 import { INBOX_HEARTBEAT_INTERVAL_MS } from "@/lib/chat/agent-presence";
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
+import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
 import { ArrowLeftRight, FileText, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
 
@@ -970,12 +971,7 @@ export function ConversacionesClient({
       streamRef.current = stream;
       recordChunksRef.current = [];
       discardRecordingRef.current = false;
-      const mime =
-        typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm")
-            ? "audio/webm"
-            : "";
+      const mime = pickRecorderMimeType();
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       mediaRecorderRef.current = rec;
       rec.ondataavailable = (ev) => {
@@ -993,7 +989,7 @@ export function ConversacionesClient({
         discardRecordingRef.current = false;
         // Cancelada por el usuario o demasiado corta → no queda nada.
         if (descartada || blob.size < 300) return;
-        const ext = blob.type.includes("ogg") ? "ogg" : "webm";
+        const ext = extForAudioType(blob.type);
         const voiceFile = new File([blob], `nota-voz.${ext}`, { type: blob.type || "audio/webm" });
         // NO se envía acá: queda en preview y el usuario confirma con Enter / botón Enviar.
         setPendingVoice({ file: voiceFile, url: URL.createObjectURL(voiceFile) });

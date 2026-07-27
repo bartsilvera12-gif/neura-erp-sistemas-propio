@@ -8,6 +8,7 @@ import {
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
+import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import {
   extractBodyPlaceholderKeysOrdered,
   getBodyComponentText,
@@ -404,12 +405,7 @@ export default function MAsesorChatPage() {
       streamRef.current = stream;
       chunksRef.current = [];
       cancelRecRef.current = false;
-      const mime =
-        typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm")
-            ? "audio/webm"
-            : "";
+      const mime = pickRecorderMimeType();
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       mediaRecorderRef.current = rec;
       rec.ondataavailable = (ev) => {
@@ -428,7 +424,7 @@ export default function MAsesorChatPage() {
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         chunksRef.current = [];
         if (cancelRecRef.current || blob.size < 300) return;
-        const ext = blob.type.includes("ogg") ? "ogg" : "webm";
+        const ext = extForAudioType(blob.type);
         const file = new File([blob], `nota-voz.${ext}`, { type: blob.type || "audio/webm" });
         sendAudio(file);
       };

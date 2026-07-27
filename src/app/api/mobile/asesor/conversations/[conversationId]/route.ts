@@ -55,6 +55,15 @@ export async function GET(
       );
     }
 
+    // Abrir el chat desde la app = marcarlo LEÍDO (baja el badge de no-leídos en la lista, como
+    // WhatsApp). Antes esto solo pasaba al leer desde el escritorio, así que el numerito no se iba
+    // al abrir desde el celular. Es idempotente y solo corre para una conversación ya autorizada.
+    await supabase
+      .from("chat_conversations")
+      .update({ unread_count: 0, updated_at: new Date().toISOString() })
+      .eq("id", conversationId)
+      .eq("empresa_id", empresa_id);
+
     const contactId = (conv as { contact_id: string | null }).contact_id;
     let contactNombre: string | null = null;
     let contactTelefono: string | null = null;

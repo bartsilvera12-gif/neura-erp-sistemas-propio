@@ -404,7 +404,7 @@ function ProspectoCard({
         e.dataTransfer.effectAllowed = "move";
         onDragStart(prospecto.id);
       }}
-      className={`group cursor-grab select-none rounded-2xl border border-l-4 border-slate-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${tone.borderLeft}`}
+      className={`group cursor-grab select-none rounded-2xl border border-l-4 border-slate-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing [content-visibility:auto] [contain-intrinsic-size:auto_140px] ${tone.borderLeft}`}
     >
       <div className="flex items-start gap-2">
         <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />

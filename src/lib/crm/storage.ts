@@ -114,36 +114,59 @@ export async function listProspectosForEmpresa(
   empresaId: string,
   scopeResponsableUsuarioId?: string | null
 ): Promise<Prospecto[]> {
-  let q = supabase
-    .from("crm_prospectos")
-    .select("*")
-    .eq("empresa_id", empresaId);
-  if (typeof scopeResponsableUsuarioId === "string" && scopeResponsableUsuarioId.trim() !== "") {
-    q = q.eq("responsable_usuario_id", scopeResponsableUsuarioId.trim());
+  // Paginación: PostgREST corta en 1000 filas por request. El CRM puede tener miles de
+  // prospectos; antes solo se cargaban los 1000 más nuevos → buscar por número no encontraba
+  // a nadie fuera de esa ventana y los contadores (Kanban/valor) quedaban incompletos. Traemos
+  // TODAS las páginas con orden estable (fecha + id) para no repetir ni saltar filas.
+  const PAGE = 1000;
+  const prospectos: ProspectoRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase
+      .from("crm_prospectos")
+      .select("*")
+      .eq("empresa_id", empresaId);
+    if (typeof scopeResponsableUsuarioId === "string" && scopeResponsableUsuarioId.trim() !== "") {
+      q = q.eq("responsable_usuario_id", scopeResponsableUsuarioId.trim());
+    }
+    const { data, error: errP } = await q
+      .order("fecha_creacion", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (errP) {
+      console.error("[crm] listProspectosForEmpresa:", errP.message);
+      break; // devolvemos lo acumulado en vez de perder todo
+    }
+    const rows = (data as ProspectoRow[]) ?? [];
+    prospectos.push(...rows);
+    if (rows.length < PAGE) break;
   }
-  const { data: prospectosData, error: errP } = await q.order("fecha_creacion", { ascending: false });
 
-  if (errP) {
-    console.error("[crm] listProspectosForEmpresa:", errP.message);
-    return [];
-  }
-
-  const prospectos = prospectosData as ProspectoRow[];
   if (prospectos.length === 0) return [];
 
+  // Notas en lotes de IDs, en paralelo: evita una URL gigante con miles de UUIDs y el tope de
+  // 1000 filas de PostgREST. Cada lote trae las notas de ~200 prospectos.
   const ids = prospectos.map((p) => p.id);
-  const { data: notasData, error: errN } = await supabase
-    .from("crm_notas")
-    .select("*")
-    .eq("empresa_id", empresaId)
-    .in("prospecto_id", ids)
-    .order("fecha", { ascending: false });
-
-  if (errN) {
-    console.error("[crm] listProspectosForEmpresa (notas):", errN.message);
+  const NOTAS_CHUNK = 200;
+  const idChunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += NOTAS_CHUNK) idChunks.push(ids.slice(i, i + NOTAS_CHUNK));
+  const notasResults = await Promise.all(
+    idChunks.map((slice) =>
+      supabase
+        .from("crm_notas")
+        .select("*")
+        .eq("empresa_id", empresaId)
+        .in("prospecto_id", slice)
+        .order("fecha", { ascending: false })
+    )
+  );
+  const notasRows: NotaRow[] = [];
+  for (const { data: notasData, error: errN } of notasResults) {
+    if (errN) {
+      console.error("[crm] listProspectosForEmpresa (notas):", errN.message);
+      continue;
+    }
+    notasRows.push(...((notasData as NotaRow[]) ?? []));
   }
-
-  const notasRows = (notasData as NotaRow[]) ?? [];
   const notasPorProspecto = notasRows.reduce<Record<string, Nota[]>>((acc, n) => {
     if (!acc[n.prospecto_id]) acc[n.prospecto_id] = [];
     acc[n.prospecto_id].unshift(rowToNota(n));

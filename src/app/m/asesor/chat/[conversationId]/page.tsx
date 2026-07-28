@@ -197,6 +197,9 @@ export default function MAsesorChatPage() {
   const [tplErr, setTplErr] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true); // ¿el usuario está abajo del todo? (si scrolleó a leer, false)
+  const didInitialScrollRef = useRef(false); // ya hicimos el scroll-al-fondo inicial
+  const lastMsgsSigRef = useRef(""); // firma de los mensajes para no re-render si no cambió nada
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -220,7 +223,14 @@ export default function MAsesorChatPage() {
           return;
         }
         if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo cargar");
-        setMessages((data.messages ?? []) as Msg[]);
+        // Solo actualizamos si REALMENTE cambió algo (nuevos mensajes). Así el poll cada 12s no
+        // re-renderiza ni dispara el scroll mientras el asesor lee tranquilo.
+        const nuevos = (data.messages ?? []) as Msg[];
+        const sig = `${nuevos.length}:${nuevos[nuevos.length - 1]?.id ?? ""}`;
+        if (sig !== lastMsgsSigRef.current) {
+          lastMsgsSigRef.current = sig;
+          setMessages(nuevos);
+        }
         setTitle(data.conversation?.contact_nombre || data.conversation?.contact_telefono || "Chat");
         setWindowOpen(data.conversation?.window_open ?? null);
         setErr(null);
@@ -246,9 +256,17 @@ export default function MAsesorChatPage() {
     };
   }, [load]);
 
+  // Auto-scroll estilo WhatsApp: al fondo en la primera carga y cuando el usuario YA estaba
+  // abajo del todo (mensaje nuevo / envío propio). Si scrolleó hacia arriba a leer historial,
+  // NO lo movemos — antes el poll cada 12s lo tiraba al fondo y perdía dónde estaba leyendo.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (!didInitialScrollRef.current || atBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      atBottomRef.current = true;
+      if (messages.length > 0) didInitialScrollRef.current = true;
+    }
   }, [messages, pending]);
 
   // Autogrow del textarea (multilínea sin romper el layout).
@@ -554,7 +572,14 @@ export default function MAsesorChatPage() {
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+      <div
+        ref={scrollRef}
+        onScroll={() => {
+          const el = scrollRef.current;
+          if (el) atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+        className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
+      >
         {loading ? (
           <div className="text-center text-slate-400 text-sm animate-pulse py-6">Cargando…</div>
         ) : err ? (

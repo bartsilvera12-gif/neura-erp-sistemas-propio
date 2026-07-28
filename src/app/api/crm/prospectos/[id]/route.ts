@@ -200,6 +200,15 @@ export async function PATCH(
       patch.responsable =
         typeof body.responsable === "string" && body.responsable.trim() ? body.responsable.trim() : null;
     }
+    // El scope por asesor filtra por responsable_usuario_id. Este camino (PostgREST/neura) lo
+    // omitía, así que al reasignar un lead quedaba el NOMBRE del responsable pero no su ID → el
+    // asesor no veía el lead. Ahora se persiste igual que en el camino PG.
+    if (body.responsable_usuario_id !== undefined) {
+      patch.responsable_usuario_id =
+        typeof body.responsable_usuario_id === "string" && body.responsable_usuario_id.trim()
+          ? body.responsable_usuario_id.trim()
+          : null;
+    }
     if (body.observaciones !== undefined) {
       patch.observaciones =
         typeof body.observaciones === "string" && body.observaciones.trim() ? body.observaciones.trim() : null;

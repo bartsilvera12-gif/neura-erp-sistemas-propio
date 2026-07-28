@@ -903,6 +903,11 @@ export function ConversacionesClient({
   const sendMediaFile = useCallback(async (file: File) => {
     const cid = selectedIdRef.current;
     if (!cid || file.size < 1) return;
+    // WhatsApp limita el video a 16 MB; avisamos ANTES de subir para no fallar con un error críptico.
+    if (file.type.startsWith("video/") && file.size > 16 * 1024 * 1024) {
+      setSendError("El video supera el límite de 16 MB de WhatsApp. Comprimilo o compartí un enlace.");
+      return;
+    }
     setSendError(null);
     stickBottomRef.current = true;
     setUploadingFile(true);
@@ -3824,7 +3829,7 @@ export function ConversacionesClient({
                   ref={fileInputRef}
                   type="file"
                   className="hidden"
-                  accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
                   onChange={(e) => void handleSendFile(e)}
                 />
                 {sendError && (

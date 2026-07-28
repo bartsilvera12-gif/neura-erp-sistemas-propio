@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Plus, Search, Sparkles, TrendingUp } from "lucide-react";
 import { useEtapasCrm, useProspectos } from "@/shared/hooks/useCrm";
 import { normalizeEtapaCodigo } from "@/lib/crm/etapas";
+import { telefonoSignificativo } from "@/lib/telefono";
 import type { Prospecto } from "@/lib/crm/types";
 
 /**
@@ -58,6 +59,9 @@ export default function CrmMobile() {
       .filter((p) => normalizeEtapaCodigo(p.etapa) === codeActiva)
       .filter((p) => {
         if (!q) return true;
+        // Por número: dígitos significativos (0 local / 595 internacional unificados).
+        const qSig = telefonoSignificativo(query);
+        if (qSig.length >= 3 && telefonoSignificativo(p.telefono ?? "").includes(qSig)) return true;
         return (
           p.empresa.toLowerCase().includes(q) ||
           (p.contacto ?? "").toLowerCase().includes(q)

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { getProspectos, moveProspecto } from "@/lib/crm/storage";
 import { getEtapas, getEtapaClasses, normalizeEtapaCodigo, type EtapaCrm } from "@/lib/crm/etapas";
-import { cleanTelefono, formatTelefonoDisplay } from "@/lib/telefono";
+import { cleanTelefono, formatTelefonoDisplay, telefonoSignificativo } from "@/lib/telefono";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import type { Prospecto } from "@/lib/crm/types";
 import ProspectoNuevoModal from "@/app/crm/components/ProspectoNuevoModal";
@@ -1149,11 +1149,13 @@ export default function CrmPage() {
    */
   /** Base de la vista: aplica el filtro "solo hoy" + buscador (afecta Kanban y Lista). */
   const q = busqueda.trim().toLowerCase();
-  const qDigits = cleanTelefono(busqueda);
+  // Dígitos significativos: quita el 0 local y el 595 internacional, así "0982…", "982…" y
+  // "595982…" son equivalentes (antes "0982…" no matcheaba un guardado como "595982…").
+  const qDigits = telefonoSignificativo(busqueda);
   const matchBusqueda = (p: Prospecto) => {
     if (!q) return true;
-    // Por número: dígitos normalizados (así "0981" o "981" matchean "595981…").
-    if (qDigits.length >= 3 && cleanTelefono(p.telefono ?? "").includes(qDigits)) return true;
+    // Por número: dígitos significativos (así "0981", "981" o "595981…" matchean entre sí).
+    if (qDigits.length >= 3 && telefonoSignificativo(p.telefono ?? "").includes(qDigits)) return true;
     // Por texto: empresa / contacto / nro. de control.
     return [p.empresa, p.contacto, p.numero_control, p.telefono].some((campo) =>
       String(campo ?? "").toLowerCase().includes(q),

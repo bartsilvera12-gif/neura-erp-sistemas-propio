@@ -50,6 +50,20 @@ export function cleanTelefono(value: string): string {
 }
 
 /**
+ * Dígitos "significativos" (parte nacional), unificando el formato local y el internacional
+ * para poder BUSCAR/comparar sin importar cómo esté guardado o tipeado el número:
+ *   - "0982617772"    → "982617772"   (quita el 0 inicial del formato local)
+ *   - "595982617772"  → "982617772"   (quita el código país 595)
+ *   - "+595 982-617"  → "982617"      (parcial, sin prefijos)
+ * Así una búsqueda por "0982…" encuentra un número guardado como "595982…" y viceversa.
+ */
+export function telefonoSignificativo(value: string): string {
+  let d = extractDigits(value).replace(/^0+/, "");
+  if (d.startsWith("595")) d = d.slice(3);
+  return d;
+}
+
+/**
  * Valida formato Paraguay aceptando:
  *   - Local: 10 dígitos, empieza con "09"
  *   - Internacional: 12 dígitos, empieza con "5959" (código país + móvil)

@@ -450,6 +450,7 @@ export function ConversacionesClient({
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadHint, setUploadHint] = useState<string | null>(null);
   /** Grabación de nota de voz (MediaRecorder) antes de subir a /api/chat/send-media. */
   const [recordingVoice, setRecordingVoice] = useState(false);
   /** Segundos transcurridos de la grabación en curso (para el contador tipo WhatsApp). */
@@ -903,12 +904,20 @@ export function ConversacionesClient({
   const sendMediaFile = useCallback(async (file: File) => {
     const cid = selectedIdRef.current;
     if (!cid || file.size < 1) return;
-    // WhatsApp limita el video a 16 MB; avisamos ANTES de subir para no fallar con un error críptico.
-    if (file.type.startsWith("video/") && file.size > 16 * 1024 * 1024) {
-      setSendError("El video supera el límite de 16 MB de WhatsApp. Comprimilo o compartí un enlace.");
+    const isVideo = file.type.startsWith("video/");
+    // Videos hasta 64 MB: el servidor los comprime a <16 MB (720p) antes de mandar. Más grande
+    // que eso, mejor un enlace (la subida + compresión se vuelve poco confiable).
+    if (isVideo && file.size > 64 * 1024 * 1024) {
+      setSendError("El video es demasiado grande (máx 64 MB). Recortalo o compartí un enlace.");
       return;
     }
     setSendError(null);
+    // Si supera el límite de WhatsApp, el server lo comprime antes de enviar → avisamos que tarda.
+    setUploadHint(
+      isVideo && file.size > 16 * 1024 * 1024
+        ? "Comprimiendo y enviando el video… puede tardar unos segundos."
+        : null
+    );
     stickBottomRef.current = true;
     setUploadingFile(true);
     try {
@@ -930,6 +939,7 @@ export function ConversacionesClient({
       setSendError(err instanceof Error ? err.message : "Error al enviar archivo");
     } finally {
       setUploadingFile(false);
+      setUploadHint(null);
     }
   }, []);
 
@@ -3835,6 +3845,11 @@ export function ConversacionesClient({
                 {sendError && (
                   <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md px-2 py-1">
                     {sendError}
+                  </div>
+                )}
+                {uploadHint && (
+                  <div className="text-xs text-[#3F8E91] bg-[#4FAEB2]/10 border border-[#4FAEB2]/30 rounded-md px-2 py-1">
+                    {uploadHint}
                   </div>
                 )}
                 <div className="flex gap-1 items-end">

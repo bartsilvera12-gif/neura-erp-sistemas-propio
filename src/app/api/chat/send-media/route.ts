@@ -28,8 +28,15 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+export const runtime = "nodejs";
+// Comprimir video puede tardar; damos margen (algunos hosts respetan este límite).
+export const maxDuration = 120;
+
 const CHAT_MEDIA_BUCKET = "chat-media";
 const execFileAsync = promisify(execFile);
+
+/** Límite duro de la API de WhatsApp para video. Meta rechaza cualquier video más grande. */
+const VIDEO_LIMIT_BYTES = 16 * 1024 * 1024;
 
 function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "archivo";
@@ -67,6 +74,73 @@ async function transcodeAudioToMp3(input: Buffer): Promise<Buffer> {
     );
     const out = await readFile(outPath);
     if (!out || out.length < 1) throw new Error("ffmpeg produjo un MP3 vacío");
+    return out;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Duración del video en segundos (ffprobe). 0 si no se puede determinar. */
+async function probeDurationSeconds(path: string): Promise<number> {
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path],
+      { timeout: 20000 }
+    );
+    const d = parseFloat(String(stdout).trim());
+    return Number.isFinite(d) && d > 0 ? d : 0;
+  } catch {
+    return 0; // ffprobe no disponible → caemos al step-down por CRF
+  }
+}
+
+/**
+ * Comprime un video para que entre en el límite de 16 MB de WhatsApp. La API de WhatsApp (vía
+ * YCloud) NO comprime — rechaza cualquier video > 16 MB. (La app del celular sí comprime sola,
+ * por eso ahí "nunca" se ve el límite.) Escalamos a máx 720p (nítido en pantalla de celular) y
+ * elegimos el bitrate según la duración para apuntar a ~15 MB. Solo se llama si el video excede.
+ * Si aún no entra, reintenta a 480p con bitrate más bajo; si tampoco, lanza VIDEO_TOO_LONG.
+ */
+async function compressVideoUnder16MB(input: Buffer): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), "ccvideo-"));
+  const inPath = join(dir, "in.video");
+  const outPath = join(dir, "out.mp4");
+  try {
+    await writeFile(inPath, input);
+    const duration = await probeDurationSeconds(inPath);
+    const AUDIO_K = 128;
+    const TARGET_BYTES = 15 * 1024 * 1024; // margen bajo el límite de 16
+
+    async function encode(maxHeight: number, videoK: number | null): Promise<Buffer> {
+      const args = [
+        "-y", "-hide_banner", "-loglevel", "error",
+        "-i", inPath,
+        "-vf", `scale=-2:'min(${maxHeight},ih)'`,
+        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+      ];
+      if (videoK) {
+        args.push("-b:v", `${videoK}k`, "-maxrate", `${Math.round(videoK * 1.45)}k`, "-bufsize", `${videoK * 2}k`);
+      } else {
+        args.push("-crf", "30", "-maxrate", "1600k", "-bufsize", "3200k");
+      }
+      args.push("-c:a", "aac", "-b:a", `${AUDIO_K}k`, "-ac", "2", "-movflags", "+faststart", outPath);
+      await execFileAsync("ffmpeg", args, { timeout: 110000, maxBuffer: 1024 * 1024 * 64 });
+      return readFile(outPath);
+    }
+
+    let videoK: number | null = null;
+    if (duration > 0) {
+      const totalK = (TARGET_BYTES * 8) / 1000 / duration; // kbps totales que entran en el target
+      videoK = Math.max(350, Math.min(Math.round(totalK - AUDIO_K), 4000));
+    }
+
+    let out = await encode(720, videoK);
+    if (out.length > VIDEO_LIMIT_BYTES) {
+      const k2 = duration > 0 ? Math.max(300, Math.round((videoK ?? 1200) * 0.65)) : 800;
+      out = await encode(480, k2);
+    }
+    if (out.length > VIDEO_LIMIT_BYTES) throw new Error("VIDEO_TOO_LONG");
     return out;
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -217,6 +291,32 @@ export async function POST(request: NextRequest) {
       }
       origName = (origName.replace(/\.(webm|ogg|mp4|m4a|aac)$/i, "") || "audio") + ".mp3";
       uploadMime = "audio/mpeg";
+    }
+
+    // Video que supera el límite de WhatsApp → lo comprimimos (máx 720p, ~15 MB). Si no,
+    // Meta lo rechaza (la API no comprime sola como la app del celular).
+    if (originalMime.startsWith("video/") && buf.length > VIDEO_LIMIT_BYTES) {
+      try {
+        buf = await compressVideoUnder16MB(buf);
+        origName = (origName.replace(/\.[^.]+$/, "") || "video") + ".mp4";
+        uploadMime = "video/mp4";
+      } catch (e) {
+        const tooLong = e instanceof Error && e.message === "VIDEO_TOO_LONG";
+        console.warn("[send-media] compress video falló", {
+          conversationId,
+          name: file.name,
+          detail: e instanceof Error ? e.message : String(e),
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: tooLong
+              ? "El video es muy largo para comprimirlo bajo 16 MB. Recortalo o compartí un enlace."
+              : "No se pudo comprimir el video. Probá con uno más corto o compartí un enlace.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const objectPath = `${empresaId}/${conversationId}/out_${Date.now()}_${origName}`;

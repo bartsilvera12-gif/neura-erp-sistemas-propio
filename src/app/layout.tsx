@@ -22,6 +22,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Neura ERP",
   description: "Sistema de gestión empresarial de Neura",
+  // Pedimos a los navegadores que NO traduzcan la app. El traductor automático de Chrome/Google
+  // reescribe el DOM (envuelve textos en <font>), y eso rompe la reconciliación de React con
+  // errores "Failed to execute 'removeChild' on 'Node'" (crash de páginas dinámicas como Comisiones).
+  other: { google: "notranslate" },
 };
 
 /**
@@ -41,7 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" translate="no" className="notranslate" suppressHydrationWarning>
       <body className={`${plusJakarta.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
           <SWRPersistedProvider>

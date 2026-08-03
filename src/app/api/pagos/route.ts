@@ -164,6 +164,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 3b) Nombre legible del usuario. `neura.usuarios` linkea por `auth_user_id` = `pagos.usuario_id`.
+    //     Se prefiere el nombre; si no hay, cae al email (usuarioMap).
+    const nombreUsuarioMap: Record<string, string> = {};
+    if (usuarioIds.length > 0) {
+      const { data: uRows, error: uErr } = await supabase
+        .from("usuarios")
+        .select("auth_user_id, nombre")
+        .eq("empresa_id", auth.empresa_id)
+        .in("auth_user_id", usuarioIds);
+      if (uErr) {
+        console.error("[api/pagos] lookup nombres usuarios:", uErr.message);
+      }
+      for (const r of ((uRows as { auth_user_id: string | null; nombre: string | null }[] | null) ?? [])) {
+        const aid = r?.auth_user_id ? String(r.auth_user_id) : "";
+        const nom = (r?.nombre ?? "").trim();
+        if (aid && nom) nombreUsuarioMap[aid] = nom;
+      }
+    }
+
     const labelTipoCliente = (c: RowClientePago | null) => {
       if (!c) return "—";
       const raw = (c.tipo_servicio_cliente ?? "").trim();
@@ -191,6 +210,10 @@ export async function GET(request: NextRequest) {
         /** Slug normalizado para filtrar en UI sin reconsultar. */
         cliente_tipo_slug: slugTipoCliente(cliente),
         usuario_email: p.usuario_id ? usuarioMap[p.usuario_id] ?? "—" : "—",
+        /** Nombre legible del usuario que registró el pago (fallback: email). */
+        usuario_nombre: p.usuario_id
+          ? nombreUsuarioMap[p.usuario_id] ?? usuarioMap[p.usuario_id] ?? "—"
+          : "—",
       };
     });
 

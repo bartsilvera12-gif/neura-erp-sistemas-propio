@@ -90,6 +90,7 @@ interface PagoCobrado {
   fecha_pago: string;
   metodo_pago: string;
   usuario_email: string;
+  usuario_nombre: string;
   referencia?: string;
 }
 
@@ -148,6 +149,7 @@ export default function PagosPage() {
             fecha_pago: toCalendarDateStr((p.fecha_pago as string) ?? "") || String(p.fecha_pago ?? "").slice(0, 10),
             metodo_pago: (p.metodo_pago as string) ?? "efectivo",
             usuario_email: (p.usuario_email as string) ?? "—",
+            usuario_nombre: (p.usuario_nombre as string) ?? (p.usuario_email as string) ?? "—",
             referencia: (p.referencia as string) || undefined,
           }))
         );
@@ -722,8 +724,11 @@ export default function PagosPage() {
                           {METODO_LABELS[p.metodo_pago] ?? p.metodo_pago}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-sm text-slate-600 sm:px-4 [overflow-wrap:anywhere] break-words">
-                        {p.usuario_email}
+                      <td
+                        className="px-3 py-3 text-sm text-slate-600 sm:px-4 [overflow-wrap:anywhere] break-words"
+                        title={p.usuario_email}
+                      >
+                        {p.usuario_nombre}
                       </td>
                       <td className="min-w-[6rem] px-3 py-3 text-sm text-slate-500 last:pr-5 sm:px-4 [overflow-wrap:anywhere] break-words">
                         {p.referencia || "—"}

@@ -80,6 +80,22 @@ function formatFecha(str: string) {
   return `${d}/${m}/${y}`;
 }
 
+/** Fecha + hora del registro del pago (created_at ISO) en hora de Paraguay: "dd/mm/aaaa HH:MM". */
+function formatFechaHora(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("es-PY", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Asuncion",
+  });
+}
+
 interface PagoCobrado {
   id: string;
   factura_numero: string;
@@ -92,6 +108,8 @@ interface PagoCobrado {
   usuario_email: string;
   usuario_nombre: string;
   referencia?: string;
+  /** Timestamp de registro del pago (created_at ISO), para mostrar fecha y hora. */
+  fecha_registro?: string;
 }
 
 export default function PagosPage() {
@@ -151,6 +169,7 @@ export default function PagosPage() {
             usuario_email: (p.usuario_email as string) ?? "—",
             usuario_nombre: (p.usuario_nombre as string) ?? (p.usuario_email as string) ?? "—",
             referencia: (p.referencia as string) || undefined,
+            fecha_registro: (p.created_at as string) || undefined,
           }))
         );
       } else {
@@ -676,7 +695,7 @@ export default function PagosPage() {
               <table className="w-full min-w-[1040px] table-auto border-separate border-spacing-0 text-sm">
                 <thead className="bg-slate-50/80">
                   <tr>
-                    {["Factura", "Cliente", "Tipo de cliente", "Monto pagado", "Fecha", "Método", "Usuario", "Referencia"].map(
+                    {["Factura", "Cliente", "Tipo de cliente", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
                       (h) => (
                         <th
                           key={h}
@@ -731,7 +750,7 @@ export default function PagosPage() {
                         {p.usuario_nombre}
                       </td>
                       <td className="min-w-[6rem] px-3 py-3 text-sm text-slate-500 last:pr-5 sm:px-4 [overflow-wrap:anywhere] break-words">
-                        {p.referencia || "—"}
+                        {formatFechaHora(p.fecha_registro)}
                       </td>
                     </tr>
                   ))}

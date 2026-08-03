@@ -164,22 +164,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3b) Nombre legible del usuario. `neura.usuarios` linkea por `auth_user_id` = `pagos.usuario_id`.
-    //     Se prefiere el nombre; si no hay, cae al email (usuarioMap).
-    const nombreUsuarioMap: Record<string, string> = {};
-    if (usuarioIds.length > 0) {
+    // 3b) Nombre legible del usuario. Mapeamos por EMAIL: el email de auth (usuarioMap) coincide con
+    //     neura.usuarios.email. Se mapea por email (no por auth_user_id) porque ese es el patrón que
+    //     ya usa /api/usuarios/empresa-activos y evita depender de que auth_user_id esté expuesto en
+    //     PostgREST. Se prefiere el nombre; si no hay, cae al email.
+    const nombrePorEmail: Record<string, string> = {};
+    {
       const { data: uRows, error: uErr } = await supabase
         .from("usuarios")
-        .select("auth_user_id, nombre")
-        .eq("empresa_id", auth.empresa_id)
-        .in("auth_user_id", usuarioIds);
+        .select("nombre, email")
+        .eq("empresa_id", auth.empresa_id);
       if (uErr) {
         console.error("[api/pagos] lookup nombres usuarios:", uErr.message);
       }
-      for (const r of ((uRows as { auth_user_id: string | null; nombre: string | null }[] | null) ?? [])) {
-        const aid = r?.auth_user_id ? String(r.auth_user_id) : "";
+      for (const r of ((uRows as { nombre: string | null; email: string | null }[] | null) ?? [])) {
+        const em = (r?.email ?? "").trim().toLowerCase();
         const nom = (r?.nombre ?? "").trim();
-        if (aid && nom) nombreUsuarioMap[aid] = nom;
+        if (em && nom) nombrePorEmail[em] = nom;
       }
     }
 
@@ -211,9 +212,11 @@ export async function GET(request: NextRequest) {
         cliente_tipo_slug: slugTipoCliente(cliente),
         usuario_email: p.usuario_id ? usuarioMap[p.usuario_id] ?? "—" : "—",
         /** Nombre legible del usuario que registró el pago (fallback: email). */
-        usuario_nombre: p.usuario_id
-          ? nombreUsuarioMap[p.usuario_id] ?? usuarioMap[p.usuario_id] ?? "—"
-          : "—",
+        usuario_nombre: (() => {
+          const email = p.usuario_id ? usuarioMap[p.usuario_id] : null;
+          const nom = email ? nombrePorEmail[email.trim().toLowerCase()] : undefined;
+          return nom ?? email ?? "—";
+        })(),
       };
     });
 

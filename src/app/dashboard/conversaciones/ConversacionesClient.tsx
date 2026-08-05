@@ -210,6 +210,41 @@ function displayFilenameForAttachment(message: ChatMessage): string {
   return message.message_type === "video" ? "Video" : "Archivo";
 }
 
+/** Nombre de archivo para descargar, asegurando una extensión razonable según el tipo. */
+function downloadFilenameFor(message: ChatMessage): string {
+  const base = (displayFilenameForAttachment(message) || "archivo").trim();
+  if (/\.[a-z0-9]{2,5}$/i.test(base)) return base;
+  const ext =
+    message.message_type === "image"
+      ? "jpg"
+      : message.message_type === "video"
+        ? "mp4"
+        : message.message_type === "audio"
+          ? "mp3"
+          : "";
+  return ext ? `${base}.${ext}` : base;
+}
+
+/** Descarga forzada del media (fetch → blob → <a download>). Si CORS lo bloquea, abre en pestaña. */
+async function descargarMedia(url: string, filename: string): Promise<void> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objUrl;
+    a.download = filename || "archivo";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+  } catch {
+    // Fallback (p. ej. CORS): abrir en pestaña nueva para que el usuario guarde manualmente.
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 function tabClass(active: boolean) {
   return `px-4 py-2 text-xs font-semibold rounded-xl transition-all ${
     active
@@ -478,6 +513,7 @@ export function ConversacionesClient({
   const [compApproveConfirmId, setCompApproveConfirmId] = useState<string | null>(null);
   const [compApprovalInfo, setCompApprovalInfo] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [msgMenu, setMsgMenu] = useState<string | null>(null); // id del mensaje con el menú (3 puntitos) abierto
   const [opsQueues, setOpsQueues] = useState<ChatQueueListRow[]>([]);
   const [opsAgentLoads, setOpsAgentLoads] = useState<SupervisorAgentLoadRow[]>([]);
   const [opsBusy, setOpsBusy] = useState(false);
@@ -3631,12 +3667,46 @@ export function ConversacionesClient({
                         }`}
                       >
                         <div
-                          className={`max-w-[92%] sm:max-w-[88%] md:max-w-[78%] lg:max-w-[72%] rounded-2xl px-3 py-2 text-[13px] sm:text-sm leading-relaxed ${
+                          className={`group relative max-w-[92%] sm:max-w-[88%] md:max-w-[78%] lg:max-w-[72%] rounded-2xl px-3 py-2 text-[13px] sm:text-sm leading-relaxed ${
                             m.from_me
                               ? "bg-[#4FAEB2] text-white rounded-br-md shadow-md shadow-[#4FAEB2]/25 ring-1 ring-white/15"
                               : "bg-white text-slate-800 rounded-bl-md border border-slate-200 shadow-sm border-l-[3px] border-l-[#4FAEB2]/55"
                           }`}
                         >
+                          {/* Menú de acciones del mensaje (3 puntitos, aparece al pasar el mouse). */}
+                          {attachUrl ? (
+                            <div className="absolute right-1 top-1 z-10">
+                              <button
+                                type="button"
+                                aria-label="Opciones del mensaje"
+                                onClick={() => setMsgMenu(msgMenu === m.id ? null : m.id)}
+                                className={`grid h-6 w-6 place-items-center rounded-full text-base leading-none opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 ${
+                                  m.from_me
+                                    ? "bg-black/20 text-white hover:bg-black/35"
+                                    : "bg-slate-900/10 text-slate-700 hover:bg-slate-900/20"
+                                }`}
+                              >
+                                ⋮
+                              </button>
+                              {msgMenu === m.id ? (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={() => setMsgMenu(null)} />
+                                  <div className="absolute right-0 top-7 z-50 min-w-[150px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-slate-700 shadow-lg">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        void descargarMedia(attachUrl, downloadFilenameFor(m));
+                                        setMsgMenu(null);
+                                      }}
+                                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                                    >
+                                      <span aria-hidden>⬇️</span> Descargar
+                                    </button>
+                                  </div>
+                                </>
+                              ) : null}
+                            </div>
+                          ) : null}
                           {showAsImage && attachUrl ? (
                             <div className="space-y-2">
                               <div

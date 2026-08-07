@@ -5,8 +5,15 @@ import { mergeBriefDataPatch } from "@/lib/proyectos/brief-data";
 import { listProyectoCambios } from "@/lib/proyectos/cambios-config";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { enrichProyectoHistorialRows } from "@/lib/proyectos/historial-enrich";
+import {
+  ETAPA_FINAL,
+  ETAPA_INICIAL,
+  esEtapaDesarrollo,
+  type ProyectoEtapaDesarrollo,
+} from "@/lib/proyectos/etapas-desarrollo";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
-import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { puedeEliminarProyectos, requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
@@ -140,6 +147,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         avance_pct: avance,
         current_user_id: auth.usuarioCatalogId,
         current_user_rol: auth.rol ?? null,
+        current_user_puede_eliminar: puedeEliminarProyectos(auth),
       })
     );
   } catch (e) {
@@ -248,6 +256,44 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (typeof body.archivado === "boolean") patch.archivado = body.archivado;
 
+    // --- Etapa de desarrollo + contador de días por programador --------------
+    // Ambos campos necesitan comparar contra el valor actual: la etapa para saber
+    // si hay que resellar los timestamps, y el técnico para reiniciar el contador
+    // sólo cuando el proyecto realmente cambia de manos.
+    const pideEtapa = "etapa_desarrollo" in body;
+    const pideTecnico = "responsable_tecnico_id" in body;
+    if (pideEtapa && !esEtapaDesarrollo(body.etapa_desarrollo)) {
+      return NextResponse.json(errorResponse("Etapa de desarrollo inválida"), { status: 400 });
+    }
+    if (pideEtapa || pideTecnico) {
+      const { data: actual, error: eActual } = await sb
+        .from("proyectos")
+        .select("etapa_desarrollo, responsable_tecnico_id")
+        .eq("empresa_id", auth.empresaId)
+        .eq("id", pid)
+        .maybeSingle();
+      if (eActual) return NextResponse.json(errorResponse(eActual.message), { status: 400 });
+      if (!actual) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+
+      const cur = actual as { etapa_desarrollo?: string | null; responsable_tecnico_id?: string | null };
+      const ahora = new Date().toISOString();
+
+      if (pideEtapa) {
+        const nueva = body.etapa_desarrollo as ProyectoEtapaDesarrollo;
+        patch.etapa_desarrollo = nueva;
+        if (nueva !== (cur.etapa_desarrollo ?? ETAPA_INICIAL)) {
+          patch.etapa_desarrollo_at = ahora;
+          // Volver atrás desde "Finalizado" limpia la marca y el proyecto
+          // reaparece en el listado activo del tablero del equipo.
+          patch.etapa_finalizado_at = nueva === ETAPA_FINAL ? ahora : null;
+        }
+      }
+
+      if (pideTecnico && patch.responsable_tecnico_id !== (cur.responsable_tecnico_id ?? null)) {
+        patch.tecnico_asignado_at = patch.responsable_tecnico_id ? ahora : null;
+      }
+    }
+
     const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
     if (keys.length <= 2) {
       return NextResponse.json(errorResponse("Nada para actualizar"), { status: 400 });
@@ -273,6 +319,44 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 }
 
+type StorageCapableClient = {
+  storage: {
+    from: (bucket: string) => {
+      list: (
+        path: string,
+        opts: { limit: number; offset: number }
+      ) => Promise<{ data: { name: string }[] | null; error: { message: string } | null }>;
+      remove: (paths: string[]) => Promise<{ error: { message: string } | null }>;
+    };
+  };
+};
+
+/**
+ * Borra todos los archivos del proyecto en el bucket (adjuntos del proyecto y de los ítems de QA),
+ * que viven bajo el prefijo `${empresaId}/${proyectoId}/`.
+ */
+async function removeProyectoStorageFiles(
+  sb: StorageCapableClient,
+  empresaId: string,
+  proyectoId: string
+): Promise<void> {
+  const bucket = sb.storage.from(PROYECTOS_BUCKET);
+  const prefix = `${empresaId}/${proyectoId}`;
+  const PAGE = 100;
+  const MAX_PAGES = 200; // corta un loop infinito si el bucket devolviera siempre lo mismo
+
+  // Cada pasada borra la página que acaba de listar, así que la siguiente vuelve a pedir desde 0.
+  for (let i = 0; i < MAX_PAGES; i++) {
+    const { data, error } = await bucket.list(prefix, { limit: PAGE, offset: 0 });
+    if (error) throw new Error(error.message);
+    const names = (data ?? []).map((f) => f.name).filter((n) => n.length > 0);
+    if (names.length === 0) return;
+
+    const { error: eRemove } = await bucket.remove(names.map((n) => `${prefix}/${n}`));
+    if (eRemove) throw new Error(eRemove.message);
+  }
+}
+
 /** Eliminación definitiva (HARD DELETE). Cascade borra tareas/comentarios/archivos/historial.
  *  Restringido a admin y super_admin. Para los demás roles existe PATCH { archivado: true } (soft delete). */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -281,8 +365,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json(errorResponse(auth.message), { status: auth.status });
   }
 
-  const rol = (auth.rol ?? "").trim().toLowerCase();
-  if (rol !== "super_admin" && rol !== "admin" && rol !== "administrador") {
+  if (!puedeEliminarProyectos(auth)) {
     return NextResponse.json(
       errorResponse("Solo administradores pueden eliminar proyectos definitivamente. Podés archivarlo en su lugar."),
       { status: 403 }
@@ -305,6 +388,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       .maybeSingle();
     if (eFind) return NextResponse.json(errorResponse(eFind.message), { status: 400 });
     if (!existing) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+
+    // Los binarios del bucket no cuelgan del cascade de la BD: hay que borrarlos aparte
+    // o quedan huérfanos. Best-effort: si falla, igual eliminamos el proyecto.
+    await removeProyectoStorageFiles(sb, auth.empresaId, pid).catch(() => {});
 
     const { error: eDel } = await sb
       .from("proyectos")

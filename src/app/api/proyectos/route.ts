@@ -181,6 +181,12 @@ export async function POST(request: Request) {
       updated_by: auth.usuarioCatalogId,
       ultimo_movimiento_at: new Date().toISOString(),
       last_activity_at: new Date().toISOString(),
+      // Arranque del contador de días del tablero "Tareas del equipo": corre
+      // desde que el proyecto tiene programador asignado.
+      tecnico_asignado_at:
+        typeof body.responsable_tecnico_id === "string" && body.responsable_tecnico_id
+          ? new Date().toISOString()
+          : null,
     };
 
     const { data: created, error: insErr } = await sb.from("proyectos").insert(insert).select("*");

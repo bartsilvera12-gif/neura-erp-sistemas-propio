@@ -565,6 +565,7 @@ function FilaProyecto({
           <DiasBadge
             dias={p.dias}
             diasEnEtapa={p.dias_en_etapa}
+            asignado={tecnicoId != null}
             activo={editandoFecha}
             onClick={() => setEditandoFecha((v) => !v)}
           />
@@ -632,26 +633,44 @@ function FilaProyecto({
   );
 }
 
-/** El contador principal son los días desde la asignación al programador. */
+/**
+ * El contador son los días desde la asignación al programador. Sin programador
+ * el contador no corre: se muestra inerte, sin color de alerta y sin edición.
+ */
 function DiasBadge({
   dias,
   diasEnEtapa,
+  asignado,
   activo,
   onClick,
 }: {
   dias: number | null;
   diasEnEtapa: number | null;
+  asignado: boolean;
   activo: boolean;
   onClick: () => void;
 }) {
+  if (!asignado || dias == null) {
+    return (
+      <span
+        className="inline-flex min-w-[3.1rem] items-center justify-center rounded-lg border border-dashed border-slate-200 px-2 py-1.5 text-[11px] font-medium text-slate-300"
+        title={
+          asignado
+            ? "Sin fecha de asignación"
+            : "El contador arranca cuando se le asigna el proyecto a un programador"
+        }
+      >
+        —
+      </span>
+    );
+  }
+
   const tono =
-    dias == null
-      ? "border-slate-200 bg-white text-slate-400"
-      : dias >= 30
-        ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-        : dias >= 14
-          ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100";
+    dias >= 30
+      ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+      : dias >= 14
+        ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100";
   return (
     <button
       type="button"
@@ -666,8 +685,8 @@ function DiasBadge({
         activo ? "ring-2 ring-[#4FAEB2]/30" : ""
       }`}
     >
-      {dias == null ? "—" : dias}
-      {dias == null ? null : <span className="font-medium opacity-60">d</span>}
+      {dias}
+      <span className="font-medium opacity-60">d</span>
     </button>
   );
 }

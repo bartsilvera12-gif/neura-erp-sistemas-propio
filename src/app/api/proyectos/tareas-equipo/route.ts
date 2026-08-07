@@ -171,8 +171,7 @@ export async function GET(request: Request) {
         };
         gruposActivos.set(key, g);
       }
-      // Sin `tecnico_asignado_at` (proyectos sin técnico) caemos al ingreso.
-      const desdeAsignacion = p.tecnico_asignado_at ?? p.fecha_ingreso;
+      const desdeAsignacion = inicioContador(p);
       g.cantidad += 1;
       g.proyectos.push({
         id: p.id,
@@ -234,7 +233,7 @@ export async function GET(request: Request) {
         };
         gruposFin.set(key, g);
       }
-      const desdeAsignacion = p.tecnico_asignado_at ?? p.fecha_ingreso;
+      const desdeAsignacion = inicioContador(p);
       g.cantidad += 1;
       g.proyectos.push({
         id: p.id,
@@ -280,6 +279,19 @@ export async function GET(request: Request) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });
   }
+}
+
+/**
+ * Inicio del contador de días. Sin programador asignado no hay nada que contar:
+ * devuelve `null` y la fila muestra "—" en vez de acumular días desde el alta.
+ *
+ * Para los proyectos que ya tenían técnico antes de esta funcionalidad no existe
+ * registro de cuándo se asignó, así que se cae a `fecha_ingreso` (el backfill de
+ * la migración hizo lo mismo). Es corregible a mano desde el tablero.
+ */
+function inicioContador(p: ProyectoRow): string | null {
+  if (!p.responsable_tecnico_id) return null;
+  return p.tecnico_asignado_at ?? p.fecha_ingreso;
 }
 
 function uniq(ids: (string | null | undefined)[]): string[] {

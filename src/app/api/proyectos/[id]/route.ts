@@ -294,6 +294,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
+    // Corrección manual del inicio del contador de días. Va después del bloque
+    // de arriba a propósito: si en el mismo PATCH se reasigna el proyecto y se
+    // fija una fecha, gana la fecha explícita que puso el usuario.
+    if ("tecnico_asignado_at" in body) {
+      const raw = body.tecnico_asignado_at;
+      if (raw === null || raw === "") {
+        patch.tecnico_asignado_at = null;
+      } else if (typeof raw === "string" && Number.isFinite(Date.parse(raw))) {
+        patch.tecnico_asignado_at = new Date(raw).toISOString();
+      } else {
+        return NextResponse.json(errorResponse("Fecha de asignación inválida"), { status: 400 });
+      }
+    }
+
     const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
     if (keys.length <= 2) {
       return NextResponse.json(errorResponse("Nada para actualizar"), { status: 400 });

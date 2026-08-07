@@ -2,10 +2,16 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { TIPO_PROYECTO_WEB_SAAS } from "@/lib/proyectos/tipos-proyecto";
 
 const DEFAULT_PROYECTO_TIPOS = [
   { nombre: "Proyecto Web", codigo: "web", descripcion: "Sitios y landings vendidos por comercial" },
   { nombre: "SaaS / ERP", codigo: "saas", descripcion: "Implementaciones SaaS y ERP para clientes" },
+  {
+    nombre: "Página Web + SaaS / ERP",
+    codigo: TIPO_PROYECTO_WEB_SAAS,
+    descripcion: "Proyecto mixto: sitio web e implementación SaaS/ERP para el mismo cliente",
+  },
 ] as const;
 
 export async function GET(request: Request) {

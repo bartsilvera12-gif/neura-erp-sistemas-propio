@@ -24,6 +24,7 @@ import {
   type ProyectoModuloSnapshot,
   type ProyectoSaasBriefForm,
 } from "@/lib/proyectos/brief-data";
+import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 
 export type ProyectoCambioCliente = {
   id: string;
@@ -823,10 +824,15 @@ export default function ProyectoDetalleInner({
     const proyecto = data?.proyecto;
     if (!proyecto) return;
     const tipoCodigo = proyecto.proyecto_tipo?.codigo ?? "";
-    const briefMerged =
-      tipoCodigo === "saas"
-        ? applySaasFormToExisting(proyecto.brief_data, saasForm)
-        : applyBriefFormToExisting(proyecto.brief_data, briefForm, briefLists);
+    // En cadena y no en if/else: el tipo mixto guarda los dos briefs, y sus
+    // claves son disjuntas (`saas_*` vs. marca/dominio/…).
+    let briefMerged: unknown = proyecto.brief_data;
+    if (tipoIncluyeWeb(tipoCodigo)) {
+      briefMerged = applyBriefFormToExisting(briefMerged, briefForm, briefLists);
+    }
+    if (tipoIncluyeSaas(tipoCodigo)) {
+      briefMerged = applySaasFormToExisting(briefMerged, saasForm);
+    }
     const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1354,8 +1360,9 @@ export default function ProyectoDetalleInner({
 
   const proyecto = data?.proyecto;
   const codigoTipo = proyecto?.proyecto_tipo?.codigo ?? "";
-  const esWeb = codigoTipo === "web";
-  const esSaas = codigoTipo === "saas";
+  // El tipo mixto muestra los dos bloques de brief a la vez.
+  const esWeb = tipoIncluyeWeb(codigoTipo);
+  const esSaas = tipoIncluyeSaas(codigoTipo);
   const briefCoerced = coalesceBriefData(proyecto?.brief_data);
   const saasModuloIds = saasForm.modulos_necesarios
     .map((modulo) => modulo.id)

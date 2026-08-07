@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
+import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
@@ -222,7 +223,7 @@ function slaEstadoLabel(p: ProyectoCard): string {
 }
 
 function saasModuleCountLabel(p: ProyectoCard): string | null {
-  if (p.proyecto_tipo?.codigo !== "saas") return null;
+  if (!tipoIncluyeSaas(p.proyecto_tipo?.codigo)) return null;
   const count = readSaasBriefData(p.brief_data).modulos_necesarios.length;
   if (count <= 0) return null;
   return count === 1 ? "1 módulo" : `${count} módulos`;

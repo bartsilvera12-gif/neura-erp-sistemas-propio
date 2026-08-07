@@ -14,6 +14,7 @@ import {
   applySaasFormToExisting,
   type ProyectoModuloSnapshot,
 } from "@/lib/proyectos/brief-data";
+import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 
 type Tipo = { id: string; nombre: string; codigo: string };
 type Estado = { id: string; nombre: string };
@@ -61,8 +62,9 @@ export default function ProyectoNuevoForm({
   const [saasModuloIds, setSaasModuloIds] = useState<string[]>([]);
 
   const tipoCodigo = useMemo(() => tipos.find((t) => t.id === tipoId)?.codigo ?? "", [tipos, tipoId]);
-  const esWeb = tipoCodigo === "web";
-  const esSaas = tipoCodigo === "saas";
+  // El tipo mixto muestra los dos bloques de brief a la vez.
+  const esWeb = tipoIncluyeWeb(tipoCodigo);
+  const esSaas = tipoIncluyeSaas(tipoCodigo);
   const saasModulosSeleccionados = useMemo<ProyectoModuloSnapshot[]>(
     () =>
       modulosCatalogo
@@ -115,19 +117,18 @@ export default function ProyectoNuevoForm({
     }
     setSaving(true);
     setErr(null);
-    const brief_data = esWeb
-      ? applyBriefFormToExisting({}, brief, briefLists)
-      : esSaas
-        ? applySaasFormToExisting(
-            {},
-            {
-              empresa_nombre: saasEmpresaNombre,
-              whatsapp_contacto: saasWhatsapp,
-              observaciones: saasObservaciones,
-              modulos_necesarios: saasModulosSeleccionados,
-            }
-          )
-        : {};
+    // Se aplican en cadena, no en if/else: el tipo mixto guarda ambos briefs.
+    // Las claves de cada uno son disjuntas (`saas_*` vs. marca/dominio/…).
+    let brief_data: Record<string, unknown> = {};
+    if (esWeb) brief_data = applyBriefFormToExisting(brief_data, brief, briefLists);
+    if (esSaas) {
+      brief_data = applySaasFormToExisting(brief_data, {
+        empresa_nombre: saasEmpresaNombre,
+        whatsapp_contacto: saasWhatsapp,
+        observaciones: saasObservaciones,
+        modulos_necesarios: saasModulosSeleccionados,
+      });
+    }
 
     const body: Record<string, unknown> = {
       tipo_id: tipoId,

@@ -99,6 +99,7 @@ function formatFechaHora(iso?: string) {
 interface PagoCobrado {
   id: string;
   factura_numero: string;
+  cliente_id?: string | null;
   cliente_nombre: string;
   cliente_tipo_nombre: string;
   cliente_tipo_slug: string | null;
@@ -157,6 +158,7 @@ export default function PagosPage() {
           json.data.map((p: Record<string, unknown>) => ({
             id: p.id as string,
             factura_numero: (p.factura_numero as string) ?? "—",
+            cliente_id: (p.cliente_id as string) ?? null,
             cliente_nombre: (p.cliente_nombre as string) ?? "—",
             cliente_tipo_nombre: String(p.cliente_tipo_nombre ?? "—").trim() || "—",
             cliente_tipo_slug:
@@ -291,6 +293,17 @@ export default function PagosPage() {
 
   const clienteMapNombre = useMemo(
     () => Object.fromEntries(clientes.map((c) => [c.id, (c.empresa ?? c.nombre_contacto) || "—"])),
+    [clientes]
+  );
+  /** Mapa clienteId → vendedor asignado (nombre del usuario resuelto, o el texto libre). */
+  const vendedorPorCliente = useMemo(
+    () =>
+      Object.fromEntries(
+        clientes.map((c) => [
+          c.id,
+          (c.vendedor_usuario_nombre ?? "").trim() || (c.vendedor_asignado ?? "").trim() || "—",
+        ])
+      ) as Record<string, string>,
     [clientes]
   );
   const labelTipoClienteFila = useCallback(
@@ -514,7 +527,7 @@ export default function PagosPage() {
               <table className="w-full min-w-[960px] table-auto border-separate border-spacing-0 text-sm">
                 <thead className="bg-slate-50/80">
                   <tr>
-                    {["Número", "Cliente", "Tipo de cliente", "Fecha", "Vencimiento", "Total", "Saldo", "Estado", "Acción"].map(
+                    {["Número", "Cliente", "Tipo de cliente", "Vendedor", "Fecha", "Vencimiento", "Total", "Saldo", "Estado", "Acción"].map(
                       (h) => (
                         <th
                           key={h}
@@ -553,6 +566,11 @@ export default function PagosPage() {
                           title={labelTipoClienteFila(String(f.cliente_id))}
                         >
                           {labelTipoClienteFila(String(f.cliente_id))}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">
+                        <span className="inline-block max-w-[12rem] truncate">
+                          {vendedorPorCliente[String(f.cliente_id)] ?? "—"}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 text-sm text-slate-600 sm:px-4">
@@ -695,7 +713,7 @@ export default function PagosPage() {
               <table className="w-full min-w-[1040px] table-auto border-separate border-spacing-0 text-sm">
                 <thead className="bg-slate-50/80">
                   <tr>
-                    {["Factura", "Cliente", "Tipo de cliente", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
+                    {["Factura", "Cliente", "Tipo de cliente", "Vendedor", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
                       (h) => (
                         <th
                           key={h}
@@ -729,6 +747,11 @@ export default function PagosPage() {
                           title={p.cliente_tipo_nombre}
                         >
                           {p.cliente_tipo_nombre}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">
+                        <span className="inline-block max-w-[12rem] truncate">
+                          {p.cliente_id ? vendedorPorCliente[String(p.cliente_id)] ?? "—" : "—"}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-3 text-sm font-semibold tabular-nums text-[#3F8E91] sm:px-4">

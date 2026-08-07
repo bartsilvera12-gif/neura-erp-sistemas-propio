@@ -205,6 +205,8 @@ export async function GET(request: NextRequest) {
       return {
         ...p,
         factura_numero: factura?.numero_factura ?? "—",
+        /** Id del cliente para linkear al vendedor asignado (mapa client-side). */
+        cliente_id: clienteId,
         cliente_nombre: cliente ? (cliente.empresa ?? cliente.nombre_contacto ?? "—") : "—",
         /** Nombre legible; slug en `clientes.tipo_servicio_cliente` + catálogo. */
         cliente_tipo_nombre: labelTipoCliente(cliente),

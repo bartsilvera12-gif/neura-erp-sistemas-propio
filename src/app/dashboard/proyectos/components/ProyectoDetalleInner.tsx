@@ -55,6 +55,7 @@ export type DetalleResp = {
   avance_pct: number | null;
   current_user_id?: string | null;
   current_user_rol?: string | null;
+  current_user_puede_eliminar?: boolean;
 };
 
 const ESTADO_ENTREGADO_CODIGO = "publicado";
@@ -1437,9 +1438,8 @@ export default function ProyectoDetalleInner({
             options={estados.map((e) => ({ value: e.id, label: e.nombre }))}
           />
           {(() => {
-            const rol = (data.current_user_rol ?? "").trim().toLowerCase();
-            const puedeEliminar = rol === "super_admin" || rol === "admin" || rol === "administrador";
-            if (!puedeEliminar) return null;
+            // El permiso lo resuelve el server (mismo criterio que el DELETE); acá solo se refleja.
+            if (!data.current_user_puede_eliminar) return null;
             return (
               <button
                 type="button"

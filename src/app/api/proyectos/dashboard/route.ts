@@ -67,15 +67,26 @@ export async function GET(request: Request) {
         .in("estado_id", clienteEstadoIds);
     }
 
-    let entregadosMes = { count: 0 as number | null };
+    // Entregados del mes: se cuenta la PRIMERA entrada a un estado final según
+    // el historial, igual que el reporte "entregados por técnico". Antes se
+    // filtraba por `updated_at`, que se mueve con cualquier edición posterior
+    // (o con un backfill) y no representa la fecha de entrega.
+    let entregadosDelMes = 0;
     if (finalEstadoIds.length > 0) {
-      entregadosMes = await sb
-        .from("proyectos")
-        .select("id", { count: "exact", head: true })
+      const { data: histFinal } = await sb
+        .from("proyecto_estado_historial")
+        .select("proyecto_id, entered_at")
         .eq("empresa_id", emp)
-        .eq("archivado", false)
-        .in("estado_id", finalEstadoIds)
-        .gte("updated_at", startMonth);
+        .in("estado_nuevo_id", finalEstadoIds)
+        .order("entered_at", { ascending: true });
+
+      const primeraPorProyecto = new Map<string, string>();
+      for (const h of (histFinal ?? []) as { proyecto_id: string; entered_at: string }[]) {
+        if (!primeraPorProyecto.has(h.proyecto_id)) primeraPorProyecto.set(h.proyecto_id, h.entered_at);
+      }
+      for (const entered of primeraPorProyecto.values()) {
+        if (entered >= startMonth) entregadosDelMes += 1;
+      }
     }
 
     const { data: allEstados, error: eEst } = await sb
@@ -161,7 +172,7 @@ export async function GET(request: Request) {
         vencidos: vencidos.count ?? 0,
         por_vencer: porVencer.count ?? 0,
         esperando_cliente: esperandoCliente.count ?? 0,
-        entregados_este_mes: entregadosMes.count ?? 0,
+        entregados_este_mes: entregadosDelMes,
         tiempo_promedio_produccion_dias,
         por_estado,
         por_responsable,

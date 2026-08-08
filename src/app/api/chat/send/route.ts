@@ -48,6 +48,19 @@ export async function POST(request: NextRequest) {
     const senderType: "human" | "ai" | "system" =
       senderTypeInput === "ai" || senderTypeInput === "system" ? senderTypeInput : "human";
 
+    // Responder (cita estilo WhatsApp): WAMID del mensaje citado + snapshot para renderizar la cita.
+    const replyToWamid =
+      body && typeof body === "object" && typeof (body as { reply_to_wamid?: string }).reply_to_wamid === "string"
+        ? (body as { reply_to_wamid: string }).reply_to_wamid.trim()
+        : "";
+    const replyContext =
+      body &&
+      typeof body === "object" &&
+      (body as { reply_context?: unknown }).reply_context &&
+      typeof (body as { reply_context?: unknown }).reply_context === "object"
+        ? ((body as { reply_context: Record<string, unknown> }).reply_context)
+        : null;
+
     if (!conversationId || !message) {
       return NextResponse.json(
         { ok: false, error: "Se requiere conversation_id y message" },
@@ -122,7 +135,9 @@ export async function POST(request: NextRequest) {
       console.info("[api/chat/send] ycloud_outbound", { conversationId });
     }
 
-    const sendResult = await sendOutboundTextMessage(outbound, message);
+    const sendResult = await sendOutboundTextMessage(outbound, message, {
+      replyToWamid: replyToWamid || null,
+    });
 
     if (!sendResult.ok) {
       return NextResponse.json(
@@ -133,6 +148,12 @@ export async function POST(request: NextRequest) {
 
     const empresaId = conv.empresa_id;
     const ts = new Date().toISOString();
+    // Guardamos la respuesta del proveedor + (si aplica) la cita del mensaje respondido, para
+    // poder renderizar el "Responder" en nuestra UI sin reconsultar.
+    const rawPayloadOut: Record<string, unknown> = {
+      ...((sendResult.raw ?? {}) as Record<string, unknown>),
+      ...(replyContext ? { reply_context: replyContext } : {}),
+    };
 
     if (tenantPg && pool) {
       try {
@@ -147,7 +168,7 @@ export async function POST(request: NextRequest) {
           automation_source: automationSource || (senderType === "ai" ? "automation" : null),
           message_type: "text",
           content: message,
-          raw_payload: (sendResult.raw ?? {}) as Record<string, unknown>,
+          raw_payload: rawPayloadOut,
         });
       } catch (insE) {
         const msg = insE instanceof Error ? insE.message : String(insE);
@@ -173,7 +194,7 @@ export async function POST(request: NextRequest) {
         automation_source: automationSource || (senderType === "ai" ? "automation" : null),
         message_type: "text",
         content: message,
-        raw_payload: (sendResult.raw ?? {}) as Record<string, unknown>,
+        raw_payload: rawPayloadOut,
       });
 
       if (insErr) {

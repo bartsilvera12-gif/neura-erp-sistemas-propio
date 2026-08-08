@@ -92,18 +92,26 @@ export async function sendMessageViaYCloud(params: {
   /** Solo dígitos del cliente (mismo formato que usa Meta en el ERP) */
   toDigits: string;
   text: string;
+  /** WAMID del mensaje que se responde (cita estilo WhatsApp). Opcional. */
+  replyToWamid?: string | null;
 }): Promise<SendWhatsAppTextResult> {
   const toE164 = digitsToE164(params.toDigits);
   if (!toE164) {
     return { ok: false, error: "Teléfono de destino inválido para YCloud" };
   }
 
-  return postYCloudWhatsappMessage(params.apiKey, {
+  const payload: Record<string, unknown> = {
     from: params.fromE164,
     to: toE164,
     type: "text",
     text: { body: params.text },
-  });
+  };
+  const reply = params.replyToWamid?.trim();
+  if (reply) {
+    // YCloud (WhatsApp Cloud API): responder a un mensaje = context.messageId (el WAMID).
+    payload.context = { messageId: reply };
+  }
+  return postYCloudWhatsappMessage(params.apiKey, payload);
 }
 
 export type YCloudOutboundMediaKind = "image" | "document" | "audio" | "video";

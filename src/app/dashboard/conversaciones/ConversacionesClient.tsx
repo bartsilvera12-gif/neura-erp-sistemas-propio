@@ -101,6 +101,8 @@ type ChatMessage = {
   created_at: string;
   raw_payload?: Record<string, unknown> | null;
   whatsapp_delivery_status?: string | null;
+  /** WAMID (id de WhatsApp) del mensaje; se usa para "Responder" (cita). */
+  wa_message_id?: string | null;
 };
 
 type InboxTemplate = {
@@ -161,6 +163,7 @@ function mapRowToMessage(row: Record<string, unknown>): ChatMessage {
         : null,
     whatsapp_delivery_status:
       row.whatsapp_delivery_status != null ? String(row.whatsapp_delivery_status) : null,
+    wa_message_id: row.wa_message_id != null ? String(row.wa_message_id) : null,
   };
 }
 
@@ -208,6 +211,25 @@ function displayFilenameForAttachment(message: ChatMessage): string {
   if (m?.[1]?.trim()) return m[1].trim();
   if (raw && !raw.startsWith("[")) return raw.slice(0, 120);
   return message.message_type === "video" ? "Video" : "Archivo";
+}
+
+/** Texto corto para citar un mensaje al responder (estilo WhatsApp). */
+function messagePreview(m: ChatMessage): string {
+  const t = (m.content ?? "").trim();
+  if (t && !t.startsWith("[")) return t.slice(0, 90);
+  switch (m.message_type) {
+    case "image":
+    case "sticker":
+      return "📷 Imagen";
+    case "audio":
+      return "🎤 Audio";
+    case "video":
+      return "🎬 Video";
+    case "document":
+      return "📎 Documento";
+    default:
+      return t ? t.slice(0, 90) : "Mensaje";
+  }
 }
 
 /** Nombre de archivo para descargar, asegurando una extensión razonable según el tipo. */
@@ -514,6 +536,7 @@ export function ConversacionesClient({
   const [compApprovalInfo, setCompApprovalInfo] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [msgMenu, setMsgMenu] = useState<string | null>(null); // id del mensaje con el menú (3 puntitos) abierto
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null); // mensaje que se está respondiendo (cita)
   const [opsQueues, setOpsQueues] = useState<ChatQueueListRow[]>([]);
   const [opsAgentLoads, setOpsAgentLoads] = useState<SupervisorAgentLoadRow[]>([]);
   const [opsBusy, setOpsBusy] = useState(false);
@@ -1993,13 +2016,24 @@ export function ConversacionesClient({
   // Envío de texto en 2º plano: NO bloquea el composer. El mensaje ya se ve como "enviando…"
   // (pendingSends); acá se confirma y se reconcilia con el server. Traemos el mensaje real
   // ANTES de quitar el optimista para que no parpadee (React 18 batchea ambos setState).
-  async function doSendText(text: string, tempId: string, cid: string) {
+  async function doSendText(text: string, tempId: string, cid: string, reply?: ChatMessage | null) {
     try {
+      const bodyObj: Record<string, unknown> = { conversation_id: cid, message: text };
+      if (reply) {
+        // reply_to_wamid → cita real en WhatsApp; reply_context → snapshot para nuestra UI.
+        if (reply.wa_message_id) bodyObj.reply_to_wamid = reply.wa_message_id;
+        bodyObj.reply_context = {
+          wa_message_id: reply.wa_message_id ?? null,
+          from_me: reply.from_me,
+          preview: messagePreview(reply),
+          message_type: reply.message_type,
+        };
+      }
       const res = await fetchWithSupabaseSession("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ conversation_id: cid, message: text }),
+        body: JSON.stringify(bodyObj),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string; meta?: unknown };
       if (!res.ok) {
@@ -2040,13 +2074,15 @@ export function ConversacionesClient({
     }
     const text = input.trim();
     if (!text) return;
+    const reply = replyingTo; // capturar la cita ANTES de limpiar el composer
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     setInput(""); // el textarea se limpia YA (el auto-size lo vuelve a 1 línea)
+    setReplyingTo(null); // la cita se consume al enviar
     setSendError(null);
     stickBottomRef.current = true;
     setPendingSends((prev) => [...prev, { tempId, convId: cid, text, status: "sending" as const }]);
     composerRef.current?.focus(); // seguir escribiendo sin re-clic (sobre todo al usar el botón)
-    void doSendText(text, tempId, cid);
+    void doSendText(text, tempId, cid, reply);
   }
 
   function handleSend(e: React.FormEvent) {
@@ -3674,24 +3710,35 @@ export function ConversacionesClient({
                           }`}
                         >
                           {/* Menú de acciones del mensaje (3 puntitos, aparece al pasar el mouse). */}
-                          {attachUrl ? (
-                            <div className="absolute right-1 top-1 z-10">
-                              <button
-                                type="button"
-                                aria-label="Opciones del mensaje"
-                                onClick={() => setMsgMenu(msgMenu === m.id ? null : m.id)}
-                                className={`grid h-6 w-6 place-items-center rounded-full text-base leading-none opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 ${
-                                  m.from_me
-                                    ? "bg-black/20 text-white hover:bg-black/35"
-                                    : "bg-slate-900/10 text-slate-700 hover:bg-slate-900/20"
-                                }`}
-                              >
-                                ⋮
-                              </button>
-                              {msgMenu === m.id ? (
-                                <>
-                                  <div className="fixed inset-0 z-40" onClick={() => setMsgMenu(null)} />
-                                  <div className="absolute right-0 top-7 z-50 min-w-[150px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-slate-700 shadow-lg">
+                          <div className="absolute right-1 top-1 z-10">
+                            <button
+                              type="button"
+                              aria-label="Opciones del mensaje"
+                              onClick={() => setMsgMenu(msgMenu === m.id ? null : m.id)}
+                              className={`grid h-6 w-6 place-items-center rounded-full text-base leading-none opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 ${
+                                m.from_me
+                                  ? "bg-black/20 text-white hover:bg-black/35"
+                                  : "bg-slate-900/10 text-slate-700 hover:bg-slate-900/20"
+                              }`}
+                            >
+                              ⋮
+                            </button>
+                            {msgMenu === m.id ? (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setMsgMenu(null)} />
+                                <div className="absolute right-0 top-7 z-50 min-w-[150px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-slate-700 shadow-lg">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReplyingTo(m);
+                                      setMsgMenu(null);
+                                      composerRef.current?.focus();
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                                  >
+                                    <span aria-hidden>↩️</span> Responder
+                                  </button>
+                                  {attachUrl ? (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -3702,11 +3749,32 @@ export function ConversacionesClient({
                                     >
                                       <span aria-hidden>⬇️</span> Descargar
                                     </button>
-                                  </div>
-                                </>
-                              ) : null}
-                            </div>
-                          ) : null}
+                                  ) : null}
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                          {/* Cita del mensaje respondido (si este mensaje es una respuesta). */}
+                          {(() => {
+                            const rc = m.raw_payload?.reply_context as
+                              | { preview?: string; from_me?: boolean }
+                              | undefined;
+                            if (!rc || typeof rc !== "object") return null;
+                            return (
+                              <div
+                                className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 text-[12px] ${
+                                  m.from_me
+                                    ? "border-white/60 bg-white/15 text-white/90"
+                                    : "border-[#4FAEB2] bg-slate-50 text-slate-600"
+                                }`}
+                              >
+                                <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                                  {rc.from_me ? "Vos" : "Cliente"}
+                                </span>
+                                <span className="line-clamp-2 break-words">{rc.preview ?? "Mensaje"}</span>
+                              </div>
+                            );
+                          })()}
                           {showAsImage && attachUrl ? (
                             <div className="space-y-2">
                               <div
@@ -3920,6 +3988,26 @@ export function ConversacionesClient({
                 {uploadHint && (
                   <div className="text-xs text-[#3F8E91] bg-[#4FAEB2]/10 border border-[#4FAEB2]/30 rounded-md px-2 py-1">
                     {uploadHint}
+                  </div>
+                )}
+                {replyingTo && (
+                  <div className="flex items-start gap-2 rounded-md border-l-[3px] border-[#4FAEB2] bg-slate-50 px-2 py-1.5">
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#3F8E91]">
+                        Respondiendo a {replyingTo.from_me ? "vos" : "el cliente"}
+                      </span>
+                      <span className="block truncate text-[12px] text-slate-600">
+                        {messagePreview(replyingTo)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyingTo(null)}
+                      aria-label="Cancelar respuesta"
+                      className="shrink-0 rounded px-1 text-base leading-none text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
                 <div className="flex gap-1 items-end">

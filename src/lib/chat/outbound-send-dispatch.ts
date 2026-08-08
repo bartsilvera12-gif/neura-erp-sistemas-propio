@@ -354,7 +354,8 @@ export async function resolveOutboundTextContextFromIds(
 
 export async function sendOutboundTextMessage(
   ctx: ChannelOutboundTextContext,
-  text: string
+  text: string,
+  opts?: { replyToWamid?: string | null }
 ): Promise<SendWhatsAppTextResult> {
   if (ctx.provider === "ycloud") {
     return sendMessageViaYCloud({
@@ -362,8 +363,10 @@ export async function sendOutboundTextMessage(
       fromE164: ctx.fromE164,
       toDigits: ctx.toDigits,
       text,
+      replyToWamid: opts?.replyToWamid ?? null,
     });
   }
+  // Meta: la respuesta con cita aún no está cableada (el equipo opera por YCloud).
   return sendWhatsAppText({
     toDigits: ctx.toDigits,
     phoneNumberId: ctx.phoneNumberId,

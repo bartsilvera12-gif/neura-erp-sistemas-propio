@@ -88,12 +88,53 @@ function GaugeComparacion({ anterior, actual }: { anterior: number; actual: numb
   );
 }
 
+/** Panel con título + semicírculo comparativo + los dos montos etiquetados. */
+function GaugePanel({
+  titulo,
+  anterior,
+  actual,
+  labelAnterior,
+  labelActual,
+}: {
+  titulo: string;
+  anterior: number;
+  actual: number;
+  labelAnterior: string;
+  labelActual: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-[#4FAEB2]/15">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{titulo}</p>
+      <div className="mt-2 flex flex-col items-center gap-4 sm:flex-row sm:justify-around">
+        <GaugeComparacion anterior={anterior} actual={actual} />
+        <div className="grid grid-cols-2 gap-6 text-center">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{labelAnterior}</p>
+            <p className="mt-1 flex items-center justify-center gap-1.5 text-lg font-bold tabular-nums text-slate-500">
+              <span aria-hidden className="h-2 w-2 rounded-full bg-slate-400" /> Gs. {fmtGs(anterior)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#4FAEB2]">{labelActual}</p>
+            <p className="mt-1 flex items-center justify-center gap-1.5 text-lg font-bold tabular-nums text-[#3F8E91]">
+              <span aria-hidden className="h-2 w-2 rounded-full bg-[#3F8E91]" /> Gs. {fmtGs(actual)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ReporteSuscripcionesPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [periodo, setPeriodo] = useState("");
   const [periodoAnterior, setPeriodoAnterior] = useState("");
   const [totalMes, setTotalMes] = useState(0);
   const [totalMesAnterior, setTotalMesAnterior] = useState(0);
+  const [cobradoMes, setCobradoMes] = useState(0);
+  const [cobradoMesAnterior, setCobradoMesAnterior] = useState(0);
+  const [diaCorte, setDiaCorte] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [tipo, setTipo] = useState("");
@@ -111,8 +152,11 @@ export default function ReporteSuscripcionesPage() {
           data?: {
             periodo: string;
             periodo_anterior?: string;
+            dia_corte?: number;
             total_mes?: number;
             total_mes_anterior?: number;
+            cobrado_mes?: number;
+            cobrado_mes_anterior?: number;
             rows: Row[];
           };
           error?: string;
@@ -122,8 +166,11 @@ export default function ReporteSuscripcionesPage() {
           setRows(json.data.rows);
           setPeriodo(json.data.periodo);
           setPeriodoAnterior(json.data.periodo_anterior ?? "");
+          setDiaCorte(Number(json.data.dia_corte) || 0);
           setTotalMes(Number(json.data.total_mes) || 0);
           setTotalMesAnterior(Number(json.data.total_mes_anterior) || 0);
+          setCobradoMes(Number(json.data.cobrado_mes) || 0);
+          setCobradoMesAnterior(Number(json.data.cobrado_mes_anterior) || 0);
           setErr(null);
         }
       } catch (e) {
@@ -172,7 +219,7 @@ export default function ReporteSuscripcionesPage() {
   const toggleEstado = (e: EstadoMes) => setEstadoFiltro((prev) => (prev === e ? "" : e));
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6">
       {/* Encabezado */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -191,32 +238,24 @@ export default function ReporteSuscripcionesPage() {
         </div>
       </div>
 
-      {/* Comparativo mes anterior vs este mes (semicírculo con 2 agujas). */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-[#4FAEB2]/15">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-          Suscripciones facturadas · mes anterior vs este mes
-        </p>
-        <div className="mt-2 flex flex-col items-center gap-6 sm:flex-row sm:justify-around">
-          <GaugeComparacion anterior={totalMesAnterior} actual={totalMes} />
-          <div className="grid grid-cols-2 gap-8 text-center">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                {periodoAnterior ? periodoLabel(periodoAnterior) : "Mes anterior"}
-              </p>
-              <p className="mt-1 flex items-center justify-center gap-1.5 text-xl font-bold tabular-nums text-slate-500">
-                <span aria-hidden className="h-2 w-2 rounded-full bg-slate-400" /> Gs. {fmtGs(totalMesAnterior)}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#4FAEB2]">
-                {periodo ? periodoLabel(periodo) : "Este mes"}
-              </p>
-              <p className="mt-1 flex items-center justify-center gap-1.5 text-xl font-bold tabular-nums text-[#3F8E91]">
-                <span aria-hidden className="h-2 w-2 rounded-full bg-[#3F8E91]" /> Gs. {fmtGs(totalMes)}
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* Dos comparativas (semicírculo con 2 agujas), solo suscripciones —no ventas nuevas—:
+          1) Emitido/facturado del mes vs mes anterior.
+          2) Cobrado a la fecha del día (mismo día del mes) vs mes anterior. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <GaugePanel
+          titulo="Emitido (facturado) · mes anterior vs este mes"
+          anterior={totalMesAnterior}
+          actual={totalMes}
+          labelAnterior={periodoAnterior ? periodoLabel(periodoAnterior) : "Mes anterior"}
+          labelActual={periodo ? periodoLabel(periodo) : "Este mes"}
+        />
+        <GaugePanel
+          titulo={`Cobrado de suscripciones · al día ${diaCorte} de cada mes`}
+          anterior={cobradoMesAnterior}
+          actual={cobradoMes}
+          labelAnterior={periodoAnterior ? periodoLabel(periodoAnterior) : "Mes anterior"}
+          labelActual={periodo ? periodoLabel(periodo) : "Este mes"}
+        />
       </div>
 
       {/* KPIs (seleccionables: filtran la tabla por estado del mes). */}

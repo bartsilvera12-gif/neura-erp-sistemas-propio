@@ -161,6 +161,39 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 4b) COBRADO de suscripciones A LA FECHA DEL DÍA: pagos imputados a facturas tipo=suscripcion,
+    //     este mes (1 → hoy) vs mes anterior (1 → mismo día), para comparar el ritmo de cobro.
+    const hoy = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "America/Asuncion",
+    }).format(new Date());
+    const diaCorte = parseInt(hoy.slice(8, 10), 10);
+    const inicioMes = `${ym}-01`;
+    const inicioMesAnt = `${ymPrev}-01`;
+    const diasMesAnt = new Date(prevYear, prevMonth, 0).getDate(); // días del mes anterior
+    const finMesAntCorte = `${ymPrev}-${String(Math.min(diaCorte, diasMesAnt)).padStart(2, "0")}`;
+    let cobradoMes = 0;
+    let cobradoMesAnterior = 0;
+    {
+      const { data } = await supabase
+        .from("pagos")
+        .select("monto, fecha_pago, facturas(tipo)")
+        .eq("empresa_id", empresaId)
+        .gte("fecha_pago", inicioMesAnt)
+        .lte("fecha_pago", hoy);
+      for (const p of (data ?? []) as { monto: number | null; fecha_pago: string | null; facturas: unknown }[]) {
+        const facRaw = p.facturas;
+        const fac = (Array.isArray(facRaw) ? facRaw[0] : facRaw) as { tipo?: string | null } | null;
+        if (!fac || String(fac.tipo ?? "").trim().toLowerCase() !== "suscripcion") continue; // solo suscripciones
+        const fp = String(p.fecha_pago ?? "").slice(0, 10);
+        const monto = Number(p.monto) || 0;
+        if (fp >= inicioMes && fp <= hoy) cobradoMes += monto;
+        else if (fp >= inicioMesAnt && fp <= finMesAntCorte) cobradoMesAnterior += monto;
+      }
+    }
+
     // 5) Catálogo de tipos para etiquetas legibles (SaaS, Contable, Web…).
     const catalogMap: Record<string, string> = {};
     {
@@ -204,8 +237,11 @@ export async function GET(request: NextRequest) {
       successResponse({
         periodo: ym,
         periodo_anterior: ymPrev,
+        dia_corte: diaCorte,
         total_mes: Math.round(totalMes),
         total_mes_anterior: Math.round(totalMesAnterior),
+        cobrado_mes: Math.round(cobradoMes),
+        cobrado_mes_anterior: Math.round(cobradoMesAnterior),
         rows,
       })
     );

@@ -49,6 +49,7 @@ export default function ReporteSuscripcionesPage() {
   const [err, setErr] = useState<string | null>(null);
   const [tipo, setTipo] = useState("");
   const [q, setQ] = useState("");
+  const [estadoFiltro, setEstadoFiltro] = useState<"" | EstadoMes>("");
 
   useEffect(() => {
     let cancel = false;
@@ -80,7 +81,8 @@ export default function ReporteSuscripcionesPage() {
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);
 
-  const filtradas = useMemo(() => {
+  // Filtro base (tipo + búsqueda): alimenta los KPIs, que se mantienen estables al clickear un card.
+  const baseFiltradas = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
       if (tipo && r.tipo_slug !== tipo) return false;
@@ -92,12 +94,20 @@ export default function ReporteSuscripcionesPage() {
     });
   }, [rows, tipo, q]);
 
+  // Lo que muestra la tabla: base + el filtro por estado (cards seleccionables).
+  const filtradas = useMemo(
+    () => (estadoFiltro ? baseFiltradas.filter((r) => r.estado_mes === estadoFiltro) : baseFiltradas),
+    [baseFiltradas, estadoFiltro]
+  );
+
   const totalGs = useMemo(
     () => filtradas.filter((r) => r.moneda === "GS").reduce((s, r) => s + r.monto, 0),
     [filtradas]
   );
-  const nPagadas = filtradas.filter((r) => r.estado_mes === "pagado").length;
-  const nPendientes = filtradas.filter((r) => r.estado_mes === "pendiente").length;
+  const nPagadas = baseFiltradas.filter((r) => r.estado_mes === "pagado").length;
+  const nPendientes = baseFiltradas.filter((r) => r.estado_mes === "pendiente").length;
+  const totalGsBase = baseFiltradas.filter((r) => r.moneda === "GS").reduce((s, r) => s + r.monto, 0);
+  const toggleEstado = (e: EstadoMes) => setEstadoFiltro((prev) => (prev === e ? "" : e));
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
@@ -119,24 +129,45 @@ export default function ReporteSuscripcionesPage() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs (seleccionables: filtran la tabla por estado del mes). */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-[#4FAEB2]/15">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Suscripciones</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{filtradas.length}</p>
-        </div>
+        <button
+          type="button"
+          onClick={() => setEstadoFiltro("")}
+          aria-pressed={estadoFiltro === ""}
+          className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+            estadoFiltro === "" ? "border-[#4FAEB2] ring-2 ring-[#4FAEB2]/40" : "border-slate-200 ring-1 ring-[#4FAEB2]/15"
+          }`}
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Todas</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{baseFiltradas.length}</p>
+        </button>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-[#4FAEB2]/15">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#4FAEB2]">Mensual (Gs.)</p>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-[#3F8E91] tabular-nums">{fmtGs(totalGs)}</p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-[#3F8E91] tabular-nums">{fmtGs(totalGsBase)}</p>
         </div>
-        <div className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+        <button
+          type="button"
+          onClick={() => toggleEstado("pagado")}
+          aria-pressed={estadoFiltro === "pagado"}
+          className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+            estadoFiltro === "pagado" ? "border-emerald-400 ring-2 ring-emerald-300" : "border-emerald-200"
+          }`}
+        >
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-600">Pagadas del mes</p>
           <p className="mt-1 text-2xl font-bold text-emerald-700">{nPagadas}</p>
-        </div>
-        <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleEstado("pendiente")}
+          aria-pressed={estadoFiltro === "pendiente"}
+          className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+            estadoFiltro === "pendiente" ? "border-amber-400 ring-2 ring-amber-300" : "border-amber-200"
+          }`}
+        >
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-600">Pendientes del mes</p>
           <p className="mt-1 text-2xl font-bold text-amber-700">{nPendientes}</p>
-        </div>
+        </button>
       </div>
 
       {/* Filtros */}
@@ -160,11 +191,12 @@ export default function ReporteSuscripcionesPage() {
             </option>
           ))}
         </select>
-        {(q || tipo) && (
+        {(q || tipo || estadoFiltro) && (
           <button
             onClick={() => {
               setQ("");
               setTipo("");
+              setEstadoFiltro("");
             }}
             className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           >

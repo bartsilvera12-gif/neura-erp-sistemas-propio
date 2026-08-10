@@ -78,7 +78,8 @@ export async function GET(request: NextRequest) {
       {
         nombre: string;
         tipo: string;
-        vendedor: string;
+        vendedorTexto: string;
+        vendedorUid: string;
         vigente: boolean;
       }
     >();
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
       const slice = cliIds.slice(i, i + 150);
       const { data } = await supabase
         .from("clientes")
-        .select("id, empresa, nombre_contacto, tipo_servicio_cliente, vendedor_asignado, estado, deleted_at, baja_operativa_at")
+        .select("id, empresa, nombre_contacto, tipo_servicio_cliente, vendedor_asignado, vendedor_usuario_id, estado, deleted_at, baja_operativa_at")
         .in("id", slice);
       for (const c of (data ?? []) as Record<string, unknown>[]) {
         const estado = String(c.estado ?? "activo").trim().toLowerCase();
@@ -98,9 +99,24 @@ export async function GET(request: NextRequest) {
           nombre:
             (String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || "(sin nombre)"),
           tipo: String(c.tipo_servicio_cliente ?? "").trim().toLowerCase(),
-          vendedor: String(c.vendedor_asignado ?? "").trim() || "—",
+          vendedorTexto: String(c.vendedor_asignado ?? "").trim(),
+          vendedorUid: String(c.vendedor_usuario_id ?? "").trim(),
           vigente,
         });
+      }
+    }
+
+    // 3b) Nombre del vendedor por ID: neura.usuarios linkea por auth_user_id = clientes.vendedor_usuario_id.
+    //     Se prefiere el nombre resuelto; si no, el texto libre vendedor_asignado.
+    const vendedorUids = [...new Set([...cliMap.values()].map((c) => c.vendedorUid).filter(Boolean))];
+    const nombrePorUid = new Map<string, string>();
+    for (let i = 0; i < vendedorUids.length; i += 150) {
+      const slice = vendedorUids.slice(i, i + 150);
+      const { data } = await supabase.from("usuarios").select("auth_user_id, nombre").in("auth_user_id", slice);
+      for (const u of (data ?? []) as { auth_user_id: string | null; nombre: string | null }[]) {
+        const uid = String(u?.auth_user_id ?? "").trim();
+        const nom = String(u?.nombre ?? "").trim();
+        if (uid && nom) nombrePorUid.set(uid, nom);
       }
     }
 
@@ -155,7 +171,7 @@ export async function GET(request: NextRequest) {
           tipo_label: tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogMap) : "Sin tipo",
           monto: Math.round(monto),
           moneda: String(s.moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
-          vendedor: cli.vendedor,
+          vendedor: (cli.vendedorUid ? nombrePorUid.get(cli.vendedorUid) : "") || cli.vendedorTexto || "—",
           estado_mes: estadoMes as "pagado" | "pendiente" | "sin_facturar",
         };
       })

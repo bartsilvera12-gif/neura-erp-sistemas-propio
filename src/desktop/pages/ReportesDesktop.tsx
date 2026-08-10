@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Repeat } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -12,6 +12,14 @@ type ReporteCard = {
 };
 
 const REPORTES: ReporteCard[] = [
+  {
+    title: "Suscripciones",
+    subtitle: "Cobranzas",
+    description:
+      "Suscripciones activas por tipo (SaaS, Contable, Web…): cliente, plan, monto mensual, vendedor asignado y estado de cobro del mes (pagado / pendiente / sin facturar). Filtrable y con totales.",
+    icon: Repeat,
+    href: "/reportes/suscripciones",
+  },
   {
     title: "Libro de Compras",
     subtitle: "Contabilidad",

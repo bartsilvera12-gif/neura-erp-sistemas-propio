@@ -124,21 +124,39 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 4) Facturas de suscripción del mes actual → estado por suscripción.
+    // Mes anterior (para el comparativo del semicírculo).
+    const [yy, mm] = ym.split("-").map((x) => parseInt(x, 10));
+    const prevMonth = mm === 1 ? 12 : mm - 1;
+    const prevYear = mm === 1 ? yy - 1 : yy;
+    const ymPrev = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+
+    // 4) Facturas de suscripción del mes actual (estado por suscripción) + totales facturados
+    //    de este mes y del anterior (para comparar cuánta plata mueven las suscripciones).
     const factBySub = new Map<string, { estado: string; saldo: number }>();
+    let totalMes = 0;
+    let totalMesAnterior = 0;
     {
       const { data } = await supabase
         .from("facturas")
-        .select("suscripcion_id, estado, saldo")
+        .select("suscripcion_id, estado, saldo, monto, periodo_facturado")
         .eq("empresa_id", empresaId)
         .eq("tipo", "suscripcion")
-        .eq("periodo_facturado", ym);
-      for (const f of (data ?? []) as FacturaRow[]) {
-        if (f.suscripcion_id) {
-          factBySub.set(String(f.suscripcion_id), {
-            estado: String(f.estado ?? "").trim(),
-            saldo: Number(f.saldo) || 0,
-          });
+        .in("periodo_facturado", [ym, ymPrev]);
+      for (const f of (data ?? []) as (FacturaRow & { monto: number | null; periodo_facturado: string | null })[]) {
+        const per = String(f.periodo_facturado ?? "");
+        const monto = Number(f.monto) || 0;
+        const anulada = String(f.estado ?? "").trim().toLowerCase() === "anulado";
+        if (anulada) continue; // no cuenta como plata ni como estado del mes
+        if (per === ym) {
+          totalMes += monto;
+          if (f.suscripcion_id) {
+            factBySub.set(String(f.suscripcion_id), {
+              estado: String(f.estado ?? "").trim(),
+              saldo: Number(f.saldo) || 0,
+            });
+          }
+        } else if (per === ymPrev) {
+          totalMesAnterior += monto;
         }
       }
     }
@@ -182,7 +200,15 @@ export async function GET(request: NextRequest) {
       .filter((r): r is NonNullable<typeof r> => r != null)
       .sort((a, b) => b.monto - a.monto || a.cliente.localeCompare(b.cliente));
 
-    return NextResponse.json(successResponse({ periodo: ym, rows }));
+    return NextResponse.json(
+      successResponse({
+        periodo: ym,
+        periodo_anterior: ymPrev,
+        total_mes: Math.round(totalMes),
+        total_mes_anterior: Math.round(totalMesAnterior),
+        rows,
+      })
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

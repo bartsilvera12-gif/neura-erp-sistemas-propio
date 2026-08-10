@@ -42,9 +42,58 @@ function EstadoBadge({ estado }: { estado: EstadoMes }) {
   );
 }
 
+/** Redondea a un tope "lindo" para la escala del medidor. */
+function niceMax(v: number): number {
+  if (v <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / mag;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  return step * mag;
+}
+
+/** Semicírculo comparativo: dos agujas (mes anterior gris, mes actual teal) + variación. */
+function GaugeComparacion({ anterior, actual }: { anterior: number; actual: number }) {
+  const cx = 110;
+  const cy = 106;
+  const R = 92;
+  const maxScale = niceMax(Math.max(anterior, actual, 1) * 1.1);
+  const punto = (v: number, r: number) => {
+    const f = Math.max(0, Math.min(1, v / maxScale));
+    const a = Math.PI * (1 - f); // izquierda (PI) = 0, derecha (0) = máx
+    return { x: cx + r * Math.cos(a), y: cy - r * Math.sin(a) };
+  };
+  const arcEnd = punto(actual, R);
+  const ant = punto(anterior, R * 0.84);
+  const act = punto(actual, R * 0.84);
+  const delta = anterior > 0 ? ((actual - anterior) / anterior) * 100 : actual > 0 ? 100 : 0;
+  const up = actual >= anterior;
+
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox="0 0 220 124" className="w-full max-w-[260px]" role="img" aria-label="Comparativo mes anterior vs mes actual">
+        <path d={`M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`} fill="none" stroke="#e2e8f0" strokeWidth="13" strokeLinecap="round" />
+        <path d={`M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${arcEnd.x} ${arcEnd.y}`} fill="none" stroke="#4FAEB2" strokeWidth="13" strokeLinecap="round" />
+        {/* Aguja mes anterior */}
+        <line x1={cx} y1={cy} x2={ant.x} y2={ant.y} stroke="#94a3b8" strokeWidth="3" strokeLinecap="round" />
+        {/* Aguja mes actual */}
+        <line x1={cx} y1={cy} x2={act.x} y2={act.y} stroke="#3F8E91" strokeWidth="4" strokeLinecap="round" />
+        <circle cx={cx} cy={cy} r="6" fill="#3F8E91" />
+        <text x={cx - R} y={cy + 15} fontSize="9" textAnchor="middle" fill="#94a3b8">0</text>
+        <text x={cx + R} y={cy + 15} fontSize="9" textAnchor="middle" fill="#94a3b8">{fmtGs(maxScale)}</text>
+      </svg>
+      <p className={`-mt-1 text-center text-sm font-bold ${up ? "text-emerald-600" : "text-red-600"}`}>
+        {up ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}% vs mes anterior
+      </p>
+    </div>
+  );
+}
+
 export default function ReporteSuscripcionesPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [periodo, setPeriodo] = useState("");
+  const [periodoAnterior, setPeriodoAnterior] = useState("");
+  const [totalMes, setTotalMes] = useState(0);
+  const [totalMesAnterior, setTotalMesAnterior] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [tipo, setTipo] = useState("");
@@ -57,11 +106,24 @@ export default function ReporteSuscripcionesPage() {
       setLoading(true);
       try {
         const res = await fetchWithSupabaseSession("/api/reportes/suscripciones", { cache: "no-store" });
-        const json = (await res.json()) as { success?: boolean; data?: { periodo: string; rows: Row[] }; error?: string };
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: {
+            periodo: string;
+            periodo_anterior?: string;
+            total_mes?: number;
+            total_mes_anterior?: number;
+            rows: Row[];
+          };
+          error?: string;
+        };
         if (!res.ok || json.success !== true || !json.data) throw new Error(json.error ?? `Error ${res.status}`);
         if (!cancel) {
           setRows(json.data.rows);
           setPeriodo(json.data.periodo);
+          setPeriodoAnterior(json.data.periodo_anterior ?? "");
+          setTotalMes(Number(json.data.total_mes) || 0);
+          setTotalMesAnterior(Number(json.data.total_mes_anterior) || 0);
           setErr(null);
         }
       } catch (e) {
@@ -110,7 +172,7 @@ export default function ReporteSuscripcionesPage() {
   const toggleEstado = (e: EstadoMes) => setEstadoFiltro((prev) => (prev === e ? "" : e));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
+    <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6">
       {/* Encabezado */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -126,6 +188,34 @@ export default function ReporteSuscripcionesPage() {
             Suscripciones activas por tipo, con monto mensual y estado de cobro del período{" "}
             <span className="font-semibold text-slate-700">{periodo ? periodoLabel(periodo) : "actual"}</span>.
           </p>
+        </div>
+      </div>
+
+      {/* Comparativo mes anterior vs este mes (semicírculo con 2 agujas). */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-[#4FAEB2]/15">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+          Suscripciones facturadas · mes anterior vs este mes
+        </p>
+        <div className="mt-2 flex flex-col items-center gap-6 sm:flex-row sm:justify-around">
+          <GaugeComparacion anterior={totalMesAnterior} actual={totalMes} />
+          <div className="grid grid-cols-2 gap-8 text-center">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                {periodoAnterior ? periodoLabel(periodoAnterior) : "Mes anterior"}
+              </p>
+              <p className="mt-1 flex items-center justify-center gap-1.5 text-xl font-bold tabular-nums text-slate-500">
+                <span aria-hidden className="h-2 w-2 rounded-full bg-slate-400" /> Gs. {fmtGs(totalMesAnterior)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#4FAEB2]">
+                {periodo ? periodoLabel(periodo) : "Este mes"}
+              </p>
+              <p className="mt-1 flex items-center justify-center gap-1.5 text-xl font-bold tabular-nums text-[#3F8E91]">
+                <span aria-hidden className="h-2 w-2 rounded-full bg-[#3F8E91]" /> Gs. {fmtGs(totalMes)}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -233,8 +323,8 @@ export default function ReporteSuscripcionesPage() {
               <tbody className="divide-y divide-slate-100">
                 {filtradas.map((r, i) => (
                   <tr key={`${r.cliente}-${r.plan}-${i}`} className="hover:bg-[#4FAEB2]/[0.04]">
-                    <td className="px-3 py-2.5 font-semibold text-slate-800">{r.cliente}</td>
-                    <td className="px-3 py-2.5 text-slate-600">{r.plan}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-800">{r.cliente}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{r.plan}</td>
                     <td className="px-3 py-2.5">
                       <span className="inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
                         {r.tipo_label}

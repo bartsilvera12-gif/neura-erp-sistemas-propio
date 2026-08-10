@@ -106,15 +106,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3b) Nombre del vendedor por ID: neura.usuarios linkea por auth_user_id = clientes.vendedor_usuario_id.
-    //     Se prefiere el nombre resuelto; si no, el texto libre vendedor_asignado.
+    // 3b) Nombre del vendedor por ID: clientes.vendedor_usuario_id = neura.usuarios.id (id del
+    //     catálogo, NO auth_user_id — mismo cruce que /api/clientes). Fallback: texto vendedor_asignado.
     const vendedorUids = [...new Set([...cliMap.values()].map((c) => c.vendedorUid).filter(Boolean))];
     const nombrePorUid = new Map<string, string>();
     for (let i = 0; i < vendedorUids.length; i += 150) {
       const slice = vendedorUids.slice(i, i + 150);
-      const { data } = await supabase.from("usuarios").select("auth_user_id, nombre").in("auth_user_id", slice);
-      for (const u of (data ?? []) as { auth_user_id: string | null; nombre: string | null }[]) {
-        const uid = String(u?.auth_user_id ?? "").trim();
+      const { data } = await supabase
+        .from("usuarios")
+        .select("id, nombre")
+        .eq("empresa_id", empresaId)
+        .in("id", slice);
+      for (const u of (data ?? []) as { id: string | null; nombre: string | null }[]) {
+        const uid = String(u?.id ?? "").trim();
         const nom = String(u?.nombre ?? "").trim();
         if (uid && nom) nombrePorUid.set(uid, nom);
       }

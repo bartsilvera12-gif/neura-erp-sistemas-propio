@@ -821,7 +821,7 @@ export async function GET(request: Request) {
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await sb
           .from("facturas")
-          .select("id, cliente_id, numero_factura, fecha, monto, saldo, estado, comisionable, tipo, suscripcion_id, vendedor_usuario_id")
+          .select("id, cliente_id, numero_factura, fecha, monto, saldo, estado, comisionable, tipo, suscripcion_id, vendedor_usuario_id, moneda")
           .eq("empresa_id", empresaId)
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);
@@ -860,6 +860,7 @@ export async function GET(request: Request) {
       fecha: string | null;
       monto_total: number;
       saldo_pendiente: number;
+      moneda: "GS" | "USD";
       vendedor_usuario_id: string;
     };
     const aCobrarPorVendor = new Map<string, { items: ACobrarItem[]; total: number }>();
@@ -893,6 +894,7 @@ export async function GET(request: Request) {
         fecha: f.fecha ?? null,
         monto_total: Number(f.monto) || 0,
         saldo_pendiente: roundMoney(saldo),
+        moneda: String((f as { moneda?: unknown }).moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
         vendedor_usuario_id: vid,
       });
       agg.total += saldo;

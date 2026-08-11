@@ -4,6 +4,7 @@ import { ChevronDown, RefreshCw, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { RegistrarPagoModal, type RegistrarPagoFacturaRef } from "@/components/pagos/RegistrarPagoModal";
 
 const BASE_LABEL: Record<string, string> = {
   pago_registrado: "Cobros registrados",
@@ -119,6 +120,7 @@ type ACobrarFactura = {
   fecha: string | null;
   monto_total: number;
   saldo_pendiente: number;
+  moneda: "GS" | "USD";
   vendedor_usuario_id: string;
 };
 
@@ -167,15 +169,21 @@ function currentMonthInputValue(): string {
 // Vista balance-driven (independiente de los pagos del período): lo que hay que perseguir
 // para que se convierta en comisión. No forma parte del cálculo de comisión del período.
 
-function ACobrarTablaVendedor({ v }: { v: ACobrarVendedor }) {
+function ACobrarTablaVendedor({
+  v,
+  onCobrar,
+}: {
+  v: ACobrarVendedor;
+  onCobrar?: (f: ACobrarFactura) => void;
+}) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] text-sm">
+      <table className="w-full min-w-[620px] text-sm">
         <thead className="border-b border-slate-200 bg-slate-50/70">
           <tr>
-            {["Cliente", "Factura", "Fecha", "Total", "Saldo a cobrar"].map((h, i) => (
+            {["Cliente", "Factura", "Fecha", "Total", "Saldo a cobrar", ""].map((h, i) => (
               <th
-                key={h}
+                key={h || `col-${i}`}
                 className={`whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 ${
                   i >= 3 ? "text-right" : "text-left"
                 }`}
@@ -197,6 +205,17 @@ function ACobrarTablaVendedor({ v }: { v: ACobrarVendedor }) {
               <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-amber-700">
                 ₲ {fmtMoney(f.saldo_pendiente)}
               </td>
+              <td className="whitespace-nowrap px-3 py-2 text-right">
+                {onCobrar ? (
+                  <button
+                    type="button"
+                    onClick={() => onCobrar(f)}
+                    className="rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91]"
+                  >
+                    Cobrar
+                  </button>
+                ) : null}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -208,6 +227,7 @@ function ACobrarTablaVendedor({ v }: { v: ACobrarVendedor }) {
             <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold tabular-nums text-amber-800">
               ₲ {fmtMoney(v.total_a_cobrar)}
             </td>
+            <td className="px-3 py-2" />
           </tr>
         </tfoot>
       </table>
@@ -216,7 +236,13 @@ function ACobrarTablaVendedor({ v }: { v: ACobrarVendedor }) {
 }
 
 /** Bloque "A cobrar (comisionable)" dentro de la tarjeta expandida de un asesor (vista admin). */
-function ACobrarBloqueVendedor({ aCobrar }: { aCobrar: ACobrarVendedor | null }) {
+function ACobrarBloqueVendedor({
+  aCobrar,
+  onCobrar,
+}: {
+  aCobrar: ACobrarVendedor | null;
+  onCobrar?: (f: ACobrarFactura) => void;
+}) {
   const facturas = aCobrar?.facturas ?? [];
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
@@ -228,7 +254,7 @@ function ACobrarBloqueVendedor({ aCobrar }: { aCobrar: ACobrarVendedor | null })
         </p>
       </div>
       {aCobrar && facturas.length > 0 ? (
-        <ACobrarTablaVendedor v={aCobrar} />
+        <ACobrarTablaVendedor v={aCobrar} onCobrar={onCobrar} />
       ) : (
         <p className="rounded-lg border border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">
           Sin facturas comisionables con saldo pendiente. ¡Todo cobrado!
@@ -245,9 +271,11 @@ function ACobrarBloqueVendedor({ aCobrar }: { aCobrar: ACobrarVendedor | null })
 function ACobrarPanel({
   vendedores,
   sellerView,
+  onCobrar,
 }: {
   vendedores: ACobrarVendedor[];
   sellerView: boolean;
+  onCobrar?: (f: ACobrarFactura) => void;
 }) {
   const total = vendedores.reduce((s, v) => s + (v.total_a_cobrar ?? 0), 0);
   return (
@@ -270,7 +298,7 @@ function ACobrarPanel({
           No hay facturas comisionables con saldo pendiente. ¡Todo cobrado!
         </p>
       ) : sellerView ? (
-        <ACobrarTablaVendedor v={vendedores[0]!} />
+        <ACobrarTablaVendedor v={vendedores[0]!} onCobrar={onCobrar} />
       ) : (
         <div className="space-y-4">
           {vendedores.map((v) => (
@@ -281,7 +309,7 @@ function ACobrarPanel({
                   ₲ {fmtMoney(v.total_a_cobrar)}
                 </span>
               </div>
-              <ACobrarTablaVendedor v={v} />
+              <ACobrarTablaVendedor v={v} onCobrar={onCobrar} />
             </div>
           ))}
         </div>
@@ -1117,12 +1145,14 @@ function renderVendedorView({
   meta,
   sellerRow,
   aCobrar,
+  onCobrar,
   selectedSellerMonth,
   onMonthChange,
 }: {
   meta: PreviewMeta | null | undefined;
   sellerRow: VendedorRow | null;
   aCobrar: ACobrarVendedor[];
+  onCobrar: (f: ACobrarFactura) => void;
   selectedSellerMonth: string;
   onMonthChange: (mes: string) => void;
 }) {
@@ -1159,7 +1189,7 @@ function renderVendedorView({
         </div>
       </section>
 
-      <ACobrarPanel vendedores={aCobrar} sellerView />
+      <ACobrarPanel vendedores={aCobrar} sellerView onCobrar={onCobrar} />
 
       {!sellerRow ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-12 text-center shadow-sm">
@@ -1268,6 +1298,7 @@ function renderAdminView({
   kpis,
   rows,
   aCobrar,
+  onCobrar,
   baseLabel,
   selectedMonth,
   onMonthChange,
@@ -1280,6 +1311,7 @@ function renderAdminView({
   kpis: PreviewKpis | null | undefined;
   rows: VendedorRow[];
   aCobrar: ACobrarVendedor[];
+  onCobrar: (f: ACobrarFactura) => void;
   baseLabel: string;
   selectedMonth: string;
   onMonthChange: (mes: string) => void;
@@ -1555,6 +1587,7 @@ function renderAdminView({
                     <MovimientosTable row={r} overrideCtx={overrideCtx} />
                     <ACobrarBloqueVendedor
                       aCobrar={aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id) ?? null}
+                      onCobrar={onCobrar}
                     />
                   </div>
                 </details>
@@ -1579,6 +1612,8 @@ export default function ComisionesPage() {
   >(null);
   const [busyPagoId, setBusyPagoId] = useState<string | null>(null);
   const [excludedDrawerOpen, setExcludedDrawerOpen] = useState(false);
+  // Cobro desde la lista "A cobrar": reutiliza el modal de pago del ERP (respeta oldest-first).
+  const [cobrarRef, setCobrarRef] = useState<RegistrarPagoFacturaRef | null>(null);
 
   const load = useCallback(async (opts?: { mes?: string }) => {
     setLoading(true);
@@ -1759,14 +1794,37 @@ export default function ComisionesPage() {
 
   const aCobrar = data?.a_cobrar_por_vendedor ?? [];
 
-  if (isSellerView) {
-    return renderVendedorView({
-      meta,
-      sellerRow,
-      aCobrar,
-      selectedSellerMonth: selectedMonthValue,
-      onMonthChange,
+  const onCobrar = (f: ACobrarFactura) => {
+    setCobrarRef({
+      id: f.factura_id,
+      numero_factura: f.numero_factura ?? "",
+      saldo: f.saldo_pendiente,
+      moneda: f.moneda,
     });
+  };
+  const cobrarModal = (
+    <RegistrarPagoModal
+      open={cobrarRef != null}
+      factura={cobrarRef}
+      onClose={() => setCobrarRef(null)}
+      onExito={() => load(selectedMonthValue ? { mes: selectedMonthValue } : undefined)}
+    />
+  );
+
+  if (isSellerView) {
+    return (
+      <>
+        {renderVendedorView({
+          meta,
+          sellerRow,
+          aCobrar,
+          onCobrar,
+          selectedSellerMonth: selectedMonthValue,
+          onMonthChange,
+        })}
+        {cobrarModal}
+      </>
+    );
   }
 
   const periodoYm = meta?.periodo_mes ?? "";
@@ -1785,6 +1843,7 @@ export default function ComisionesPage() {
         kpis,
         rows,
         aCobrar,
+        onCobrar,
         baseLabel,
         selectedMonth: selectedMonthValue,
         onMonthChange,
@@ -1792,6 +1851,7 @@ export default function ComisionesPage() {
         overrideCtx,
         onShowExcluidas: () => setExcludedDrawerOpen(true),
       })}
+      {cobrarModal}
       {overrideModal ? (
         <OverrideModal
           key={overrideModal.ln.pago_id ?? "modal"}

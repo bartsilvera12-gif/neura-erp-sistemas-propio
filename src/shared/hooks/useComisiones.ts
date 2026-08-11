@@ -70,6 +70,7 @@ export type ComisionACobrarFactura = {
   fecha: string | null;
   monto_total: number;
   saldo_pendiente: number;
+  moneda: "GS" | "USD";
   vendedor_usuario_id: string;
 };
 

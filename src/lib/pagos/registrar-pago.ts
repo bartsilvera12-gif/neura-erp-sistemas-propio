@@ -83,17 +83,22 @@ export async function registrarPago(
     return { ok: false, status: 400, message: "La factura ya está pagada" };
   }
 
-  // Regla oldest-first (por cliente): no se permite pagar una factura posterior si
-  // existe una anterior con saldo. Guarda centralizada → aplica a Pagos y Cobranzas.
+  // Regla oldest-first (por carril = misma suscripción; las sueltas entre sí): no se permite
+  // pagar una cuota posterior si existe una anterior con saldo DEL MISMO carril. Deber una
+  // cuota de otra suscripción no bloquea. Guarda centralizada → aplica a Pagos y Cobranzas.
   const vMasVieja = await validarPagoMasVieja(supabase, auth.empresa_id, factura_id.trim());
   if (vMasVieja.ok && !vMasVieja.esMasVieja) {
     const old = vMasVieja.oldest;
+    const nro = old.numero_factura ?? "la factura anterior";
+    const message = vMasVieja.carrilEsSuscripcion
+      ? `Esta suscripción tiene una cuota más antigua pendiente. Registrá primero el pago de ${nro}.`
+      : `Este cliente tiene una factura más antigua pendiente. Registrá primero el pago de ${nro}.`;
     return {
       ok: false,
       status: 409,
       code: "PAY_OLDEST_FIRST",
       oldest: old,
-      message: `Este cliente tiene una factura más antigua pendiente. Registrá primero el pago de ${old.numero_factura ?? "la factura anterior"}.`,
+      message,
     };
   }
 

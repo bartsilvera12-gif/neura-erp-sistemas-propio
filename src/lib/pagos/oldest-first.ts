@@ -1,9 +1,14 @@
 import "server-only";
 
 /**
- * Regla "pago a la factura más antigua primero" (oldest-first), por CLIENTE.
+ * Regla "pago a la factura más antigua primero" (oldest-first), por CARRIL.
  * Fuente de verdad única, usada dentro de `registrarPago` (núcleo compartido por
- * el módulo Pagos y Cobranzas). Alcance: por cliente global (no por servicio/suscripción).
+ * el módulo Pagos y Cobranzas).
+ *
+ * Alcance = "carril" = misma suscripción (`suscripcion_id`). Cada suscripción es un
+ * flujo de cuotas independiente: deber una cuota del servicio A NO bloquea cobrar la
+ * cuota del servicio B. Las facturas sueltas (sin suscripción) forman su propio carril
+ * entre ellas (todas las `suscripcion_id` NULL cuentan como un mismo grupo).
  *
  * Orden de antigüedad: fecha_vencimiento ASC → fecha (emisión) ASC → numero_factura ASC.
  * Deuda = saldo > 0 y estado de deuda (excluye Pagado / Anulado / Corregida NC).
@@ -33,11 +38,17 @@ export type FacturaMasVieja = {
 
 export type ValidacionMasVieja =
   | { ok: false; motivo: string }
-  | { ok: true; esMasVieja: boolean; oldest: FacturaMasVieja };
+  | { ok: true; esMasVieja: boolean; oldest: FacturaMasVieja; carrilEsSuscripcion: boolean };
+
+/** Clave de carril: la suscripción de la factura; las sueltas comparten la clave vacía. */
+function carrilKey(suscripcionId: unknown): string {
+  return String(suscripcionId ?? "").trim();
+}
 
 /**
- * Determina la cuota MÁS VIEJA pendiente del cliente dueño de `facturaId` y si
- * `facturaId` es esa cuota. El caller bloquea el pago cuando `esMasVieja` es false.
+ * Determina la cuota MÁS VIEJA pendiente DENTRO DEL MISMO CARRIL (misma suscripción,
+ * o el grupo de facturas sueltas) de la factura `facturaId`, y si `facturaId` es esa
+ * cuota. El caller bloquea el pago cuando `esMasVieja` es false.
  */
 export async function validarPagoMasVieja(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,7 +58,7 @@ export async function validarPagoMasVieja(
 ): Promise<ValidacionMasVieja> {
   const { data: tRows } = await supabase
     .from("facturas")
-    .select("id, cliente_id")
+    .select("id, cliente_id, suscripcion_id")
     .eq("empresa_id", empresaId)
     .eq("id", facturaId)
     .limit(1);
@@ -55,15 +66,19 @@ export async function validarPagoMasVieja(
   if (!target) return { ok: false, motivo: "Factura no encontrada" };
   const clienteId = String(target.cliente_id ?? "");
   if (!clienteId) return { ok: false, motivo: "Factura sin cliente" };
+  const carrilTarget = carrilKey(target.suscripcion_id);
 
   const { data: fRows } = await supabase
     .from("facturas")
-    .select("id, numero_factura, fecha, fecha_vencimiento, saldo, estado")
+    .select("id, numero_factura, fecha, fecha_vencimiento, saldo, estado, suscripcion_id")
     .eq("empresa_id", empresaId)
     .eq("cliente_id", clienteId);
 
   const pendientes = ((fRows ?? []) as Record<string, unknown>[]).filter(
-    (f) => (Number(f.saldo) || 0) > 0 && esDeuda(f.estado as string)
+    (f) =>
+      (Number(f.saldo) || 0) > 0 &&
+      esDeuda(f.estado as string) &&
+      carrilKey(f.suscripcion_id) === carrilTarget // solo el mismo carril (suscripción o sueltas)
   );
   if (pendientes.length === 0) return { ok: false, motivo: "La factura no tiene saldo pendiente" };
 
@@ -81,6 +96,7 @@ export async function validarPagoMasVieja(
   return {
     ok: true,
     esMasVieja: String(oldest.id) === facturaId,
+    carrilEsSuscripcion: carrilTarget !== "",
     oldest: {
       id: String(oldest.id),
       numero_factura: (oldest.numero_factura as string) ?? null,

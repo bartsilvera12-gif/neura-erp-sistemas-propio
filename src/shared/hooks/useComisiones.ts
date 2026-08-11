@@ -55,9 +55,30 @@ export type ComisionKpis = {
   comision_estimada_total: number;
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
+  a_cobrar_total?: number;
   vendedores_con_comision: number;
   lineas_excluidas?: number;
   lineas_incluidas_manual?: number;
+};
+
+/** Una factura comisionable con saldo pendiente (independiente de pagos del período). */
+export type ComisionACobrarFactura = {
+  cliente_id: string | null;
+  cliente_label: string;
+  factura_id: string;
+  numero_factura: string | null;
+  fecha: string | null;
+  monto_total: number;
+  saldo_pendiente: number;
+  vendedor_usuario_id: string;
+};
+
+export type ComisionACobrarVendedor = {
+  vendedor_usuario_id: string;
+  vendedor_nombre: string;
+  cantidad_facturas: number;
+  total_a_cobrar: number;
+  facturas: ComisionACobrarFactura[];
 };
 
 export type ComisionPreviewPayload = {
@@ -71,6 +92,7 @@ export type ComisionPreviewPayload = {
   } | null;
   kpis: ComisionKpis | null;
   por_vendedor: ComisionVendedorRow[];
+  a_cobrar_por_vendedor?: ComisionACobrarVendedor[];
 };
 
 /** Hook compartido para el preview de comisiones del periodo (opcionalmente del mes especificado YYYY-MM). */

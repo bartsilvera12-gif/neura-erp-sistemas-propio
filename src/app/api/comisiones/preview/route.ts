@@ -811,6 +811,112 @@ export async function GET(request: Request) {
 
     porVendedorOut.sort((a, b) => Number(b.revenue_base) - Number(a.revenue_base));
 
+    // ── (b) A COBRAR por asesor — vista BALANCE-DRIVEN, independiente del período/pagos.
+    //    Lista los SALDOS pendientes de facturas COMISIONABLES atribuidas a cada asesor, para
+    //    que vea qué le falta cobrar (y perseguirlo), sin esperar a que haya un pago este mes.
+    //    NO altera el cálculo de comisión del período (que sí es por lo cobrado).
+    const facturasSaldo: FacturaPreviewRow[] = [];
+    {
+      const all: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await sb
+          .from("facturas")
+          .select("id, cliente_id, numero_factura, fecha, monto, saldo, estado, comisionable, tipo, suscripcion_id, vendedor_usuario_id")
+          .eq("empresa_id", empresaId)
+          .range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        const chunk = data ?? [];
+        all.push(...chunk);
+        if (chunk.length < PAGE) break;
+      }
+      for (const r of all) facturasSaldo.push(r as unknown as FacturaPreviewRow);
+    }
+
+    // Recurrencia por factura sobre TODO el histórico (misma regla del período: el cliente
+    // tiene otra factura válida con emisión anterior a la de esta).
+    const histACobrar = new Map<string, { fecha: string; valida: boolean }[]>();
+    for (const f of facturasSaldo) {
+      const cid = String(f.cliente_id ?? "");
+      if (!cid) continue;
+      const arr = histACobrar.get(cid) ?? [];
+      arr.push({
+        fecha: f.fecha != null ? String(f.fecha).slice(0, 10) : "",
+        valida: !esFacturaAnuladaPreview(String(f.estado ?? "")) && !esFacturaCorregidaNcPreview(String(f.estado ?? "")),
+      });
+      histACobrar.set(cid, arr);
+    }
+    const esRecurrenteACobrar = (f: FacturaPreviewRow): boolean => {
+      const cid = String(f.cliente_id ?? "");
+      const fechaFac = f.fecha != null ? String(f.fecha).slice(0, 10) : "";
+      const hist = histACobrar.get(cid) ?? [];
+      return hist.some((h) => h.valida && h.fecha !== "" && fechaFac !== "" && h.fecha < fechaFac);
+    };
+
+    type ACobrarItem = {
+      cliente_id: string | null;
+      cliente_label: string;
+      factura_id: string;
+      numero_factura: string | null;
+      fecha: string | null;
+      monto_total: number;
+      saldo_pendiente: number;
+      vendedor_usuario_id: string;
+    };
+    const aCobrarPorVendor = new Map<string, { items: ACobrarItem[]; total: number }>();
+    for (const f of facturasSaldo) {
+      if (esFacturaAnuladaPreview(f.estado) || esFacturaCorregidaNcPreview(f.estado)) continue;
+      const saldo = Number(f.saldo) || 0;
+      if (saldo <= 0.02) continue; // solo con saldo pendiente real
+      const clienteId = String(f.cliente_id ?? "");
+      const vid = vendedorDeFactura(f, clienteId);
+      if (!vid) continue;
+      if (vendedorScopeId != null && vid !== vendedorScopeId) continue; // asesor: solo lo suyo
+      const { comisiona } = resolverComisionable({
+        override: null, // no hay override por-pago para una factura sin pago
+        facturaComisionable: f.comisionable ?? null,
+        tipo: f.tipo ?? null,
+        tieneSuscripcion: f.suscripcion_id != null && String(f.suscripcion_id).trim() !== "",
+        facturaInvalida: false,
+        clienteEsRecurrente: esRecurrenteACobrar(f),
+      });
+      if (!comisiona) continue; // alcance elegido: SOLO comisionables
+      let agg = aCobrarPorVendor.get(vid);
+      if (!agg) {
+        agg = { items: [], total: 0 };
+        aCobrarPorVendor.set(vid, agg);
+      }
+      agg.items.push({
+        cliente_id: clienteId || null,
+        cliente_label: clienteNombre.get(clienteId) ?? clienteId,
+        factura_id: String(f.id),
+        numero_factura: f.numero_factura ?? null,
+        fecha: f.fecha ?? null,
+        monto_total: Number(f.monto) || 0,
+        saldo_pendiente: roundMoney(saldo),
+        vendedor_usuario_id: vid,
+      });
+      agg.total += saldo;
+    }
+    // Nombres de vendedores que tienen deuda pero quizá no tuvieron actividad en el período.
+    const nombresACobrar = await cargarNombresUsuarios(catalog, [...aCobrarPorVendor.keys()]);
+    const aCobrarPorVendedor = [...aCobrarPorVendor.entries()]
+      .map(([vid, agg]) => {
+        agg.items.sort(
+          (a, b) => b.saldo_pendiente - a.saldo_pendiente || a.cliente_label.localeCompare(b.cliente_label)
+        );
+        return {
+          vendedor_usuario_id: vid,
+          vendedor_nombre: nombres.get(vid) ?? nombresACobrar.get(vid) ?? vid.slice(0, 8),
+          cantidad_facturas: agg.items.length,
+          total_a_cobrar: roundMoney(agg.total),
+          facturas: agg.items,
+        };
+      })
+      .sort((a, b) => b.total_a_cobrar - a.total_a_cobrar);
+    const aCobrarTotal = roundMoney(
+      [...aCobrarPorVendor.values()].reduce((s, a) => s + a.total, 0)
+    );
+
     const fuentesSinVendedorKpi = soloVendedor
       ? 0
       : alertasSinVendedorPagos + alertasSinVendedorFacturas;
@@ -825,6 +931,7 @@ export async function GET(request: Request) {
       cobrado_periodo_total: roundMoney(cobradoTotal),
       saldo_pendiente_total: roundMoney(pendienteCobroTotal),
       pendiente_por_comisionar_total: roundMoney(pendienteComisionarTotal),
+      a_cobrar_total: aCobrarTotal,
       vendedores_con_comision: porVendedorOut.length,
       lineas_excluidas: lineasExcluidasTotal,
       lineas_incluidas_manual: lineasIncluidasManualTotal,
@@ -873,6 +980,7 @@ export async function GET(request: Request) {
         },
         kpis,
         por_vendedor: porVendedorOut,
+        a_cobrar_por_vendedor: aCobrarPorVendedor,
       })
     );
   } catch (e) {

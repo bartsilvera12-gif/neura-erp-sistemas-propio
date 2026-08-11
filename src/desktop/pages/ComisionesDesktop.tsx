@@ -100,6 +100,7 @@ type PreviewKpis = {
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
   pendiente_por_comisionar_total: number;
+  a_cobrar_total?: number;
   vendedores_con_comision: number;
   lineas_excluidas?: number;
   lineas_incluidas_manual?: number;
@@ -108,12 +109,32 @@ type PreviewKpis = {
   alertas_sin_vendedor_facturas: number;
 };
 
+type ACobrarFactura = {
+  cliente_id: string | null;
+  cliente_label: string;
+  factura_id: string;
+  numero_factura: string | null;
+  fecha: string | null;
+  monto_total: number;
+  saldo_pendiente: number;
+  vendedor_usuario_id: string;
+};
+
+type ACobrarVendedor = {
+  vendedor_usuario_id: string;
+  vendedor_nombre: string;
+  cantidad_facturas: number;
+  total_a_cobrar: number;
+  facturas: ACobrarFactura[];
+};
+
 type PreviewPayload = {
   estado: string;
   mensaje?: string;
   meta: PreviewMeta | null;
   kpis: PreviewKpis | null;
   por_vendedor: VendedorRow[];
+  a_cobrar_por_vendedor?: ACobrarVendedor[];
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -138,6 +159,110 @@ function formatDate(iso: string | null): string {
 function currentMonthInputValue(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// ── A cobrar (comisionable): saldos pendientes que le faltan cobrar al asesor ─────
+// Vista balance-driven (independiente de los pagos del período): lo que hay que perseguir
+// para que se convierta en comisión. No forma parte del cálculo de comisión del período.
+
+function ACobrarTablaVendedor({ v }: { v: ACobrarVendedor }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[560px] text-sm">
+        <thead className="border-b border-slate-200 bg-slate-50/70">
+          <tr>
+            {["Cliente", "Factura", "Fecha", "Total", "Saldo a cobrar"].map((h, i) => (
+              <th
+                key={h}
+                className={`whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 ${
+                  i >= 3 ? "text-right" : "text-left"
+                }`}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {v.facturas.map((f) => (
+            <tr key={f.factura_id} className="hover:bg-amber-50/40">
+              <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-800">{f.cliente_label}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-500">{f.numero_factura ?? "—"}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-500">{formatDate(f.fecha)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">
+                ₲ {fmtMoney(f.monto_total)}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-amber-700">
+                ₲ {fmtMoney(f.saldo_pendiente)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="border-t border-slate-200 bg-slate-50/70">
+          <tr>
+            <td className="px-3 py-2 text-xs font-semibold text-slate-600" colSpan={4}>
+              {v.cantidad_facturas} factura{v.cantidad_facturas === 1 ? "" : "s"} comisionable{v.cantidad_facturas === 1 ? "" : "s"} con saldo
+            </td>
+            <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold tabular-nums text-amber-800">
+              ₲ {fmtMoney(v.total_a_cobrar)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Panel "A cobrar (comisionable)". `sellerView`=true → un solo asesor (tabla plana);
+ * admin → agrupado por asesor.
+ */
+function ACobrarPanel({
+  vendedores,
+  sellerView,
+}: {
+  vendedores: ACobrarVendedor[];
+  sellerView: boolean;
+}) {
+  const total = vendedores.reduce((s, v) => s + (v.total_a_cobrar ?? 0), 0);
+  return (
+    <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm ring-1 ring-amber-100">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">A cobrar (comisionable)</h3>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            Saldos pendientes de facturas que te generan comisión al cobrarlas. No depende de si hubo pago este
+            mes: es lo que tenés que perseguir.
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Total a cobrar</p>
+          <p className="text-xl font-bold tabular-nums text-amber-800">₲ {fmtMoney(total)}</p>
+        </div>
+      </div>
+      {vendedores.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-6 text-center text-sm text-slate-400">
+          No hay facturas comisionables con saldo pendiente. ¡Todo cobrado!
+        </p>
+      ) : sellerView ? (
+        <ACobrarTablaVendedor v={vendedores[0]!} />
+      ) : (
+        <div className="space-y-4">
+          {vendedores.map((v) => (
+            <div key={v.vendedor_usuario_id} className="rounded-xl border border-slate-200 p-2">
+              <div className="mb-1 flex items-center justify-between px-1">
+                <span className="text-xs font-semibold text-slate-700">{v.vendedor_nombre}</span>
+                <span className="text-xs font-bold tabular-nums text-amber-800">
+                  ₲ {fmtMoney(v.total_a_cobrar)}
+                </span>
+              </div>
+              <ACobrarTablaVendedor v={v} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 // ── Búsqueda local de movimientos (no altera cálculo ni totales) ─────────────
@@ -966,11 +1091,13 @@ function SellerMovimientosList({ row }: { row: VendedorRow }) {
 function renderVendedorView({
   meta,
   sellerRow,
+  aCobrar,
   selectedSellerMonth,
   onMonthChange,
 }: {
   meta: PreviewMeta | null | undefined;
   sellerRow: VendedorRow | null;
+  aCobrar: ACobrarVendedor[];
   selectedSellerMonth: string;
   onMonthChange: (mes: string) => void;
 }) {
@@ -1004,6 +1131,8 @@ function renderVendedorView({
           </label>
         </div>
       </section>
+
+      <ACobrarPanel vendedores={aCobrar} sellerView />
 
       {!sellerRow ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-12 text-center shadow-sm">
@@ -1111,6 +1240,7 @@ function renderAdminView({
   meta,
   kpis,
   rows,
+  aCobrar,
   baseLabel,
   selectedMonth,
   onMonthChange,
@@ -1122,6 +1252,7 @@ function renderAdminView({
   meta: PreviewMeta | null | undefined;
   kpis: PreviewKpis | null | undefined;
   rows: VendedorRow[];
+  aCobrar: ACobrarVendedor[];
   baseLabel: string;
   selectedMonth: string;
   onMonthChange: (mes: string) => void;
@@ -1285,6 +1416,9 @@ function renderAdminView({
           )}
         </section>
       )}
+
+      {/* A cobrar (comisionable) — balance-driven, por asesor */}
+      <ACobrarPanel vendedores={aCobrar} sellerView={false} />
 
       {/* Por vendedor */}
       <section>
@@ -1590,10 +1724,13 @@ export default function ComisionesPage() {
     if (mes) void load({ mes });
   };
 
+  const aCobrar = data?.a_cobrar_por_vendedor ?? [];
+
   if (isSellerView) {
     return renderVendedorView({
       meta,
       sellerRow,
+      aCobrar,
       selectedSellerMonth: selectedMonthValue,
       onMonthChange,
     });
@@ -1614,6 +1751,7 @@ export default function ComisionesPage() {
         meta,
         kpis,
         rows,
+        aCobrar,
         baseLabel,
         selectedMonth: selectedMonthValue,
         onMonthChange,

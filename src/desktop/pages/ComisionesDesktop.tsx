@@ -213,6 +213,36 @@ function ACobrarTablaVendedor({ v }: { v: ACobrarVendedor }) {
   );
 }
 
+/** Bloque "A cobrar (comisionable)" dentro de la tarjeta expandida de un asesor (vista admin). */
+function ACobrarBloqueVendedor({ aCobrar }: { aCobrar: ACobrarVendedor | null }) {
+  const total = aCobrar?.total_a_cobrar ?? 0;
+  const facturas = aCobrar?.facturas ?? [];
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-slate-800">A cobrar (comisionable)</p>
+          <p className="text-[11px] text-slate-500">
+            Saldos pendientes que se vuelven comisión al cobrarlos. No depende de si hubo pago este mes: es lo
+            que hay que perseguir.
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Total a cobrar</p>
+          <p className="text-base font-bold tabular-nums text-amber-800">₲ {fmtMoney(total)}</p>
+        </div>
+      </div>
+      {aCobrar && facturas.length > 0 ? (
+        <ACobrarTablaVendedor v={aCobrar} />
+      ) : (
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">
+          Sin facturas comisionables con saldo pendiente. ¡Todo cobrado!
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Panel "A cobrar (comisionable)". `sellerView`=true → un solo asesor (tabla plana);
  * admin → agrupado por asesor.
@@ -1417,9 +1447,6 @@ function renderAdminView({
         </section>
       )}
 
-      {/* A cobrar (comisionable) — balance-driven, por asesor */}
-      <ACobrarPanel vendedores={aCobrar} sellerView={false} />
-
       {/* Por vendedor */}
       <section>
         <div className="mb-4 flex items-center gap-2">
@@ -1523,6 +1550,9 @@ function renderAdminView({
                     <ScaleProgress row={r} />
                     <TotalsStrip row={r} />
                     <MovimientosTable row={r} overrideCtx={overrideCtx} />
+                    <ACobrarBloqueVendedor
+                      aCobrar={aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id) ?? null}
+                    />
                   </div>
                 </details>
               );

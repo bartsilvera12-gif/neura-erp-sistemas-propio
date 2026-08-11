@@ -16,8 +16,8 @@ import type { QAApiResp, QAArchivo, QAComentario, QAObservacion, QASeccion, QAUs
 import {
   BTN_GHOST_CLS,
   BTN_PRIMARY_CLS,
+  FiltroSelect,
   INPUT_CLS,
-  SELECT_CLS,
   IconImage,
   IconTrash,
   fechaRelativa,
@@ -402,50 +402,60 @@ export default function ObservacionModal({
 
             <div>
               <span className={LABEL_CLS}>Asignada a</span>
-              <select
-                value={obs.asignado_a ?? ""}
-                onChange={(e) => void guardar({ asignado_a: e.target.value || null })}
-                className={`${SELECT_CLS} mt-1.5 w-full`}
-              >
-                <option value="">Sin asignar</option>
-                {usuarios.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {(u.nombre ?? "").trim() || (u.email ?? "").trim() || "Usuario"}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1.5">
+                <FiltroSelect
+                  etiqueta="Asignada a"
+                  valor={obs.asignado_a ?? ""}
+                  activo={Boolean(obs.asignado_a)}
+                  bloque
+                  onChange={(v) => void guardar({ asignado_a: v || null })}
+                >
+                  <option value="">Sin asignar</option>
+                  {usuarios.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {(u.nombre ?? "").trim() || (u.email ?? "").trim() || "Usuario"}
+                    </option>
+                  ))}
+                </FiltroSelect>
+              </div>
             </div>
 
             <div>
               <span className={LABEL_CLS}>Severidad</span>
-              <select
-                value={obs.severidad}
-                onChange={(e) =>
-                  void guardar({ severidad: e.target.value as QAObservacionSeveridad })
-                }
-                className={`${SELECT_CLS} mt-1.5 w-full`}
-              >
-                {QA_SEVERIDADES.map((s) => (
-                  <option key={s.codigo} value={s.codigo}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1.5">
+                <FiltroSelect
+                  etiqueta="Severidad"
+                  valor={obs.severidad}
+                  activo={obs.severidad === "bloqueante" || obs.severidad === "alta"}
+                  bloque
+                  onChange={(v) => void guardar({ severidad: v as QAObservacionSeveridad })}
+                >
+                  {QA_SEVERIDADES.map((s) => (
+                    <option key={s.codigo} value={s.codigo}>
+                      {s.label}
+                    </option>
+                  ))}
+                </FiltroSelect>
+              </div>
             </div>
 
             <div>
               <span className={LABEL_CLS}>Origen</span>
-              <select
-                value={obs.origen}
-                onChange={(e) => void guardar({ origen: e.target.value as QAObservacionOrigen })}
-                className={`${SELECT_CLS} mt-1.5 w-full`}
-              >
-                {QA_ORIGENES.map((o) => (
-                  <option key={o.codigo} value={o.codigo}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1.5">
+                <FiltroSelect
+                  etiqueta="Origen"
+                  valor={obs.origen}
+                  activo={obs.origen === "cliente"}
+                  bloque
+                  onChange={(v) => void guardar({ origen: v as QAObservacionOrigen })}
+                >
+                  {QA_ORIGENES.map((o) => (
+                    <option key={o.codigo} value={o.codigo}>
+                      {o.label}
+                    </option>
+                  ))}
+                </FiltroSelect>
+              </div>
             </div>
 
             <div>
@@ -454,7 +464,7 @@ export default function ObservacionModal({
                 type="date"
                 value={obs.fecha_limite ?? ""}
                 onChange={(e) => void guardar({ fecha_limite: e.target.value || null })}
-                className={`${SELECT_CLS} mt-1.5 w-full`}
+                className={`${INPUT_CLS} mt-1.5 py-2`}
               />
             </div>
 

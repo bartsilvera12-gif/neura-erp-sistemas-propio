@@ -269,33 +269,39 @@ export default function QAComposer({
       />
 
       {/* Todo lo que define la observación, sin abrir nada más. */}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
+      <div className="grid gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+        {/* La sección ocupa dos columnas: son dos controles (elegir o crear). */}
+        <div className="sm:col-span-2">
           <span className={LABEL_CLS}>Sección</span>
-          <div className="mt-1 flex gap-1.5">
-            <FiltroSelect
-              etiqueta="Sección"
-              valor={nuevaSeccion ? "__nueva" : seccionId}
-              activo={false}
-              onChange={(v) => {
-                if (v === "__nueva") return;
-                setNuevaSeccion("");
-                setSeccionId(v);
-              }}
-            >
-              <option value="">Sin sección</option>
-              {secciones.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nombre}
-                </option>
-              ))}
-              {nuevaSeccion ? <option value="__nueva">Nueva: {nuevaSeccion}</option> : null}
-            </FiltroSelect>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
+            <div className="min-w-0 flex-1">
+              <FiltroSelect
+                etiqueta="Sección"
+                valor={seccionId}
+                activo={seccionId !== ""}
+                bloque
+                onChange={(v) => {
+                  setNuevaSeccion("");
+                  setSeccionId(v);
+                }}
+              >
+                <option value="">Sin sección</option>
+                {secciones.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </FiltroSelect>
+            </div>
+            <span className="shrink-0 text-xs text-slate-400">o</span>
             <input
               value={nuevaSeccion}
-              onChange={(e) => setNuevaSeccion(e.target.value)}
-              placeholder="o nueva…"
-              className={`${INPUT_CLS} min-w-0 flex-1 px-2.5 py-2 text-sm`}
+              onChange={(e) => {
+                setNuevaSeccion(e.target.value);
+                if (e.target.value.trim()) setSeccionId("");
+              }}
+              placeholder="crear una nueva…"
+              className={`${INPUT_CLS} min-w-0 flex-1 py-2`}
             />
           </div>
         </div>
@@ -307,6 +313,7 @@ export default function QAComposer({
               etiqueta="Severidad"
               valor={severidad}
               activo={severidad === "bloqueante" || severidad === "alta"}
+              bloque
               onChange={(v) => setSeveridad(v as QAObservacionSeveridad)}
             >
               {QA_SEVERIDADES.map((s) => (
@@ -325,6 +332,7 @@ export default function QAComposer({
               etiqueta="Origen"
               valor={origen}
               activo={origen === "cliente"}
+              bloque
               onChange={(v) => setOrigen(v as QAObservacionOrigen)}
             >
               {QA_ORIGENES.map((o) => (
@@ -343,6 +351,7 @@ export default function QAComposer({
               etiqueta="Asignada a"
               valor={asignadoA}
               activo={asignadoA !== ""}
+              bloque
               onChange={setAsignadoA}
             >
               <option value="">Sin asignar</option>

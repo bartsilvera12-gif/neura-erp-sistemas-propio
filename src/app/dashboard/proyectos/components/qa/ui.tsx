@@ -232,21 +232,30 @@ export function FiltroSelect({
   valor,
   onChange,
   activo,
+  bloque = false,
   children,
 }: {
   etiqueta: string;
   valor: string;
   onChange: (valor: string) => void;
   activo: boolean;
+  /** `true` en formularios: ocupa el ancho de su celda. `false` en la barra: se ajusta al texto. */
+  bloque?: boolean;
   children: ReactNode;
 }) {
+  // El chevron se dibuja aparte y se posiciona contra el contenedor, así que el
+  // contenedor tiene que medir lo mismo que el `select`: `inline-flex` cuando se
+  // ajusta al contenido, `block w-full` cuando ocupa la celda. Si no, la flecha
+  // queda flotando lejos del control.
   return (
-    <div className="relative">
+    <div className={`relative ${bloque ? "block w-full" : "inline-flex"}`}>
       <select
         aria-label={etiqueta}
         value={valor}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full appearance-none rounded-xl border py-2 pl-3 pr-8 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 sm:w-auto ${
+        className={`${
+          bloque ? "w-full" : "w-auto max-w-[15rem]"
+        } appearance-none truncate rounded-xl border py-2 pl-3 pr-8 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 ${
           activo
             ? "border-[#4FAEB2] bg-[#4FAEB2]/10 font-medium text-[#3F8E91]"
             : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60"

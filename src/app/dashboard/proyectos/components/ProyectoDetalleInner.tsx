@@ -65,6 +65,15 @@ const CAMBIOS_SLOTS = [1, 2, 3] as const;
 
 type UsuarioActivo = { id: string; nombre?: string | null; email?: string | null };
 
+/** Respuesta de `GET /api/proyectos/[id]/qa/observaciones/resumen`. */
+type QAResumen = {
+  total: number;
+  abiertas: number;
+  cerradas: number;
+  por_estado: Record<string, number>;
+  porcentaje: number;
+};
+
 const TAB_IDS = [
   "resumen",
   "datos",
@@ -906,6 +915,24 @@ export default function ProyectoDetalleInner({
     };
   }, [deleteModalOpen, deleting]);
 
+  // Conteos de QA para el badge de la solapa y la barra de avance del Resumen.
+  // Ruta liviana aparte: solo trae `estado`, sin adjuntos ni signed URLs.
+  const [qaResumen, setQaResumen] = useState<QAResumen | null>(null);
+  const recargarQaResumen = useCallback(async () => {
+    const res = await fetchWithSupabaseSession(
+      `/api/proyectos/${projectId}/qa/observaciones/resumen`,
+      { cache: "no-store" }
+    );
+    const j = (await res.json().catch(() => null)) as { success?: boolean; data?: QAResumen } | null;
+    if (res.ok && j?.success && j.data) setQaResumen(j.data);
+  }, [projectId]);
+
+  // Se refresca al cambiar de solapa: alcanza para que el badge y la barra
+  // queden al día después de trabajar en QA, sin suscribirse a nada.
+  useEffect(() => {
+    void recargarQaResumen();
+  }, [recargarQaResumen, tab]);
+
   async function agregarComentario(e: React.FormEvent) {
     e.preventDefault();
     if (!comTexto.trim()) return;
@@ -1511,6 +1538,14 @@ export default function ProyectoDetalleInner({
               }`}
             >
               {TAB_LABELS[t]}
+              {t === "qa" && qaResumen && qaResumen.abiertas > 0 ? (
+                <span
+                  className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700"
+                  title={`${qaResumen.abiertas} observaciones sin resolver`}
+                >
+                  {qaResumen.abiertas}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -1626,6 +1661,41 @@ export default function ProyectoDetalleInner({
                 </div>
               </dl>
             </div>
+
+            {qaResumen && qaResumen.total > 0 ? (
+              <div className={`${panelCls} md:col-span-2`}>
+                <div className="flex items-center gap-2">
+                  <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                  <h2 className="text-sm font-semibold text-slate-900">Avance de QA</h2>
+                  <button
+                    type="button"
+                    onClick={() => setTab("qa")}
+                    className="ml-auto text-xs font-medium text-[#3F8E91] underline-offset-2 hover:underline"
+                  >
+                    Ver observaciones
+                  </button>
+                </div>
+                <div className="mt-4 flex items-baseline justify-between gap-3">
+                  <span className="text-2xl font-bold tabular-nums text-slate-900">
+                    {qaResumen.porcentaje}%
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {qaResumen.cerradas} de {qaResumen.total} cerradas
+                  </span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-[#4FAEB2] transition-all"
+                    style={{ width: `${qaResumen.porcentaje}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  {qaResumen.abiertas > 0
+                    ? `${qaResumen.por_estado.pendiente ?? 0} pendientes · ${qaResumen.por_estado.en_curso ?? 0} en curso`
+                    : "Sin observaciones abiertas."}
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -2200,7 +2270,12 @@ export default function ProyectoDetalleInner({
         ) : null}
 
         {tab === "qa" ? (
-          <ProyectoQATab projectId={projectId} dataSchema={dataSchema} usuarios={usuarios} />
+          <ProyectoQATab
+            projectId={projectId}
+            dataSchema={dataSchema}
+            usuarios={usuarios}
+            projectTitle={String(proyecto.titulo ?? "")}
+          />
         ) : null}
 
         {tab === "comentarios" ? (

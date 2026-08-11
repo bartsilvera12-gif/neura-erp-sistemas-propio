@@ -46,6 +46,8 @@ type VendedorRow = {
   revenue_cobrado_total?: number;
   cobrado_periodo_total: number;
   saldo_pendiente_total: number;
+  /** Total comisionable pendiente de cobro (balance-driven, = suma de la lista "A cobrar"). */
+  a_cobrar_total?: number;
   pendiente_por_comisionar_total: number;
   lineas_excluidas?: number;
   lineas_incluidas_manual?: number;
@@ -215,22 +217,15 @@ function ACobrarTablaVendedor({ v }: { v: ACobrarVendedor }) {
 
 /** Bloque "A cobrar (comisionable)" dentro de la tarjeta expandida de un asesor (vista admin). */
 function ACobrarBloqueVendedor({ aCobrar }: { aCobrar: ACobrarVendedor | null }) {
-  const total = aCobrar?.total_a_cobrar ?? 0;
   const facturas = aCobrar?.facturas ?? [];
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
-      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-xs font-semibold text-slate-800">A cobrar (comisionable)</p>
-          <p className="text-[11px] text-slate-500">
-            Saldos pendientes que se vuelven comisión al cobrarlos. No depende de si hubo pago este mes: es lo
-            que hay que perseguir.
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Total a cobrar</p>
-          <p className="text-base font-bold tabular-nums text-amber-800">₲ {fmtMoney(total)}</p>
-        </div>
+      <div className="mb-2">
+        <p className="text-xs font-semibold text-slate-800">A cobrar (comisionable) — cuáles cobrar</p>
+        <p className="text-[11px] text-slate-500">
+          El detalle del &quot;Pendiente de cobro&quot; de arriba: las facturas comisionables con saldo que hay
+          que perseguir (se vuelven comisión al cobrarlas).
+        </p>
       </div>
       {aCobrar && facturas.length > 0 ? (
         <ACobrarTablaVendedor v={aCobrar} />
@@ -571,7 +566,7 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
             : undefined
         }
       />
-      <Kpi label="Pendiente de cobro" value={`₲ ${fmtMoney(row.saldo_pendiente_total ?? 0)}`} accent="warning" />
+      <Kpi label="Pendiente de cobro" value={`₲ ${fmtMoney(row.a_cobrar_total ?? 0)}`} accent="warning" />
     </div>
   );
 }
@@ -1131,6 +1126,8 @@ function renderVendedorView({
   selectedSellerMonth: string;
   onMonthChange: (mes: string) => void;
 }) {
+  // "Pendiente de cobro" del asesor = su total comisionable a cobrar (mismo número que su lista).
+  const sellerACobrarTotal = aCobrar[0]?.total_a_cobrar ?? 0;
   return (
     <div className="space-y-6 pb-10">
       <section className="rounded-2xl border border-[#4FAEB2]/45 bg-white px-6 py-4 shadow-sm">
@@ -1237,7 +1234,7 @@ function renderVendedorView({
               />
               <Kpi
                 label="Pendiente de cobro"
-                value={`₲ ${fmtMoney(sellerRow.saldo_pendiente_total ?? 0)}`}
+                value={`₲ ${fmtMoney(sellerACobrarTotal)}`}
                 accent="warning"
               />
             </div>
@@ -1249,7 +1246,7 @@ function renderVendedorView({
                 <p className="font-semibold text-slate-900">Mis clientes y movimientos</p>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {sellerRow.cantidad_movimientos} movimientos · Pendiente de cobro ₲{" "}
-                  {fmtMoney(sellerRow.saldo_pendiente_total ?? 0)}
+                  {fmtMoney(sellerACobrarTotal)}
                 </p>
               </div>
               <ChevronDown className="h-5 w-5 shrink-0 text-[#4FAEB2] transition-transform group-open:rotate-180" />
@@ -1289,6 +1286,12 @@ function renderAdminView({
   onReload: () => void;
   overrideCtx?: OverrideCtx;
 }) {
+  // "Pendiente de cobro" por asesor = su total comisionable a cobrar (mismo número que la lista).
+  const rowsView: VendedorRow[] = rows.map((r) => ({
+    ...r,
+    a_cobrar_total:
+      aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id)?.total_a_cobrar ?? 0,
+  }));
   return (
     <div className="space-y-6 pb-10">
       {/* Header */}
@@ -1390,7 +1393,7 @@ function renderAdminView({
             />
             <Kpi
               label="Total pendiente de cobro"
-              value={`₲ ${fmtMoney(kpis.saldo_pendiente_total ?? 0)}`}
+              value={`₲ ${fmtMoney(kpis.a_cobrar_total ?? kpis.saldo_pendiente_total ?? 0)}`}
               accent="warning"
             />
             <Kpi
@@ -1489,7 +1492,7 @@ function renderAdminView({
           </div>
         ) : (
           <div className="space-y-3">
-            {rows.map((r) => {
+            {rowsView.map((r) => {
               const tone = avatarToneFor(r.vendedor_nombre);
               return (
                 <details
@@ -1539,7 +1542,7 @@ function renderAdminView({
                           Pendiente
                         </p>
                         <p className="text-sm font-semibold tabular-nums text-amber-700">
-                          ₲ {fmtMoney(r.saldo_pendiente_total ?? 0)}
+                          ₲ {fmtMoney(r.a_cobrar_total ?? 0)}
                         </p>
                       </div>
                       <MiniScaleSummary row={r} />

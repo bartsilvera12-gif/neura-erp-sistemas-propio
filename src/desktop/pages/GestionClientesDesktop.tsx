@@ -255,20 +255,32 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Normaliza para búsqueda: minúsculas + sin acentos/diacríticos (marilia == Marília). */
+function normalizarBusqueda(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
 function matchesClienteBusqueda(c: Cliente, raw: string) {
-  const q = raw.trim().toLowerCase();
+  const q = normalizarBusqueda(raw.trim());
   if (!q) return true;
-  return (
-    (c.empresa ?? "").toLowerCase().includes(q) ||
-    c.nombre_contacto.toLowerCase().includes(q) ||
-    (c.telefono ?? "").toLowerCase().includes(q) ||
-    (c.telefono_secundario ?? "").toLowerCase().includes(q) ||
-    (c.ruc ?? "").toLowerCase().includes(q) ||
-    (c.documento ?? "").toLowerCase().includes(q) ||
-    (c.email ?? "").toLowerCase().includes(q) ||
-    (c.email_secundario ?? "").toLowerCase().includes(q) ||
-    (c.codigo_cliente ?? "").toLowerCase().includes(q)
-  );
+  // Un solo campo cubre nombre, razón social, RUC, teléfonos, correos, documento y código.
+  const campos = [
+    c.empresa,
+    c.nombre_contacto,
+    c.razon_social,
+    c.ruc,
+    c.ruc_factura,
+    c.telefono,
+    c.telefono_secundario,
+    c.email,
+    c.email_secundario,
+    c.documento,
+    c.codigo_cliente,
+  ];
+  return campos.some((campo) => campo && normalizarBusqueda(String(campo)).includes(q));
 }
 
 // ── Modal Estado de Facturación ─────────────────────────────────────────────

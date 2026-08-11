@@ -122,22 +122,31 @@ export async function GET(request: NextRequest) {
     const incluirEliminados = sp.get("incluir_eliminados") === "1";
     const planActivo = sp.get("plan_activo") === "1";
 
-    let q = supabase
-      .from("clientes")
-      .select("*")
-      .eq("empresa_id", auth.empresa_id)
-      .order("created_at", { ascending: false });
-    if (!incluirEliminados) {
-      q = q.is("deleted_at", null);
+    // Paginación: PostgREST corta en 1000 filas por request. Con >1000 clientes, antes solo se
+    // cargaban los 1000 más nuevos → el buscador (client-side sobre esta lista) no encontraba a
+    // clientes viejos. Traemos TODAS las páginas con orden estable (created_at + id) para no
+    // repetir ni saltar filas.
+    const PAGE = 1000;
+    const rows: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += PAGE) {
+      let q = supabase
+        .from("clientes")
+        .select("*")
+        .eq("empresa_id", auth.empresa_id);
+      if (!incluirEliminados) {
+        q = q.is("deleted_at", null);
+      }
+      const { data, error } = await q
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) {
+        return NextResponse.json(errorResponse(error.message), { status: 400 });
+      }
+      const batch = (data ?? []) as Record<string, unknown>[];
+      rows.push(...batch);
+      if (batch.length < PAGE) break;
     }
-
-    const { data, error } = await q;
-
-    if (error) {
-      return NextResponse.json(errorResponse(error.message), { status: 400 });
-    }
-
-    const rows = (data ?? []) as Record<string, unknown>[];
     /** Los enriquecimientos secundarios NO deben derribar el listado: si una tabla auxiliar no
      *  está mapeada en el shim o un RPC dependiente falla en un tenant `erp_*`, el listado igual
      *  debe responder con los clientes. */

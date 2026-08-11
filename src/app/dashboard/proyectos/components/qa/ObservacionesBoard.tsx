@@ -11,19 +11,30 @@ import {
   type QAObservacionSeveridad,
 } from "@/lib/proyectos/qa-observaciones-config";
 import ClonarObservacionesModal from "./ClonarObservacionesModal";
+import QAComposer from "./QAComposer";
 import ObservacionCard from "./ObservacionCard";
 import ObservacionModal from "./ObservacionModal";
 import SeccionesManager from "./SeccionesManager";
 import { copiarAlPortapapeles, imprimirObservaciones, textoWhatsApp } from "./exportar";
 import type { QAApiResp, QAObservacion, QASeccion, QATabProps } from "./types";
 import {
+  AccionSecundaria,
   BTN_GHOST_CLS,
   BTN_PRIMARY_CLS,
+  FiltroSelect,
+  FiltroToggle,
+  GrupoAcciones,
   INPUT_CLS,
-  SELECT_CLS,
-  IconChevron,
+  Segmentado,
   IconCheck,
+  IconChevron,
+  IconClonar,
+  IconFiltro,
+  IconCopy,
+  IconGrupos,
+  IconList,
   IconPlus,
+  IconPrinter,
   IconSearch,
   IconSettings,
 } from "./ui";
@@ -83,10 +94,7 @@ export default function ObservacionesBoard({
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
 
   const [altaOpen, setAltaOpen] = useState(false);
-  const [altaTitulo, setAltaTitulo] = useState("");
-  const [altaSeccionId, setAltaSeccionId] = useState("");
-  const [altaSeveridad, setAltaSeveridad] = useState<QAObservacionSeveridad>("media");
-  const enviandoRef = useRef(false);
+  const [filtrosOpen, setFiltrosOpen] = useState(false);
 
   const usuariosMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -281,34 +289,6 @@ export default function ObservacionesBoard({
     }
   }
 
-  async function crearObservacion() {
-    const titulo = altaTitulo.trim();
-    if (!titulo || enviandoRef.current) return;
-    enviandoRef.current = true;
-    try {
-      const data = await mutar(
-        `/api/proyectos/${projectId}/qa/observaciones`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            titulo,
-            severidad: altaSeveridad,
-            seccion_id: altaSeccionId || null,
-          }),
-        },
-        () => {}
-      );
-      const nueva = data as QAObservacion | null;
-      if (nueva?.id) {
-        setObservaciones((prev) => [...prev, nueva]);
-        setAltaTitulo("");
-      }
-    } finally {
-      enviandoRef.current = false;
-    }
-  }
-
   const reemplazar = useCallback((obs: QAObservacion) => {
     setObservaciones((prev) => prev.map((o) => (o.id === obs.id ? obs : o)));
   }, []);
@@ -347,9 +327,12 @@ export default function ObservacionesBoard({
     return <div className="p-6 text-sm text-slate-500">Cargando observaciones…</div>;
   }
 
-  const hayFiltros =
-    Boolean(filtros.q || filtros.estado || filtros.seccionId || filtros.severidad || filtros.asignadoA) ||
-    filtros.ocultarResueltas;
+  // Cuántos filtros están recortando el listado (la búsqueda no cuenta: está
+  // siempre a la vista y se nota sola).
+  const filtrosActivos =
+    [filtros.estado, filtros.seccionId, filtros.severidad, filtros.asignadoA].filter(Boolean)
+      .length + (filtros.ocultarResueltas ? 1 : 0);
+  const hayFiltros = filtrosActivos > 0 || filtros.q.trim() !== "";
 
   if (observaciones.length === 0 && !seccionesOpen) {
     return (
@@ -390,28 +373,15 @@ export default function ObservacionesBoard({
           />
         ) : null}
         {altaOpen ? (
-          <div className="flex w-full max-w-md flex-col gap-2 pt-2">
-            <input
-              autoFocus
-              value={altaTitulo}
-              onChange={(e) => setAltaTitulo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void crearObservacion();
-                }
-              }}
-              placeholder="Qué hay que ajustar…"
-              className={INPUT_CLS}
+          <div className="w-full pt-2 text-left">
+            <QAComposer
+              projectId={projectId}
+              secciones={secciones}
+              usuarios={usuarios}
+              onCreada={(nueva) => setObservaciones((prev) => [...prev, nueva])}
+              onSeccionCreada={(s) => setSecciones((prev) => [...prev, s])}
+              onCerrar={() => setAltaOpen(false)}
             />
-            <button
-              type="button"
-              onClick={() => void crearObservacion()}
-              disabled={!altaTitulo.trim()}
-              className={BTN_PRIMARY_CLS}
-            >
-              Cargar observación
-            </button>
           </div>
         ) : null}
       </div>
@@ -420,7 +390,8 @@ export default function ObservacionesBoard({
 
   return (
     <div className="space-y-3">
-      {/* Toolbar */}
+      {/* Fila única de trabajo. Los filtros y las acciones ocasionales se
+          despliegan bajo demanda: la pantalla es para las observaciones. */}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setAltaOpen((v) => !v)} className={BTN_PRIMARY_CLS}>
           <IconPlus />
@@ -439,122 +410,133 @@ export default function ObservacionesBoard({
           />
         </div>
 
-        <select
-          value={filtros.estado}
-          onChange={(e) => setFiltros((f) => ({ ...f, estado: e.target.value as Filtros["estado"] }))}
-          className={SELECT_CLS}
-          aria-label="Filtrar por estado"
+        <FiltroToggle
+          activo={filtrosOpen || filtrosActivos > 0}
+          onClick={() => setFiltrosOpen((v) => !v)}
+          title="Mostrar u ocultar los filtros"
         >
-          <option value="">Todos los estados</option>
+          <IconFiltro />
+          Filtros
+          {filtrosActivos > 0 ? (
+            <span className="rounded-full bg-[#4FAEB2] px-1.5 text-[10px] font-semibold text-white">
+              {filtrosActivos}
+            </span>
+          ) : null}
+        </FiltroToggle>
+
+        <Segmentado
+          valor={agrupacion}
+          onChange={setAgrupacion}
+          opciones={[
+            { id: "seccion", label: "Secciones", icono: <IconGrupos />, title: "Agrupar por sección" },
+            { id: "lista", label: "Lista", icono: <IconList />, title: "Lista plana por severidad" },
+          ]}
+        />
+
+        <div className="ml-auto">
+          <GrupoAcciones>
+            <AccionSecundaria
+              onClick={() => void copiarTexto()}
+              title="Copiar el listado visible como texto (formato WhatsApp)"
+            >
+              <IconCopy />
+              Copiar
+            </AccionSecundaria>
+            <AccionSecundaria
+              onClick={exportarPdf}
+              title="Abrir el listado visible para imprimir o guardar como PDF"
+            >
+              <IconPrinter />
+              Exportar
+            </AccionSecundaria>
+            <AccionSecundaria
+              onClick={() => setClonarOpen(true)}
+              title="Clonar observaciones desde otro proyecto"
+            >
+              <IconClonar />
+              Clonar
+            </AccionSecundaria>
+            <AccionSecundaria
+              onClick={() => setSeccionesOpen(true)}
+              title="Administrar las secciones del proyecto"
+            >
+              <IconSettings size={13} />
+              Secciones
+            </AccionSecundaria>
+          </GrupoAcciones>
+        </div>
+      </div>
+
+      {/* Filtros, solo cuando se piden o cuando hay alguno aplicado. */}
+      <div
+        className={`flex-wrap items-center gap-2 ${
+          filtrosOpen || filtrosActivos > 0 ? "flex" : "hidden"
+        }`}
+      >
+        <FiltroSelect
+          etiqueta="Filtrar por estado"
+          valor={filtros.estado}
+          activo={filtros.estado !== ""}
+          onChange={(v) => setFiltros((f) => ({ ...f, estado: v as Filtros["estado"] }))}
+        >
+          <option value="">Estado: todos</option>
           {QA_ESTADOS.map((e) => (
             <option key={e.codigo} value={e.codigo}>
               {e.label}
             </option>
           ))}
-        </select>
+        </FiltroSelect>
 
-        <select
-          value={filtros.seccionId}
-          onChange={(e) => setFiltros((f) => ({ ...f, seccionId: e.target.value }))}
-          className={SELECT_CLS}
-          aria-label="Filtrar por sección"
+        <FiltroSelect
+          etiqueta="Filtrar por sección"
+          valor={filtros.seccionId}
+          activo={filtros.seccionId !== ""}
+          onChange={(v) => setFiltros((f) => ({ ...f, seccionId: v }))}
         >
-          <option value="">Todas las secciones</option>
+          <option value="">Sección: todas</option>
           {secciones.map((s) => (
             <option key={s.id} value={s.id}>
               {s.nombre}
             </option>
           ))}
           <option value={SIN_SECCION}>Sin sección</option>
-        </select>
+        </FiltroSelect>
 
-        <select
-          value={filtros.severidad}
-          onChange={(e) =>
-            setFiltros((f) => ({ ...f, severidad: e.target.value as Filtros["severidad"] }))
-          }
-          className={SELECT_CLS}
-          aria-label="Filtrar por severidad"
+        <FiltroSelect
+          etiqueta="Filtrar por severidad"
+          valor={filtros.severidad}
+          activo={filtros.severidad !== ""}
+          onChange={(v) => setFiltros((f) => ({ ...f, severidad: v as Filtros["severidad"] }))}
         >
-          <option value="">Toda severidad</option>
+          <option value="">Severidad: toda</option>
           {QA_SEVERIDADES.map((s) => (
             <option key={s.codigo} value={s.codigo}>
               {s.label}
             </option>
           ))}
-        </select>
+        </FiltroSelect>
 
-        <select
-          value={filtros.asignadoA}
-          onChange={(e) => setFiltros((f) => ({ ...f, asignadoA: e.target.value }))}
-          className={SELECT_CLS}
-          aria-label="Filtrar por asignado"
+        <FiltroSelect
+          etiqueta="Filtrar por asignado"
+          valor={filtros.asignadoA}
+          activo={filtros.asignadoA !== ""}
+          onChange={(v) => setFiltros((f) => ({ ...f, asignadoA: v }))}
         >
-          <option value="">Cualquier asignado</option>
+          <option value="">Asignado: cualquiera</option>
           {usuarios.map((u) => (
             <option key={u.id} value={u.id}>
               {usuariosMap.get(u.id)}
             </option>
           ))}
-        </select>
+        </FiltroSelect>
 
-        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/50">
-          <input
-            type="checkbox"
-            checked={filtros.ocultarResueltas}
-            onChange={(e) => setFiltros((f) => ({ ...f, ocultarResueltas: e.target.checked }))}
-            className="h-3.5 w-3.5 accent-[#4FAEB2]"
-          />
+        <FiltroToggle
+          activo={filtros.ocultarResueltas}
+          onClick={() => setFiltros((f) => ({ ...f, ocultarResueltas: !f.ocultarResueltas }))}
+          title="Dejar a la vista solo lo que falta"
+        >
           Ocultar resueltas
-        </label>
-
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setAgrupacion((a) => (a === "seccion" ? "lista" : "seccion"))}
-            className={BTN_GHOST_CLS}
-            title={
-              agrupacion === "seccion"
-                ? "Ver como lista ordenada por severidad"
-                : "Agrupar por sección"
-            }
-          >
-            {agrupacion === "seccion" ? "Ver lista" : "Agrupar"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void copiarTexto()}
-            className={BTN_GHOST_CLS}
-            title="Copiar el listado visible como texto (formato WhatsApp)"
-          >
-            Copiar
-          </button>
-          <button
-            type="button"
-            onClick={exportarPdf}
-            className={BTN_GHOST_CLS}
-            title="Abrir el listado visible para imprimir o guardar como PDF"
-          >
-            Exportar
-          </button>
-          <button
-            type="button"
-            onClick={() => setClonarOpen(true)}
-            className={BTN_GHOST_CLS}
-            title="Clonar observaciones desde otro proyecto"
-          >
-            Clonar
-          </button>
-          <button
-            type="button"
-            onClick={() => setSeccionesOpen(true)}
-            className={BTN_GHOST_CLS}
-            aria-label="Administrar secciones"
-          >
-            <IconSettings />
-            Secciones
-          </button>
-        </div>
+        </FiltroToggle>
       </div>
 
       {/* Contadores + composer */}
@@ -596,58 +578,15 @@ export default function ObservacionesBoard({
       {aviso ? <p className="text-xs text-[#3F8E91]">{aviso}</p> : null}
 
       {altaOpen ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#4FAEB2]/40 bg-[#4FAEB2]/5 p-3">
-          <input
-            autoFocus
-            value={altaTitulo}
-            onChange={(e) => setAltaTitulo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void crearObservacion();
-              }
-              if (e.key === "Escape") setAltaOpen(false);
-            }}
-            placeholder="Qué hay que ajustar…"
-            className={`${INPUT_CLS} min-w-0 flex-1`}
-          />
-          <select
-            value={altaSeccionId}
-            onChange={(e) => setAltaSeccionId(e.target.value)}
-            className={SELECT_CLS}
-            aria-label="Sección de la nueva observación"
-          >
-            <option value="">Sin sección</option>
-            {secciones.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </select>
-          <select
-            value={altaSeveridad}
-            onChange={(e) => setAltaSeveridad(e.target.value as QAObservacionSeveridad)}
-            className={SELECT_CLS}
-            aria-label="Severidad de la nueva observación"
-          >
-            {QA_SEVERIDADES.map((s) => (
-              <option key={s.codigo} value={s.codigo}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => void crearObservacion()}
-            disabled={!altaTitulo.trim()}
-            className={BTN_PRIMARY_CLS}
-          >
-            Agregar
-          </button>
-          <button type="button" onClick={() => setAltaOpen(false)} className={BTN_GHOST_CLS}>
-            Cerrar
-          </button>
-        </div>
+        <QAComposer
+          projectId={projectId}
+          secciones={secciones}
+          usuarios={usuarios}
+          seccionInicial={filtros.seccionId && filtros.seccionId !== SIN_SECCION ? filtros.seccionId : null}
+          onCreada={(nueva) => setObservaciones((prev) => [...prev, nueva])}
+          onSeccionCreada={(s) => setSecciones((prev) => [...prev, s])}
+          onCerrar={() => setAltaOpen(false)}
+        />
       ) : null}
 
       {/* Grupos */}

@@ -1,58 +1,44 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import type { QAApiResp, QAArchivo } from "./types";
 import { IconImage } from "./ui";
 
 type Props = {
-  projectId: string;
-  obsId: string;
-  onSubido: (archivo: QAArchivo) => void;
-  onError: (mensaje: string) => void;
+  /** Identificador único para el input de cámara (dos dropzones no pueden compartir id). */
+  id: string;
+  /** Recibe los archivos elegidos. Quien lo usa decide si sube ya o los junta. */
+  onArchivos: (archivos: File[]) => void;
   /** Mientras esté activo se capturan los pegados de todo el documento. */
   capturarPaste: boolean;
+  /** Cantidad en vuelo, para el cartel de progreso. */
+  subiendo?: number;
+  compacto?: boolean;
 };
 
 const ACEPTADOS = "image/*,application/pdf";
 
-/** Lo que más se usa en QA: pegar el screenshot con Ctrl/Cmd+V y escribir al lado. */
+/**
+ * Lo que más se usa en QA: pegar el screenshot con Ctrl/Cmd+V y escribir al lado.
+ *
+ * No hace fetch: emite `File[]`. El modal los sube contra una observación que ya
+ * existe; el composer los retiene hasta que la observación se crea.
+ */
 export default function QAImageDropzone({
-  projectId,
-  obsId,
-  onSubido,
-  onError,
+  id,
+  onArchivos,
   capturarPaste,
+  subiendo = 0,
+  compacto = false,
 }: Props) {
-  const [subiendo, setSubiendo] = useState(0);
   const [arrastrando, setArrastrando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const subir = useCallback(
-    async (archivos: File[]) => {
+  const emitir = useCallback(
+    (archivos: File[]) => {
       const validos = archivos.filter((f) => f.size > 0);
-      if (validos.length === 0) return;
-      setSubiendo((n) => n + validos.length);
-      try {
-        for (const file of validos) {
-          const form = new FormData();
-          form.append("file", file);
-          const res = await fetchWithSupabaseSession(
-            `/api/proyectos/${projectId}/qa/observaciones/${obsId}/archivos`,
-            { method: "POST", body: form }
-          );
-          const j = (await res.json().catch(() => null)) as QAApiResp<QAArchivo> | null;
-          if (!res.ok || !j?.success || !j.data) {
-            onError(j?.error ?? `No se pudo subir "${file.name}"`);
-            continue;
-          }
-          onSubido(j.data);
-        }
-      } finally {
-        setSubiendo((n) => Math.max(0, n - validos.length));
-      }
+      if (validos.length > 0) onArchivos(validos);
     },
-    [projectId, obsId, onSubido, onError]
+    [onArchivos]
   );
 
   // Pegado desde el portapapeles. El listener es del documento porque el foco
@@ -80,11 +66,11 @@ export default function QAImageDropzone({
       }
       if (archivos.length === 0) return;
       e.preventDefault();
-      void subir(archivos);
+      emitir(archivos);
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [capturarPaste, subir]);
+  }, [capturarPaste, emitir]);
 
   return (
     <div
@@ -96,11 +82,11 @@ export default function QAImageDropzone({
       onDrop={(e) => {
         e.preventDefault();
         setArrastrando(false);
-        void subir([...e.dataTransfer.files]);
+        emitir([...e.dataTransfer.files]);
       }}
-      className={`rounded-xl border-2 border-dashed px-4 py-5 text-center transition-colors ${
-        arrastrando ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200 bg-slate-50"
-      }`}
+      className={`rounded-xl border-2 border-dashed text-center transition-colors ${
+        compacto ? "px-3 py-2.5" : "px-4 py-5"
+      } ${arrastrando ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-200 bg-slate-50"}`}
     >
       <input
         ref={inputRef}
@@ -109,24 +95,28 @@ export default function QAImageDropzone({
         multiple
         className="hidden"
         onChange={(e) => {
-          void subir([...(e.target.files ?? [])]);
+          emitir([...(e.target.files ?? [])]);
           e.target.value = "";
         }}
       />
       {/* Input aparte para la cámara: en Capacitor/Android abre directamente la app de foto. */}
       <input
-        id={`qa-camara-${obsId}`}
+        id={`qa-camara-${id}`}
         type="file"
         accept="image/*"
         capture="environment"
         className="hidden"
         onChange={(e) => {
-          void subir([...(e.target.files ?? [])]);
+          emitir([...(e.target.files ?? [])]);
           e.target.value = "";
         }}
       />
 
-      <div className="flex flex-col items-center gap-2 text-xs text-slate-500">
+      <div
+        className={`flex items-center justify-center gap-2 text-xs text-slate-500 ${
+          compacto ? "flex-row flex-wrap" : "flex-col"
+        }`}
+      >
         <span className="text-slate-400">
           <IconImage size={20} />
         </span>
@@ -149,7 +139,7 @@ export default function QAImageDropzone({
             Elegir archivo
           </button>
           <label
-            htmlFor={`qa-camara-${obsId}`}
+            htmlFor={`qa-camara-${id}`}
             className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 transition-colors hover:border-[#4FAEB2]/50 hover:text-[#3F8E91] sm:hidden"
           >
             Sacar foto

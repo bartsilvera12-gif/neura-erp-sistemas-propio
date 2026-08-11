@@ -6,6 +6,8 @@
  * librería de UI nueva.
  */
 
+import type { ReactNode } from "react";
+
 export const ACCENT = "#4FAEB2";
 export const ACCENT_HOVER = "#3F8E91";
 
@@ -157,9 +159,200 @@ export const IconTrash = ({ size = 14 }: IconProps) => (
   </svg>
 );
 
+export const IconFiltro = ({ size = 13 }: IconProps) => (
+  <svg width={size} height={size} {...svgProps}>
+    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+  </svg>
+);
+
+export const IconChevronDown = ({ size = 14 }: IconProps) => (
+  <svg width={size} height={size} {...svgProps}>
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+export const IconCopy = ({ size = 13 }: IconProps) => (
+  <svg width={size} height={size} {...svgProps}>
+    <rect x="9" y="9" width="13" height="13" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+export const IconPrinter = ({ size = 13 }: IconProps) => (
+  <svg width={size} height={size} {...svgProps}>
+    <polyline points="6 9 6 2 18 2 18 9" />
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" />
+  </svg>
+);
+
+export const IconClonar = ({ size = 13 }: IconProps) => (
+  <svg width={size} height={size} {...svgProps}>
+    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    <rect x="8" y="8" width="14" height="14" rx="2" />
+    <path d="M15 12v6M12 15h6" />
+  </svg>
+);
+
+export const IconList = ({ size = 13 }: IconProps) => (
+  <svg width={size} height={size} {...svgProps}>
+    <line x1="8" y1="6" x2="21" y2="6" />
+    <line x1="8" y1="12" x2="21" y2="12" />
+    <line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" />
+    <line x1="3" y1="12" x2="3.01" y2="12" />
+    <line x1="3" y1="18" x2="3.01" y2="18" />
+  </svg>
+);
+
+export const IconGrupos = ({ size = 13 }: IconProps) => (
+  <svg width={size} height={size} {...svgProps}>
+    <rect x="3" y="3" width="18" height="7" rx="1.5" />
+    <rect x="3" y="14" width="18" height="7" rx="1.5" />
+  </svg>
+);
+
 export const IconSettings = ({ size = 14 }: IconProps) => (
   <svg width={size} height={size} {...svgProps}>
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
 );
+
+// --- Controles de la barra de filtros ---------------------------------------
+//
+// Los `select` nativos traen la flecha del sistema operativo y un alto que no
+// coincide con el resto de los controles, así que se neutraliza la apariencia
+// (`appearance-none`) y se dibuja el chevron aparte. Cuando el filtro está
+// aplicado el control se pinta de teal: de un vistazo se ve qué está recortando
+// el listado y qué no.
+
+export function FiltroSelect({
+  etiqueta,
+  valor,
+  onChange,
+  activo,
+  children,
+}: {
+  etiqueta: string;
+  valor: string;
+  onChange: (valor: string) => void;
+  activo: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <select
+        aria-label={etiqueta}
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full appearance-none rounded-xl border py-2 pl-3 pr-8 text-sm shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 sm:w-auto ${
+          activo
+            ? "border-[#4FAEB2] bg-[#4FAEB2]/10 font-medium text-[#3F8E91]"
+            : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60"
+        }`}
+      >
+        {children}
+      </select>
+      <span
+        className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 ${
+          activo ? "text-[#3F8E91]" : "text-slate-400"
+        }`}
+      >
+        <IconChevronDown />
+      </span>
+    </div>
+  );
+}
+
+/** Filtro booleano. Mismo lenguaje visual que `FiltroSelect` cuando está activo. */
+export function FiltroToggle({
+  activo,
+  onClick,
+  children,
+  title,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={activo}
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm transition-colors ${
+        activo
+          ? "border-[#4FAEB2] bg-[#4FAEB2]/10 font-medium text-[#3F8E91]"
+          : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Selector de modo de dos opciones (agrupado / lista). */
+export function Segmentado<T extends string>({
+  valor,
+  onChange,
+  opciones,
+}: {
+  valor: T;
+  onChange: (v: T) => void;
+  opciones: ReadonlyArray<{ id: T; label: string; icono: ReactNode; title?: string }>;
+}) {
+  return (
+    <div className="inline-flex rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm">
+      {opciones.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          aria-pressed={valor === o.id}
+          title={o.title}
+          className={`inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-sm transition-colors ${
+            valor === o.id
+              ? "bg-[#4FAEB2]/10 font-medium text-[#3F8E91]"
+              : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+          }`}
+        >
+          {o.icono}
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Acciones secundarias como un bloque único, para que no compitan con los filtros. */
+export function GrupoAcciones({ children }: { children: ReactNode }) {
+  return (
+    <div className="inline-flex divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {children}
+    </div>
+  );
+}
+
+export function AccionSecundaria({
+  onClick,
+  children,
+  title,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
+    >
+      {children}
+    </button>
+  );
+}

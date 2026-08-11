@@ -61,6 +61,7 @@ export default function ObservacionModal({
   const [nuevoComentario, setNuevoComentario] = useState("");
 
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [subiendo, setSubiendo] = useState(0);
   const enviandoRef = useRef(false);
 
   const imagenes = useMemo(
@@ -232,8 +233,29 @@ export default function ObservacionModal({
     }
   }
 
-  function agregarArchivo(a: QAArchivo) {
-    onActualizada({ ...obs, archivos: [...obs.archivos, a] });
+  /** El dropzone solo entrega los archivos; acá se suben contra la observación. */
+  async function subirArchivos(archivos: File[]) {
+    setSubiendo((n) => n + archivos.length);
+    try {
+      const nuevos: QAArchivo[] = [];
+      for (const file of archivos) {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetchWithSupabaseSession(
+          `/api/proyectos/${projectId}/qa/observaciones/${obsId}/archivos`,
+          { method: "POST", body: form }
+        );
+        const j = (await res.json().catch(() => null)) as QAApiResp<QAArchivo> | null;
+        if (!res.ok || !j?.success || !j.data) {
+          setErr(j?.error ?? `No se pudo subir "${file.name}"`);
+          continue;
+        }
+        nuevos.push(j.data);
+      }
+      if (nuevos.length > 0) onActualizada({ ...obs, archivos: [...obs.archivos, ...nuevos] });
+    } finally {
+      setSubiendo((n) => Math.max(0, n - archivos.length));
+    }
   }
 
   async function eliminarArchivo(a: QAArchivo) {
@@ -516,11 +538,10 @@ export default function ObservacionModal({
             ) : null}
 
             <QAImageDropzone
-              projectId={projectId}
-              obsId={obsId}
+              id={obsId}
               capturarPaste={lightboxIdx === null}
-              onSubido={agregarArchivo}
-              onError={setErr}
+              subiendo={subiendo}
+              onArchivos={(archivos) => void subirArchivos(archivos)}
             />
           </div>
 

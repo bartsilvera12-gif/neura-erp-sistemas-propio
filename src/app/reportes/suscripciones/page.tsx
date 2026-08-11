@@ -5,16 +5,25 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 type EstadoMes = "pagado" | "pendiente" | "sin_facturar";
+type EstadoCobro = "cobrada" | "parcial" | "sin_cobrar";
 type Row = {
   cliente: string;
   plan: string;
   tipo_slug: string | null;
   tipo_label: string;
   monto: number;
+  cobrado_mes: number;
   moneda: string;
   vendedor: string;
   estado_mes: EstadoMes;
 };
+
+/** Estado de cobro del mes derivado de la plata cobrada vs la cuota mensual. */
+function estadoCobro(r: Row): EstadoCobro {
+  if (r.cobrado_mes <= 0) return "sin_cobrar";
+  if (r.cobrado_mes >= r.monto) return "cobrada";
+  return "parcial";
+}
 
 function fmtGs(n: number) {
   return n.toLocaleString("es-PY");
@@ -27,13 +36,13 @@ function periodoLabel(ym: string) {
   return mi >= 1 && mi <= 12 ? `${meses[mi - 1]} ${y}` : ym;
 }
 
-function EstadoBadge({ estado }: { estado: EstadoMes }) {
+function EstadoBadge({ estado }: { estado: EstadoCobro }) {
   const cfg =
-    estado === "pagado"
-      ? { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", label: "Pagado" }
-      : estado === "pendiente"
-        ? { cls: "border-amber-200 bg-amber-50 text-amber-700", dot: "bg-amber-500", label: "Pendiente" }
-        : { cls: "border-slate-200 bg-slate-50 text-slate-500", dot: "bg-slate-400", label: "Sin facturar" };
+    estado === "cobrada"
+      ? { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", label: "Cobrada" }
+      : estado === "parcial"
+        ? { cls: "border-amber-200 bg-amber-50 text-amber-700", dot: "bg-amber-500", label: "Parcial" }
+        : { cls: "border-slate-200 bg-slate-50 text-slate-500", dot: "bg-slate-400", label: "Sin cobrar" };
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cfg.cls}`}>
       <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
@@ -139,7 +148,7 @@ export default function ReporteSuscripcionesPage() {
   const [err, setErr] = useState<string | null>(null);
   const [tipo, setTipo] = useState("");
   const [q, setQ] = useState("");
-  const [estadoFiltro, setEstadoFiltro] = useState<"" | EstadoMes>("");
+  const [estadoFiltro, setEstadoFiltro] = useState<"" | "cobrado" | "por_cobrar">("");
 
   useEffect(() => {
     let cancel = false;
@@ -203,20 +212,35 @@ export default function ReporteSuscripcionesPage() {
     });
   }, [rows, tipo, q]);
 
-  // Lo que muestra la tabla: base + el filtro por estado (cards seleccionables).
-  const filtradas = useMemo(
-    () => (estadoFiltro ? baseFiltradas.filter((r) => r.estado_mes === estadoFiltro) : baseFiltradas),
-    [baseFiltradas, estadoFiltro]
-  );
+  // Lo que muestra la tabla: base + el filtro por estado de cobro (cards seleccionables).
+  const filtradas = useMemo(() => {
+    if (estadoFiltro === "cobrado") return baseFiltradas.filter((r) => r.cobrado_mes > 0);
+    if (estadoFiltro === "por_cobrar") return baseFiltradas.filter((r) => r.cobrado_mes < r.monto);
+    return baseFiltradas;
+  }, [baseFiltradas, estadoFiltro]);
 
-  const totalGs = useMemo(
+  // Sumas de la tabla (lo filtrado) — el pie muestra estas.
+  const sumMontoFiltradas = useMemo(
     () => filtradas.filter((r) => r.moneda === "GS").reduce((s, r) => s + r.monto, 0),
     [filtradas]
   );
-  const nPagadas = baseFiltradas.filter((r) => r.estado_mes === "pagado").length;
-  const nPendientes = baseFiltradas.filter((r) => r.estado_mes === "pendiente").length;
-  const totalGsBase = baseFiltradas.filter((r) => r.moneda === "GS").reduce((s, r) => s + r.monto, 0);
-  const toggleEstado = (e: EstadoMes) => setEstadoFiltro((prev) => (prev === e ? "" : e));
+  const sumCobradoFiltradas = useMemo(
+    () => filtradas.filter((r) => r.moneda === "GS").reduce((s, r) => s + r.cobrado_mes, 0),
+    [filtradas]
+  );
+
+  // Sumas base (respetan tipo+búsqueda, NO el card seleccionado) → alimentan los KPIs.
+  const gs = (r: Row) => r.moneda === "GS";
+  const mensualObjetivoBase = baseFiltradas.filter(gs).reduce((s, r) => s + r.monto, 0);
+  const cobradoBase = baseFiltradas.filter(gs).reduce((s, r) => s + r.cobrado_mes, 0);
+  const porCobrarBase = baseFiltradas.filter(gs).reduce((s, r) => s + Math.max(r.monto - r.cobrado_mes, 0), 0);
+
+  // Diferencia entre la caja total de cuotas (semicírculo) y lo atribuido a las suscripciones
+  // activas listadas: cuotas cobradas de suscripciones fuera de la lista (bajas / sin sub activa).
+  const cobradoEnLista = rows.filter(gs).reduce((s, r) => s + r.cobrado_mes, 0);
+  const cobradoFueraLista = Math.max(cobradoMes - cobradoEnLista, 0);
+
+  const toggleEstado = (e: "cobrado" | "por_cobrar") => setEstadoFiltro((prev) => (prev === e ? "" : e));
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6">
@@ -258,7 +282,17 @@ export default function ReporteSuscripcionesPage() {
         />
       </div>
 
-      {/* KPIs (seleccionables: filtran la tabla por estado del mes). */}
+      {cobradoFueraLista > 0 && (
+        <p className="-mt-1 text-[11px] text-slate-400">
+          El total cobrado del semicírculo incluye{" "}
+          <span className="font-semibold text-slate-500">Gs. {fmtGs(cobradoFueraLista)}</span> de cuotas de
+          suscripciones que no figuran en la lista de activas (clientes dados de baja o sin suscripción activa).
+          La tabla suma solo las activas.
+        </p>
+      )}
+
+      {/* KPIs — todo en Gs. de CUOTAS: coinciden con el semicírculo y con el pie de la tabla.
+          "Cobrado del mes" y "Por cobrar" son seleccionables y filtran la tabla. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <button
           type="button"
@@ -268,34 +302,34 @@ export default function ReporteSuscripcionesPage() {
             estadoFiltro === "" ? "border-[#4FAEB2] ring-2 ring-[#4FAEB2]/40" : "border-slate-200 ring-1 ring-[#4FAEB2]/15"
           }`}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Todas</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Suscripciones</p>
           <p className="mt-1 text-2xl font-bold text-slate-900">{baseFiltradas.length}</p>
         </button>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-[#4FAEB2]/15">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#4FAEB2]">Mensual (Gs.)</p>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-[#3F8E91] tabular-nums">{fmtGs(totalGsBase)}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Mensual objetivo (Gs.)</p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-slate-700 tabular-nums">{fmtGs(mensualObjetivoBase)}</p>
         </div>
         <button
           type="button"
-          onClick={() => toggleEstado("pagado")}
-          aria-pressed={estadoFiltro === "pagado"}
+          onClick={() => toggleEstado("cobrado")}
+          aria-pressed={estadoFiltro === "cobrado"}
           className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-            estadoFiltro === "pagado" ? "border-emerald-400 ring-2 ring-emerald-300" : "border-emerald-200"
+            estadoFiltro === "cobrado" ? "border-emerald-400 ring-2 ring-emerald-300" : "border-emerald-200"
           }`}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-600">Pagadas del mes</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-700">{nPagadas}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-600">Cobrado del mes (Gs.)</p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-emerald-700 tabular-nums">{fmtGs(cobradoBase)}</p>
         </button>
         <button
           type="button"
-          onClick={() => toggleEstado("pendiente")}
-          aria-pressed={estadoFiltro === "pendiente"}
+          onClick={() => toggleEstado("por_cobrar")}
+          aria-pressed={estadoFiltro === "por_cobrar"}
           className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-            estadoFiltro === "pendiente" ? "border-amber-400 ring-2 ring-amber-300" : "border-amber-200"
+            estadoFiltro === "por_cobrar" ? "border-amber-400 ring-2 ring-amber-300" : "border-amber-200"
           }`}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-600">Pendientes del mes</p>
-          <p className="mt-1 text-2xl font-bold text-amber-700">{nPendientes}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-600">Por cobrar (Gs.)</p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-amber-700 tabular-nums">{fmtGs(porCobrarBase)}</p>
         </button>
       </div>
 
@@ -344,14 +378,14 @@ export default function ReporteSuscripcionesPage() {
           <div className="py-16 text-center text-sm text-slate-400">No hay suscripciones para los filtros.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[880px] text-sm">
               <thead className="border-b border-slate-200 bg-slate-50/70">
                 <tr>
-                  {["Cliente", "Plan", "Tipo", "Monto", "Estado del mes", "Vendedor"].map((h, i) => (
+                  {["Cliente", "Plan", "Tipo", "Mensual", "Cobrado del mes", "Estado", "Vendedor"].map((h, i) => (
                     <th
                       key={h}
                       className={`whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 ${
-                        i === 3 ? "text-right" : "text-left"
+                        i === 3 || i === 4 ? "text-right" : "text-left"
                       }`}
                     >
                       {h}
@@ -369,12 +403,15 @@ export default function ReporteSuscripcionesPage() {
                         {r.tipo_label}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-[#3F8E91]">
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-slate-600">
                       {r.moneda === "USD" ? "USD " : "Gs. "}
                       {fmtGs(r.monto)}
                     </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-[#3F8E91]">
+                      {r.cobrado_mes > 0 ? `${r.moneda === "USD" ? "USD " : "Gs. "}${fmtGs(r.cobrado_mes)}` : "—"}
+                    </td>
                     <td className="px-3 py-2.5">
-                      <EstadoBadge estado={r.estado_mes} />
+                      <EstadoBadge estado={estadoCobro(r)} />
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">{r.vendedor}</td>
                   </tr>
@@ -385,8 +422,11 @@ export default function ReporteSuscripcionesPage() {
                   <td className="px-3 py-2.5 text-xs font-semibold text-slate-600" colSpan={3}>
                     {filtradas.length} suscripción{filtradas.length === 1 ? "" : "es"}
                   </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right text-sm font-bold tabular-nums text-slate-600">
+                    Gs. {fmtGs(sumMontoFiltradas)}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-right text-sm font-bold tabular-nums text-[#3F8E91]">
-                    Gs. {fmtGs(totalGs)}
+                    Gs. {fmtGs(sumCobradoFiltradas)}
                   </td>
                   <td className="px-3 py-2.5" colSpan={2} />
                 </tr>

@@ -174,23 +174,33 @@ export async function GET(request: NextRequest) {
     const inicioMesAnt = `${ymPrev}-01`;
     const diasMesAnt = new Date(prevYear, prevMonth, 0).getDate(); // días del mes anterior
     const finMesAntCorte = `${ymPrev}-${String(Math.min(diaCorte, diasMesAnt)).padStart(2, "0")}`;
-    let cobradoMes = 0;
-    let cobradoMesAnterior = 0;
+    // cobradoBySub: plata cobrada ESTE mes atribuida a cada suscripción (por su factura de cuota,
+    // sin importar de qué período sea la factura → así "cobrado" = todo lo que entró por cuotas).
+    const cobradoBySub = new Map<string, number>();
+    let cobradoMes = 0; // caja total de cuotas de suscripción este mes (1 → hoy)
+    let cobradoMesAnterior = 0; // caja total mismo tramo del mes anterior (1 → mismo día)
     {
       const { data } = await supabase
         .from("pagos")
-        .select("monto, fecha_pago, facturas(tipo)")
+        .select("monto, fecha_pago, facturas(tipo, suscripcion_id)")
         .eq("empresa_id", empresaId)
         .gte("fecha_pago", inicioMesAnt)
         .lte("fecha_pago", hoy);
       for (const p of (data ?? []) as { monto: number | null; fecha_pago: string | null; facturas: unknown }[]) {
         const facRaw = p.facturas;
-        const fac = (Array.isArray(facRaw) ? facRaw[0] : facRaw) as { tipo?: string | null } | null;
+        const fac = (Array.isArray(facRaw) ? facRaw[0] : facRaw) as
+          | { tipo?: string | null; suscripcion_id?: string | null }
+          | null;
         if (!fac || String(fac.tipo ?? "").trim().toLowerCase() !== "suscripcion") continue; // solo suscripciones
         const fp = String(p.fecha_pago ?? "").slice(0, 10);
         const monto = Number(p.monto) || 0;
-        if (fp >= inicioMes && fp <= hoy) cobradoMes += monto;
-        else if (fp >= inicioMesAnt && fp <= finMesAntCorte) cobradoMesAnterior += monto;
+        if (fp >= inicioMes && fp <= hoy) {
+          cobradoMes += monto;
+          const sid = String(fac.suscripcion_id ?? "").trim();
+          if (sid) cobradoBySub.set(sid, (cobradoBySub.get(sid) ?? 0) + monto);
+        } else if (fp >= inicioMesAnt && fp <= finMesAntCorte) {
+          cobradoMesAnterior += monto;
+        }
       }
     }
 
@@ -225,6 +235,7 @@ export async function GET(request: NextRequest) {
           tipo_slug: tipoSlug || null,
           tipo_label: tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogMap) : "Sin tipo",
           monto: Math.round(monto),
+          cobrado_mes: Math.round(cobradoBySub.get(String(s.id)) ?? 0),
           moneda: String(s.moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
           vendedor: (cli.vendedorUid ? nombrePorUid.get(cli.vendedorUid) : "") || cli.vendedorTexto || "—",
           estado_mes: estadoMes as "pagado" | "pendiente" | "sin_facturar",

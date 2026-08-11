@@ -122,30 +122,40 @@ export async function GET(request: NextRequest) {
     const incluirEliminados = sp.get("incluir_eliminados") === "1";
     const planActivo = sp.get("plan_activo") === "1";
 
-    // Paginación: PostgREST corta en 1000 filas por request. Con >1000 clientes, antes solo se
-    // cargaban los 1000 más nuevos → el buscador (client-side sobre esta lista) no encontraba a
-    // clientes viejos. Traemos TODAS las páginas con orden estable (created_at + id) para no
-    // repetir ni saltar filas.
-    const PAGE = 1000;
-    const rows: Record<string, unknown>[] = [];
-    for (let from = 0; ; from += PAGE) {
-      let q = supabase
-        .from("clientes")
-        .select("*")
-        .eq("empresa_id", auth.empresa_id);
+    // Carga de clientes robusta a los DOS backends de datos:
+    //  - PostgREST (schema expuesto): corta en 1000 filas por request → hay que paginar con
+    //    .range() para traer a todos (si no, el buscador no ve a los clientes más viejos).
+    //  - Shim Postgres directo (schemas erp_*/neura NO expuestos): va directo a la DB, sin cap
+    //    de 1000, y NO implementa .range(). Una sola query trae todo. (Llamar .range() sobre el
+    //    shim tiraba TypeError → 500 → el listado quedaba VACÍO y el buscador no encontraba nada.)
+    const buildBase = () => {
+      let q = supabase.from("clientes").select("*").eq("empresa_id", auth.empresa_id);
       if (!incluirEliminados) {
         q = q.is("deleted_at", null);
       }
-      const { data, error } = await q
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: true })
-        .range(from, from + PAGE - 1);
+      return q.order("created_at", { ascending: false });
+    };
+    const rows: Record<string, unknown>[] = [];
+    const soportaRange = typeof (buildBase() as { range?: unknown }).range === "function";
+    if (soportaRange) {
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await buildBase()
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) {
+          return NextResponse.json(errorResponse(error.message), { status: 400 });
+        }
+        const batch = (data ?? []) as Record<string, unknown>[];
+        rows.push(...batch);
+        if (batch.length < PAGE) break;
+      }
+    } else {
+      const { data, error } = await buildBase();
       if (error) {
         return NextResponse.json(errorResponse(error.message), { status: 400 });
       }
-      const batch = (data ?? []) as Record<string, unknown>[];
-      rows.push(...batch);
-      if (batch.length < PAGE) break;
+      rows.push(...((data ?? []) as Record<string, unknown>[]));
     }
     /** Los enriquecimientos secundarios NO deben derribar el listado: si una tabla auxiliar no
      *  está mapeada en el shim o un RPC dependiente falla en un tenant `erp_*`, el listado igual

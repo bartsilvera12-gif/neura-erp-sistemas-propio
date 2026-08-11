@@ -330,6 +330,38 @@ BEGIN
       );
     END IF;
 
+    -- =========================================================================
+    -- Privilegios — NO sacar de acá ni meter dentro de un IF de creación.
+    --
+    -- El schema tiene DEFAULT PRIVILEGES definidos *para el rol `postgres`*: las
+    -- tablas que crea `postgres` reciben solas los grants a anon/authenticated/
+    -- service_role. Pero las migraciones las aplica `supabase_admin`, y las
+    -- tablas que crea ese rol nacen con ACL nula — o sea, accesibles únicamente
+    -- por su dueño. El resultado es que la API (que usa el service role) recibe
+    -- `42501 permission denied` en cada consulta.
+    --
+    -- Por eso los GRANT van explícitos y fuera del `IF to_regclass(...) IS NULL`:
+    -- así una re-ejecución repara tablas que ya existen. Se replica el ACL que
+    -- tienen las tablas del checklist: anon solo lectura, el resto CRUD.
+    -- =========================================================================
+    FOREACH tbl IN ARRAY ARRAY[
+      'proyecto_qa_secciones','proyecto_qa_observaciones',
+      'proyecto_qa_observacion_archivos','proyecto_qa_observacion_comentarios'
+    ]
+    LOOP
+      IF to_regclass(format('%I.%I', sch, tbl)) IS NOT NULL THEN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+          EXECUTE format('GRANT SELECT ON %I.%I TO anon', sch, tbl);
+        END IF;
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I.%I TO authenticated', sch, tbl);
+        END IF;
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I.%I TO service_role', sch, tbl);
+        END IF;
+      END IF;
+    END LOOP;
+
     -- Realtime opcional (mantiene paridad con el resto del módulo).
     FOREACH tbl IN ARRAY ARRAY[
       'proyecto_qa_secciones','proyecto_qa_observaciones',

@@ -18,7 +18,13 @@ import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto"
 
 type Tipo = { id: string; nombre: string; codigo: string };
 type Estado = { id: string; nombre: string };
-type Cliente = { id: string; empresa?: string | null; nombre_contacto?: string | null };
+type Cliente = {
+  id: string;
+  empresa?: string | null;
+  nombre_contacto?: string | null;
+  telefono?: string | null;
+  telefono_secundario?: string | null;
+};
 type Usuario = { id: string; nombre?: string | null };
 
 export type ProyectoNuevoFormProps = {
@@ -57,7 +63,9 @@ export default function ProyectoNuevoForm({
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [briefLists, setBriefLists] = useState<Record<string, string[]>>({});
   const [saasEmpresaNombre, setSaasEmpresaNombre] = useState("");
-  const [saasWhatsapp, setSaasWhatsapp] = useState("");
+  // WhatsApp / contacto del proyecto (arriba, junto a Fecha prometida). Se autocompleta con el
+  // teléfono del cliente elegido y queda editable.
+  const [contactoWhatsapp, setContactoWhatsapp] = useState("");
   const [saasObservaciones, setSaasObservaciones] = useState("");
   const [saasModuloIds, setSaasModuloIds] = useState<string[]>([]);
 
@@ -105,6 +113,16 @@ export default function ProyectoNuevoForm({
     };
   }, []);
 
+  // Al elegir un cliente: setear el cliente y autocompletar WhatsApp/contacto con su teléfono
+  // (editable). Se hace en el evento de selección, no en un efecto.
+  function handleClienteChange(id: string) {
+    setClienteId(id);
+    if (!id) return;
+    const c = clientes.find((x) => x.id === id);
+    const tel = (c?.telefono ?? "").trim() || (c?.telefono_secundario ?? "").trim();
+    if (tel) setContactoWhatsapp(tel);
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!tipoId) {
@@ -124,11 +142,15 @@ export default function ProyectoNuevoForm({
     if (esSaas) {
       brief_data = applySaasFormToExisting(brief_data, {
         empresa_nombre: saasEmpresaNombre,
-        whatsapp_contacto: saasWhatsapp,
+        whatsapp_contacto: contactoWhatsapp,
         observaciones: saasObservaciones,
         modulos_necesarios: saasModulosSeleccionados,
       });
     }
+    // WhatsApp/contacto único (arriba): se guarda como clave general del brief para web/mixto
+    // (el SaaS ya la tomó como saas_whatsapp_contacto arriba).
+    const contacto = contactoWhatsapp.trim();
+    if (contacto) brief_data.whatsapp_contacto = contacto;
 
     const body: Record<string, unknown> = {
       tipo_id: tipoId,
@@ -244,7 +266,7 @@ export default function ProyectoNuevoForm({
                 />
               </div>
             </div>
-            <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={setClienteId} />
+            <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} />
             <div className="block text-sm">
               <span className={LABEL_CLS}>Prioridad</span>
               <div className="mt-1.5">
@@ -316,6 +338,18 @@ export default function ProyectoNuevoForm({
                 onChange={(e) => setFechaProm(e.target.value)}
               />
             </label>
+            <label className="block text-sm">
+              <span className={LABEL_CLS}>WhatsApp / contacto</span>
+              <input
+                className={INPUT_CLS}
+                placeholder="+595..."
+                value={contactoWhatsapp}
+                onChange={(e) => setContactoWhatsapp(e.target.value)}
+              />
+              <span className="mt-1 block text-[11px] text-slate-400">
+                Se completa solo con el teléfono del cliente. Podés editarlo.
+              </span>
+            </label>
           </div>
         </div>
 
@@ -332,7 +366,8 @@ export default function ProyectoNuevoForm({
               <h2 className="text-sm font-semibold text-slate-900">Datos del proyecto (web)</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {PROYECTO_DATOS_BRIEF_FIELDS.map((f) => {
+              {/* whatsapp_contacto se pide arriba (junto a Fecha prometida), autocompletado. */}
+              {PROYECTO_DATOS_BRIEF_FIELDS.filter((f) => f.key !== "whatsapp_contacto").map((f) => {
                 if (f.kind === "checkbox") {
                   return (
                     <label
@@ -460,21 +495,12 @@ export default function ProyectoNuevoForm({
               <h2 className="text-sm font-semibold text-slate-900">Datos del ERP / SaaS</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
+              <label className="block text-sm sm:col-span-2">
                 <span className={LABEL_CLS}>Nombre de la empresa</span>
                 <input
                   className={INPUT_CLS}
                   value={saasEmpresaNombre}
                   onChange={(e) => setSaasEmpresaNombre(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className={LABEL_CLS}>WhatsApp contacto</span>
-                <input
-                  className={INPUT_CLS}
-                  placeholder="+595..."
-                  value={saasWhatsapp}
-                  onChange={(e) => setSaasWhatsapp(e.target.value)}
                 />
               </label>
               <div className="block text-sm sm:col-span-2">

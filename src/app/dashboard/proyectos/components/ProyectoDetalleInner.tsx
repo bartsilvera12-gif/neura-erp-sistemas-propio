@@ -12,6 +12,7 @@ import {
 } from "@/app/dashboard/proyectos/components/ProyectoModuloSelector";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
+import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
   applyBriefFormToExisting,
@@ -81,6 +82,7 @@ const TAB_IDS = [
   "qa",
   "comentarios",
   "archivos",
+  "credenciales",
   "cambios",
   "historial",
 ] as const;
@@ -93,6 +95,7 @@ const TAB_LABELS: Record<TabId, string> = {
   qa: "QA",
   comentarios: "Comentarios",
   archivos: "Archivos",
+  credenciales: "Credenciales",
   cambios: "Cambios",
   historial: "Historial",
 };
@@ -2767,6 +2770,8 @@ export default function ProyectoDetalleInner({
           </div>
           );
         })() : null}
+
+        {tab === "credenciales" ? <ProyectoCredencialesTab projectId={projectId} /> : null}
 
         {tab === "cambios" ? (() => {
           const estadoCodigo = String(

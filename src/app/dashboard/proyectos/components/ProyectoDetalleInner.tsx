@@ -741,6 +741,20 @@ export default function ProyectoDetalleInner({
     }
   }, [tab, data?.archivos, thumbUrls, projectId]);
 
+  // Abrir el proyecto apaga sus novedades de QA para *este* usuario: el badge
+  // de la lista y el contador de la campanita bajan solos. Los demás
+  // responsables siguen viendo el suyo hasta que entren ellos.
+  useEffect(() => {
+    if (!projectId) return;
+    void fetchWithSupabaseSession("/api/notificaciones/marcar-leidas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proyecto_id: projectId }),
+    }).catch(() => {
+      // No es crítico: si falla, el badge se apaga la próxima vez que entre.
+    });
+  }, [projectId]);
+
   // Mantengo una ref a `load` para que las suscripciones de Realtime no se re-creen
   // en cada render. El callback estable adentro del channel siempre llama al último.
   const loadRef = useRef(load);

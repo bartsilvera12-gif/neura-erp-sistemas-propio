@@ -1,6 +1,7 @@
 import "server-only";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { notificarNovedadQA } from "@/lib/proyectos/qa-notificaciones";
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
 
 export type QASupabase = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
@@ -25,6 +26,9 @@ export const QA_ACCIONES = [
   "observacion_estado_cambiado","observacion_asignada",
   "observacion_comentada","observacion_archivo_subido","observacion_archivo_eliminado",
   "seccion_creada","seccion_editada","seccion_eliminada",
+  // Veredicto de QA: cierra o devuelve el proyecto. Notifica aparte (ver
+  // `notificarVeredictoQA`), no como novedad agrupada.
+  "qa_aprobado","qa_rechazado",
 ] as const;
 
 export type QAAccion = (typeof QA_ACCIONES)[number];
@@ -53,6 +57,17 @@ export async function registrarEventoQA(
     accion: args.accion,
     payload: args.payload ?? {},
     usuario_id: args.usuarioId,
+  });
+
+  // Las notificaciones se generan acá y no en cada endpoint: este es el único
+  // punto por el que pasan los 25 de QA. `notificarNovedadQA` no lanza — un
+  // fallo notificando no puede voltear la operación de QA que lo originó.
+  await notificarNovedadQA(sb, {
+    empresaId: args.empresaId,
+    proyectoId: args.proyectoId,
+    actorId: args.usuarioId,
+    accion: args.accion,
+    observacionId: args.observacionId ?? null,
   });
 }
 

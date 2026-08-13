@@ -46,6 +46,11 @@ type ProyectoCard = Record<string, unknown> & {
   brief_data?: Record<string, unknown> | null;
   bloqueado?: boolean;
   archivado?: boolean;
+  /**
+   * Novedades de QA sin leer *para el usuario actual*. Es un dato por persona,
+   * no del proyecto: dos responsables ven badges distintos sobre la misma fila.
+   */
+  qa_novedades_no_leidas?: number;
   proyecto_tipo?: { nombre?: string; codigo?: string } | null;
   proyecto_estado?: {
     nombre?: string;
@@ -457,6 +462,25 @@ function listInitials(name: string) {
 }
 
 /** Avatar pequeño + nombre completo (con wrap a 2 líneas). Usado en columnas de responsables. */
+/**
+ * Novedades de QA sin leer para el usuario actual. Se apaga solo cuando esa
+ * persona abre el proyecto, así que dos responsables del mismo proyecto pueden
+ * ver cosas distintas acá — es intencional.
+ */
+function QANovedadesBadge({ cantidad }: { cantidad?: number }) {
+  const n = Number(cantidad ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700"
+      title={n === 1 ? "1 novedad de QA sin leer" : `${n} novedades de QA sin leer`}
+    >
+      QA
+      <span className="tabular-nums">{n > 99 ? "99+" : n}</span>
+    </span>
+  );
+}
+
 function ResponsableCell({ nombre }: { nombre?: string | null }) {
   const value = (nombre ?? "").trim();
   if (!value) {
@@ -619,11 +643,14 @@ function ProyectosLista({
                           >
                             {cli || "Sin cliente"}
                           </div>
-                          {p.bloqueado ? (
-                            <span className="mt-1 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
-                              Bloqueado
-                            </span>
-                          ) : null}
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            {p.bloqueado ? (
+                              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
+                                Bloqueado
+                              </span>
+                            ) : null}
+                            <QANovedadesBadge cantidad={p.qa_novedades_no_leidas} />
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -1251,7 +1278,13 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       <ProyectoDetalleModal
         projectId={modalProjectId}
         open={modalProjectId != null}
-        onClose={() => setModalProjectId(null)}
+        // Al cerrar se recarga el listado además de al guardar: abrir el
+        // proyecto marca leídas sus novedades de QA, y el badge de la fila
+        // tiene que apagarse sin que el usuario refresque la página.
+        onClose={() => {
+          setModalProjectId(null);
+          void load();
+        }}
         onUpdated={() => void load()}
         dataSchema={dataSchema}
       />
@@ -1390,6 +1423,7 @@ function ProjectCardView({
               Bloqueado
             </span>
           ) : null}
+          <QANovedadesBadge cantidad={p.qa_novedades_no_leidas} />
           {moving ? (
             <span className={`${baseBadgeClass} border-sky-200 bg-sky-50 text-sky-800`}>
               Guardando...

@@ -1,0 +1,295 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Bell, CheckCircle2, ClipboardList, XCircle } from "lucide-react";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { createBrowserClientForSchema } from "@/lib/supabase";
+import { fechaRelativa } from "@/app/dashboard/proyectos/components/qa/ui";
+
+type TipoNotificacion = "qa_novedad" | "qa_aprobado" | "qa_rechazado";
+
+type Notificacion = {
+  id: string;
+  tipo: TipoNotificacion;
+  titulo: string;
+  cuerpo: string | null;
+  proyecto_id: string | null;
+  observacion_id: string | null;
+  agrupadas: number;
+  leida_at: string | null;
+  created_at: string;
+};
+
+type ApiResp = {
+  success: boolean;
+  data?: { notificaciones: Notificacion[]; no_leidas: number };
+  error?: string;
+};
+
+type UsuarioSesion = { id: string | null; data_schema: string | null };
+
+/**
+ * El Realtime de este ERP depende de que la RLS pueda resolver quién sos a
+ * partir del JWT. Si esa cadena falla en algún tenant, el canal no entrega
+ * nada y el contador se queda clavado en el valor que trajo la carga inicial —
+ * un fallo silencioso. El polling de respaldo hace que la campanita funcione
+ * igual, sólo que con hasta un minuto de demora.
+ */
+const POLL_MS = 60_000;
+
+const ESTILO_TIPO: Record<
+  TipoNotificacion,
+  { icon: typeof Bell; wrap: string; label: string }
+> = {
+  qa_novedad: {
+    icon: ClipboardList,
+    wrap: "bg-indigo-50 text-indigo-600",
+    label: "Novedad de QA",
+  },
+  qa_aprobado: {
+    icon: CheckCircle2,
+    wrap: "bg-emerald-50 text-emerald-600",
+    label: "QA aprobó",
+  },
+  qa_rechazado: {
+    icon: XCircle,
+    wrap: "bg-rose-50 text-rose-600",
+    label: "QA rechazó",
+  },
+};
+
+export default function NotificacionesBell() {
+  const [abierto, setAbierto] = useState(false);
+  const [items, setItems] = useState<Notificacion[]>([]);
+  const [noLeidas, setNoLeidas] = useState(0);
+  const [cargando, setCargando] = useState(false);
+  const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const cargarRef = useRef<() => Promise<void>>(undefined);
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    try {
+      const res = await fetchWithSupabaseSession("/api/notificaciones?limit=20", {
+        cache: "no-store",
+      });
+      const j = (await res.json().catch(() => null)) as ApiResp | null;
+      if (res.ok && j?.success && j.data) {
+        setItems(j.data.notificaciones);
+        setNoLeidas(j.data.no_leidas);
+      }
+    } catch {
+      // Sin conexión el header sigue funcionando: se reintenta en el próximo poll.
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarRef.current = cargar;
+  }, [cargar]);
+
+  useEffect(() => {
+    void cargar();
+  }, [cargar]);
+
+  // Identidad + tenant para el canal de Realtime.
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      try {
+        const res = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
+        const j = (await res.json().catch(() => null)) as { usuario?: UsuarioSesion } | null;
+        if (vivo && j?.usuario) {
+          setSesion({ id: j.usuario.id ?? null, data_schema: j.usuario.data_schema ?? null });
+        }
+      } catch {
+        // Sin esto sólo se pierde el tiempo real; el polling cubre igual.
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const usuarioId = sesion?.id;
+    const schema = sesion?.data_schema;
+    if (!usuarioId || !schema) return;
+    const sb = createBrowserClientForSchema(schema);
+    const channel = sb
+      .channel(`usuario-notificaciones:${usuarioId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema,
+          table: "usuario_notificaciones",
+          filter: `usuario_id=eq.${usuarioId}`,
+        },
+        () => void cargarRef.current?.()
+      )
+      .subscribe();
+    return () => {
+      void sb.removeChannel(channel);
+    };
+  }, [sesion?.id, sesion?.data_schema]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => void cargarRef.current?.(), POLL_MS);
+    return () => window.clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (!abierto) return;
+    function onPointerDown(e: MouseEvent) {
+      if (!panelRef.current?.contains(e.target as Node)) setAbierto(false);
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") setAbierto(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [abierto]);
+
+  const marcarLeidas = useCallback(
+    async (payload: { ids?: string[]; todas?: boolean }) => {
+      // Optimista: el contador baja al instante y la recarga confirma.
+      if (payload.todas) {
+        setItems((prev) => prev.map((n) => ({ ...n, leida_at: n.leida_at ?? new Date().toISOString() })));
+        setNoLeidas(0);
+      } else if (payload.ids && payload.ids.length > 0) {
+        const ids = payload.ids;
+        const set = new Set(ids);
+        setItems((prev) =>
+          prev.map((n) => (set.has(n.id) ? { ...n, leida_at: n.leida_at ?? new Date().toISOString() } : n))
+        );
+        setNoLeidas((n) => Math.max(0, n - ids.length));
+      }
+      try {
+        await fetchWithSupabaseSession("/api/notificaciones/marcar-leidas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } finally {
+        void cargarRef.current?.();
+      }
+    },
+    []
+  );
+
+  return (
+    <div className="relative" ref={panelRef}>
+      <button
+        type="button"
+        onClick={() => {
+          setAbierto((v) => !v);
+          if (!abierto) void cargar();
+        }}
+        aria-label="Notificaciones"
+        aria-expanded={abierto}
+        className="relative rounded-lg p-2 text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
+      >
+        <Bell className="h-5 w-5" />
+        {noLeidas > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#0EA5E9] px-1 text-[10px] font-bold text-white">
+            {noLeidas > 99 ? "99+" : noLeidas}
+          </span>
+        ) : null}
+      </button>
+
+      {abierto ? (
+        <div className="absolute right-0 top-full z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5">
+            <span className="text-sm font-semibold text-slate-900">Notificaciones</span>
+            {noLeidas > 0 ? (
+              <button
+                type="button"
+                onClick={() => void marcarLeidas({ todas: true })}
+                className="text-[11px] font-semibold text-[#0EA5E9] transition-colors hover:text-[#0284c7]"
+              >
+                Marcar todas como leídas
+              </button>
+            ) : null}
+          </div>
+
+          <ul className="max-h-[26rem] divide-y divide-slate-100 overflow-y-auto">
+            {items.length === 0 ? (
+              <li className="px-4 py-8 text-center text-sm text-slate-400">
+                {cargando ? "Cargando…" : "No tenés notificaciones."}
+              </li>
+            ) : (
+              items.map((n) => {
+                const estilo = ESTILO_TIPO[n.tipo] ?? ESTILO_TIPO.qa_novedad;
+                const Icono = estilo.icon;
+                const noLeida = n.leida_at == null;
+                const contenido = (
+                  <div className={`flex gap-3 px-3.5 py-3 ${noLeida ? "bg-sky-50/40" : ""}`}>
+                    <span
+                      className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${estilo.wrap}`}
+                      aria-hidden="true"
+                    >
+                      <Icono className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-2">
+                        <span className="min-w-0 flex-1 break-words text-[13px] font-semibold text-slate-900">
+                          {n.titulo}
+                        </span>
+                        {noLeida ? (
+                          <span
+                            className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#0EA5E9]"
+                            aria-label="Sin leer"
+                          />
+                        ) : null}
+                      </div>
+                      {n.cuerpo ? (
+                        <p className="mt-0.5 break-words text-[12px] leading-snug text-slate-600">
+                          {n.cuerpo}
+                        </p>
+                      ) : null}
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {estilo.label} · {fechaRelativa(n.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+
+                return (
+                  <li key={n.id}>
+                    {n.proyecto_id ? (
+                      <Link
+                        href={`/dashboard/proyectos/${n.proyecto_id}`}
+                        onClick={() => {
+                          setAbierto(false);
+                          if (noLeida) void marcarLeidas({ ids: [n.id] });
+                        }}
+                        className="block transition-colors hover:bg-slate-50"
+                      >
+                        {contenido}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => noLeida && void marcarLeidas({ ids: [n.id] })}
+                        className="block w-full text-left transition-colors hover:bg-slate-50"
+                      >
+                        {contenido}
+                      </button>
+                    )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}

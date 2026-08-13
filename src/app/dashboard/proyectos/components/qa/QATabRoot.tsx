@@ -3,6 +3,7 @@
 import { useState } from "react";
 import ChecklistView from "./ChecklistView";
 import ObservacionesBoard from "./ObservacionesBoard";
+import VeredictoQA from "./VeredictoQA";
 import type { QATabProps } from "./types";
 
 type Vista = "observaciones" | "checklist";
@@ -17,6 +18,10 @@ export default function QATabRoot({ projectId, dataSchema, usuarios, projectTitl
 
   return (
     <div className="space-y-4">
+      {/* Fuera del switch de vista: el veredicto cierra la ronda de QA entera,
+          no la vista de observaciones ni la del checklist por separado. */}
+      <VeredictoQA projectId={projectId} />
+
       <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         {(
           [

@@ -75,7 +75,31 @@ export async function GET(request: Request) {
     }
 
     const enriched = await enrichProyectosRows(sb, empresaId, rows);
-    return NextResponse.json(successResponse(enriched));
+
+    // Badge de novedades de QA: una sola query agregada para todo el listado
+    // (las no leídas del usuario actual), no una por proyecto. El estado de
+    // lectura es por usuario, así que dos personas ven badges distintos sobre
+    // las mismas filas.
+    const { data: noLeidas } = await sb
+      .from("usuario_notificaciones")
+      .select("proyecto_id, agrupadas")
+      .eq("empresa_id", empresaId)
+      .eq("usuario_id", auth.usuarioCatalogId)
+      .is("leida_at", null)
+      .not("proyecto_id", "is", null);
+
+    const porProyecto = new Map<string, number>();
+    for (const n of (noLeidas ?? []) as { proyecto_id: string; agrupadas: number | null }[]) {
+      const previo = porProyecto.get(n.proyecto_id) ?? 0;
+      porProyecto.set(n.proyecto_id, previo + Number(n.agrupadas ?? 1));
+    }
+
+    const conBadge = enriched.map((p) => {
+      const pid = typeof p.id === "string" ? p.id : "";
+      return { ...p, qa_novedades_no_leidas: porProyecto.get(pid) ?? 0 };
+    });
+
+    return NextResponse.json(successResponse(conBadge));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

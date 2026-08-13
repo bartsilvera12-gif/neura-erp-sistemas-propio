@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceAuthUsuario } from "@/lib/auth/get-service-auth-usuario";
+import { resolveDataSchemaForCurrentUserServer } from "@/lib/supabase/empresa-data-server";
 
 type UsuarioMeRow = {
   nombre: string | null;
@@ -49,7 +50,14 @@ export async function GET(request: Request) {
     const email = (row?.email ?? authUser.email ?? "").trim() || null;
     const rol = (row?.rol ?? catalogUsuario?.rol ?? "").trim() || null;
 
-    return NextResponse.json({ usuario: { nombre, rol, email } });
+    // `id` y `data_schema` los necesita la campanita: sin el id no puede filtrar
+    // el canal de Realtime por destinatario, y sin el schema no sabe a qué
+    // tenant suscribirse. Campos aditivos — el resto del header no los mira.
+    const dataSchema = await resolveDataSchemaForCurrentUserServer().catch(() => null);
+
+    return NextResponse.json({
+      usuario: { id: catalogUsuario?.id ?? null, nombre, rol, email, data_schema: dataSchema },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error al obtener el usuario actual";
     return NextResponse.json({ error: message }, { status: 500 });

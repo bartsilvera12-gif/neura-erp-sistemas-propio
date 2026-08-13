@@ -991,6 +991,28 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Link
+            href="/dashboard/proyectos/paginas"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+            title="Páginas: catálogo de las webs que hicimos (cliente, vendedor, rubro y acceso)"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+            >
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M3 9h18" />
+              <path d="M7 6.5h.01M10 6.5h.01" />
+            </svg>
+            Páginas
+          </Link>
+          <Link
             href="/dashboard/proyectos/tareas-equipo"
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
             title="Tareas del equipo: proyectos por programador, etapa y días"

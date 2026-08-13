@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
+import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
 import {
   ProyectoModuloSelector,
   type ProyectoModuloCatalogo as ModuloCatalogo,
@@ -368,6 +369,18 @@ export default function ProyectoNuevoForm({
             <div className="grid gap-3 sm:grid-cols-2">
               {/* whatsapp_contacto se pide arriba (junto a Fecha prometida), autocompletado. */}
               {PROYECTO_DATOS_BRIEF_FIELDS.filter((f) => f.key !== "whatsapp_contacto").map((f) => {
+                // Rubro del negocio: buscador inteligente con lista canónica (antes texto libre).
+                if (f.key === "tipo_web") {
+                  return (
+                    <label key={f.key} className="block text-sm sm:col-span-2">
+                      <span className={LABEL_CLS}>{f.label}</span>
+                      <RubroWebSelect
+                        value={brief[f.key] ?? ""}
+                        onChange={(v) => setBrief((b) => ({ ...b, [f.key]: v }))}
+                      />
+                    </label>
+                  );
+                }
                 if (f.kind === "checkbox") {
                   return (
                     <label

@@ -13,6 +13,7 @@ import {
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
+import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
   applyBriefFormToExisting,
@@ -1785,6 +1786,19 @@ export default function ProyectoDetalleInner({
             {esWeb ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {PROYECTO_DATOS_BRIEF_FIELDS.map((f) => {
+                  // Rubro del negocio: buscador inteligente con lista canónica (antes texto libre).
+                  if (f.key === "tipo_web") {
+                    return (
+                      <label key={f.key} className="block text-sm sm:col-span-2">
+                        <span className={labelCls}>{f.label}</span>
+                        <RubroWebSelect
+                          value={briefForm[f.key] ?? ""}
+                          onChange={(v) => setBriefForm((b) => ({ ...b, [f.key]: v }))}
+                          inputClassName={inputCls}
+                        />
+                      </label>
+                    );
+                  }
                   if (f.kind === "checkbox") {
                     return (
                       <label

@@ -58,3 +58,46 @@ export function diasTranscurridos(
   if (!Number.isFinite(hasta)) return null;
   return Math.max(0, Math.floor((hasta - desde) / 86400000));
 }
+
+/** Estado de pausa de un proyecto, tal como lo guarda `proyectos`. */
+export type PausaState = {
+  pausado_at?: string | null;
+  pausa_acumulada_ms?: number | null;
+};
+
+/**
+ * Milisegundos que el proyecto estuvo pausado hasta `hastaIso` (default: ahora):
+ * las pausas ya cerradas más la que esté en curso.
+ */
+export function msPausados(p: PausaState, hastaIso?: string | null): number {
+  const acumulado = Number(p.pausa_acumulada_ms ?? 0);
+  const base = Number.isFinite(acumulado) && acumulado > 0 ? acumulado : 0;
+
+  const inicio = typeof p.pausado_at === "string" ? Date.parse(p.pausado_at) : NaN;
+  if (!Number.isFinite(inicio)) return base;
+
+  const hasta =
+    typeof hastaIso === "string" && hastaIso.trim() ? Date.parse(hastaIso) : Date.now();
+  if (!Number.isFinite(hasta)) return base;
+
+  return base + Math.max(0, hasta - inicio);
+}
+
+/**
+ * Días transcurridos descontando el tiempo pausado — el contador que muestra el
+ * tablero. Un proyecto parado esperando al cliente deja de sumar días para no
+ * pintarse en rojo como si el programador estuviera atrasado.
+ */
+export function diasNetos(
+  desdeIso: string | null | undefined,
+  pausa: PausaState,
+  hastaIso?: string | null
+): number | null {
+  if (typeof desdeIso !== "string" || !desdeIso.trim()) return null;
+  const desde = Date.parse(desdeIso);
+  if (!Number.isFinite(desde)) return null;
+  const hasta =
+    typeof hastaIso === "string" && hastaIso.trim() ? Date.parse(hastaIso) : Date.now();
+  if (!Number.isFinite(hasta)) return null;
+  return Math.max(0, Math.floor((hasta - desde - msPausados(pausa, hastaIso)) / 86400000));
+}

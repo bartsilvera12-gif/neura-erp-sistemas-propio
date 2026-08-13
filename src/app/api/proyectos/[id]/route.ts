@@ -11,6 +11,12 @@ import {
   esEtapaDesarrollo,
   type ProyectoEtapaDesarrollo,
 } from "@/lib/proyectos/etapas-desarrollo";
+import {
+  QA_ETAPA_FINAL,
+  QA_ETAPA_INICIAL,
+  esEtapaQA,
+  type ProyectoEtapaQA,
+} from "@/lib/proyectos/etapas-qa";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
 import { puedeEliminarProyectos, requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
@@ -262,20 +268,40 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // sólo cuando el proyecto realmente cambia de manos.
     const pideEtapa = "etapa_desarrollo" in body;
     const pideTecnico = "responsable_tecnico_id" in body;
+    const pideQaResponsable = "qa_responsable_id" in body;
+    const pideQaEtapa = "qa_etapa" in body;
+    const pidePausa = "pausado" in body;
+
     if (pideEtapa && !esEtapaDesarrollo(body.etapa_desarrollo)) {
       return NextResponse.json(errorResponse("Etapa de desarrollo inválida"), { status: 400 });
     }
-    if (pideEtapa || pideTecnico) {
+    if (pideQaEtapa && body.qa_etapa !== null && !esEtapaQA(body.qa_etapa)) {
+      return NextResponse.json(errorResponse("Etapa de QA inválida"), { status: 400 });
+    }
+    if (pidePausa && typeof body.pausado !== "boolean") {
+      return NextResponse.json(errorResponse("`pausado` debe ser booleano"), { status: 400 });
+    }
+
+    if (pideEtapa || pideTecnico || pideQaResponsable || pideQaEtapa || pidePausa) {
       const { data: actual, error: eActual } = await sb
         .from("proyectos")
-        .select("etapa_desarrollo, responsable_tecnico_id")
+        .select(
+          "etapa_desarrollo, responsable_tecnico_id, qa_responsable_id, qa_etapa, pausado_at, pausa_acumulada_ms"
+        )
         .eq("empresa_id", auth.empresaId)
         .eq("id", pid)
         .maybeSingle();
       if (eActual) return NextResponse.json(errorResponse(eActual.message), { status: 400 });
       if (!actual) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
 
-      const cur = actual as { etapa_desarrollo?: string | null; responsable_tecnico_id?: string | null };
+      const cur = actual as {
+        etapa_desarrollo?: string | null;
+        responsable_tecnico_id?: string | null;
+        qa_responsable_id?: string | null;
+        qa_etapa?: string | null;
+        pausado_at?: string | null;
+        pausa_acumulada_ms?: number | null;
+      };
       const ahora = new Date().toISOString();
 
       if (pideEtapa) {
@@ -291,6 +317,83 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
       if (pideTecnico && patch.responsable_tecnico_id !== (cur.responsable_tecnico_id ?? null)) {
         patch.tecnico_asignado_at = patch.responsable_tecnico_id ? ahora : null;
+      }
+
+      // --- QA: responsable + etapa propia ------------------------------------
+      // Asignar QA arranca la etapa inicial y el contador; quitarlo limpia todo
+      // el eje para que el proyecto desaparezca del bloque de QA del tablero.
+      if (pideQaResponsable) {
+        const nuevoQa =
+          typeof body.qa_responsable_id === "string" && body.qa_responsable_id
+            ? body.qa_responsable_id
+            : null;
+        patch.qa_responsable_id = nuevoQa;
+        if (nuevoQa !== (cur.qa_responsable_id ?? null)) {
+          patch.qa_asignado_at = nuevoQa ? ahora : null;
+          if (nuevoQa) {
+            // Arranca un ciclo de revisión nuevo si no había etapa o si la
+            // anterior estaba cerrada; si no, el proyecto quedaría asignado
+            // pero invisible en el bloque de QA del tablero.
+            const cerrada = !cur.qa_etapa || cur.qa_etapa === QA_ETAPA_FINAL;
+            if (!pideQaEtapa && cerrada) {
+              patch.qa_etapa = QA_ETAPA_INICIAL;
+              patch.qa_etapa_at = ahora;
+            }
+          } else {
+            patch.qa_etapa = null;
+            patch.qa_etapa_at = null;
+          }
+        }
+      }
+
+      if (pideQaEtapa) {
+        const nuevaQa = body.qa_etapa === null ? null : (body.qa_etapa as ProyectoEtapaQA);
+        patch.qa_etapa = nuevaQa;
+        if (nuevaQa !== (cur.qa_etapa ?? null)) patch.qa_etapa_at = nuevaQa ? ahora : null;
+      }
+
+      // --- Pausa -------------------------------------------------------------
+      // No es una etapa: al despausar el proyecto vuelve a la etapa donde
+      // estaba. Al cerrar una pausa se acumula su duración para que el contador
+      // de días del tablero descuente el tiempo detenido.
+      if (pidePausa) {
+        const quierePausado = body.pausado === true;
+        const motivo =
+          typeof body.pausa_motivo === "string" && body.pausa_motivo.trim()
+            ? body.pausa_motivo.trim()
+            : null;
+        const estabaPausado = typeof cur.pausado_at === "string" && !!cur.pausado_at;
+
+        if (quierePausado) {
+          if (!motivo) {
+            return NextResponse.json(
+              errorResponse("Indicá el motivo de la pausa"),
+              { status: 400 }
+            );
+          }
+          patch.pausa_motivo = motivo;
+          // Repausar algo ya pausado sólo corrige el motivo: si resellamos
+          // `pausado_at` perdemos el tiempo detenido que va acumulándose.
+          if (!estabaPausado) patch.pausado_at = ahora;
+        } else {
+          if (estabaPausado) {
+            const inicio = Date.parse(cur.pausado_at as string);
+            const previo = Number(cur.pausa_acumulada_ms ?? 0);
+            const base = Number.isFinite(previo) && previo > 0 ? previo : 0;
+            patch.pausa_acumulada_ms = Number.isFinite(inicio)
+              ? base + Math.max(0, Date.now() - inicio)
+              : base;
+          }
+          patch.pausado_at = null;
+          patch.pausa_motivo = null;
+        }
+      } else if (
+        typeof body.pausa_motivo === "string" &&
+        typeof cur.pausado_at === "string" &&
+        cur.pausado_at
+      ) {
+        // Editar sólo el texto del motivo, sin tocar el reloj de la pausa.
+        patch.pausa_motivo = body.pausa_motivo.trim() || null;
       }
     }
 

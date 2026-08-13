@@ -96,7 +96,11 @@ type TareasEquipoData = {
   finalizados_por_programador: GrupoFinalizado[];
 };
 
-type Usuario = { id: string; nombre?: string | null };
+/**
+ * `es_qa` marca a la gente de QA. No es un rol de permisos: sólo decide qué
+ * vocabulario de etapas usa su tarjeta en este tablero.
+ */
+type Usuario = { id: string; nombre?: string | null; es_qa?: boolean };
 
 type ApiResponse = { success: boolean; data?: TareasEquipoData; error?: string };
 
@@ -626,37 +630,89 @@ function ActivosSeccion({
     );
   }
 
-  const opcionesUsuario = [
+  // Un solo selector de responsable para todo el tablero. Elegir a alguien de
+  // QA no reemplaza al programador: le suma la revisión, y el proyecto pasa a
+  // verse también en la tarjeta de esa persona con las etapas de QA.
+  const opcionesUsuario: { value: string; label: string; description?: string }[] = [
     { value: "", label: "Sin asignar" },
-    ...usuarios.map((u) => ({ value: u.id, label: nombreCorto(u.nombre ?? "") })),
+    ...usuarios.map((u) => ({
+      value: u.id,
+      label: nombreCorto(u.nombre ?? ""),
+      description: u.es_qa ? "QA" : undefined,
+    })),
   ];
+  const esQA = new Set(usuarios.filter((u) => u.es_qa).map((u) => u.id));
+
+  // Programadores y QA conviven en la misma grilla, ordenados por nombre: para
+  // el equipo, QA es una integrante más y no una sección aparte.
+  type Tarjeta =
+    | { kind: "dev"; key: string; orden: string; grupo: GrupoActivo }
+    | { kind: "qa"; key: string; orden: string; grupo: GrupoQA };
+
+  const tarjetas: Tarjeta[] = [
+    ...grupos.map(
+      (g): Tarjeta => ({
+        kind: "dev",
+        key: `dev:${g.tecnico_id ?? "__SIN__"}`,
+        // "Sin asignar" siempre al final, sin importar el alfabeto.
+        orden: g.tecnico_id == null ? "￿" : g.tecnico_nombre,
+        grupo: g,
+      })
+    ),
+    ...qaGrupos.map(
+      (g): Tarjeta => ({ kind: "qa", key: `qa:${g.qa_id}`, orden: g.qa_nombre, grupo: g })
+    ),
+  ].sort((a, b) => a.orden.localeCompare(b.orden));
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        {grupos.map((g) => {
-          const key = g.tecnico_id ?? "__SIN__";
-          const sinTecnico = g.tecnico_id == null;
-          const col = sinTecnico ? { bg: "#94a3b8", soft: "rgba(148,163,184,0.10)" } : paleta(g.tecnico_nombre);
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      {tarjetas.map((t) => {
+        if (t.kind === "qa") {
+          const g = t.grupo;
           return (
             <TarjetaGrupo
-              key={key}
-              color={col}
-              inicial={sinTecnico ? "—" : initials(g.tecnico_nombre)}
-              titulo={sinTecnico ? "Sin asignar" : nombreCorto(g.tecnico_nombre)}
-              italic={sinTecnico}
-              subtitulo={`${g.cantidad === 1 ? "1 proyecto" : `${g.cantidad} proyectos`}${
-                g.pausados > 0 ? ` · ${g.pausados} en pausa` : ""
-              }`}
+              key={t.key}
+              color={{ bg: "#6366f1", soft: "rgba(99,102,241,0.08)" }}
+              inicial={initials(g.qa_nombre)}
+              titulo={nombreCorto(g.qa_nombre)}
+              subtitulo={
+                g.cantidad === 1 ? "1 proyecto en revisión" : `${g.cantidad} proyectos en revisión`
+              }
               contador={g.cantidad}
+              badge={
+                <span className="shrink-0 rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+                  QA
+                </span>
+              }
             >
               <ul className="divide-y divide-slate-100">
                 {g.proyectos.map((p) => (
                   <FilaProyecto
                     key={p.id}
-                    proyecto={p}
-                    tecnicoId={g.tecnico_id}
+                    modo="qa"
+                    id={p.id}
+                    cliente={p.cliente}
+                    tipo={p.tipo}
+                    titulo={p.titulo}
+                    etapa={p.qa_etapa}
+                    color={qaEtapaColor(p.qa_etapa)}
+                    opcionesEtapa={QA_ETAPAS.map((e) => ({
+                      value: e.codigo as string,
+                      label: e.label,
+                    }))}
+                    dias={p.dias}
+                    diasEnEtapa={null}
+                    asignadoA={g.qa_id}
+                    fechaPrometida={p.fecha_prometida}
+                    metaExtra={p.tecnico_nombre ? `dev ${nombreCorto(p.tecnico_nombre)}` : null}
+                    pausado={p.pausado}
+                    pausaMotivo={p.pausa_motivo}
+                    pausadoAt={null}
+                    bloqueado={false}
+                    qaChip={null}
+                    desde={p.desde}
                     opcionesUsuario={opcionesUsuario}
+                    esQA={esQA}
                     saving={savingId === p.id}
                     onPatch={onPatch}
                   />
@@ -664,102 +720,171 @@ function ActivosSeccion({
               </ul>
             </TarjetaGrupo>
           );
-        })}
-      </div>
+        }
 
-      {qaGrupos.length > 0 ? (
-        <>
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-indigo-700">
-              <IconShield />
-              Control de calidad
-            </span>
-            <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
-          </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            {qaGrupos.map((g) => (
-              <TarjetaGrupo
-                key={g.qa_id}
-                color={{ bg: "#6366f1", soft: "rgba(99,102,241,0.10)" }}
-                inicial={initials(g.qa_nombre)}
-                titulo={nombreCorto(g.qa_nombre)}
-                subtitulo={g.cantidad === 1 ? "1 proyecto en revisión" : `${g.cantidad} proyectos en revisión`}
-                contador={g.cantidad}
-                badge={
-                  <span className="shrink-0 rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
-                    QA
-                  </span>
-                }
-              >
-                <ul className="divide-y divide-slate-100">
-                  {g.proyectos.map((p) => (
-                    <FilaQA
-                      key={p.id}
-                      proyecto={p}
-                      saving={savingId === p.id}
-                      onPatch={onPatch}
-                    />
-                  ))}
-                </ul>
-              </TarjetaGrupo>
-            ))}
-          </div>
-        </>
-      ) : null}
+        const g = t.grupo;
+        const sinTecnico = g.tecnico_id == null;
+        const col = sinTecnico
+          ? { bg: "#94a3b8", soft: "rgba(148,163,184,0.10)" }
+          : paleta(g.tecnico_nombre);
+        return (
+          <TarjetaGrupo
+            key={t.key}
+            color={col}
+            inicial={sinTecnico ? "—" : initials(g.tecnico_nombre)}
+            titulo={sinTecnico ? "Sin asignar" : nombreCorto(g.tecnico_nombre)}
+            italic={sinTecnico}
+            subtitulo={`${g.cantidad === 1 ? "1 proyecto" : `${g.cantidad} proyectos`}${
+              g.pausados > 0 ? ` · ${g.pausados} en pausa` : ""
+            }`}
+            contador={g.cantidad}
+          >
+            <ul className="divide-y divide-slate-100">
+              {g.proyectos.map((p) => (
+                <FilaProyecto
+                  key={p.id}
+                  modo="dev"
+                  id={p.id}
+                  cliente={p.cliente}
+                  tipo={p.tipo}
+                  titulo={p.titulo}
+                  etapa={p.pausado ? OPCION_PAUSA : p.etapa_desarrollo}
+                  color={p.pausado ? "#f59e0b" : etapaColor(p.etapa_desarrollo)}
+                  opcionesEtapa={[
+                    ...PROYECTO_ETAPAS.map((e) => ({ value: e.codigo as string, label: e.label })),
+                    { value: OPCION_PAUSA, label: "Pausado…" },
+                  ]}
+                  dias={p.dias}
+                  diasEnEtapa={p.dias_en_etapa}
+                  asignadoA={g.tecnico_id}
+                  fechaPrometida={p.fecha_prometida}
+                  metaExtra={null}
+                  pausado={p.pausado}
+                  pausaMotivo={p.pausa_motivo}
+                  pausadoAt={p.pausado_at}
+                  bloqueado={p.bloqueado}
+                  qaChip={
+                    p.qa_responsable_nombre
+                      ? { nombre: p.qa_responsable_nombre, etapa: p.qa_etapa }
+                      : null
+                  }
+                  desde={p.desde}
+                  opcionesUsuario={opcionesUsuario}
+                  esQA={esQA}
+                  saving={savingId === p.id}
+                  onPatch={onPatch}
+                />
+              ))}
+            </ul>
+          </TarjetaGrupo>
+        );
+      })}
     </div>
   );
 }
 
+/**
+ * Fila de proyecto, la misma para programadores y para QA. Lo único que cambia
+ * es el vocabulario de etapas y a qué campo escribe el selector de responsable.
+ */
 function FilaProyecto({
-  proyecto: p,
-  tecnicoId,
+  modo,
+  id,
+  cliente,
+  tipo,
+  titulo,
+  etapa,
+  color,
+  opcionesEtapa,
+  dias,
+  diasEnEtapa,
+  asignadoA,
+  fechaPrometida,
+  metaExtra,
+  pausado,
+  pausaMotivo,
+  pausadoAt,
+  bloqueado,
+  qaChip,
+  desde,
   opcionesUsuario,
+  esQA,
   saving,
   onPatch,
 }: {
-  proyecto: ActivoItem;
-  tecnicoId: string | null;
-  opcionesUsuario: { value: string; label: string }[];
+  modo: "dev" | "qa";
+  id: string;
+  cliente: string;
+  tipo: string;
+  titulo: string;
+  etapa: string;
+  color: string;
+  opcionesEtapa: { value: string; label: string }[];
+  dias: number | null;
+  diasEnEtapa: number | null;
+  asignadoA: string | null;
+  fechaPrometida: string | null;
+  metaExtra: string | null;
+  pausado: boolean;
+  pausaMotivo: string | null;
+  pausadoAt: string | null;
+  bloqueado: boolean;
+  qaChip: { nombre: string; etapa: ProyectoEtapaQA | null } | null;
+  desde: string | null;
+  opcionesUsuario: { value: string; label: string; description?: string }[];
+  esQA: Set<string>;
   saving: boolean;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
 }) {
   const [editandoFecha, setEditandoFecha] = useState(false);
   const [editandoPausa, setEditandoPausa] = useState(false);
-  const subtitulo = subtituloUtil(p);
-  const color = p.pausado ? "#f59e0b" : etapaColor(p.etapa_desarrollo);
+  const subtitulo = subtituloUtil({ cliente, titulo });
 
-  // "Pausado" ocupa el lugar de la etapa en el selector, pero no la reemplaza en
-  // la base: al reanudar el proyecto vuelve a la etapa donde estaba.
-  const opcionesEtapa = [
-    ...PROYECTO_ETAPAS.map((e) => ({ value: e.codigo as string, label: e.label })),
-    { value: OPCION_PAUSA, label: "Pausado…" },
-  ];
+  /**
+   * Un solo selector para las dos tarjetas. Elegir a alguien marcado como QA
+   * escribe `qa_responsable_id` y deja intacto al programador: la revisión se
+   * suma al proyecto, no reemplaza a quien lo está haciendo.
+   */
+  function asignar(valor: string) {
+    if (modo === "qa") {
+      void onPatch(id, { qa_responsable_id: valor || null });
+      return;
+    }
+    if (valor && esQA.has(valor)) {
+      void onPatch(id, { qa_responsable_id: valor });
+      return;
+    }
+    void onPatch(id, { responsable_tecnico_id: valor || null });
+  }
 
   return (
-    <li className={`px-4 py-3 transition-opacity ${saving ? "opacity-50" : ""}`}>
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-2.5">
-        <div className="min-w-0 flex-1 basis-[13rem]">
+    <li className={`px-4 py-3 transition-colors hover:bg-slate-50/70 ${saving ? "opacity-50" : ""}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="min-w-0 flex-1 basis-[11rem]">
           <Link
-            href={`/dashboard/proyectos/${p.id}`}
-            className="block truncate text-[13px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
-            title={etiquetaProyecto(p)}
+            href={`/dashboard/proyectos/${id}`}
+            className="block truncate text-[13.5px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
+            title={etiquetaProyecto({ cliente, tipo })}
           >
-            {p.cliente}
-            {p.tipo ? <span className="ml-1.5 font-normal text-slate-400">{p.tipo}</span> : null}
+            {cliente}
+            {tipo ? (
+              <span className="ml-1.5 text-[12px] font-normal text-slate-400">{tipo}</span>
+            ) : null}
           </Link>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
             {subtitulo ? <span className="truncate">{subtitulo}</span> : null}
-            {p.fecha_prometida ? <span>entrega {formatFecha(p.fecha_prometida)}</span> : null}
-            {p.bloqueado ? <span className="font-semibold text-rose-600">bloqueado</span> : null}
-            {p.qa_responsable_nombre ? (
-              p.qa_etapa === "finalizado" ? (
+            {metaExtra ? <span>{metaExtra}</span> : null}
+            {fechaPrometida ? <span>entrega {formatFecha(fechaPrometida)}</span> : null}
+            {bloqueado ? <span className="font-semibold text-rose-600">bloqueado</span> : null}
+            {qaChip ? (
+              qaChip.etapa === "finalizado" ? (
                 // Ciclo de QA cerrado: el proyecto ya no está en la tarjeta de
                 // QA, así que este chip es la única puerta para volver a abrirlo.
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => void onPatch(p.id, { qa_etapa: "revision_pre_entrega" })}
-                  title={`QA aprobada por ${p.qa_responsable_nombre} — clic para volver a mandarlo a revisión`}
+                  onClick={() => void onPatch(id, { qa_etapa: "revision_pre_entrega" })}
+                  title={`QA aprobada por ${qaChip.nombre} — clic para volver a mandarlo a revisión`}
                   className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   QA ✓ · reabrir
@@ -767,88 +892,68 @@ function FilaProyecto({
               ) : (
                 <span
                   className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-700"
-                  title={`En QA con ${p.qa_responsable_nombre} — ${qaEtapaLabel(p.qa_etapa)}`}
+                  title={`En QA con ${qaChip.nombre} — ${qaEtapaLabel(qaChip.etapa)}`}
                 >
-                  QA · {qaEtapaLabel(p.qa_etapa)}
+                  QA · {qaEtapaLabel(qaChip.etapa)}
                 </span>
               )
             ) : null}
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <div className="flex items-center gap-1.5">
-            <DiasBadge
-              dias={p.dias}
-              diasEnEtapa={p.dias_en_etapa}
-              asignado={tecnicoId != null}
-              pausado={p.pausado}
-              activo={editandoFecha}
-              onClick={() => setEditandoFecha((v) => !v)}
-            />
-            <FancySelect
-              size="sm"
-              className="w-[10.5rem]"
-              ariaLabel="Etapa de desarrollo"
-              disabled={saving}
-              options={opcionesEtapa}
-              value={p.pausado ? OPCION_PAUSA : p.etapa_desarrollo}
-              onChange={(v) => {
-                if (v === OPCION_PAUSA) {
-                  setEditandoPausa(true);
-                  return;
-                }
-                // Elegir una etapa real reanuda: la pausa no es un estado paralelo.
-                void onPatch(p.id, p.pausado ? { etapa_desarrollo: v, pausado: false } : { etapa_desarrollo: v });
-              }}
-              triggerStyle={{
-                backgroundColor: `${color}12`,
-                borderColor: `${color}55`,
-                color,
-              }}
-            />
-          </div>
+        <DiasBadge
+          dias={dias}
+          diasEnEtapa={diasEnEtapa}
+          asignado={asignadoA != null}
+          pausado={pausado}
+          activo={editandoFecha}
+          onClick={modo === "dev" ? () => setEditandoFecha((v) => !v) : undefined}
+          titulo={modo === "qa" ? "Días desde que se le asignó la revisión" : undefined}
+        />
 
-          <div className="flex items-center gap-1.5">
-            <FancySelect
-              size="sm"
-              className="w-[9.5rem]"
-              ariaLabel="Programador asignado"
-              placeholder="Sin asignar"
-              disabled={saving || opcionesUsuario.length <= 1}
-              options={opcionesUsuario}
-              value={tecnicoId ?? ""}
-              onChange={(v) => void onPatch(p.id, { responsable_tecnico_id: v || null })}
-            />
-            <FancySelect
-              size="sm"
-              className="w-[9.5rem]"
-              ariaLabel="QA asignada"
-              placeholder="Sin QA"
-              disabled={saving || opcionesUsuario.length <= 1}
-              options={[{ value: "", label: "Sin QA" }, ...opcionesUsuario.slice(1)]}
-              value={p.qa_responsable_id ?? ""}
-              onChange={(v) => void onPatch(p.id, { qa_responsable_id: v || null })}
-              triggerStyle={
-                p.qa_responsable_id
-                  ? { backgroundColor: "rgba(99,102,241,0.08)", borderColor: "rgba(99,102,241,0.35)", color: "#4f46e5" }
-                  : undefined
-              }
-            />
-          </div>
-        </div>
+        <FancySelect
+          size="sm"
+          className="w-[10.5rem] shrink-0"
+          ariaLabel={modo === "qa" ? "Etapa de QA" : "Etapa de desarrollo"}
+          disabled={saving}
+          options={opcionesEtapa}
+          value={etapa}
+          onChange={(v) => {
+            if (v === OPCION_PAUSA) {
+              setEditandoPausa(true);
+              return;
+            }
+            const campo = modo === "qa" ? "qa_etapa" : "etapa_desarrollo";
+            // Elegir una etapa real reanuda: la pausa no es un estado paralelo.
+            void onPatch(id, pausado ? { [campo]: v, pausado: false } : { [campo]: v });
+          }}
+          triggerStyle={{ backgroundColor: `${color}12`, borderColor: `${color}55`, color }}
+        />
+
+        <FancySelect
+          size="sm"
+          className="w-[9.5rem] shrink-0"
+          ariaLabel="Responsable"
+          placeholder="Sin asignar"
+          disabled={saving || opcionesUsuario.length <= 1}
+          options={opcionesUsuario}
+          value={asignadoA ?? ""}
+          onChange={asignar}
+        />
       </div>
 
-      {p.pausado && !editandoPausa ? (
+      {pausado && !editandoPausa ? (
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
           <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-amber-700">
             <IconPause />
             Pausado
           </span>
           <span className="min-w-0 flex-1 break-words text-[11px] text-amber-900">
-            {p.pausa_motivo || "sin motivo cargado"}
+            {pausaMotivo || "sin motivo cargado"}
           </span>
-          <span className="text-[10px] text-amber-600">desde {formatDiaMes(p.pausado_at)}</span>
+          {pausadoAt ? (
+            <span className="text-[10px] text-amber-600">desde {formatDiaMes(pausadoAt)}</span>
+          ) : null}
           <button
             type="button"
             onClick={() => setEditandoPausa(true)}
@@ -858,7 +963,7 @@ function FilaProyecto({
           </button>
           <button
             type="button"
-            onClick={() => void onPatch(p.id, { pausado: false })}
+            onClick={() => void onPatch(id, { pausado: false })}
             className="rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-200 transition-colors hover:bg-emerald-50"
           >
             Reanudar
@@ -868,11 +973,11 @@ function FilaProyecto({
 
       {editandoPausa ? (
         <PausaForm
-          motivoActual={p.pausa_motivo}
+          motivoActual={pausaMotivo}
           onCancel={() => setEditandoPausa(false)}
           onSubmit={(motivo) => {
             setEditandoPausa(false);
-            void onPatch(p.id, { pausado: true, pausa_motivo: motivo });
+            void onPatch(id, { pausado: true, pausa_motivo: motivo });
           }}
         />
       ) : null}
@@ -882,11 +987,13 @@ function FilaProyecto({
           <span className="text-[11px] font-medium text-slate-600">Asignado el</span>
           <input
             type="date"
-            defaultValue={isoADateInput(p.desde)}
+            defaultValue={isoADateInput(desde)}
             max={isoADateInput(new Date().toISOString())}
             onChange={(e) => {
               if (!e.target.value) return;
-              void onPatch(p.id, { tecnico_asignado_at: new Date(`${e.target.value}T00:00:00`).toISOString() });
+              void onPatch(id, {
+                tecnico_asignado_at: new Date(`${e.target.value}T00:00:00`).toISOString(),
+              });
               setEditandoFecha(false);
             }}
             className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
@@ -902,75 +1009,6 @@ function FilaProyecto({
             Cancelar
           </button>
         </div>
-      ) : null}
-    </li>
-  );
-}
-
-/** Fila del bloque de QA: mismo proyecto, pero el eje es la etapa de QA. */
-function FilaQA({
-  proyecto: p,
-  saving,
-  onPatch,
-}: {
-  proyecto: QAItem;
-  saving: boolean;
-  onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
-}) {
-  const subtitulo = subtituloUtil(p);
-  const color = qaEtapaColor(p.qa_etapa);
-
-  return (
-    <li className={`px-4 py-3 transition-opacity ${saving ? "opacity-50" : ""}`}>
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-        <div className="min-w-0 flex-1 basis-[12rem]">
-          <Link
-            href={`/dashboard/proyectos/${p.id}`}
-            className="block truncate text-[13px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
-            title={etiquetaProyecto(p)}
-          >
-            {p.cliente}
-            {p.tipo ? <span className="ml-1.5 font-normal text-slate-400">{p.tipo}</span> : null}
-          </Link>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
-            {subtitulo ? <span className="truncate">{subtitulo}</span> : null}
-            {p.tecnico_nombre ? <span>dev {nombreCorto(p.tecnico_nombre)}</span> : null}
-            {p.fecha_prometida ? <span>entrega {formatFecha(p.fecha_prometida)}</span> : null}
-            {p.pausado ? (
-              <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
-                <IconPause />
-                pausado
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1.5">
-          <DiasBadge
-            dias={p.dias}
-            diasEnEtapa={null}
-            asignado
-            pausado={p.pausado}
-            activo={false}
-            titulo="Días desde que se le asignó la revisión"
-          />
-          <FancySelect
-            size="sm"
-            className="w-[11rem]"
-            ariaLabel="Etapa de QA"
-            disabled={saving}
-            options={QA_ETAPAS.map((e) => ({ value: e.codigo as string, label: e.label }))}
-            value={p.qa_etapa}
-            onChange={(v) => void onPatch(p.id, { qa_etapa: v })}
-            triggerStyle={{ backgroundColor: `${color}12`, borderColor: `${color}55`, color }}
-          />
-        </div>
-      </div>
-
-      {p.pausado && p.pausa_motivo ? (
-        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-1.5 text-[11px] text-amber-900">
-          {p.pausa_motivo}
-        </p>
       ) : null}
     </li>
   );

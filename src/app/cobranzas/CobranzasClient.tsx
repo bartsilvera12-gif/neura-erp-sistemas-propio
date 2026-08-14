@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, X, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { RefreshCw, Search, X, ChevronRight, ExternalLink } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
@@ -677,7 +678,14 @@ export default function CobranzasClient() {
             ) : (
               <div className="mt-4 space-y-5">
                 <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                  <p className="text-base font-semibold text-slate-900">{detalle.cliente.cliente_label}</p>
+                  <Link
+                    href={`/gestion-clientes?cliente=${encodeURIComponent(detalle.cliente.cliente_id)}`}
+                    className="group inline-flex items-center gap-1.5 text-base font-semibold text-slate-900 hover:text-[#3F8E91] hover:underline"
+                    title="Abrir en Gestión de clientes"
+                  >
+                    {detalle.cliente.cliente_label}
+                    <ExternalLink className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-[#3F8E91]" />
+                  </Link>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
                     <span>Tipo: <b className="text-slate-800">{detalle.cliente.tipo}</b></span>
                     <span>Plan: <b className="text-slate-800">{detalle.cliente.plan ?? "—"}</b></span>
@@ -711,21 +719,10 @@ export default function CobranzasClient() {
                             <span className="text-sm font-semibold tabular-nums text-rose-700">{fmtMoney(s.total_adeudado)}</span>
                           </div>
                         </div>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Monto {fmtMoney(s.monto_mensual)} · próx. venc. {fmtDate(s.proximo_vencimiento)} · {s.cuotas_vencidas} cuota(s) venc.
-                        </p>
-                        <div className="mt-2 space-y-2">
+                        <div className="mt-2">
                           <DetalleSeccion
                             titulo={`Vencidas (${s.facturas_vencidas.length})`}
                             facturas={s.facturas_vencidas}
-                            puedeRegistrar={puedeRegistrar}
-                            onRegistrar={(f) => setPagoFactura(f)}
-                            oldestId={oldestPayable?.id ?? null}
-                            oldestNumero={oldestPayable?.numero_factura ?? null}
-                          />
-                          <DetalleSeccion
-                            titulo={`Pendientes (${s.facturas_pendientes.length})`}
-                            facturas={s.facturas_pendientes}
                             puedeRegistrar={puedeRegistrar}
                             onRegistrar={(f) => setPagoFactura(f)}
                             oldestId={oldestPayable?.id ?? null}
@@ -738,12 +735,12 @@ export default function CobranzasClient() {
                 </div>
 
                 <div>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">Pagos recientes</p>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">Último pago</p>
                   {detalle.pagos_recientes.length === 0 ? (
                     <p className="text-xs text-slate-500">Sin pagos registrados.</p>
                   ) : (
                     <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                      {detalle.pagos_recientes.map((p, i) => (
+                      {detalle.pagos_recientes.slice(0, 1).map((p, i) => (
                         <li key={i} className="flex items-center justify-between px-3 py-2 text-xs">
                           <span className="text-slate-600">{p.numero_factura ?? "—"} · {fmtDate(p.fecha_pago)} · {p.metodo_pago ?? "—"}</span>
                           <span className="font-semibold tabular-nums text-emerald-700">{fmtMoney(p.monto)}</span>
@@ -891,9 +888,8 @@ function DetalleSeccion({
         <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
           {facturas.map((f) => (
             <li key={f.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-              <span className="min-w-0 text-slate-600">
+              <span className={`min-w-0 whitespace-nowrap ${f.vencida ? "text-rose-600" : "text-slate-600"}`}>
                 {f.numero_factura ?? "—"} · vence {fmtDate(f.fecha_vencimiento)}
-                {f.vencida ? <span className="ml-1 font-semibold text-rose-600">vencida</span> : null}
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <span className="font-semibold tabular-nums text-slate-800">{fmtMoney(f.saldo)}</span>

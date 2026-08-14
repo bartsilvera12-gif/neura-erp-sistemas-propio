@@ -107,6 +107,17 @@ type ApiResponse = { success: boolean; data?: TareasEquipoData; error?: string }
 /** Valor centinela del selector de etapa: no es una etapa, abre el editor de pausa. */
 const OPCION_PAUSA = "__pausa__";
 
+/**
+ * Qué significa cada etapa de QA en términos de acción. Dos de las tres son el
+ * veredicto, y sin este texto el selector no deja ver cuál aprueba y cuál
+ * rechaza — ni a quién le llega el aviso.
+ */
+const QA_ETAPA_AYUDA: Record<ProyectoEtapaQA, string> = {
+  revision_pre_entrega: "En revisión, sin avisos",
+  cambios: "Rechazar · avisa al programador",
+  finalizado: "Aprobar · avisa a la project manager",
+};
+
 /** Paleta estable por nombre: el mismo programador conserva su color entre cargas. */
 const AVATAR_PALETTE = [
   { bg: "#4FAEB2", soft: "rgba(79,174,178,0.10)" },
@@ -358,6 +369,36 @@ export default function TareasEquipoClient() {
     [load, mes]
   );
 
+  /**
+   * Veredicto de QA. Va por su propia ruta y no por el PATCH del proyecto
+   * porque no es sólo mover una etapa: dispara las notificaciones tipadas
+   * (aprobado avisa a la project manager, rechazado al programador).
+   */
+  const veredictoQA = useCallback(
+    async (proyectoId: string, aprobado: boolean, motivo: string | null) => {
+      setSavingId(proyectoId);
+      setErr(null);
+      try {
+        const res = await fetchWithSupabaseSession(`/api/proyectos/${proyectoId}/qa/veredicto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ aprobado, motivo }),
+        });
+        const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+        if (!res.ok || !j?.success) {
+          setErr(j?.error ?? "No se pudo registrar el veredicto");
+          return;
+        }
+        await load(mes);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Error de red");
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [load, mes]
+  );
+
   const mensaje = useMemo(
     () => buildMensajeWhatsapp(data?.activos_por_programador ?? [], data?.qa_por_responsable ?? []),
     [data]
@@ -505,6 +546,7 @@ export default function TareasEquipoClient() {
             usuarios={usuarios}
             savingId={savingId}
             onPatch={patchProyecto}
+            onVeredicto={veredictoQA}
           />
           {mensaje ? (
             <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -612,12 +654,14 @@ function ActivosSeccion({
   usuarios,
   savingId,
   onPatch,
+  onVeredicto,
 }: {
   grupos: GrupoActivo[];
   qaGrupos: GrupoQA[];
   usuarios: Usuario[];
   savingId: string | null;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
+  onVeredicto: (id: string, aprobado: boolean, motivo: string | null) => void | Promise<void>;
 }) {
   // Las tarjetas de QA existen aunque no tengan proyectos, así que el vacío se
   // mide por proyectos y no por tarjetas: si no, este estado nunca se veria.
@@ -712,6 +756,7 @@ function ActivosSeccion({
                     opcionesEtapa={QA_ETAPAS.map((e) => ({
                       value: e.codigo as string,
                       label: e.label,
+                      description: QA_ETAPA_AYUDA[e.codigo],
                     }))}
                     dias={p.dias}
                     diasEnEtapa={null}
@@ -727,6 +772,7 @@ function ActivosSeccion({
                     opcionesUsuario={opcionesQA}
                     saving={savingId === p.id}
                     onPatch={onPatch}
+                    onVeredicto={onVeredicto}
                   />
                 ))}
               </ul>
@@ -784,6 +830,7 @@ function ActivosSeccion({
                   opcionesUsuario={opcionesDev}
                   saving={savingId === p.id}
                   onPatch={onPatch}
+                  onVeredicto={onVeredicto}
                 />
               ))}
             </ul>
@@ -821,6 +868,7 @@ function FilaProyecto({
   opcionesUsuario,
   saving,
   onPatch,
+  onVeredicto,
 }: {
   modo: "dev" | "qa";
   id: string;
@@ -829,7 +877,7 @@ function FilaProyecto({
   titulo: string;
   etapa: string;
   color: string;
-  opcionesEtapa: { value: string; label: string }[];
+  opcionesEtapa: { value: string; label: string; description?: string }[];
   dias: number | null;
   diasEnEtapa: number | null;
   asignadoA: string | null;
@@ -844,9 +892,11 @@ function FilaProyecto({
   opcionesUsuario: { value: string; label: string }[];
   saving: boolean;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
+  onVeredicto: (id: string, aprobado: boolean, motivo: string | null) => void | Promise<void>;
 }) {
   const [editandoFecha, setEditandoFecha] = useState(false);
   const [editandoPausa, setEditandoPausa] = useState(false);
+  const [rechazando, setRechazando] = useState(false);
   const subtitulo = subtituloUtil({ cliente, titulo });
 
   /**
@@ -929,6 +979,18 @@ function FilaProyecto({
               setEditandoPausa(true);
               return;
             }
+            // En la tarjeta de QA, dos de las tres etapas SON el veredicto:
+            // "Finalizado" es aprobar y "Cambios" es rechazar. Van por la ruta
+            // del veredicto y no por un PATCH, que movería la etapa sin avisarle
+            // a nadie — que es justo lo que hay que evitar acá.
+            if (modo === "qa" && v === "finalizado") {
+              void onVeredicto(id, true, null);
+              return;
+            }
+            if (modo === "qa" && v === "cambios") {
+              setRechazando(true);
+              return;
+            }
             const campo = modo === "qa" ? "qa_etapa" : "etapa_desarrollo";
             // Elegir una etapa real reanuda: la pausa no es un estado paralelo.
             void onPatch(id, pausado ? { [campo]: v, pausado: false } : { [campo]: v });
@@ -978,12 +1040,34 @@ function FilaProyecto({
       ) : null}
 
       {editandoPausa ? (
-        <PausaForm
+        <MotivoForm
           motivoActual={pausaMotivo}
+          etiqueta="Motivo de la pausa"
+          placeholder="Ej: esperando contenido del cliente"
+          ayuda="Se ve en el tablero y va en el mensaje de WhatsApp. El contador de días se congela."
+          textoBoton="Pausar"
+          tono="amber"
+          icono={<IconPause />}
           onCancel={() => setEditandoPausa(false)}
           onSubmit={(motivo) => {
             setEditandoPausa(false);
             void onPatch(id, { pausado: true, pausa_motivo: motivo });
+          }}
+        />
+      ) : null}
+
+      {rechazando ? (
+        <MotivoForm
+          motivoActual={null}
+          etiqueta="Motivo del rechazo"
+          placeholder="Ej: el checkout no valida el cupón vencido"
+          ayuda="Le llega al programador y al comercial en la notificación."
+          textoBoton="Rechazar"
+          tono="rose"
+          onCancel={() => setRechazando(false)}
+          onSubmit={(motivo) => {
+            setRechazando(false);
+            void onVeredicto(id, false, motivo);
           }}
         />
       ) : null}
@@ -1020,17 +1104,49 @@ function FilaProyecto({
   );
 }
 
-/** Editor del motivo de pausa. El motivo es obligatorio: sin él la pausa no dice nada. */
-function PausaForm({
+/**
+ * Editor de un motivo obligatorio. Lo usan la pausa y el rechazo de QA: en los
+ * dos casos el texto es lo único que le explica al resto del equipo qué pasó,
+ * y en los dos viaja fuera del tablero (WhatsApp en uno, la notificación en el
+ * otro), así que dejarlo opcional lo vaciaría de sentido.
+ */
+function MotivoForm({
   motivoActual,
+  etiqueta,
+  placeholder,
+  ayuda,
+  textoBoton,
+  tono,
+  icono,
   onSubmit,
   onCancel,
 }: {
   motivoActual: string | null;
+  etiqueta: string;
+  placeholder: string;
+  ayuda: string;
+  textoBoton: string;
+  tono: "amber" | "rose";
+  icono?: React.ReactNode;
   onSubmit: (motivo: string) => void;
   onCancel: () => void;
 }) {
   const [motivo, setMotivo] = useState(motivoActual ?? "");
+
+  const t =
+    tono === "rose"
+      ? {
+          caja: "border-rose-200 bg-rose-50/70",
+          texto: "text-rose-700",
+          input: "border-rose-200 focus:border-rose-400 focus:ring-rose-200",
+          boton: "bg-rose-600 hover:bg-rose-700 disabled:bg-rose-200",
+        }
+      : {
+          caja: "border-amber-200 bg-amber-50/70",
+          texto: "text-amber-700",
+          input: "border-amber-200 focus:border-amber-400 focus:ring-amber-200",
+          boton: "bg-amber-500 hover:bg-amber-600 disabled:bg-amber-200",
+        };
 
   return (
     <form
@@ -1039,23 +1155,21 @@ function PausaForm({
         const limpio = motivo.trim();
         if (limpio) onSubmit(limpio);
       }}
-      className="mt-2.5 space-y-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5"
+      className={`mt-2.5 space-y-2 rounded-lg border px-3 py-2.5 ${t.caja}`}
     >
-      <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
-        <IconPause />
-        Motivo de la pausa
+      <label className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide ${t.texto}`}>
+        {icono}
+        {etiqueta}
       </label>
       <input
         autoFocus
         value={motivo}
         onChange={(e) => setMotivo(e.target.value)}
-        placeholder="Ej: esperando contenido del cliente"
-        className="w-full rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-[12px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+        placeholder={placeholder}
+        className={`w-full rounded-lg border bg-white px-3 py-1.5 text-[12px] text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 ${t.input}`}
       />
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-amber-700">
-          Se ve en el tablero y va en el mensaje de WhatsApp. El contador de días se congela.
-        </span>
+        <span className={`text-[10px] ${t.texto}`}>{ayuda}</span>
         <button
           type="button"
           onClick={onCancel}
@@ -1066,9 +1180,9 @@ function PausaForm({
         <button
           type="submit"
           disabled={!motivo.trim()}
-          className="rounded-md bg-amber-500 px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-200"
+          className={`rounded-md px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed ${t.boton}`}
         >
-          Pausar
+          {textoBoton}
         </button>
       </div>
     </form>

@@ -312,6 +312,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           // Volver atrás desde "Finalizado" limpia la marca y el proyecto
           // reaparece en el listado activo del tablero del equipo.
           patch.etapa_finalizado_at = nueva === ETAPA_FINAL ? ahora : null;
+
+          // Pasar la etapa a "QA" es, en la práctica, mandárselo a la persona
+          // de QA: se la asigna sola para no obligar a un segundo paso que es
+          // fácil de olvidar (y sin el cual el proyecto no aparece en su
+          // tarjeta del tablero). Sólo automático cuando hay una sola QA en la
+          // empresa; con varias no hay forma de adivinar cuál, y se elige a
+          // mano desde el selector de responsable.
+          if (nueva === "qa" && !cur.qa_responsable_id && !pideQaResponsable) {
+            const catalog = createServiceRoleClient();
+            const { data: qas } = await catalog
+              .from("usuarios")
+              .select("id")
+              .eq("empresa_id", auth.empresaId)
+              .eq("es_qa", true)
+              .ilike("estado", "activo");
+            const ids = (qas ?? []) as { id: string }[];
+            if (ids.length === 1) {
+              patch.qa_responsable_id = ids[0].id;
+              patch.qa_asignado_at = ahora;
+              patch.qa_etapa = QA_ETAPA_INICIAL;
+              patch.qa_etapa_at = ahora;
+            }
+          }
         }
       }
 

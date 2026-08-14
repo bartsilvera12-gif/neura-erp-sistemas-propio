@@ -636,18 +636,18 @@ function ActivosSeccion({
     );
   }
 
-  // Un solo selector de responsable para todo el tablero. Elegir a alguien de
-  // QA no reemplaza al programador: le suma la revisión, y el proyecto pasa a
-  // verse también en la tarjeta de esa persona con las etapas de QA.
-  const opcionesUsuario: { value: string; label: string; description?: string }[] = [
+  // Dos listas separadas a propósito: el selector de una tarjeta de programador
+  // elige quién desarrolla, y el de una tarjeta de QA elige quién revisa.
+  // Mezclarlas dejaba elegir a la QA como programadora, que no es lo que nadie
+  // quiere decir cuando la busca en esa lista.
+  const opcionesDev = [
     { value: "", label: "Sin asignar" },
-    ...usuarios.map((u) => ({
-      value: u.id,
-      label: nombreCorto(u.nombre ?? ""),
-      description: u.es_qa ? "QA" : undefined,
-    })),
+    ...usuarios.filter((u) => !u.es_qa).map((u) => ({ value: u.id, label: nombreCorto(u.nombre ?? "") })),
   ];
-  const esQA = new Set(usuarios.filter((u) => u.es_qa).map((u) => u.id));
+  const opcionesQA = [
+    { value: "", label: "Quitar de QA" },
+    ...usuarios.filter((u) => u.es_qa).map((u) => ({ value: u.id, label: nombreCorto(u.nombre ?? "") })),
+  ];
 
   // Programadores y QA conviven en la misma grilla, ordenados por nombre: para
   // el equipo, QA es una integrante más y no una sección aparte.
@@ -724,8 +724,7 @@ function ActivosSeccion({
                     bloqueado={false}
                     qaChip={null}
                     desde={p.desde}
-                    opcionesUsuario={opcionesUsuario}
-                    esQA={esQA}
+                    opcionesUsuario={opcionesQA}
                     saving={savingId === p.id}
                     onPatch={onPatch}
                   />
@@ -782,8 +781,7 @@ function ActivosSeccion({
                       : null
                   }
                   desde={p.desde}
-                  opcionesUsuario={opcionesUsuario}
-                  esQA={esQA}
+                  opcionesUsuario={opcionesDev}
                   saving={savingId === p.id}
                   onPatch={onPatch}
                 />
@@ -821,7 +819,6 @@ function FilaProyecto({
   qaChip,
   desde,
   opcionesUsuario,
-  esQA,
   saving,
   onPatch,
 }: {
@@ -844,8 +841,7 @@ function FilaProyecto({
   bloqueado: boolean;
   qaChip: { nombre: string; etapa: ProyectoEtapaQA | null } | null;
   desde: string | null;
-  opcionesUsuario: { value: string; label: string; description?: string }[];
-  esQA: Set<string>;
+  opcionesUsuario: { value: string; label: string }[];
   saving: boolean;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
 }) {
@@ -854,20 +850,17 @@ function FilaProyecto({
   const subtitulo = subtituloUtil({ cliente, titulo });
 
   /**
-   * Un solo selector para las dos tarjetas. Elegir a alguien marcado como QA
-   * escribe `qa_responsable_id` y deja intacto al programador: la revisión se
-   * suma al proyecto, no reemplaza a quien lo está haciendo.
+   * En la tarjeta de QA el selector cambia quién revisa; en la de un
+   * programador, quién desarrolla.
+   *
+   * Mandar un proyecto a QA NO se hace desde acá: se hace poniendo la etapa en
+   * "QA", que además asigna a la persona de QA. Si se pudiera elegir a la QA en
+   * este selector, al no reemplazar al programador el control volvería a
+   * mostrarlo y parecería que la acción no tuvo efecto.
    */
   function asignar(valor: string) {
-    if (modo === "qa") {
-      void onPatch(id, { qa_responsable_id: valor || null });
-      return;
-    }
-    if (valor && esQA.has(valor)) {
-      void onPatch(id, { qa_responsable_id: valor });
-      return;
-    }
-    void onPatch(id, { responsable_tecnico_id: valor || null });
+    const campo = modo === "qa" ? "qa_responsable_id" : "responsable_tecnico_id";
+    void onPatch(id, { [campo]: valor || null });
   }
 
   return (

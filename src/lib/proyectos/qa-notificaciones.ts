@@ -230,9 +230,10 @@ export async function notificarNovedadQA(
 /**
  * Notificación del veredicto de QA.
  *
- * Aprobado le llega a la project manager además de a los responsables, porque
- * es el hito que dispara la entrega. Rechazado se queda en los responsables:
- * son los que tienen que corregir, y la PM no necesita ver cada ida y vuelta.
+ * Va sólo a quien tiene que hacer algo con él: el programador, que corrige o
+ * entrega, y la project manager cuando el proyecto queda aprobado, porque es el
+ * hito que dispara la entrega. El comercial queda afuera a propósito: se entera
+ * por las novedades de QA, y el ida y vuelta técnico no le pide ninguna acción.
  *
  * No se agrupa: cada veredicto es un hecho puntual y merece su propia fila.
  */
@@ -250,7 +251,13 @@ export async function notificarVeredictoQA(
     const proyecto = await leerProyecto(sb, args.empresaId, args.proyectoId);
     if (!proyecto) return;
 
-    const ids = new Set(destinatariosResponsables(proyecto, args.actorId));
+    const ids = new Set<string>();
+    if (
+      proyecto.responsable_tecnico_id &&
+      proyecto.responsable_tecnico_id !== args.actorId
+    ) {
+      ids.add(proyecto.responsable_tecnico_id);
+    }
     if (args.aprobado) {
       for (const pm of await projectManagers(args.empresaId, args.actorId)) ids.add(pm);
     }

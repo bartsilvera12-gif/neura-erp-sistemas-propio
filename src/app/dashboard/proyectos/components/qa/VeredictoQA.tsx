@@ -52,9 +52,9 @@ export default function VeredictoQA({ projectId }: { projectId: string }) {
           <p className="text-sm font-semibold text-slate-900">Veredicto de QA</p>
           <p className="text-[11px] text-slate-500">
             {hecho === "aprobado"
-              ? "Aprobado. Se le avisó a la project manager y a los responsables."
+              ? "Aprobado. Se le avisó a la project manager y al programador."
               : hecho === "rechazado"
-                ? "Rechazado. Volvió a Cambios y se le avisó al equipo."
+                ? "Rechazado. Volvió a Cambios y se le avisó al programador."
                 : "Aprobar lo deja listo para entregar. Rechazar lo devuelve a Cambios."}
           </p>
         </div>
@@ -99,7 +99,7 @@ export default function VeredictoQA({ projectId }: { projectId: string }) {
           />
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-rose-700">
-              Se envía en la notificación al programador y al comercial.
+              Se envía en la notificación al programador.
             </span>
             <button
               type="button"

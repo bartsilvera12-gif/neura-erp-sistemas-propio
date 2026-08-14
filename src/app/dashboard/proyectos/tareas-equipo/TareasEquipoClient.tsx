@@ -1061,7 +1061,7 @@ function FilaProyecto({
           motivoActual={null}
           etiqueta="Motivo del rechazo"
           placeholder="Ej: el checkout no valida el cupón vencido"
-          ayuda="Le llega al programador y al comercial en la notificación."
+          ayuda="Le llega al programador en la notificación."
           textoBoton="Rechazar"
           tono="rose"
           onCancel={() => setRechazando(false)}

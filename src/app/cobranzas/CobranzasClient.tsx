@@ -124,6 +124,63 @@ function makeRow(c: ClienteCobranza, servs: ServicioCobranza[], tipoFiltro: stri
   };
 }
 
+type SortKey = "cliente" | "tipo" | "monto" | "total" | "cuotas" | "tramo" | "ultimo" | "prox" | "promesa";
+
+/** Columnas de la tabla; `key=null` = no ordenable. `kind` define el orden por defecto al clickear. */
+const COLUMNAS: { h: string; right: boolean; key: SortKey | null; kind: "str" | "num" | "date" | null }[] = [
+  { h: "Cliente", right: false, key: "cliente", kind: "str" },
+  { h: "Tipo", right: false, key: "tipo", kind: "str" },
+  { h: "Monto mensual", right: true, key: "monto", kind: "num" },
+  { h: "Total adeudado", right: true, key: "total", kind: "num" },
+  { h: "Cuotas venc.", right: true, key: "cuotas", kind: "num" },
+  { h: "Tramo", right: false, key: "tramo", kind: "num" },
+  { h: "Último pago", right: false, key: "ultimo", kind: "date" },
+  { h: "Próx. venc.", right: false, key: "prox", kind: "date" },
+  { h: "Promesa de pago", right: false, key: "promesa", kind: "date" },
+  { h: "Acción", right: true, key: null, kind: null },
+];
+
+/** Valor comparable de una fila para una columna. `null` = va al final siempre. */
+function sortValue(r: Row, key: SortKey): string | number | null {
+  switch (key) {
+    case "cliente":
+      return (r.c.cliente_label ?? "").toLowerCase();
+    case "tipo":
+      return (r.tipo ?? "").toLowerCase();
+    case "monto":
+      return r.monto_mensual;
+    case "total":
+      return r.total_adeudado;
+    case "cuotas":
+      return r.cuotas_vencidas;
+    case "tramo":
+      return TRAMO_PESO[r.tramo];
+    case "ultimo":
+      return r.c.ultimo_pago ? r.c.ultimo_pago.slice(0, 10) : null;
+    case "prox":
+      return r.proximo_vencimiento ? r.proximo_vencimiento.slice(0, 10) : null;
+    case "promesa":
+      return r.c.promesa_fecha ? r.c.promesa_fecha.slice(0, 10) : null;
+  }
+}
+
+function ordenarRows(rows: Row[], sort: { key: SortKey; dir: "asc" | "desc" } | null): Row[] {
+  if (!sort) return rows;
+  const factor = sort.dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const va = sortValue(a, sort.key);
+    const vb = sortValue(b, sort.key);
+    // Nulos/vacíos siempre al final, sin importar la dirección.
+    const aNull = va == null || va === "";
+    const bNull = vb == null || vb === "";
+    if (aNull && bNull) return 0;
+    if (aNull) return 1;
+    if (bNull) return -1;
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * factor;
+    return String(va).localeCompare(String(vb), "es") * factor;
+  });
+}
+
 function fmtMoney(n: number | null | undefined): string {
   if (n == null) return "—";
   return `₲ ${new Intl.NumberFormat("es-PY", { maximumFractionDigits: 0 }).format(n)}`;
@@ -191,6 +248,8 @@ export default function CobranzasClient() {
   const [tramoFiltro, setTramoFiltro] = useState<TramoKey | "todos">("todos");
   const [tipoFiltro, setTipoFiltro] = useState<string>("__all__");
   const [soloPromesaHoy, setSoloPromesaHoy] = useState(false);
+  // Orden de la tabla por columna (click en el encabezado; segundo click invierte).
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
 
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<DetallePayload | null>(null);
@@ -342,6 +401,19 @@ export default function CobranzasClient() {
       }),
     [baseRows, tramoFiltro, soloPromesaHoy, data]
   );
+
+  /** Lo que muestra la tabla: filas filtradas + orden por la columna elegida. */
+  const sortedRows = useMemo(() => ordenarRows(rows, sort), [rows, sort]);
+
+  /** Click en un encabezado: si es otra columna, la ordena (números/fechas desc, texto asc);
+   *  si es la misma, invierte la dirección. */
+  const toggleSort = useCallback((key: SortKey, kind: "str" | "num" | "date" | null) => {
+    setSort((prev) => {
+      if (prev?.key === key) return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+      const dirInicial: "asc" | "desc" = kind === "str" ? "asc" : "desc";
+      return { key, dir: dirInicial };
+    });
+  }, []);
 
   /** Conteo estable de promesas para hoy (tipo+búsqueda, sin tramo ni el toggle). */
   const promesasHoyCount = useMemo(() => {
@@ -510,26 +582,37 @@ export default function CobranzasClient() {
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="bg-slate-50/80">
                 <tr>
-                  {[
-                    { h: "Cliente", r: false },
-                    { h: "Tipo", r: false },
-                    { h: "Monto mensual", r: true },
-                    { h: "Total adeudado", r: true },
-                    { h: "Cuotas venc.", r: true },
-                    { h: "Tramo", r: false },
-                    { h: "Último pago", r: false },
-                    { h: "Próx. venc.", r: false },
-                    { h: "Promesa de pago", r: false },
-                    { h: "Acción", r: true },
-                  ].map(({ h, r: right }) => (
-                    <th key={h} className={`px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${right ? "text-right" : "text-left"}`}>
-                      {h}
-                    </th>
-                  ))}
+                  {COLUMNAS.map((col) => {
+                    const active = col.key != null && sort?.key === col.key;
+                    return (
+                      <th
+                        key={col.h}
+                        className={`px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] whitespace-nowrap ${
+                          col.right ? "text-right" : "text-left"
+                        } ${active ? "text-[#3F8E91]" : "text-slate-500"}`}
+                      >
+                        {col.key != null ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleSort(col.key!, col.kind)}
+                            className="inline-flex items-center gap-1 uppercase tracking-[0.08em] transition-colors hover:text-[#3F8E91]"
+                            title="Ordenar por esta columna"
+                          >
+                            {col.h}
+                            <span className={`text-[9px] leading-none ${active ? "opacity-100" : "opacity-25"}`}>
+                              {active ? (sort!.dir === "asc" ? "▲" : "▼") : "↕"}
+                            </span>
+                          </button>
+                        ) : (
+                          col.h
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((r) => (
+                {sortedRows.map((r) => (
                   <tr key={r.c.cliente_id} className="align-middle transition-colors hover:bg-[#4FAEB2]/[0.04]">
                     <td className="px-3 py-3 text-sm font-medium text-slate-800">
                       <span className="block max-w-[220px] truncate" title={r.c.cliente_label}>{r.c.cliente_label}</span>

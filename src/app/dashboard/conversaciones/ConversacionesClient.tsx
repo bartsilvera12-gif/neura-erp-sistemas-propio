@@ -237,18 +237,39 @@ type ContactoCompartido = {
   phones: { label: string; phone: string; waId: string }[];
 };
 
+/** Teléfonos de un vCard en base64 (fallback si el contacto no trae `phones`). */
+function telefonosDeVcard(vcardB64: unknown): { label: string; phone: string; waId: string }[] {
+  if (typeof vcardB64 !== "string" || !vcardB64) return [];
+  let txt = "";
+  try {
+    txt = decodeURIComponent(escape(atob(vcardB64)));
+  } catch {
+    return [];
+  }
+  const out: { label: string; phone: string; waId: string }[] = [];
+  for (const line of txt.split(/\r?\n/)) {
+    const m = /^TEL(?:;[^:]*)?:(.+)$/i.exec(line.trim());
+    if (!m?.[1]) continue;
+    const phone = m[1].trim();
+    const wa = /waid=(\d+)/i.exec(line);
+    out.push({ label: "", phone, waId: wa?.[1] ?? phone.replace(/\D/g, "") });
+  }
+  return out;
+}
+
 /** Extrae las tarjetas de contacto (vCard) de un mensaje tipo `contacts` de WhatsApp/YCloud. */
 function parseContactCards(raw: unknown): ContactoCompartido[] {
   const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const wm =
-    root.whatsappMessage && typeof root.whatsappMessage === "object"
-      ? (root.whatsappMessage as Record<string, unknown>)
-      : {};
-  const arr = Array.isArray(wm.contacts)
-    ? (wm.contacts as unknown[])
-    : Array.isArray(root.contacts)
-      ? (root.contacts as unknown[])
-      : [];
+  // Salientes (echoes) → `whatsappMessage`; entrantes → `whatsappInboundMessage`.
+  let arr: unknown[] = [];
+  for (const key of ["whatsappMessage", "whatsappInboundMessage"]) {
+    const c = root[key];
+    if (c && typeof c === "object" && Array.isArray((c as Record<string, unknown>).contacts)) {
+      arr = (c as Record<string, unknown>).contacts as unknown[];
+      break;
+    }
+  }
+  if (arr.length === 0 && Array.isArray(root.contacts)) arr = root.contacts as unknown[];
   const out: ContactoCompartido[] = [];
   for (const c of arr) {
     if (!c || typeof c !== "object") continue;
@@ -259,7 +280,7 @@ function parseContactCards(raw: unknown): ContactoCompartido[] {
       String(nameObj.first_name ?? "").trim() ||
       "Contacto";
     const phonesRaw = Array.isArray(cc.phones) ? (cc.phones as unknown[]) : [];
-    const phones = phonesRaw
+    let phones = phonesRaw
       .map((p) => {
         const pp = (p && typeof p === "object" ? p : {}) as Record<string, unknown>;
         return {
@@ -269,6 +290,7 @@ function parseContactCards(raw: unknown): ContactoCompartido[] {
         };
       })
       .filter((p) => p.phone || p.waId);
+    if (phones.length === 0) phones = telefonosDeVcard(cc.vcard); // fallback: leer del vCard
     out.push({ name, phones });
   }
   return out;

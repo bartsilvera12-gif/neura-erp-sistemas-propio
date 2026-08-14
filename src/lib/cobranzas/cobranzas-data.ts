@@ -1,6 +1,7 @@
 import "server-only";
 import type { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
+import { telefonoSignificativo } from "@/lib/telefono";
 
 type Sb = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
 
@@ -30,6 +31,10 @@ export type ClienteCobranza = {
   promesa_fecha: string | null;
   /** Deuda desglosada por servicio/suscripción. El front deriva total/tramo/tipo. */
   servicios: ServicioCobranza[];
+  /** ¿Se le envió algún mensaje saliente de WhatsApp este mes? (cruce por teléfono → contacto). */
+  mensaje_mes_enviado: boolean;
+  /** Fecha (YYYY-MM-DD) del último mensaje saliente de este mes, o null. */
+  mensaje_mes_fecha: string | null;
 };
 
 export type PromesaPago = {
@@ -74,6 +79,8 @@ export type DetalleCobranza = {
     plan: string | null;
     monto_mensual: number | null;
     alta: string | null;
+    mensaje_mes_enviado: boolean;
+    mensaje_mes_fecha: string | null;
   };
   total_deuda: number;
   cuotas_vencidas: number;
@@ -322,6 +329,105 @@ async function cargarPromesasPendientes(sb: Sb, empresaId: string): Promise<Map<
   return fechaPorCliente;
 }
 
+/**
+ * ¿A qué clientes se les envió algún mensaje SALIENTE de WhatsApp este mes?
+ * Cruce por teléfono: cliente.telefono → dígitos significativos → chat_contacts.phone_normalized
+ * → chat_conversations → chat_messages (from_me=true) con fecha en [inicio, fin] del mes.
+ * Devuelve cliente_id → { enviado, fecha } (solo para los que SÍ tuvieron mensaje).
+ */
+async function cargarMensajeEsteMes(
+  sb: Sb,
+  empresaId: string,
+  telPorCliente: Map<string, string>,
+  ym: string
+): Promise<Map<string, { enviado: boolean; fecha: string | null }>> {
+  const res = new Map<string, { enviado: boolean; fecha: string | null }>();
+  // sig (número nacional) → clientes con ese número.
+  const sigToClientes = new Map<string, Set<string>>();
+  for (const [cid, tel] of telPorCliente) {
+    const sig = telefonoSignificativo(String(tel ?? ""));
+    if (sig.length < 6) continue;
+    if (!sigToClientes.has(sig)) sigToClientes.set(sig, new Set());
+    sigToClientes.get(sig)!.add(cid);
+  }
+  if (sigToClientes.size === 0) return res;
+
+  // Candidatos de phone_normalized (guardado casi siempre como "595"+nacional).
+  const cands = new Set<string>();
+  for (const sig of sigToClientes.keys()) {
+    cands.add("595" + sig);
+    cands.add(sig);
+    cands.add("0" + sig);
+  }
+  const candList = [...cands];
+
+  // Contactos que matchean → contact_id → sig.
+  const contactToSig = new Map<string, string>();
+  for (let i = 0; i < candList.length; i += 100) {
+    const slice = candList.slice(i, i + 100);
+    const { data } = await sb
+      .from("chat_contacts")
+      .select("id, phone_normalized")
+      .eq("empresa_id", empresaId)
+      .in("phone_normalized", slice);
+    for (const c of (data ?? []) as Record<string, unknown>[]) {
+      const sig = telefonoSignificativo(String(c.phone_normalized ?? ""));
+      if (sigToClientes.has(sig)) contactToSig.set(String(c.id), sig);
+    }
+  }
+  if (contactToSig.size === 0) return res;
+
+  // Conversaciones de esos contactos → conversation_id → contact_id.
+  const contactIds = [...contactToSig.keys()];
+  const convToContact = new Map<string, string>();
+  for (let i = 0; i < contactIds.length; i += 100) {
+    const slice = contactIds.slice(i, i + 100);
+    const { data } = await sb
+      .from("chat_conversations")
+      .select("id, contact_id")
+      .eq("empresa_id", empresaId)
+      .in("contact_id", slice);
+    for (const cv of (data ?? []) as Record<string, unknown>[]) {
+      convToContact.set(String(cv.id), String(cv.contact_id));
+    }
+  }
+  if (convToContact.size === 0) return res;
+
+  // Mensajes salientes (from_me=true) con fecha en el mes.
+  const [yy, mm] = ym.split("-").map((x) => parseInt(x, 10));
+  const lastDay = new Date(yy, mm, 0).getDate();
+  const desde = `${ym}-01`;
+  const hasta = `${ym}-${String(lastDay).padStart(2, "0")}T23:59:59.999`;
+  const convIds = [...convToContact.keys()];
+  const sigMaxFecha = new Map<string, string>(); // sig → última fecha (YYYY-MM-DD)
+  for (let i = 0; i < convIds.length; i += 100) {
+    const slice = convIds.slice(i, i + 100);
+    const { data } = await sb
+      .from("chat_messages")
+      .select("conversation_id, created_at")
+      .eq("empresa_id", empresaId)
+      .eq("from_me", true)
+      .in("conversation_id", slice)
+      .gte("created_at", desde)
+      .lte("created_at", hasta);
+    for (const msg of (data ?? []) as Record<string, unknown>[]) {
+      const contactId = convToContact.get(String(msg.conversation_id));
+      if (!contactId) continue;
+      const sig = contactToSig.get(contactId);
+      if (!sig) continue;
+      const fecha = String(msg.created_at ?? "").slice(0, 10);
+      if (!fecha) continue;
+      const prev = sigMaxFecha.get(sig);
+      if (!prev || fecha > prev) sigMaxFecha.set(sig, fecha);
+    }
+  }
+
+  for (const [sig, fecha] of sigMaxFecha) {
+    for (const cid of sigToClientes.get(sig) ?? []) res.set(cid, { enviado: true, fecha });
+  }
+  return res;
+}
+
 /** Resumen + lista de clientes con deuda (total_adeudado > 0). */
 export async function cargarCobranzas(
   sb: Sb,
@@ -329,7 +435,7 @@ export async function cargarCobranzas(
   hoyYmd: string
 ): Promise<{ resumen: CobranzasResumen; clientes: ClienteCobranza[] }> {
   const [clientesRows, facturasRows, suscInfo, catalogoTipos, promesaPorCliente] = await Promise.all([
-    fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at", empresaId),
+    fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at, telefono", empresaId),
     fetchAll(sb, "facturas", "id, cliente_id, suscripcion_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
     cargarSuscripcionInfo(sb, empresaId),
     cargarCatalogoTipos(sb, empresaId),
@@ -385,6 +491,8 @@ export async function cargarCobranzas(
       ultimo_pago: ultimoPagoPorCliente.get(cid) ?? null,
       promesa_fecha: promesaPorCliente.get(cid) ?? null,
       servicios,
+      mensaje_mes_enviado: false,
+      mensaje_mes_fecha: null,
     });
     const total = servicios.reduce((acc, s) => acc + s.total_adeudado, 0);
     const worst = peorTramo(servicios.map((s) => s.tramo));
@@ -392,6 +500,26 @@ export async function cargarCobranzas(
     resumen.clientes_con_deuda += 1;
     resumen.cuotas_vencidas_total += servicios.reduce((acc, s) => acc + s.cuotas_vencidas, 0);
     resumen.por_tramo[worst] += 1;
+  }
+
+  // ¿Se le mandó mensaje este mes? (cruce por teléfono → contacto → mensajes salientes).
+  const telPorCliente = new Map<string, string>();
+  for (const c of clientes) {
+    const info = clienteInfo.get(c.cliente_id);
+    const tel = info ? String(info.telefono ?? "").trim() : "";
+    if (tel) telPorCliente.set(c.cliente_id, tel);
+  }
+  try {
+    const msgMap = await cargarMensajeEsteMes(sb, empresaId, telPorCliente, hoyYmd.slice(0, 7));
+    for (const c of clientes) {
+      const m = msgMap.get(c.cliente_id);
+      if (m) {
+        c.mensaje_mes_enviado = m.enviado;
+        c.mensaje_mes_fecha = m.fecha;
+      }
+    }
+  } catch {
+    // El indicador de mensaje NO debe tumbar la cobranza: si falla el cruce, queda "sin dato".
   }
 
   resumen.total_adeudado = Math.round(resumen.total_adeudado * 100) / 100;
@@ -412,7 +540,7 @@ export async function cargarDetalleCliente(
 ): Promise<DetalleCobranza | null> {
   const { data: cRows } = await sb
     .from("clientes")
-    .select("id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at")
+    .select("id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at, telefono")
     .eq("empresa_id", empresaId)
     .eq("id", clienteId)
     .limit(1);
@@ -502,6 +630,18 @@ export async function cargarDetalleCliente(
     servicios.length === 1 ? servicios[0]!.tipo : servicios.length > 1 ? `Varios (${servicios.length})` : "Sin clasificar";
   const montoResumen = servicios.reduce<number | null>((a, s) => (s.monto_mensual != null ? (a ?? 0) + s.monto_mensual : a), null);
 
+  // ¿Mensaje saliente este mes? (mismo cruce que la lista, pero para este único cliente).
+  let mensajeMes: { enviado: boolean; fecha: string | null } = { enviado: false, fecha: null };
+  const telCliente = String(c.telefono ?? "").trim();
+  if (telCliente) {
+    try {
+      const msgMap = await cargarMensajeEsteMes(sb, empresaId, new Map([[clienteId, telCliente]]), hoyYmd.slice(0, 7));
+      mensajeMes = msgMap.get(clienteId) ?? mensajeMes;
+    } catch {
+      // sin dato si falla
+    }
+  }
+
   return {
     cliente: {
       cliente_id: clienteId,
@@ -510,6 +650,8 @@ export async function cargarDetalleCliente(
       plan: servicios.length === 1 ? servicios[0]!.plan : null,
       monto_mensual: montoResumen,
       alta: ymd(c.created_at as string) || null,
+      mensaje_mes_enviado: mensajeMes.enviado,
+      mensaje_mes_fecha: mensajeMes.fecha,
     },
     total_deuda: Math.round(totalDeuda * 100) / 100,
     cuotas_vencidas: vencidas.length,

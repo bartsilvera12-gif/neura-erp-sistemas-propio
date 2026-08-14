@@ -25,6 +25,8 @@ type ClienteCobranza = {
   ultimo_pago: string | null;
   promesa_fecha: string | null;
   servicios: ServicioCobranza[];
+  mensaje_mes_enviado?: boolean;
+  mensaje_mes_fecha?: string | null;
 };
 
 type PromesaPago = {
@@ -62,7 +64,7 @@ type ServicioDetalle = ServicioCobranza & {
 };
 type DetallePayload = {
   puede_registrar?: boolean;
-  cliente: { cliente_id: string; cliente_label: string; tipo: string; plan: string | null; monto_mensual: number | null; alta: string | null };
+  cliente: { cliente_id: string; cliente_label: string; tipo: string; plan: string | null; monto_mensual: number | null; alta: string | null; mensaje_mes_enviado?: boolean; mensaje_mes_fecha?: string | null };
   total_deuda: number;
   cuotas_vencidas: number;
   tramo: TramoKey;
@@ -125,7 +127,7 @@ function makeRow(c: ClienteCobranza, servs: ServicioCobranza[], tipoFiltro: stri
   };
 }
 
-type SortKey = "cliente" | "tipo" | "monto" | "total" | "cuotas" | "tramo" | "ultimo" | "prox" | "promesa";
+type SortKey = "cliente" | "tipo" | "monto" | "total" | "cuotas" | "tramo" | "ultimo" | "prox" | "promesa" | "mensaje";
 
 /** Columnas de la tabla; `key=null` = no ordenable. `kind` define el orden por defecto al clickear. */
 const COLUMNAS: { h: string; right: boolean; key: SortKey | null; kind: "str" | "num" | "date" | null }[] = [
@@ -135,6 +137,7 @@ const COLUMNAS: { h: string; right: boolean; key: SortKey | null; kind: "str" | 
   { h: "Total adeudado", right: true, key: "total", kind: "num" },
   { h: "Cuotas venc.", right: true, key: "cuotas", kind: "num" },
   { h: "Tramo", right: false, key: "tramo", kind: "num" },
+  { h: "Mensaje del mes", right: false, key: "mensaje", kind: "date" },
   { h: "Último pago", right: false, key: "ultimo", kind: "date" },
   { h: "Próx. venc.", right: false, key: "prox", kind: "date" },
   { h: "Promesa de pago", right: false, key: "promesa", kind: "date" },
@@ -162,7 +165,26 @@ function sortValue(r: Row, key: SortKey): string | number | null {
       return r.proximo_vencimiento ? r.proximo_vencimiento.slice(0, 10) : null;
     case "promesa":
       return r.c.promesa_fecha ? r.c.promesa_fecha.slice(0, 10) : null;
+    case "mensaje":
+      return r.c.mensaje_mes_enviado && r.c.mensaje_mes_fecha ? r.c.mensaje_mes_fecha.slice(0, 10) : null;
   }
+}
+
+/** Badge "mensaje del mes": verde con fecha si se envió, gris "No" si no. */
+function MensajeMesBadge({ enviado, fecha }: { enviado?: boolean; fecha?: string | null }) {
+  if (enviado && fecha) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        {fmtDate(fecha)}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+      No
+    </span>
+  );
 }
 
 function ordenarRows(rows: Row[], sort: { key: SortKey; dir: "asc" | "desc" } | null): Row[] {
@@ -580,7 +602,7 @@ export default function CobranzasClient() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="bg-slate-50/80">
                 <tr>
                   {COLUMNAS.map((col) => {
@@ -623,6 +645,9 @@ export default function CobranzasClient() {
                     <td className="px-3 py-3 text-right text-sm font-semibold tabular-nums text-rose-700 whitespace-nowrap">{fmtMoney(r.total_adeudado)}</td>
                     <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-800">{r.cuotas_vencidas}</td>
                     <td className="px-3 py-3 whitespace-nowrap"><TramoBadge tramo={r.tramo} /></td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <MensajeMesBadge enviado={r.c.mensaje_mes_enviado} fecha={r.c.mensaje_mes_fecha} />
+                    </td>
                     <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(r.c.ultimo_pago)}</td>
                     <td className="px-3 py-3 text-xs tabular-nums text-slate-600 whitespace-nowrap">{fmtDate(r.proximo_vencimiento)}</td>
                     <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap">
@@ -700,6 +725,19 @@ export default function CobranzasClient() {
                   {detalle.meses_adeudados.length ? (
                     <p className="mt-2 text-xs text-slate-600">Meses adeudados: {detalle.meses_adeudados.map(fmtMes).join(", ")}</p>
                   ) : null}
+                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                    <span>Mensaje este mes:</span>
+                    {detalle.cliente.mensaje_mes_enviado && detalle.cliente.mensaje_mes_fecha ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Enviado · {fmtDate(detalle.cliente.mensaje_mes_fecha)}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                        Sin mensaje este mes
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div>

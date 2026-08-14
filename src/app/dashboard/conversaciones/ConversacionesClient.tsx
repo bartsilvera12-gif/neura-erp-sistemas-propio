@@ -232,6 +232,109 @@ function messagePreview(m: ChatMessage): string {
   }
 }
 
+type ContactoCompartido = {
+  name: string;
+  phones: { label: string; phone: string; waId: string }[];
+};
+
+/** Extrae las tarjetas de contacto (vCard) de un mensaje tipo `contacts` de WhatsApp/YCloud. */
+function parseContactCards(raw: unknown): ContactoCompartido[] {
+  const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const wm =
+    root.whatsappMessage && typeof root.whatsappMessage === "object"
+      ? (root.whatsappMessage as Record<string, unknown>)
+      : {};
+  const arr = Array.isArray(wm.contacts)
+    ? (wm.contacts as unknown[])
+    : Array.isArray(root.contacts)
+      ? (root.contacts as unknown[])
+      : [];
+  const out: ContactoCompartido[] = [];
+  for (const c of arr) {
+    if (!c || typeof c !== "object") continue;
+    const cc = c as Record<string, unknown>;
+    const nameObj = cc.name && typeof cc.name === "object" ? (cc.name as Record<string, unknown>) : {};
+    const name =
+      String(nameObj.formatted_name ?? "").trim() ||
+      String(nameObj.first_name ?? "").trim() ||
+      "Contacto";
+    const phonesRaw = Array.isArray(cc.phones) ? (cc.phones as unknown[]) : [];
+    const phones = phonesRaw
+      .map((p) => {
+        const pp = (p && typeof p === "object" ? p : {}) as Record<string, unknown>;
+        return {
+          label: String(pp.type ?? "").trim(),
+          phone: String(pp.phone ?? "").trim(),
+          waId: String(pp.wa_id ?? "").trim(),
+        };
+      })
+      .filter((p) => p.phone || p.waId);
+    out.push({ name, phones });
+  }
+  return out;
+}
+
+/** Render de contacto(s) compartido(s): nombre + teléfono(s), con link a WhatsApp y copiar. */
+function ContactCardsView({ message, fromMe }: { message: ChatMessage; fromMe: boolean }) {
+  const contactos = parseContactCards(message.raw_payload);
+  if (contactos.length === 0) {
+    return <p className="whitespace-pre-wrap break-words">{message.content || "[contacto]"}</p>;
+  }
+  const cardCls = fromMe
+    ? "border-white/30 bg-white/15 text-white"
+    : "border-slate-200 bg-slate-50 text-slate-900";
+  const subCls = fromMe ? "text-sky-100" : "text-slate-500";
+  return (
+    <div className="space-y-2">
+      {contactos.map((c, i) => (
+        <div key={i} className={`rounded-xl border px-3 py-2.5 ${cardCls}`}>
+          <div className="flex items-center gap-2">
+            <span
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                fromMe ? "bg-white/25" : "bg-[#4FAEB2]/15 text-[#3F8E91]"
+              }`}
+              aria-hidden
+            >
+              👤
+            </span>
+            <span className="min-w-0">
+              <span className={`block text-[10px] font-bold uppercase tracking-wide ${subCls}`}>Contacto</span>
+              <span className="block truncate text-sm font-semibold">{c.name}</span>
+            </span>
+          </div>
+          {c.phones.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {c.phones.map((p, j) => {
+                const wa = p.waId || p.phone.replace(/\D/g, "");
+                return (
+                  <div key={j} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="tabular-nums font-medium select-all">{p.phone || `+${p.waId}`}</span>
+                    {p.label ? <span className={`text-[11px] ${subCls}`}>({p.label})</span> : null}
+                    {wa ? (
+                      <a
+                        href={`https://wa.me/${wa}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold no-underline ${
+                          fromMe ? "bg-white/20 text-white hover:bg-white/30" : "bg-[#4FAEB2]/10 text-[#3F8E91] hover:bg-[#4FAEB2]/20"
+                        }`}
+                      >
+                        ↗ WhatsApp
+                      </a>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className={`mt-1 text-[11px] ${subCls}`}>Sin número en la tarjeta.</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Nombre de archivo para descargar, asegurando una extensión razonable según el tipo. */
 function downloadFilenameFor(message: ChatMessage): string {
   const base = (displayFilenameForAttachment(message) || "archivo").trim();
@@ -3922,6 +4025,8 @@ export function ConversacionesClient({
                                 </div>
                               );
                             })()
+                          ) : m.message_type === "contacts" ? (
+                            <ContactCardsView message={m} fromMe={m.from_me} />
                           ) : (
                             <p className="whitespace-pre-wrap break-words">{m.content}</p>
                           )}

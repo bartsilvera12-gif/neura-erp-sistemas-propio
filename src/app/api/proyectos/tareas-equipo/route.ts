@@ -307,6 +307,29 @@ export async function GET(request: Request) {
       });
     }
 
+    // La gente de QA tiene tarjeta incluso sin proyectos asignados. Si sólo se
+    // derivara de los proyectos, una QA recién incorporada sería invisible en el
+    // tablero justo cuando hay que empezar a asignarle trabajo.
+    {
+      const catalog = createServiceRoleClient();
+      const { data: qaUsuarios } = await catalog
+        .from("usuarios")
+        .select("id, nombre, email")
+        .eq("empresa_id", empresaId)
+        .eq("es_qa", true)
+        .ilike("estado", "activo");
+
+      for (const u of (qaUsuarios ?? []) as { id: string; nombre: string | null; email: string | null }[]) {
+        if (gruposQa.has(u.id)) continue;
+        gruposQa.set(u.id, {
+          qa_id: u.id,
+          qa_nombre: (u.nombre ?? "").trim() || (u.email ?? "").trim() || "QA sin nombre",
+          cantidad: 0,
+          proyectos: [],
+        });
+      }
+    }
+
     const qaPorResponsable = Array.from(gruposQa.values())
       .map((g) => ({
         ...g,

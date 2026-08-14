@@ -619,7 +619,13 @@ function ActivosSeccion({
   savingId: string | null;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
 }) {
-  if (grupos.length === 0 && qaGrupos.length === 0) {
+  // Las tarjetas de QA existen aunque no tengan proyectos, así que el vacío se
+  // mide por proyectos y no por tarjetas: si no, este estado nunca se veria.
+  const totalProyectos =
+    grupos.reduce((n, g) => n + g.proyectos.length, 0) +
+    qaGrupos.reduce((n, g) => n + g.proyectos.length, 0);
+
+  if (totalProyectos === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
         <p className="text-sm font-medium text-slate-700">No hay proyectos en curso</p>
@@ -685,6 +691,13 @@ function ActivosSeccion({
                 </span>
               }
             >
+              {g.proyectos.length === 0 ? (
+                <p className="px-4 py-6 text-center text-[11px] leading-relaxed text-slate-400">
+                  Sin proyectos en revisión.
+                  <br />
+                  Para mandarle uno, elegila en el selector de responsable del proyecto.
+                </p>
+              ) : null}
               <ul className="divide-y divide-slate-100">
                 {g.proyectos.map((p) => (
                   <FilaProyecto

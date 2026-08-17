@@ -22,8 +22,8 @@ type Panel = {
     sla_vencidos: number;
     sla_configurado: boolean;
   }[];
-  por_asesor: { asesor: string; cantidad: number; presupuesto: number }[];
-  por_tecnico: { tecnico: string; cantidad: number; presupuesto: number }[];
+  por_asesor: { asesor: string; cantidad: number; presupuesto: number; proyectos: DetalleProy[] }[];
+  por_tecnico: { tecnico: string; cantidad: number; presupuesto: number; proyectos: DetalleProy[] }[];
   por_tipo: { tipo: string; cantidad: number; presupuesto: number }[];
   por_rubro: { rubro: string; cantidad: number }[];
   entregados_por_mes: {
@@ -44,8 +44,59 @@ function fmtFecha(iso: string | null): string {
   return y && m && d ? `${d}/${m}/${y}` : iso;
 }
 
+type DetalleProy = {
+  id: string;
+  titulo: string;
+  cliente: string;
+  estado: string;
+  es_final: boolean;
+  presupuesto: number;
+  dias_en_estado: number | null;
+  sla_vencido: boolean;
+  sla_texto: string;
+};
+
 function fmtGs(n: number): string {
   return `₲ ${new Intl.NumberFormat("es-PY", { maximumFractionDigits: 0 }).format(n || 0)}`;
+}
+
+/** Tabla de proyectos de un responsable (etapa, presupuesto, SLA). */
+function ProyectosDetalleTabla({ proyectos }: { proyectos: DetalleProy[] }) {
+  if (!proyectos.length) return <p className="px-3 py-3 text-xs text-slate-400">Sin proyectos.</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[560px] text-sm">
+        <thead className="border-b border-slate-100 bg-slate-50/60">
+          <tr>
+            {["Cliente / Proyecto", "Etapa", "Presupuesto", "SLA"].map((h, i) => (
+              <th key={i} className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ${i >= 2 ? "text-right" : "text-left"}`}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {proyectos.map((p) => (
+            <tr key={p.id} className="hover:bg-slate-50/60">
+              <td className="px-3 py-2">
+                <span className="block font-medium text-slate-800">{p.cliente}</span>
+                {p.titulo && p.titulo !== p.cliente ? <span className="block text-[11px] text-slate-400">{p.titulo}</span> : null}
+              </td>
+              <td className="px-3 py-2">
+                <span className="inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+                  {p.estado}
+                </span>
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">{fmtGs(p.presupuesto)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right text-[11px]">
+                <span className={p.sla_vencido ? "font-semibold text-rose-600" : "text-slate-400"}>{p.sla_texto}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 function mesLabel(ym: string): string {
   const [y, m] = ym.split("-");
@@ -92,6 +143,8 @@ export default function PanelProyectosPanel({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [mesSel, setMesSel] = useState<string | null>(null); // ym del histórico abierto
+  const [aseAbierto, setAseAbierto] = useState<string | null>(null); // asesor expandido
+  const [tecAbierto, setTecAbierto] = useState<string | null>(null); // técnico expandido
 
   useEffect(() => {
     let cancel = false;
@@ -179,39 +232,61 @@ export default function PanelProyectosPanel({
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Por asesor comercial</h2>
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">Por asesor comercial</h2>
+        <p className="mb-3 text-[11px] text-slate-400">Tocá un asesor para ver sus proyectos (etapa, presupuesto y SLA).</p>
         <div className="space-y-2">
-          {data.por_asesor.map((a) => (
-            <div key={a.asesor} className="min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium text-slate-800">{a.asesor}</span>
-                <span className="shrink-0 text-xs text-slate-500">
-                  {a.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(a.presupuesto)}</span>
-                </span>
+          {data.por_asesor.map((a) => {
+            const open = aseAbierto === a.asesor;
+            return (
+              <div key={a.asesor} className="min-w-0">
+                <button type="button" onClick={() => setAseAbierto(open ? null : a.asesor)} className="w-full rounded-lg px-1 py-1 text-left transition-colors hover:bg-slate-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`truncate text-sm font-medium ${open ? "text-[#3F8E91]" : "text-slate-800"}`}>{a.asesor}</span>
+                    <span className="shrink-0 text-xs text-slate-500">
+                      {a.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(a.presupuesto)}</span>
+                    </span>
+                  </div>
+                  <div className="mt-1"><Bar value={a.presupuesto} max={maxAsePres} /></div>
+                </button>
+                {open ? (
+                  <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40">
+                    <ProyectosDetalleTabla proyectos={a.proyectos} />
+                  </div>
+                ) : null}
               </div>
-              <div className="mt-1"><Bar value={a.presupuesto} max={maxAsePres} /></div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Por técnico</h2>
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">Por técnico</h2>
+        <p className="mb-3 text-[11px] text-slate-400">Tocá un técnico para ver sus proyectos (etapa, presupuesto y SLA).</p>
         {data.por_tecnico.length === 0 ? (
           <p className="text-xs text-slate-400">Sin proyectos con técnico en este período.</p>
         ) : (
           <div className="space-y-2">
-            {data.por_tecnico.map((t) => (
-              <div key={t.tecnico} className="min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium text-slate-800">{t.tecnico}</span>
-                  <span className="shrink-0 text-xs text-slate-500">
-                    {t.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(t.presupuesto)}</span>
-                  </span>
+            {data.por_tecnico.map((t) => {
+              const open = tecAbierto === t.tecnico;
+              return (
+                <div key={t.tecnico} className="min-w-0">
+                  <button type="button" onClick={() => setTecAbierto(open ? null : t.tecnico)} className="w-full rounded-lg px-1 py-1 text-left transition-colors hover:bg-slate-50">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`truncate text-sm font-medium ${open ? "text-[#3F8E91]" : "text-slate-800"}`}>{t.tecnico}</span>
+                      <span className="shrink-0 text-xs text-slate-500">
+                        {t.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(t.presupuesto)}</span>
+                      </span>
+                    </div>
+                    <div className="mt-1"><Bar value={t.cantidad} max={maxTecCant} className="bg-[#4FAEB2]/80" /></div>
+                  </button>
+                  {open ? (
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40">
+                      <ProyectosDetalleTabla proyectos={t.proyectos} />
+                    </div>
+                  ) : null}
                 </div>
-                <div className="mt-1"><Bar value={t.cantidad} max={maxTecCant} className="bg-[#4FAEB2]/80" /></div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

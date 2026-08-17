@@ -112,6 +112,18 @@ export async function GET(request: Request) {
       for (const u of (data ?? []) as Record<string, unknown>[]) comNombre.set(String(u.id), String(u.nombre ?? "").trim());
     }
 
+    // Labels de cliente por proyecto (para los detalles).
+    const cliIds = [...new Set(proys.map((p) => String(p.cliente_id ?? "")).filter(Boolean))];
+    const cliLabel = new Map<string, string>();
+    for (let i = 0; i < cliIds.length; i += 120) {
+      const slice = cliIds.slice(i, i + 120);
+      const { data } = await sb.from("clientes").select("id, empresa, nombre_contacto").in("id", slice);
+      for (const c of (data ?? []) as Record<string, unknown>[]) {
+        const label = String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || "—";
+        cliLabel.set(String(c.id), label);
+      }
+    }
+
     // Presupuesto por cliente = PRIMERA factura de VENTA (no suscripción, no anulada), por fecha asc.
     const facturas = [...facturasRaw].sort((a, b) =>
       String(a.fecha ?? "").localeCompare(String(b.fecha ?? ""))
@@ -181,6 +193,39 @@ export async function GET(request: Request) {
     const now = Date.now();
     const ymActual = ymEnAsuncion(new Date());
 
+    // Detalle de un proyecto para los drill-down (por asesor / por técnico): etapa, monto y SLA.
+    const proyectoDetalle = (p: Record<string, unknown>) => {
+      const eid = String(p.estado_id ?? "");
+      const meta = estMeta.get(eid);
+      const entered = entradaEstadoActual.get(String(p.id));
+      const diasEnEstado = entered != null ? Math.max(0, Math.floor((now - entered) / 86400000)) : null;
+      let slaVencido = false;
+      let slaTexto = "sin SLA";
+      if (meta && meta.cuentaSla && meta.slaHoras != null && !meta.final) {
+        const objMs = meta.slaHoras * 3600 * 1000;
+        if (entered != null) {
+          const transc = now - entered;
+          slaVencido = transc > objMs;
+          slaTexto = slaVencido
+            ? `Vencido (${Math.floor((transc - objMs) / 86400000)}d)`
+            : `${Math.max(0, Math.ceil((objMs - transc) / 86400000))}d restantes`;
+        }
+      } else if (meta?.final) {
+        slaTexto = "—";
+      }
+      return {
+        id: String(p.id),
+        titulo: String(p.titulo ?? "").trim() || "(sin título)",
+        cliente: cliLabel.get(String(p.cliente_id ?? "")) ?? "—",
+        estado: meta?.nombre ?? "(sin estado)",
+        es_final: meta?.final ?? false,
+        presupuesto: Math.round(presupuestoDe(p)),
+        dias_en_estado: diasEnEstado,
+        sla_vencido: slaVencido,
+        sla_texto: slaTexto,
+      };
+    };
+
     // Por estado (cantidad + presupuesto) + SLA vencidos.
     // "Entregado" muestra SOLO lo entregado este mes; los entregados de meses anteriores no se
     // cuentan en el pipeline (se ven en "Entregados por mes"). El resto de estados, tal cual.
@@ -211,13 +256,18 @@ export async function GET(request: Request) {
         sla_configurado: estMeta.get(eid)?.slaHoras != null,
       }));
 
+    type DetalleProy = ReturnType<typeof proyectoDetalle>;
+    const ordenarProys = (arr: DetalleProy[]) =>
+      arr.sort((a, b) => Number(b.sla_vencido) - Number(a.sla_vencido) || b.presupuesto - a.presupuesto);
+
     // Por asesor.
-    const porAseMap = new Map<string, { cantidad: number; presupuesto: number }>();
+    const porAseMap = new Map<string, { cantidad: number; presupuesto: number; proyectos: DetalleProy[] }>();
     for (const p of cohort) {
       const k = String(p.responsable_comercial_id ?? "");
-      const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0 };
+      const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0, proyectos: [] };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);
+      agg.proyectos.push(proyectoDetalle(p));
       porAseMap.set(k, agg);
     }
     const por_asesor = [...porAseMap.entries()]
@@ -225,16 +275,18 @@ export async function GET(request: Request) {
         asesor: k ? comNombre.get(k) || k.slice(0, 8) : "Sin asignar",
         cantidad: v.cantidad,
         presupuesto: Math.round(v.presupuesto),
+        proyectos: ordenarProys(v.proyectos),
       }))
       .sort((a, b) => b.presupuesto - a.presupuesto || b.cantidad - a.cantidad);
 
     // Por técnico (responsable técnico) — qué proyectos tiene asociados cada uno.
-    const porTecMap = new Map<string, { cantidad: number; presupuesto: number }>();
+    const porTecMap = new Map<string, { cantidad: number; presupuesto: number; proyectos: DetalleProy[] }>();
     for (const p of cohort) {
       const k = String(p.responsable_tecnico_id ?? "");
-      const agg = porTecMap.get(k) ?? { cantidad: 0, presupuesto: 0 };
+      const agg = porTecMap.get(k) ?? { cantidad: 0, presupuesto: 0, proyectos: [] };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);
+      agg.proyectos.push(proyectoDetalle(p));
       porTecMap.set(k, agg);
     }
     const por_tecnico = [...porTecMap.entries()]
@@ -242,6 +294,7 @@ export async function GET(request: Request) {
         tecnico: k ? comNombre.get(k) || k.slice(0, 8) : "Sin asignar",
         cantidad: v.cantidad,
         presupuesto: Math.round(v.presupuesto),
+        proyectos: ordenarProys(v.proyectos),
       }))
       .sort((a, b) => b.cantidad - a.cantidad || b.presupuesto - a.presupuesto);
 
@@ -270,18 +323,6 @@ export async function GET(request: Request) {
     const por_rubro = [...porRubroMap.entries()]
       .map(([rubro, cantidad]) => ({ rubro, cantidad }))
       .sort((a, b) => b.cantidad - a.cantidad);
-
-    // Labels de cliente (para el detalle de entregados por mes).
-    const cliIds = [...new Set(proys.map((p) => String(p.cliente_id ?? "")).filter(Boolean))];
-    const cliLabel = new Map<string, string>();
-    for (let i = 0; i < cliIds.length; i += 120) {
-      const slice = cliIds.slice(i, i + 120);
-      const { data } = await sb.from("clientes").select("id, empresa, nombre_contacto").in("id", slice);
-      for (const c of (data ?? []) as Record<string, unknown>[]) {
-        const label = String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || "—";
-        cliLabel.set(String(c.id), label);
-      }
-    }
 
     // Entregados por mes (distinct proyecto por su mes de entrega) + detalle para el histórico.
     const entregadoMesProy = new Map<string, Set<string>>();

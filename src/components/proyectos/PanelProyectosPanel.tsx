@@ -25,9 +25,20 @@ type Panel = {
   por_asesor: { asesor: string; cantidad: number; presupuesto: number }[];
   por_tipo: { tipo: string; cantidad: number; presupuesto: number }[];
   por_rubro: { rubro: string; cantidad: number }[];
-  entregados_por_mes: { ym: string; cantidad: number; monto: number }[];
+  entregados_por_mes: {
+    ym: string;
+    cantidad: number;
+    monto: number;
+    proyectos: { id: string; titulo: string; cliente: string; monto: number; fecha: string | null }[];
+  }[];
   periodo_ym: string;
 };
+
+function fmtFecha(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
 
 function fmtGs(n: number): string {
   return `₲ ${new Intl.NumberFormat("es-PY", { maximumFractionDigits: 0 }).format(n || 0)}`;
@@ -65,6 +76,7 @@ export default function PanelProyectosPanel() {
   const [data, setData] = useState<Panel | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [mesSel, setMesSel] = useState<string | null>(null); // ym del histórico abierto
 
   useEffect(() => {
     let cancel = false;
@@ -191,22 +203,71 @@ export default function PanelProyectosPanel() {
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Entregados por mes (últimos 6)</h2>
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">Entregados por mes (últimos 6)</h2>
+        <p className="mb-3 text-[11px] text-slate-400">Tocá una barra para ver los proyectos entregados de ese mes.</p>
         <div className="flex items-end justify-between gap-2">
           {data.entregados_por_mes.map((m) => {
             const h = maxMesCant > 0 ? Math.max(6, Math.round((m.cantidad / maxMesCant) * 90)) : 6;
+            const activo = mesSel === m.ym;
             return (
-              <div key={m.ym} className="flex flex-1 flex-col items-center gap-1">
+              <button
+                key={m.ym}
+                type="button"
+                onClick={() => setMesSel(activo ? null : m.ym)}
+                className="flex flex-1 flex-col items-center gap-1 rounded-lg px-1 py-1 transition-colors hover:bg-slate-50"
+                title={`${m.cantidad} entregados · ${fmtGs(m.monto)}`}
+              >
                 <span className="text-[11px] font-semibold tabular-nums text-slate-700">{m.cantidad}</span>
                 <div className="flex h-[90px] w-full items-end">
-                  <div className="mx-auto w-8 rounded-t-md bg-[#4FAEB2]" style={{ height: `${h}px` }} title={fmtGs(m.monto)} />
+                  <div
+                    className={`mx-auto w-8 rounded-t-md transition-colors ${activo ? "bg-[#3F8E91]" : "bg-[#4FAEB2] hover:bg-[#3F8E91]"}`}
+                    style={{ height: `${h}px` }}
+                  />
                 </div>
-                <span className="text-[10px] text-slate-500">{mesLabel(m.ym)}</span>
-              </div>
+                <span className={`text-[10px] ${activo ? "font-semibold text-[#3F8E91]" : "text-slate-500"}`}>{mesLabel(m.ym)}</span>
+              </button>
             );
           })}
         </div>
-        <p className="mt-2 text-[11px] text-slate-400">La barra muestra la cantidad; al pasar el cursor ves el presupuesto entregado del mes.</p>
+
+        {mesSel ? (
+          (() => {
+            const mes = data.entregados_por_mes.find((m) => m.ym === mesSel);
+            if (!mes) return null;
+            return (
+              <div className="mt-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Entregados en {mesLabel(mesSel)} · {mes.cantidad} · <span className="text-[#3F8E91]">{fmtGs(mes.monto)}</span>
+                  </span>
+                  <button type="button" onClick={() => setMesSel(null)} className="text-[11px] text-slate-400 hover:text-slate-600">
+                    Cerrar
+                  </button>
+                </div>
+                {mes.proyectos.length === 0 ? (
+                  <p className="px-3 py-4 text-center text-xs text-slate-400">Sin entregas este mes.</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <tbody className="divide-y divide-slate-100">
+                        {mes.proyectos.map((p) => (
+                          <tr key={p.id} className="hover:bg-slate-50/60">
+                            <td className="px-3 py-2">
+                              <span className="block font-medium text-slate-800">{p.cliente}</span>
+                              {p.titulo && p.titulo !== p.cliente ? <span className="block text-[11px] text-slate-400">{p.titulo}</span> : null}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-500">{fmtFecha(p.fecha)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">{fmtGs(p.monto)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()
+        ) : null}
       </section>
 
       <p className="text-[11px] text-slate-400">

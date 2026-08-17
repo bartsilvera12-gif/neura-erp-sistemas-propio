@@ -55,7 +55,7 @@ export async function GET(request: Request) {
       fetchAll(
         sb,
         "proyectos",
-        "id, cliente_id, tipo_id, estado_id, responsable_comercial_id, brief_data, fecha_ingreso, fecha_prometida, archivado, created_at",
+        "id, titulo, cliente_id, tipo_id, estado_id, responsable_comercial_id, brief_data, fecha_ingreso, fecha_prometida, archivado, created_at",
         empresaId
       ),
       fetchAll(sb, "proyecto_estados", "id, nombre, codigo, sort_order, es_estado_final, sla_horas_objetivo, cuenta_sla", empresaId),
@@ -125,39 +125,45 @@ export async function GET(request: Request) {
       [...estMeta.entries()].filter(([, m]) => m.final && !m.cancel).map(([id]) => id)
     );
 
-    // Historial: por proyecto, cuándo entró a su estado ACTUAL (para SLA/antigüedad); y entradas a
-    // estado FINAL (para "entregados por mes").
+    // Historial: por proyecto, cuándo entró a su estado ACTUAL (para SLA/antigüedad); y entrega
+    // (entró a estado "Entregado") con su fecha, para agrupar por mes.
     const entradaEstadoActual = new Map<string, number>(); // proyecto_id → ms
-    const entradasFinal: { proyecto_id: string; ym: string }[] = [];
+    const entregaMs = new Map<string, number>(); // proyecto_id → ms de la ÚLTIMA entrada a Entregado
     const proyEstadoActual = new Map(proys.map((p) => [String(p.id), String(p.estado_id ?? "")]));
     for (const h of histRaw) {
       const pid = String(h.proyecto_id ?? "");
       const est = String(h.estado_nuevo_id ?? "");
       const enteredMs = h.entered_at ? Date.parse(String(h.entered_at)) : NaN;
       if (!pid || !Number.isFinite(enteredMs)) continue;
-      // entró al estado actual (fila abierta o la más reciente de ese estado)
       if (est === proyEstadoActual.get(pid)) {
         const prev = entradaEstadoActual.get(pid);
         if (prev == null || enteredMs > prev) entradaEstadoActual.set(pid, enteredMs);
       }
-      // entrada a estado "Entregado" (final no-cancelación) → entregado
       if (entregadoEstadoIds.has(est)) {
-        entradasFinal.push({ proyecto_id: pid, ym: ymEnAsuncion(new Date(enteredMs)) });
+        const prev = entregaMs.get(pid);
+        if (prev == null || enteredMs > prev) entregaMs.set(pid, enteredMs);
       }
     }
+    const entregaYm = (pid: string): string | null => {
+      const ms = entregaMs.get(pid);
+      return ms != null ? ymEnAsuncion(new Date(ms)) : null;
+    };
 
     // ── Agregaciones ──
     const now = Date.now();
     const ymActual = ymEnAsuncion(new Date());
 
     // Por estado (cantidad + presupuesto) + SLA vencidos.
+    // "Entregado" muestra SOLO lo entregado este mes; los entregados de meses anteriores no se
+    // cuentan en el pipeline (se ven en "Entregados por mes"). El resto de estados, tal cual.
     const porEstadoMap = new Map<string, { cantidad: number; presupuesto: number; vencidos: number }>();
     for (const p of proys) {
       const eid = String(p.estado_id ?? "");
+      const meta = estMeta.get(eid);
+      if (meta?.final && !meta.cancel && entregaYm(String(p.id)) !== ymActual) continue; // entregado viejo → fuera
       const agg = porEstadoMap.get(eid) ?? { cantidad: 0, presupuesto: 0, vencidos: 0 };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);
-      const meta = estMeta.get(eid);
       if (meta && meta.cuentaSla && meta.slaHoras != null && !meta.final) {
         const entered = entradaEstadoActual.get(String(p.id));
         if (entered != null && now - entered > meta.slaHoras * 3600 * 1000) agg.vencidos += 1;
@@ -218,11 +224,24 @@ export async function GET(request: Request) {
       .map(([rubro, cantidad]) => ({ rubro, cantidad }))
       .sort((a, b) => b.cantidad - a.cantidad);
 
-    // Entregados este mes + últimos 6 meses (por primera entrada a estado final, distinct proyecto/mes).
-    const entregadoMesProy = new Map<string, Set<string>>(); // ym → set proyecto_id
-    for (const e of entradasFinal) {
-      if (!entregadoMesProy.has(e.ym)) entregadoMesProy.set(e.ym, new Set());
-      entregadoMesProy.get(e.ym)!.add(e.proyecto_id);
+    // Labels de cliente (para el detalle de entregados por mes).
+    const cliIds = [...new Set(proys.map((p) => String(p.cliente_id ?? "")).filter(Boolean))];
+    const cliLabel = new Map<string, string>();
+    for (let i = 0; i < cliIds.length; i += 120) {
+      const slice = cliIds.slice(i, i + 120);
+      const { data } = await sb.from("clientes").select("id, empresa, nombre_contacto").in("id", slice);
+      for (const c of (data ?? []) as Record<string, unknown>[]) {
+        const label = String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || "—";
+        cliLabel.set(String(c.id), label);
+      }
+    }
+
+    // Entregados por mes (distinct proyecto por su mes de entrega) + detalle para el histórico.
+    const entregadoMesProy = new Map<string, Set<string>>();
+    for (const [pid, ms] of entregaMs) {
+      const ym = ymEnAsuncion(new Date(ms));
+      if (!entregadoMesProy.has(ym)) entregadoMesProy.set(ym, new Set());
+      entregadoMesProy.get(ym)!.add(pid);
     }
     const proyById = new Map(proys.map((p) => [String(p.id), p]));
     const meses6: string[] = [];
@@ -231,14 +250,27 @@ export async function GET(request: Request) {
       d.setMonth(d.getMonth() - i);
       meses6.push(ymEnAsuncion(d));
     }
-    const entregados_por_mes = meses6.map((ym) => {
+    const detalleMes = (ym: string) => {
       const set = entregadoMesProy.get(ym) ?? new Set<string>();
-      let monto = 0;
-      for (const pid of set) {
-        const p = proyById.get(pid);
-        if (p) monto += presupuestoDe(p);
-      }
-      return { ym, cantidad: set.size, monto: Math.round(monto) };
+      return [...set]
+        .map((pid) => {
+          const p = proyById.get(pid);
+          if (!p) return null;
+          const ms = entregaMs.get(pid);
+          return {
+            id: pid,
+            titulo: String(p.titulo ?? "").trim() || "(sin título)",
+            cliente: cliLabel.get(String(p.cliente_id ?? "")) ?? "—",
+            monto: Math.round(presupuestoDe(p)),
+            fecha: ms != null ? new Date(ms).toISOString().slice(0, 10) : null,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x != null)
+        .sort((a, b) => b.monto - a.monto || (b.fecha ?? "").localeCompare(a.fecha ?? ""));
+    };
+    const entregados_por_mes = meses6.map((ym) => {
+      const proyectos = detalleMes(ym);
+      return { ym, cantidad: proyectos.length, monto: proyectos.reduce((a, x) => a + x.monto, 0), proyectos };
     });
     const entregadosMesSet = entregadoMesProy.get(ymActual) ?? new Set<string>();
     let entregados_mes_monto = 0;

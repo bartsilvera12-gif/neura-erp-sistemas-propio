@@ -81,6 +81,35 @@ function isEntregado(p: ProyectoCard): boolean {
   return (p.proyecto_estado?.codigo ?? "").toLowerCase() === ESTADO_ENTREGADO_CODIGO;
 }
 
+/** ym (YYYY-MM) en hora de Paraguay de una fecha ISO, o null. */
+function ymAsuncionDe(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", timeZone: "America/Asuncion" })
+    .format(new Date(ms))
+    .slice(0, 7);
+}
+
+/**
+ * Proyecto en estado FINAL "Entregado" (no cancelación) cuya entrega fue en un mes ANTERIOR al
+ * actual → se saca del tablero para que "Entregado" muestre solo lo del mes. El histórico de
+ * meses anteriores se consulta en el panel gerencial (Dashboard → Proyectos).
+ */
+function esEntregadoDeMesAnterior(p: ProyectoCard): boolean {
+  const est = p.proyecto_estado;
+  if (!est || est.es_estado_final !== true) return false;
+  const cod = (est.codigo ?? "").toLowerCase();
+  const nom = (est.nombre ?? "").toLowerCase();
+  if (/cancel/.test(cod) || /cancel/.test(nom)) return false; // cancelado no es "entregado"
+  const ymEntrega = ymAsuncionDe(p.estado_actual_desde);
+  if (!ymEntrega) return false; // sin fecha de entrega → no filtrar (se muestra)
+  const ymActual = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", timeZone: "America/Asuncion" })
+    .format(new Date())
+    .slice(0, 7);
+  return ymEntrega < ymActual;
+}
+
 type PostentregaInfo = {
   dia: number;
   total: number;
@@ -796,7 +825,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       return;
     }
     setEstados(jEst.data ?? []);
-    setProyectos(jPr.data ?? []);
+    // El tablero muestra el trabajo activo + lo entregado del MES en curso. Los entregados de
+    // meses anteriores se ven en el panel gerencial (Dashboard → Proyectos → "Entregados por mes").
+    setProyectos((jPr.data ?? []).filter((p: ProyectoCard) => !esEntregadoDeMesAnterior(p)));
 
     if (jTipos.success && jTipos.data) setTipoOpts(jTipos.data);
     if (jUsers.usuarios) setUserOpts(jUsers.usuarios);

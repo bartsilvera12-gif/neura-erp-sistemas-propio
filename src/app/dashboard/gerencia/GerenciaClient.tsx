@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import type { ComercialReport } from "@/lib/gerencia/comercial-data";
+import { gs, gsShort, pct, pctColor } from "@/lib/report/format";
+import { CategoryBars, Kpi, Metric, Semaforo, SummaryCard, Table, TONE, type Tone } from "@/components/ui/report";
 
 const TEAL = "#4FAEB2";
 const CAT_LABEL: Record<string, string> = {
@@ -15,31 +17,12 @@ const CAT_COLOR: Record<string, string> = {
   marketing: "#ec4899", branding: "#8b5cf6", otros: "#94a3b8", sin_clasificar: "#cbd5e1",
 };
 
-type Tone = "emerald" | "amber" | "rose" | "slate";
-const TONE: Record<Tone, { dot: string; text: string; bg: string; ring: string }> = {
-  emerald: { dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50", ring: "border-emerald-200" },
-  amber: { dot: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50", ring: "border-amber-200" },
-  rose: { dot: "bg-rose-500", text: "text-rose-700", bg: "bg-rose-50", ring: "border-rose-200" },
-  slate: { dot: "bg-slate-400", text: "text-slate-600", bg: "bg-slate-50", ring: "border-slate-200" },
-};
-
 type Report = ComercialReport;
 async function fetchReport(period: string): Promise<ComercialReport> {
   const res = await fetchWithSupabaseSession(`/api/gerencia/comercial?period=${period}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Error ${res.status}`);
   return res.json();
 }
-
-const gs = (n: number) => "Gs " + Math.round(n || 0).toLocaleString("es-PY");
-const gsShort = (n: number) => {
-  const v = Math.abs(n || 0);
-  if (v >= 1e9) return "Gs " + (n / 1e9).toFixed(1) + "MM";
-  if (v >= 1e6) return "Gs " + (n / 1e6).toFixed(1) + "M";
-  if (v >= 1e3) return "Gs " + (n / 1e3).toFixed(0) + "K";
-  return "Gs " + Math.round(n || 0);
-};
-const pct = (p: number | null) => (p == null ? "—" : (p > 0 ? "+" : "") + p.toFixed(1) + "%");
-const pctColor = (p: number | null) => (p == null ? "text-slate-400" : p > 0 ? "text-emerald-600" : p < 0 ? "text-rose-600" : "text-slate-500");
 
 function thisMonth() {
   const d = new Date();
@@ -218,14 +201,14 @@ export default function GerenciaClient() {
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold text-slate-700">Revenue por categoría</h2>
-              <CategoryBars rows={data.revenue_por_categoria} />
+              <CategoryBars rows={data.revenue_por_categoria} labelMap={CAT_LABEL} colorMap={CAT_COLOR} />
             </div>
           </div>
 
           {/* MRR por categoría */}
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">MRR por categoría</h2>
-            <CategoryBars rows={data.mrr.por_categoria.map((mm) => ({ categoria: mm.categoria, facturado: mm.mrr, facturas: mm.subs_activas }))} unitLabel="subs" />
+            <CategoryBars rows={data.mrr.por_categoria.map((mm) => ({ categoria: mm.categoria, facturado: mm.mrr, facturas: mm.subs_activas }))} unitLabel="subs" labelMap={CAT_LABEL} colorMap={CAT_COLOR} />
           </div>
 
           {/* Detalle secundario: tablas compactas (máx 5 filas) */}
@@ -244,92 +227,6 @@ export default function GerenciaClient() {
               total={data.recurrentes_sin_facturar_mes.length} empty="Todos los recurrentes facturaron este mes ✓" />
           </div>
           <p className="mt-4 text-xs text-slate-400">Moneda: Guaraníes (Gs). Anulación por estado de factura. Semáforos: heurística sobre los mismos datos (cobranza = cobrado/facturado; CxC = % vencido +30d; MRR = bajas de subs; recurrentes = clientes recurrentes sin factura este mes). Generado {new Date(data.generated_at).toLocaleString("es-PY")}.</p>
-        </>
-      )}
-    </div>
-  );
-}
-
-function Kpi({ label, value, sub, subColor, accent }: { label: string; value: string; sub?: string; subColor?: string; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border bg-white p-4 shadow-sm ${accent ? "border-[#4FAEB2]/40" : "border-slate-200"}`}>
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-1 text-lg font-bold text-slate-800">{value}</div>
-      {sub && <div className={`mt-0.5 text-xs ${subColor || "text-slate-400"}`}>{sub}</div>}
-    </div>
-  );
-}
-function Metric({ label, value, sub, subColor }: { label: string; value: string; sub?: string; subColor?: string }) {
-  return (
-    <div>
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-0.5 truncate text-sm font-bold text-slate-800" title={value}>{value}</div>
-      {sub && <div className={`truncate text-[11px] ${subColor || "text-slate-400"}`} title={sub}>{sub}</div>}
-    </div>
-  );
-}
-function Semaforo({ label, tone, detail }: { label: string; tone: Tone; detail: string }) {
-  const t = TONE[tone] || TONE.slate;
-  return (
-    <div className={`flex items-center justify-between rounded-lg border ${t.ring} ${t.bg} px-3 py-2`}>
-      <div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${t.dot}`} /><span className="text-sm font-medium text-slate-700">{label}</span></div>
-      <span className={`text-xs font-semibold ${t.text}`}>{detail}</span>
-    </div>
-  );
-}
-function SummaryCard({ title, tone, children }: { title: string; tone: Tone; children: ReactNode }) {
-  const t = TONE[tone] || TONE.slate;
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-3 flex items-center gap-2">
-        <span className={`h-2.5 w-2.5 rounded-full ${t.dot}`} />
-        <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">{children}</div>
-    </div>
-  );
-}
-function CategoryBars({ rows, unitLabel = "fact" }: { rows: { categoria: string; facturado: number; facturas: number }[]; unitLabel?: string }) {
-  const max = Math.max(1, ...rows.map((r) => r.facturado));
-  if (!rows.length) return <p className="text-sm text-slate-400">Sin datos</p>;
-  return (
-    <div className="space-y-2">
-      {rows.map((r) => (
-        <div key={r.categoria}>
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium text-slate-600">{CAT_LABEL[r.categoria] || r.categoria}</span>
-            <span className="text-slate-500">{gsShort(r.facturado)} · {r.facturas} {unitLabel}</span>
-          </div>
-          <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full" style={{ width: `${(r.facturado / max) * 100}%`, background: CAT_COLOR[r.categoria] || TEAL }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-function Table({ title, cols, rows, total, empty }: { title: string; cols: string[]; rows: string[][]; total: number; empty: string }) {
-  const shown = rows.slice(0, 5);
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">{title}</h2>
-      {rows.length === 0 ? <p className="text-sm text-slate-400">{empty}</p> : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs uppercase tracking-wide text-slate-400">{cols.map((c) => <th key={c} className="pb-2 font-medium">{c}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {shown.map((row, i) => (
-                  <tr key={i} className="text-slate-600">{row.map((cell, j) => <td key={j} className={`py-1.5 ${j === 0 ? "font-medium text-slate-700" : ""}`}>{cell}</td>)}</tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {total > 5 && (
-            <div className="mt-2 border-t border-slate-100 pt-2 text-right">
-              <span className="text-xs font-medium text-slate-400">Mostrando 5 de {total} · Ver detalle →</span>
-            </div>
-          )}
         </>
       )}
     </div>

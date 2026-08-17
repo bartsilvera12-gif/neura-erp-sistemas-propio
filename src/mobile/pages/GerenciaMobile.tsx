@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ArrowDownRight, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Crown } from "lucide-react";
 import { useGerenciaComercial } from "@/shared/hooks/useGerencia";
+import { gsShort } from "@/lib/report/format";
 
 /**
  * Gerencia mobile — tablero ejecutivo simplificado.
@@ -58,27 +59,27 @@ export default function GerenciaMobile() {
       <section className="mb-4 grid grid-cols-2 gap-3">
         <KpiBox
           label="Facturado"
-          value={kpis ? formatGsCompact(kpis.facturado_mes) : "—"}
+          value={kpis ? gsShort(kpis.facturado_mes) : "—"}
           variacion={kpis?.variacion_facturado_pct ?? null}
           tone="primary"
           isLoading={isLoading}
         />
         <KpiBox
           label="Cobrado"
-          value={kpis ? formatGsCompact(kpis.cobrado_mes) : "—"}
+          value={kpis ? gsShort(kpis.cobrado_mes) : "—"}
           variacion={kpis?.variacion_cobrado_pct ?? null}
           tone="emerald"
           isLoading={isLoading}
         />
         <KpiBox
           label="Pendiente"
-          value={kpis ? formatGsCompact(kpis.pendiente_cobro) : "—"}
+          value={kpis ? gsShort(kpis.pendiente_cobro) : "—"}
           tone="amber"
           isLoading={isLoading}
         />
         <KpiBox
           label="MRR"
-          value={kpis ? formatGsCompact(kpis.mrr) : "—"}
+          value={kpis ? gsShort(kpis.mrr) : "—"}
           sub={report?.mrr ? `${report.mrr.subs_activas} subs activas` : undefined}
           tone="violet"
           isLoading={isLoading}
@@ -113,7 +114,7 @@ export default function GerenciaMobile() {
                     <p className="truncate text-sm font-medium text-slate-900">{c.cliente}</p>
                   </div>
                   <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">
-                    {formatGsCompact(c.facturado)}
+                    {gsShort(c.facturado)}
                   </p>
                 </div>
               </li>
@@ -214,7 +215,7 @@ function CategoriaBar({ categoria, valor, max }: { categoria: string; valor: num
     <div className="rounded-xl border border-slate-200 bg-white p-2.5">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-slate-700">{label}</p>
-        <p className="text-xs font-semibold tabular-nums text-slate-900">{formatGsCompact(valor)}</p>
+        <p className="text-xs font-semibold tabular-nums text-slate-900">{gsShort(valor)}</p>
       </div>
       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full rounded-full bg-[#4FAEB2]" style={{ width: `${pct}%` }} />
@@ -240,12 +241,4 @@ function formatPeriod(p: string): string {
   const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const [y, m] = p.split("-").map(Number);
   return `${meses[m - 1]} ${y}`;
-}
-
-function formatGsCompact(n: number): string {
-  const abs = Math.abs(n || 0);
-  if (abs >= 1e9) return `Gs ${(n / 1e9).toFixed(1)}MM`;
-  if (abs >= 1e6) return `Gs ${(n / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `Gs ${(n / 1e3).toFixed(0)}k`;
-  return `Gs ${Math.round(n || 0).toLocaleString("es-PY")}`;
 }

@@ -33,6 +33,7 @@ import {
   ScrollText,
   ListChecks,
   FolderKanban,
+  Factory,
   Percent,
   Tags,
   CalendarDays,
@@ -184,6 +185,15 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: FolderKanban,
   },
   {
+    // Reporte gerencial de producción. Reusa el permiso del módulo Proyectos (slug),
+    // key propia y única. El gate fino (gerencia/admin) lo aplica la API.
+    key: "produccion",
+    slug: "proyectos",
+    label: "Producción",
+    href: "/dashboard/produccion",
+    icon: Factory,
+  },
+  {
     key: "agenda",
     slug: "agenda",
     label: "Agenda",
@@ -225,7 +235,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Finanzas",
     itemKeys: ["ventas", "cobranzas", "pagos", "gastos", "compras", "notas_credito", "reportes"],
   },
-  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario"] },
+  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "produccion"] },
   {
     id: "omnicanal",
     title: "Omnicanal",

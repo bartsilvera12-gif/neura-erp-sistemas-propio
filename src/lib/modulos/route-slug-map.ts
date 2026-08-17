@@ -31,6 +31,7 @@ const SIDEBAR_SLUG_HREF_ORDER: { slug: string; href: string }[] = [
   { slug: "sorteos", href: "/sorteos" },
   { slug: "campanas", href: "/dashboard/campanas" },
   { slug: "proyectos", href: "/dashboard/proyectos" },
+  { slug: "proyectos", href: "/dashboard/produccion" },
   { slug: "agenda", href: "/dashboard/agenda" },
   { slug: "etiquetas", href: "/dashboard/etiquetas" },
 ];
@@ -100,6 +101,10 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
 
   if (p.startsWith("/dashboard")) {
     if (p.startsWith("/dashboard/marketing-ops")) return "marketing_ops";
+    // Reporte gerencial de producción: reusa el gate del módulo Proyectos.
+    if (p.startsWith("/dashboard/produccion")) return "proyectos";
+    // Gerencia tenía su gate faltante y caía al fallback "conversaciones" (bug); explícito acá.
+    if (p.startsWith("/dashboard/gerencia")) return "gerencia";
     if (p.startsWith("/dashboard/proyectos")) return "proyectos";
     if (p.startsWith("/dashboard/agenda")) return "agenda";
     if (p.startsWith("/dashboard/conversaciones-finalizadas")) return "conversaciones-finalizadas";

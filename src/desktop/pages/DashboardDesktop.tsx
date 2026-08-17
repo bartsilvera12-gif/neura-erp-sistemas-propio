@@ -2895,7 +2895,14 @@ export default function DashboardPage() {
         />
       )}
 
-      {tab === "proyectos" && <PanelProyectosPanel />}
+      {tab === "proyectos" &&
+        (() => {
+          const { desde: pd, hasta: ph } = getRango(periodo);
+          const ymd = (d: Date) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          const periodoLabel = PERIODO_OPTS.find((o) => o.id === periodo)?.label;
+          return <PanelProyectosPanel desde={ymd(pd)} hasta={ymd(ph)} periodoLabel={periodoLabel} />;
+        })()}
 
     </div>
   );

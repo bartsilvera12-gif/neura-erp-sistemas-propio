@@ -32,6 +32,9 @@ type Panel = {
     proyectos: { id: string; titulo: string; cliente: string; monto: number; fecha: string | null }[];
   }[];
   periodo_ym: string;
+  periodo_filtrado?: boolean;
+  periodo_desde?: string;
+  periodo_hasta?: string;
 };
 
 function fmtFecha(iso: string | null): string {
@@ -71,8 +74,19 @@ function Bar({ value, max, className = "bg-[#4FAEB2]" }: { value: number; max: n
   );
 }
 
-/** Contenido del panel gerencial de proyectos (KPIs + secciones). Sin encabezado de página. */
-export default function PanelProyectosPanel() {
+/**
+ * Contenido del panel gerencial de proyectos (KPIs + secciones). Sin encabezado de página.
+ * Si se pasan `desde`/`hasta` (YYYY-MM-DD), el panel se acota al período POR FECHA DE INGRESO.
+ */
+export default function PanelProyectosPanel({
+  desde,
+  hasta,
+  periodoLabel,
+}: {
+  desde?: string;
+  hasta?: string;
+  periodoLabel?: string;
+}) {
   const [data, setData] = useState<Panel | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -83,7 +97,8 @@ export default function PanelProyectosPanel() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetchWithSupabaseSession("/api/proyectos/panel", { cache: "no-store" });
+        const qs = desde && hasta ? `?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}` : "";
+        const res = await fetchWithSupabaseSession(`/api/proyectos/panel${qs}`, { cache: "no-store" });
         const j = (await res.json()) as { success?: boolean; data?: Panel; error?: string };
         if (!res.ok || j.success !== true || !j.data) throw new Error(j.error ?? `Error ${res.status}`);
         if (!cancel) setData(j.data);
@@ -96,7 +111,7 @@ export default function PanelProyectosPanel() {
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [desde, hasta]);
 
   if (loading) return <div className="py-20 text-center text-sm text-slate-400">Cargando panel…</div>;
   if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
@@ -109,10 +124,16 @@ export default function PanelProyectosPanel() {
 
   return (
     <div className="space-y-5">
+      {data.periodo_filtrado ? (
+        <p className="text-xs text-slate-500">
+          Mostrando <span className="font-semibold text-slate-700">{periodoLabel ?? "el período"}</span> — proyectos
+          por <span className="font-medium">fecha de ingreso</span>. Cambiá el período con el selector de arriba.
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Kpi label="Proyectos" value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
-        <Kpi label="Entregados del mes" value={String(data.kpis.entregados_mes)} sub={fmtGs(data.kpis.entregados_mes_monto)} accent="ok" />
-        <Kpi label="Presupuesto total" value={fmtGs(data.kpis.presupuesto_total)} sub={`${data.kpis.con_presupuesto}/${data.kpis.total} con factura`} accent="money" />
+        <Kpi label={data.periodo_filtrado ? "Proyectos (ingresados)" : "Proyectos"} value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
+        <Kpi label="Entregados del período" value={String(data.kpis.entregados_mes)} sub={fmtGs(data.kpis.entregados_mes_monto)} accent="ok" />
+        <Kpi label="Presupuesto cerrado" value={fmtGs(data.kpis.presupuesto_total)} sub={`${data.kpis.con_presupuesto}/${data.kpis.total} con factura`} accent="money" />
         <Kpi label="Ticket promedio" value={fmtGs(data.kpis.ticket_promedio)} accent="money" />
         <Kpi label="SLA vencidos" value={String(data.kpis.sla_vencidos)} accent={data.kpis.sla_vencidos > 0 ? "danger" : undefined} />
         <Kpi label="En curso" value={String(data.kpis.en_curso)} sub="no entregados" />

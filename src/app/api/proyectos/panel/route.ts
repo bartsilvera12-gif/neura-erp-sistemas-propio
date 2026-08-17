@@ -41,6 +41,15 @@ function ymEnAsuncion(d: Date): string {
     .slice(0, 7);
 }
 
+function ymdEnAsuncion(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Asuncion",
+  }).format(d);
+}
+
 export async function GET(request: Request) {
   const auth = await requireProyectosApiAccess(request);
   if (!auth.ok) {
@@ -63,8 +72,20 @@ export async function GET(request: Request) {
       fetchAll(sb, "proyecto_estado_historial", "proyecto_id, estado_nuevo_id, entered_at, exited_at", empresaId),
     ]);
 
-    // Solo proyectos vigentes (no archivados).
+    // Solo proyectos vigentes (no archivados). `proys` = universo (para el histórico/gráfico).
     const proys = proysRaw.filter((p) => !p.archivado);
+
+    // Período (opcional): filtra el COHORT por FECHA DE INGRESO. Sin período → todo.
+    const url = new URL(request.url);
+    const desdeP = (url.searchParams.get("desde") ?? "").slice(0, 10);
+    const hastaP = (url.searchParams.get("hasta") ?? "").slice(0, 10);
+    const cohortMode = /^\d{4}-\d{2}-\d{2}$/.test(desdeP) && /^\d{4}-\d{2}-\d{2}$/.test(hastaP);
+    const cohort = cohortMode
+      ? proys.filter((p) => {
+          const fi = String(p.fecha_ingreso ?? "").slice(0, 10);
+          return fi && fi >= desdeP && fi <= hastaP;
+        })
+      : proys;
 
     // Tipos.
     const tipoIds = [...new Set(proys.map((p) => String(p.tipo_id ?? "")).filter(Boolean))];
@@ -157,10 +178,12 @@ export async function GET(request: Request) {
     // "Entregado" muestra SOLO lo entregado este mes; los entregados de meses anteriores no se
     // cuentan en el pipeline (se ven en "Entregados por mes"). El resto de estados, tal cual.
     const porEstadoMap = new Map<string, { cantidad: number; presupuesto: number; vencidos: number }>();
-    for (const p of proys) {
+    for (const p of cohort) {
       const eid = String(p.estado_id ?? "");
       const meta = estMeta.get(eid);
-      if (meta?.final && !meta.cancel && entregaYm(String(p.id)) !== ymActual) continue; // entregado viejo → fuera
+      // Sin período: "Entregado" muestra solo el mes en curso. Con período: el cohort ya está
+      // acotado por fecha de ingreso, así que se muestran todos sus estados.
+      if (!cohortMode && meta?.final && !meta.cancel && entregaYm(String(p.id)) !== ymActual) continue;
       const agg = porEstadoMap.get(eid) ?? { cantidad: 0, presupuesto: 0, vencidos: 0 };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);
@@ -183,7 +206,7 @@ export async function GET(request: Request) {
 
     // Por asesor.
     const porAseMap = new Map<string, { cantidad: number; presupuesto: number }>();
-    for (const p of proys) {
+    for (const p of cohort) {
       const k = String(p.responsable_comercial_id ?? "");
       const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0 };
       agg.cantidad += 1;
@@ -200,7 +223,7 @@ export async function GET(request: Request) {
 
     // Por tipo.
     const porTipoMap = new Map<string, { cantidad: number; presupuesto: number }>();
-    for (const p of proys) {
+    for (const p of cohort) {
       const k = String(p.tipo_id ?? "");
       const agg = porTipoMap.get(k) ?? { cantidad: 0, presupuesto: 0 };
       agg.cantidad += 1;
@@ -213,7 +236,7 @@ export async function GET(request: Request) {
 
     // Por rubro (brief_data.tipo_web).
     const porRubroMap = new Map<string, number>();
-    for (const p of proys) {
+    for (const p of cohort) {
       const bd = p.brief_data && typeof p.brief_data === "object" && !Array.isArray(p.brief_data)
         ? (p.brief_data as Record<string, unknown>)
         : {};
@@ -272,25 +295,35 @@ export async function GET(request: Request) {
       const proyectos = detalleMes(ym);
       return { ym, cantidad: proyectos.length, monto: proyectos.reduce((a, x) => a + x.monto, 0), proyectos };
     });
-    const entregadosMesSet = entregadoMesProy.get(ymActual) ?? new Set<string>();
+    // Entregados DEL PERÍODO (por fecha de entrega). Sin período → mes en curso.
+    const [yyE, mmE] = ymActual.split("-").map((x) => parseInt(x, 10));
+    const lastDayE = new Date(yyE, mmE, 0).getDate();
+    const effDesde = cohortMode ? desdeP : `${ymActual}-01`;
+    const effHasta = cohortMode ? hastaP : `${ymActual}-${String(lastDayE).padStart(2, "0")}`;
+    let entregadosPeriodoN = 0;
     let entregados_mes_monto = 0;
-    for (const pid of entregadosMesSet) {
+    for (const [pid, ms] of entregaMs) {
       const p = proyById.get(pid);
-      if (p) entregados_mes_monto += presupuestoDe(p);
+      if (!p) continue; // solo no archivados
+      const d = ymdEnAsuncion(new Date(ms));
+      if (d >= effDesde && d <= effHasta) {
+        entregadosPeriodoN += 1;
+        entregados_mes_monto += presupuestoDe(p);
+      }
     }
 
-    // KPIs globales.
-    const presupuestoTotal = proys.reduce((a, p) => a + presupuestoDe(p), 0);
-    const conPresupuesto = proys.filter((p) => presupuestoDe(p) > 0).length;
-    const activosNoFinal = proys.filter((p) => !(estMeta.get(String(p.estado_id ?? ""))?.final)).length;
+    // KPIs — sobre el COHORT (proyectos ingresados en el período); entregados por fecha de entrega.
+    const presupuestoTotal = cohort.reduce((a, p) => a + presupuestoDe(p), 0);
+    const conPresupuesto = cohort.filter((p) => presupuestoDe(p) > 0).length;
+    const activosNoFinal = cohort.filter((p) => !(estMeta.get(String(p.estado_id ?? ""))?.final)).length;
     const vencidosTotal = por_estado.reduce((a, e) => a + e.sla_vencidos, 0);
 
     return NextResponse.json(
       successResponse({
         kpis: {
-          total: proys.length,
+          total: cohort.length,
           en_curso: activosNoFinal,
-          entregados_mes: entregadosMesSet.size,
+          entregados_mes: entregadosPeriodoN,
           entregados_mes_monto: Math.round(entregados_mes_monto),
           presupuesto_total: Math.round(presupuestoTotal),
           con_presupuesto: conPresupuesto,
@@ -303,6 +336,9 @@ export async function GET(request: Request) {
         por_rubro,
         entregados_por_mes,
         periodo_ym: ymActual,
+        periodo_filtrado: cohortMode,
+        periodo_desde: effDesde,
+        periodo_hasta: effHasta,
       })
     );
   } catch (e) {

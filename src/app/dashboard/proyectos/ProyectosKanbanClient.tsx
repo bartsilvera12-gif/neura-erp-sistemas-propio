@@ -991,6 +991,29 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Link
+            href="/dashboard/proyectos/panel"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[#4FAEB2]/40 bg-[#4FAEB2]/10 px-3 py-2 text-xs font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/20"
+            title="Panel gerencial: estado de la producción, plata cerrada, por asesor y SLA"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+            >
+              <path d="M3 3v18h18" />
+              <rect x="7" y="10" width="3" height="7" />
+              <rect x="12" y="6" width="3" height="11" />
+              <rect x="17" y="13" width="3" height="4" />
+            </svg>
+            Panel
+          </Link>
+          <Link
             href="/dashboard/proyectos/paginas"
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
             title="Páginas: catálogo de las webs que hicimos (cliente, vendedor, rubro y acceso)"

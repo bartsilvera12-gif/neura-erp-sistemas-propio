@@ -64,7 +64,7 @@ export async function GET(request: Request) {
       fetchAll(
         sb,
         "proyectos",
-        "id, titulo, cliente_id, tipo_id, estado_id, responsable_comercial_id, brief_data, fecha_ingreso, fecha_prometida, archivado, created_at",
+        "id, titulo, cliente_id, tipo_id, estado_id, responsable_comercial_id, responsable_tecnico_id, brief_data, fecha_ingreso, fecha_prometida, archivado, created_at",
         empresaId
       ),
       fetchAll(sb, "proyecto_estados", "id, nombre, codigo, sort_order, es_estado_final, sla_horas_objetivo, cuenta_sla", empresaId),
@@ -96,8 +96,15 @@ export async function GET(request: Request) {
       for (const t of (data ?? []) as Record<string, unknown>[]) tipoNombre.set(String(t.id), String(t.nombre ?? ""));
     }
 
-    // Vendedores (nombres).
-    const comIds = [...new Set(proys.map((p) => String(p.responsable_comercial_id ?? "")).filter(Boolean))];
+    // Nombres de usuarios (comercial + técnico).
+    const comIds = [
+      ...new Set(
+        proys.flatMap((p) => [
+          String(p.responsable_comercial_id ?? ""),
+          String(p.responsable_tecnico_id ?? ""),
+        ]).filter(Boolean)
+      ),
+    ];
     const comNombre = new Map<string, string>();
     for (let i = 0; i < comIds.length; i += 120) {
       const slice = comIds.slice(i, i + 120);
@@ -221,6 +228,23 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => b.presupuesto - a.presupuesto || b.cantidad - a.cantidad);
 
+    // Por técnico (responsable técnico) — qué proyectos tiene asociados cada uno.
+    const porTecMap = new Map<string, { cantidad: number; presupuesto: number }>();
+    for (const p of cohort) {
+      const k = String(p.responsable_tecnico_id ?? "");
+      const agg = porTecMap.get(k) ?? { cantidad: 0, presupuesto: 0 };
+      agg.cantidad += 1;
+      agg.presupuesto += presupuestoDe(p);
+      porTecMap.set(k, agg);
+    }
+    const por_tecnico = [...porTecMap.entries()]
+      .map(([k, v]) => ({
+        tecnico: k ? comNombre.get(k) || k.slice(0, 8) : "Sin asignar",
+        cantidad: v.cantidad,
+        presupuesto: Math.round(v.presupuesto),
+      }))
+      .sort((a, b) => b.cantidad - a.cantidad || b.presupuesto - a.presupuesto);
+
     // Por tipo.
     const porTipoMap = new Map<string, { cantidad: number; presupuesto: number }>();
     for (const p of cohort) {
@@ -332,6 +356,7 @@ export async function GET(request: Request) {
         },
         por_estado,
         por_asesor,
+        por_tecnico,
         por_tipo,
         por_rubro,
         entregados_por_mes,

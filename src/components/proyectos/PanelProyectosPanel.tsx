@@ -23,6 +23,7 @@ type Panel = {
     sla_configurado: boolean;
   }[];
   por_asesor: { asesor: string; cantidad: number; presupuesto: number }[];
+  por_tecnico: { tecnico: string; cantidad: number; presupuesto: number }[];
   por_tipo: { tipo: string; cantidad: number; presupuesto: number }[];
   por_rubro: { rubro: string; cantidad: number }[];
   entregados_por_mes: {
@@ -119,6 +120,7 @@ export default function PanelProyectosPanel({
 
   const maxEstadoCant = Math.max(1, ...data.por_estado.map((e) => e.cantidad));
   const maxAsePres = Math.max(1, ...data.por_asesor.map((a) => a.presupuesto));
+  const maxTecCant = Math.max(1, ...data.por_tecnico.map((t) => t.cantidad));
   const maxMesCant = Math.max(1, ...data.entregados_por_mes.map((m) => m.cantidad));
   const maxRubro = Math.max(1, ...data.por_rubro.map((r) => r.cantidad));
 
@@ -191,6 +193,27 @@ export default function PanelProyectosPanel({
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">Por técnico</h2>
+        {data.por_tecnico.length === 0 ? (
+          <p className="text-xs text-slate-400">Sin proyectos con técnico en este período.</p>
+        ) : (
+          <div className="space-y-2">
+            {data.por_tecnico.map((t) => (
+              <div key={t.tecnico} className="min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium text-slate-800">{t.tecnico}</span>
+                  <span className="shrink-0 text-xs text-slate-500">
+                    {t.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(t.presupuesto)}</span>
+                  </span>
+                </div>
+                <div className="mt-1"><Bar value={t.cantidad} max={maxTecCant} className="bg-[#4FAEB2]/80" /></div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

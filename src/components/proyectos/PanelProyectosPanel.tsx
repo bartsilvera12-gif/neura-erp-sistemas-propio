@@ -87,7 +87,9 @@ function ProyectosDetalleTabla({ proyectos }: { proyectos: DetalleProy[] }) {
                   {p.estado}
                 </span>
               </td>
-              <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">{fmtGs(p.presupuesto)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">
+                {p.presupuesto > 0 ? fmtGs(p.presupuesto) : <span className="text-slate-300">—</span>}
+              </td>
               <td className="whitespace-nowrap px-3 py-2 text-right text-[11px]">
                 <span className={p.sla_vencido ? "font-semibold text-rose-600" : "text-slate-400"}>{p.sla_texto}</span>
               </td>
@@ -95,6 +97,12 @@ function ProyectosDetalleTabla({ proyectos }: { proyectos: DetalleProy[] }) {
           ))}
         </tbody>
       </table>
+      {proyectos.some((p) => p.presupuesto <= 0) ? (
+        <p className="px-3 py-1.5 text-[10px] text-slate-400">
+          &quot;—&quot; = sin presupuesto atribuido (cliente sin factura, o ya contado en otro proyecto del mismo
+          cliente).
+        </p>
+      ) : null}
     </div>
   );
 }

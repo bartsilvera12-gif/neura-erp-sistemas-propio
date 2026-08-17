@@ -139,8 +139,30 @@ export async function GET(request: Request) {
       if (esSus) continue;
       presupuestoPorCliente.set(cid, Number(f.monto) || 0);
     }
-    const presupuestoDe = (p: Record<string, unknown>) =>
-      presupuestoPorCliente.get(String(p.cliente_id ?? "")) ?? 0;
+    // Presupuesto por PROYECTO: la venta del cliente (primera factura) se cuenta UNA sola vez, en
+    // su proyecto más antiguo (por fecha de ingreso). Si el cliente tiene varios proyectos, los
+    // demás no vuelven a sumar (evita duplicar la misma venta en asesor/técnico/estado/total).
+    const presupuestoPorProyecto = new Map<string, number>();
+    {
+      const porCli = new Map<string, Record<string, unknown>[]>();
+      for (const p of proys) {
+        const cid = String(p.cliente_id ?? "");
+        if (!cid) continue;
+        const arr = porCli.get(cid) ?? [];
+        arr.push(p);
+        porCli.set(cid, arr);
+      }
+      for (const [cid, ps] of porCli) {
+        const monto = presupuestoPorCliente.get(cid) ?? 0;
+        ps.sort(
+          (a, b) =>
+            String(a.fecha_ingreso ?? "").localeCompare(String(b.fecha_ingreso ?? "")) ||
+            String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))
+        );
+        ps.forEach((p, i) => presupuestoPorProyecto.set(String(p.id), i === 0 ? monto : 0));
+      }
+    }
+    const presupuestoDe = (p: Record<string, unknown>) => presupuestoPorProyecto.get(String(p.id)) ?? 0;
 
     // Estados: nombre, orden, final, sla objetivo.
     type EstMeta = { nombre: string; orden: number; final: boolean; cancel: boolean; slaHoras: number | null; cuentaSla: boolean };

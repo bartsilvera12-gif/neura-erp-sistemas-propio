@@ -136,17 +136,9 @@ function Bar({ value, max, className = "bg-[#4FAEB2]" }: { value: number; max: n
 
 /**
  * Contenido del panel gerencial de proyectos (KPIs + secciones). Sin encabezado de página.
- * Si se pasan `desde`/`hasta` (YYYY-MM-DD), el panel se acota al período POR FECHA DE INGRESO.
+ * Muestra TODO el universo de proyectos no archivados (sin filtro por mes) para organizar al equipo.
  */
-export default function PanelProyectosPanel({
-  desde,
-  hasta,
-  periodoLabel,
-}: {
-  desde?: string;
-  hasta?: string;
-  periodoLabel?: string;
-}) {
+export default function PanelProyectosPanel() {
   const [data, setData] = useState<Panel | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -159,8 +151,7 @@ export default function PanelProyectosPanel({
     (async () => {
       setLoading(true);
       try {
-        const qs = desde && hasta ? `?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}` : "";
-        const res = await fetchWithSupabaseSession(`/api/proyectos/panel${qs}`, { cache: "no-store" });
+        const res = await fetchWithSupabaseSession(`/api/proyectos/panel`, { cache: "no-store" });
         const j = (await res.json()) as { success?: boolean; data?: Panel; error?: string };
         if (!res.ok || j.success !== true || !j.data) throw new Error(j.error ?? `Error ${res.status}`);
         if (!cancel) setData(j.data);
@@ -173,7 +164,7 @@ export default function PanelProyectosPanel({
     return () => {
       cancel = true;
     };
-  }, [desde, hasta]);
+  }, []);
 
   if (loading) return <div className="py-20 text-center text-sm text-slate-400">Cargando panel…</div>;
   if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
@@ -187,15 +178,12 @@ export default function PanelProyectosPanel({
 
   return (
     <div className="space-y-5">
-      {data.periodo_filtrado ? (
-        <p className="text-xs text-slate-500">
-          Mostrando <span className="font-semibold text-slate-700">{periodoLabel ?? "el período"}</span> — proyectos
-          por <span className="font-medium">fecha de ingreso</span>. Cambiá el período con el selector de arriba.
-        </p>
-      ) : null}
+      <p className="text-xs text-slate-500">
+        Vista completa — <span className="font-medium">todos los proyectos</span> activos (sin filtro por mes).
+      </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Kpi label={data.periodo_filtrado ? "Proyectos (ingresados)" : "Proyectos"} value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
-        <Kpi label="Entregados del período" value={String(data.kpis.entregados_mes)} sub={fmtGs(data.kpis.entregados_mes_monto)} accent="ok" />
+        <Kpi label="Proyectos" value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
+        <Kpi label="Entregados (mes)" value={String(data.kpis.entregados_mes)} sub={fmtGs(data.kpis.entregados_mes_monto)} accent="ok" />
         <Kpi label="Presupuesto cerrado" value={fmtGs(data.kpis.presupuesto_total)} sub={`${data.kpis.con_presupuesto}/${data.kpis.total} con factura`} accent="money" />
         <Kpi label="Ticket promedio" value={fmtGs(data.kpis.ticket_promedio)} accent="money" />
         <Kpi label="SLA vencidos" value={String(data.kpis.sla_vencidos)} accent={data.kpis.sla_vencidos > 0 ? "danger" : undefined} />
@@ -271,7 +259,7 @@ export default function PanelProyectosPanel({
         <h2 className="mb-1 text-sm font-semibold text-slate-900">Por técnico</h2>
         <p className="mb-3 text-[11px] text-slate-400">Tocá un técnico para ver sus proyectos (etapa, presupuesto y SLA).</p>
         {data.por_tecnico.length === 0 ? (
-          <p className="text-xs text-slate-400">Sin proyectos con técnico en este período.</p>
+          <p className="text-xs text-slate-400">Sin proyectos con técnico asignado.</p>
         ) : (
           <div className="space-y-2">
             {data.por_tecnico.map((t) => {

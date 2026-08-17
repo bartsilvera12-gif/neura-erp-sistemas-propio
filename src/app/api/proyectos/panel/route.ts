@@ -206,11 +206,6 @@ export async function GET(request: Request) {
         if (prev == null || enteredMs > prev) entregaMs.set(pid, enteredMs);
       }
     }
-    const entregaYm = (pid: string): string | null => {
-      const ms = entregaMs.get(pid);
-      return ms != null ? ymEnAsuncion(new Date(ms)) : null;
-    };
-
     // ── Agregaciones ──
     const now = Date.now();
     const ymActual = ymEnAsuncion(new Date());
@@ -248,16 +243,13 @@ export async function GET(request: Request) {
       };
     };
 
-    // Por estado (cantidad + presupuesto) + SLA vencidos.
-    // "Entregado" muestra SOLO lo entregado este mes; los entregados de meses anteriores no se
-    // cuentan en el pipeline (se ven en "Entregados por mes"). El resto de estados, tal cual.
+    // Por estado (cantidad + presupuesto) + SLA vencidos. Se muestra TODO el universo de proyectos
+    // no archivados (todos los estados, incluidos los entregados de cualquier mes). El desglose
+    // mensual de entregas vive en "Entregados por mes".
     const porEstadoMap = new Map<string, { cantidad: number; presupuesto: number; vencidos: number }>();
     for (const p of cohort) {
       const eid = String(p.estado_id ?? "");
       const meta = estMeta.get(eid);
-      // Sin período: "Entregado" muestra solo el mes en curso. Con período: el cohort ya está
-      // acotado por fecha de ingreso, así que se muestran todos sus estados.
-      if (!cohortMode && meta?.final && !meta.cancel && entregaYm(String(p.id)) !== ymActual) continue;
       const agg = porEstadoMap.get(eid) ?? { cantidad: 0, presupuesto: 0, vencidos: 0 };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);

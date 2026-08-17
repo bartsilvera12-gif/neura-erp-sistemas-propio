@@ -1,0 +1,218 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+
+type Panel = {
+  kpis: {
+    total: number;
+    en_curso: number;
+    entregados_mes: number;
+    entregados_mes_monto: number;
+    presupuesto_total: number;
+    con_presupuesto: number;
+    ticket_promedio: number;
+    sla_vencidos: number;
+  };
+  por_estado: {
+    estado: string;
+    es_final: boolean;
+    cantidad: number;
+    presupuesto: number;
+    sla_vencidos: number;
+    sla_configurado: boolean;
+  }[];
+  por_asesor: { asesor: string; cantidad: number; presupuesto: number }[];
+  por_tipo: { tipo: string; cantidad: number; presupuesto: number }[];
+  por_rubro: { rubro: string; cantidad: number }[];
+  entregados_por_mes: { ym: string; cantidad: number; monto: number }[];
+  periodo_ym: string;
+};
+
+function fmtGs(n: number): string {
+  return `₲ ${new Intl.NumberFormat("es-PY", { maximumFractionDigits: 0 }).format(n || 0)}`;
+}
+function mesLabel(ym: string): string {
+  const [y, m] = ym.split("-");
+  const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const mi = parseInt(m ?? "", 10);
+  return `${meses[mi - 1] ?? m} ${(y ?? "").slice(2)}`;
+}
+
+function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: "danger" | "money" | "ok" }) {
+  const color =
+    accent === "danger" ? "text-rose-700" : accent === "money" ? "text-[#3F8E91]" : accent === "ok" ? "text-emerald-700" : "text-slate-900";
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+      <p className={`mt-1 text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+      {sub ? <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p> : null}
+    </div>
+  );
+}
+
+function Bar({ value, max, className = "bg-[#4FAEB2]" }: { value: number; max: number; className?: string }) {
+  const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+  return (
+    <div className="h-2 w-full rounded-full bg-slate-100">
+      <div className={`h-2 rounded-full ${className}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+/** Contenido del panel gerencial de proyectos (KPIs + secciones). Sin encabezado de página. */
+export default function PanelProyectosPanel() {
+  const [data, setData] = useState<Panel | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetchWithSupabaseSession("/api/proyectos/panel", { cache: "no-store" });
+        const j = (await res.json()) as { success?: boolean; data?: Panel; error?: string };
+        if (!res.ok || j.success !== true || !j.data) throw new Error(j.error ?? `Error ${res.status}`);
+        if (!cancel) setData(j.data);
+      } catch (e) {
+        if (!cancel) setErr(e instanceof Error ? e.message : "Error al cargar");
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  if (loading) return <div className="py-20 text-center text-sm text-slate-400">Cargando panel…</div>;
+  if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
+  if (!data) return null;
+
+  const maxEstadoCant = Math.max(1, ...data.por_estado.map((e) => e.cantidad));
+  const maxAsePres = Math.max(1, ...data.por_asesor.map((a) => a.presupuesto));
+  const maxMesCant = Math.max(1, ...data.entregados_por_mes.map((m) => m.cantidad));
+  const maxRubro = Math.max(1, ...data.por_rubro.map((r) => r.cantidad));
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Kpi label="Proyectos" value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
+        <Kpi label="Entregados del mes" value={String(data.kpis.entregados_mes)} sub={fmtGs(data.kpis.entregados_mes_monto)} accent="ok" />
+        <Kpi label="Presupuesto total" value={fmtGs(data.kpis.presupuesto_total)} sub={`${data.kpis.con_presupuesto}/${data.kpis.total} con factura`} accent="money" />
+        <Kpi label="Ticket promedio" value={fmtGs(data.kpis.ticket_promedio)} accent="money" />
+        <Kpi label="SLA vencidos" value={String(data.kpis.sla_vencidos)} accent={data.kpis.sla_vencidos > 0 ? "danger" : undefined} />
+        <Kpi label="En curso" value={String(data.kpis.en_curso)} sub="no entregados" />
+      </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">Por estado — cantidad y presupuesto</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50/70">
+              <tr>
+                {["Estado", "Proyectos", "", "Presupuesto", "SLA vencidos"].map((h, i) => (
+                  <th key={i} className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 ${i === 3 || i === 4 ? "text-right" : "text-left"}`}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.por_estado.map((e) => (
+                <tr key={e.estado} className="hover:bg-slate-50/60">
+                  <td className="px-3 py-2.5 font-medium text-slate-800">
+                    {e.estado}
+                    {e.es_final ? <span className="ml-2 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">final</span> : null}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-slate-900">{e.cantidad}</td>
+                  <td className="px-3 py-2.5 w-[30%]"><Bar value={e.cantidad} max={maxEstadoCant} className={e.es_final ? "bg-emerald-400" : "bg-[#4FAEB2]"} /></td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#3F8E91]">{fmtGs(e.presupuesto)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    {e.sla_configurado ? (
+                      <span className={e.sla_vencidos > 0 ? "font-semibold text-rose-600" : "text-slate-400"}>{e.sla_vencidos}</span>
+                    ) : (
+                      <span className="text-[11px] text-slate-300">sin SLA</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">Por asesor comercial</h2>
+        <div className="space-y-2">
+          {data.por_asesor.map((a) => (
+            <div key={a.asesor} className="min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-medium text-slate-800">{a.asesor}</span>
+                <span className="shrink-0 text-xs text-slate-500">
+                  {a.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(a.presupuesto)}</span>
+                </span>
+              </div>
+              <div className="mt-1"><Bar value={a.presupuesto} max={maxAsePres} /></div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Por tipo</h2>
+          <div className="space-y-2">
+            {data.por_tipo.map((t) => (
+              <div key={t.tipo} className="flex items-center justify-between text-sm">
+                <span className="text-slate-700">{t.tipo}</span>
+                <span className="text-slate-500">
+                  {t.cantidad} · <span className="font-semibold text-[#3F8E91]">{fmtGs(t.presupuesto)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Por rubro (web)</h2>
+          <div className="space-y-1.5">
+            {data.por_rubro.slice(0, 10).map((r) => (
+              <div key={r.rubro} className="min-w-0">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate text-slate-700">{r.rubro}</span>
+                  <span className="shrink-0 tabular-nums text-slate-500">{r.cantidad}</span>
+                </div>
+                <div className="mt-0.5"><Bar value={r.cantidad} max={maxRubro} className="bg-[#4FAEB2]/70" /></div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">Entregados por mes (últimos 6)</h2>
+        <div className="flex items-end justify-between gap-2">
+          {data.entregados_por_mes.map((m) => {
+            const h = maxMesCant > 0 ? Math.max(6, Math.round((m.cantidad / maxMesCant) * 90)) : 6;
+            return (
+              <div key={m.ym} className="flex flex-1 flex-col items-center gap-1">
+                <span className="text-[11px] font-semibold tabular-nums text-slate-700">{m.cantidad}</span>
+                <div className="flex h-[90px] w-full items-end">
+                  <div className="mx-auto w-8 rounded-t-md bg-[#4FAEB2]" style={{ height: `${h}px` }} title={fmtGs(m.monto)} />
+                </div>
+                <span className="text-[10px] text-slate-500">{mesLabel(m.ym)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-slate-400">La barra muestra la cantidad; al pasar el cursor ves el presupuesto entregado del mes.</p>
+      </section>
+
+      <p className="text-[11px] text-slate-400">
+        Presupuesto = monto de la primera factura de venta (no suscripción) de cada cliente, leído en vivo. Los
+        proyectos sin factura aún ({data.kpis.total - data.kpis.con_presupuesto}) no suman plata.
+      </p>
+    </div>
+  );
+}

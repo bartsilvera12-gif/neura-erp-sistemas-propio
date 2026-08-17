@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import PanelProyectosPanel from "@/components/proyectos/PanelProyectosPanel";
 import { getConfig } from "@/lib/config/storage";
 import { getUsuarios } from "@/lib/usuarios/storage";
 import { getUsuariosActivosEmpresa } from "@/lib/usuarios/empresa";
@@ -2520,7 +2521,7 @@ const PERIODO_OPTS: { id: Periodo; label: string }[] = [
   { id: "anio", label: "Año"       },
 ];
 
-const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas"];
+const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas", "proyectos"];
 
 type DashScope =
   | { kind: "pending" }
@@ -2602,8 +2603,11 @@ export default function DashboardPage() {
     if (dashScope.kind !== "scoped") return;
     const params = new URLSearchParams(window.location.search);
     const t = params.get("tab");
+    // "proyectos" siempre está disponible (se agrega aparte del scope de DB).
     const next =
-      t && isDashboardTabSlug(t) && dashScope.tabs.includes(t) ? t : dashScope.defaultTab;
+      t && isDashboardTabSlug(t) && (t === "proyectos" || dashScope.tabs.includes(t))
+        ? t
+        : dashScope.defaultTab;
     setTab(next);
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", `?tab=${next}`);
@@ -2660,7 +2664,9 @@ export default function DashboardPage() {
   const mapNombreTipoServicio = useMapNombreTipoServicioCatalogo(clientes);
   const nivel = usuarioActivo?.nivel ?? "administrador";
 
-  const effectiveTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
+  const baseTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
+  // "Proyectos" (panel gerencial) siempre disponible en el dashboard.
+  const effectiveTabs: TabDash[] = baseTabs.includes("proyectos") ? baseTabs : [...baseTabs, "proyectos"];
   const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
 
   const TAB_META: Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }> = {
@@ -2668,6 +2674,17 @@ export default function DashboardPage() {
     financiero: { label: "Financiero", Icon: Icon.Financiero },
     inventario: { label: "Inventario", Icon: Icon.Inventario },
     ventas: { label: "Ventas", Icon: Icon.Ventas },
+    proyectos: {
+      label: "Proyectos",
+      Icon: ({ className = "h-4 w-4" }: IconProps) => (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+          <path d="M3 3v18h18" />
+          <rect x="7" y="10" width="3" height="7" />
+          <rect x="12" y="6" width="3" height="11" />
+          <rect x="17" y="13" width="3" height="4" />
+        </svg>
+      ),
+    },
   };
 
   if (!config) {
@@ -2877,6 +2894,8 @@ export default function DashboardPage() {
           periodo={periodo}
         />
       )}
+
+      {tab === "proyectos" && <PanelProyectosPanel />}
 
     </div>
   );

@@ -312,7 +312,11 @@ export function FancySelect({
             width: pos.width,
             top: pos.top,
             bottom: pos.bottom,
-            zIndex: 70,
+            // El popover cuelga de `body` (portal), así que compite en el stacking
+            // context raíz contra los modales (que llegan a z-[120]) y el loader
+            // (z-[200]). Debe quedar SIEMPRE por encima: un dropdown que el usuario
+            // acaba de abrir tapado por su propio modal = "no se despliega nada".
+            zIndex: 1000,
           }}
           // El portal cuelga de `body`, fuera del modal o la fila que lo abrió.
           // Sin frenar la propagación, los cierres por "click afuera" de esos

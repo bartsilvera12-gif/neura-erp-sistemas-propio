@@ -373,7 +373,11 @@ export default function ProyectoNuevoForm({
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {/* whatsapp_contacto se pide arriba (junto a Fecha prometida), autocompletado. */}
-              {PROYECTO_DATOS_BRIEF_FIELDS.filter((f) => f.key !== "whatsapp_contacto").map((f) => {
+              {/* `esqueleto_entregado` se marca después, desde la pestaña Datos: un
+                  proyecto que se está creando todavía no tiene esqueleto entregado. */}
+              {PROYECTO_DATOS_BRIEF_FIELDS.filter(
+                (f) => f.key !== "whatsapp_contacto" && f.key !== "esqueleto_entregado"
+              ).map((f) => {
                 // Rubro del negocio: buscador inteligente con lista canónica (antes texto libre).
                 if (f.key === "tipo_web") {
                   return (

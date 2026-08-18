@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, CheckCircle2, ClipboardList, XCircle } from "lucide-react";
+import { AlarmClock, Bell, CheckCircle2, ClipboardList, TimerOff, XCircle } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { fechaRelativa } from "@/app/dashboard/proyectos/components/qa/ui";
 
-type TipoNotificacion = "qa_novedad" | "qa_aprobado" | "qa_rechazado";
+type TipoNotificacion =
+  | "qa_novedad"
+  | "qa_aprobado"
+  | "qa_rechazado"
+  | "esqueleto_por_vencer"
+  | "esqueleto_vencido";
 
 type Notificacion = {
   id: string;
@@ -19,6 +24,11 @@ type Notificacion = {
   agrupadas: number;
   leida_at: string | null;
   created_at: string;
+  /**
+   * Aviso calculado en vivo por la API, sin fila en la base (compromiso de
+   * esqueleto). No se puede marcar leído: se apaga cuando el proyecto avanza.
+   */
+  derivada?: boolean;
 };
 
 type ApiResp = {
@@ -57,12 +67,24 @@ const ESTILO_TIPO: Record<
     wrap: "bg-rose-50 text-rose-600",
     label: "QA rechazó",
   },
+  esqueleto_por_vencer: {
+    icon: AlarmClock,
+    wrap: "bg-amber-50 text-amber-600",
+    label: "Esqueleto por vencer",
+  },
+  esqueleto_vencido: {
+    icon: TimerOff,
+    wrap: "bg-rose-50 text-rose-600",
+    label: "Esqueleto vencido",
+  },
 };
 
 export default function NotificacionesBell() {
   const [abierto, setAbierto] = useState(false);
   const [items, setItems] = useState<Notificacion[]>([]);
   const [noLeidas, setNoLeidas] = useState(0);
+  /** Cuántos de los no leídos son avisos derivados (no se pueden marcar). */
+  const derivadasRef = useRef(0);
   const [cargando, setCargando] = useState(false);
   const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -78,6 +100,7 @@ export default function NotificacionesBell() {
       if (res.ok && j?.success && j.data) {
         setItems(j.data.notificaciones);
         setNoLeidas(j.data.no_leidas);
+        derivadasRef.current = j.data.notificaciones.filter((n) => n.derivada).length;
       }
     } catch {
       // Sin conexión el header sigue funcionando: se reintenta en el próximo poll.
@@ -161,8 +184,13 @@ export default function NotificacionesBell() {
     async (payload: { ids?: string[]; todas?: boolean }) => {
       // Optimista: el contador baja al instante y la recarga confirma.
       if (payload.todas) {
-        setItems((prev) => prev.map((n) => ({ ...n, leida_at: n.leida_at ?? new Date().toISOString() })));
-        setNoLeidas(0);
+        // Los avisos derivados no se marcan: siguen encendidos hasta que el
+        // proyecto avanza. Marcarlos acá sólo los apagaría hasta la recarga.
+        setItems((prev) =>
+          prev.map((n) => (n.derivada ? n : { ...n, leida_at: n.leida_at ?? new Date().toISOString() }))
+        );
+        // Quedan encendidos los avisos derivados, que no se apagan a mano.
+        setNoLeidas(derivadasRef.current);
       } else if (payload.ids && payload.ids.length > 0) {
         const ids = payload.ids;
         const set = new Set(ids);
@@ -229,6 +257,9 @@ export default function NotificacionesBell() {
                 const estilo = ESTILO_TIPO[n.tipo] ?? ESTILO_TIPO.qa_novedad;
                 const Icono = estilo.icon;
                 const noLeida = n.leida_at == null;
+                // Los avisos derivados no tienen fila: mandar su id a
+                // marcar-leidas rompería la consulta (no es un uuid).
+                const marcable = noLeida && !n.derivada;
                 const contenido = (
                   <div className={`flex gap-3 px-3.5 py-3 ${noLeida ? "bg-sky-50/40" : ""}`}>
                     <span
@@ -268,7 +299,7 @@ export default function NotificacionesBell() {
                         href={`/dashboard/proyectos/${n.proyecto_id}`}
                         onClick={() => {
                           setAbierto(false);
-                          if (noLeida) void marcarLeidas({ ids: [n.id] });
+                          if (marcable) void marcarLeidas({ ids: [n.id] });
                         }}
                         className="block transition-colors hover:bg-slate-50"
                       >
@@ -277,7 +308,7 @@ export default function NotificacionesBell() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => noLeida && void marcarLeidas({ ids: [n.id] })}
+                        onClick={() => marcable && void marcarLeidas({ ids: [n.id] })}
                         className="block w-full text-left transition-colors hover:bg-slate-50"
                       >
                         {contenido}

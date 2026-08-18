@@ -4,37 +4,51 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import {
-  PROYECTO_ETAPAS,
-  etapaColor,
-  etapaLabel,
-  type ProyectoEtapaDesarrollo,
-} from "@/lib/proyectos/etapas-desarrollo";
+import { type ProyectoEtapaDesarrollo } from "@/lib/proyectos/etapas-desarrollo";
 import {
   QA_ETAPAS,
   qaEtapaColor,
   qaEtapaLabel,
   type ProyectoEtapaQA,
 } from "@/lib/proyectos/etapas-qa";
+import { formatearDuracion, enJornadas, msLaborables } from "@/lib/proyectos/reloj-laboral";
+import { textoEsqueleto } from "@/lib/proyectos/esqueleto";
+
+type EstadoTableroDTO = { id: string; codigo: string; nombre: string; color: string };
 
 type ActivoItem = {
   id: string;
   titulo: string;
   cliente: string;
   tipo: string;
+  tipo_codigo: string;
   prioridad: string;
-  etapa_desarrollo: ProyectoEtapaDesarrollo;
-  dias: number | null;
-  dias_en_etapa: number | null;
+  estado_id: string;
+  estado_codigo: string;
+  estado_nombre: string;
+  estado_color: string;
+  /** Horario laboral acumulado al momento de la respuesta; el cliente lo hace correr. */
+  ms_trabajados: number | null;
   desde: string | null;
   fecha_prometida: string | null;
   bloqueado: boolean;
   pausado: boolean;
   pausa_motivo: string | null;
   pausado_at: string | null;
+  esqueleto: "ok" | "por_vencer" | "vencido" | null;
+  esqueleto_restante_ms: number | null;
   qa_responsable_id: string | null;
   qa_responsable_nombre: string | null;
   qa_etapa: ProyectoEtapaQA | null;
+};
+
+type SeccionEstado = {
+  estado_id: string;
+  codigo: string;
+  nombre: string;
+  color: string;
+  cantidad: number;
+  proyectos: ActivoItem[];
 };
 
 type GrupoActivo = {
@@ -42,7 +56,8 @@ type GrupoActivo = {
   tecnico_nombre: string;
   cantidad: number;
   pausados: number;
-  proyectos: ActivoItem[];
+  alertas_esqueleto: number;
+  secciones: SeccionEstado[];
 };
 
 type QAItem = {
@@ -52,7 +67,7 @@ type QAItem = {
   tipo: string;
   qa_etapa: ProyectoEtapaQA;
   etapa_desarrollo: ProyectoEtapaDesarrollo;
-  dias: number | null;
+  ms_trabajados: number | null;
   desde: string | null;
   fecha_prometida: string | null;
   pausado: boolean;
@@ -73,14 +88,14 @@ type FinalizadoItem = {
   cliente: string;
   tipo: string;
   finalizado_at: string;
-  dias_tardados: number | null;
+  ms_trabajados: number | null;
 };
 
 type GrupoFinalizado = {
   tecnico_id: string | null;
   tecnico_nombre: string;
   cantidad: number;
-  promedio_dias: number | null;
+  promedio_ms: number | null;
   proyectos: FinalizadoItem[];
 };
 
@@ -88,6 +103,8 @@ type TareasEquipoData = {
   mes: string;
   desde: string;
   hasta: string;
+  generado_at: string;
+  estados_tablero: EstadoTableroDTO[];
   activos_total: number;
   activos_por_programador: GrupoActivo[];
   qa_total: number;
@@ -103,9 +120,6 @@ type TareasEquipoData = {
 type Usuario = { id: string; nombre?: string | null; es_qa?: boolean };
 
 type ApiResponse = { success: boolean; data?: TareasEquipoData; error?: string };
-
-/** Valor centinela del selector de etapa: no es una etapa, abre el editor de pausa. */
-const OPCION_PAUSA = "__pausa__";
 
 /**
  * Qué significa cada etapa de QA en términos de acción. Dos de las tres son el
@@ -222,6 +236,20 @@ function etiquetaProyecto(p: { cliente: string; tipo: string }): string {
   return tipo ? `${p.cliente} (${tipo})` : p.cliente;
 }
 
+/**
+ * Texto del chip de esqueleto. Se arma en el cliente y no en la API porque las
+ * horas restantes cambian mientras la pantalla está abierta.
+ */
+function textoEsqueletoUI(p: ActivoItem): string | null {
+  if (!p.esqueleto || p.esqueleto === "ok") return null;
+  return textoEsqueleto({
+    aplica: true,
+    estado: p.esqueleto,
+    transcurridoMs: null,
+    restanteMs: p.esqueleto_restante_ms,
+  });
+}
+
 /** El título sólo aporta si dice algo distinto al nombre del cliente. */
 function subtituloUtil(p: { cliente: string; titulo: string }): string | null {
   const norm = (s: string) => s.trim().toLowerCase();
@@ -238,22 +266,31 @@ function buildMensajeWhatsapp(grupos: GrupoActivo[], qaGrupos: GrupoQA[]): strin
   const lineas: string[] = ["*Tareas del equipo*", `*${formatFechaCorta(new Date())}*`, ""];
 
   for (const g of grupos) {
-    if (g.proyectos.length === 0) continue;
+    // Las subsecciones se aplanan: el mensaje de WhatsApp se lee de corrido y el
+    // estado ya va escrito en cada línea.
+    const proyectos = g.secciones.flatMap((s) => s.proyectos);
+    if (proyectos.length === 0) continue;
 
     lineas.push("*Cliente:*");
-    for (const p of g.proyectos) {
-      const dias = p.dias == null ? "" : ` · ${p.dias}d`;
+    for (const p of proyectos) {
+      const tiempo = p.ms_trabajados == null ? "" : ` · ${formatearDuracion(p.ms_trabajados)}`;
       const pausa = p.pausado
         ? ` · ⏸ PAUSADO${p.pausa_motivo ? `: ${p.pausa_motivo}` : ""}`
         : "";
-      lineas.push(`•${etiquetaProyecto(p)} — ${etapaLabel(p.etapa_desarrollo)}${pausa}${dias}`);
+      const aviso =
+        p.esqueleto === "vencido"
+          ? " · ⚠ ESQUELETO VENCIDO"
+          : p.esqueleto === "por_vencer"
+            ? " · ⚠ esqueleto por vencer"
+            : "";
+      lineas.push(`•${etiquetaProyecto(p)} — ${p.estado_nombre}${pausa}${aviso}${tiempo}`);
     }
 
     lineas.push("*Responsable:*");
     lineas.push(`•${nombreCorto(g.tecnico_nombre)}`);
 
     lineas.push("*Fecha/hora de entrega:*");
-    for (const p of g.proyectos) {
+    for (const p of proyectos) {
       const entrega = formatEntrega(p.fecha_prometida);
       if (entrega) lineas.push(`•${p.cliente}: ${entrega}`);
     }
@@ -266,11 +303,11 @@ function buildMensajeWhatsapp(grupos: GrupoActivo[], qaGrupos: GrupoQA[]): strin
 
     lineas.push("*QA — Cliente:*");
     for (const p of g.proyectos) {
-      const dias = p.dias == null ? "" : ` · ${p.dias}d`;
+      const tiempo = p.ms_trabajados == null ? "" : ` · ${formatearDuracion(p.ms_trabajados)}`;
       const pausa = p.pausado
         ? ` · ⏸ PAUSADO${p.pausa_motivo ? `: ${p.pausa_motivo}` : ""}`
         : "";
-      lineas.push(`•${etiquetaProyecto(p)} — ${qaEtapaLabel(p.qa_etapa)}${pausa}${dias}`);
+      lineas.push(`•${etiquetaProyecto(p)} — ${qaEtapaLabel(p.qa_etapa)}${pausa}${tiempo}`);
     }
 
     lineas.push("*Responsable:*");
@@ -370,6 +407,39 @@ export default function TareasEquipoClient() {
   );
 
   /**
+   * Cambio de estado del Kanban desde la tarjeta del técnico.
+   *
+   * Va por la ruta de `cambiar-estado` y no por el PATCH genérico porque ese
+   * endpoint es el que cierra el segmento de historial, deja el snapshot de SLA
+   * y abre o cierra la pausa. Escribir `estado_id` a mano dejaría todo eso sin
+   * registrar.
+   */
+  const cambiarEstado = useCallback(
+    async (proyectoId: string, estadoId: string) => {
+      setSavingId(proyectoId);
+      setErr(null);
+      try {
+        const res = await fetchWithSupabaseSession(`/api/proyectos/${proyectoId}/cambiar-estado`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estado_id: estadoId }),
+        });
+        const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+        if (!res.ok || !j?.success) {
+          setErr(j?.error ?? "No se pudo mover el proyecto de estado");
+          return;
+        }
+        await load(mes);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Error de red");
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [load, mes]
+  );
+
+  /**
    * Veredicto de QA. Va por su propia ruta y no por el PATCH del proyecto
    * porque no es sólo mover una etapa: dispara las notificaciones tipadas
    * (aprobado avisa a la project manager, rechazado al programador).
@@ -432,7 +502,8 @@ export default function TareasEquipoClient() {
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Tareas del equipo</h1>
           <p className="text-sm text-slate-500">
-            Proyectos por programador y por QA, con etapa y días desde que se asignó.
+            Proyectos por programador y por QA, divididos por estado, con el tiempo de
+            trabajo acumulado en horario laboral.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -543,10 +614,13 @@ export default function TareasEquipoClient() {
           <ActivosSeccion
             grupos={data?.activos_por_programador ?? []}
             qaGrupos={data?.qa_por_responsable ?? []}
+            estados={data?.estados_tablero ?? []}
+            generadoAt={data?.generado_at ?? null}
             usuarios={usuarios}
             savingId={savingId}
             onPatch={patchProyecto}
             onVeredicto={veredictoQA}
+            onCambiarEstado={cambiarEstado}
           />
           {mensaje ? (
             <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -651,30 +725,44 @@ function TarjetaGrupo({
 function ActivosSeccion({
   grupos,
   qaGrupos,
+  estados,
+  generadoAt,
   usuarios,
   savingId,
   onPatch,
   onVeredicto,
+  onCambiarEstado,
 }: {
   grupos: GrupoActivo[];
   qaGrupos: GrupoQA[];
+  estados: EstadoTableroDTO[];
+  generadoAt: string | null;
   usuarios: Usuario[];
   savingId: string | null;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
   onVeredicto: (id: string, aprobado: boolean, motivo: string | null) => void | Promise<void>;
+  onCambiarEstado: (id: string, estadoId: string) => void | Promise<void>;
 }) {
   // Las tarjetas de QA existen aunque no tengan proyectos, así que el vacío se
   // mide por proyectos y no por tarjetas: si no, este estado nunca se veria.
   const totalProyectos =
-    grupos.reduce((n, g) => n + g.proyectos.length, 0) +
+    grupos.reduce((n, g) => n + g.cantidad, 0) +
     qaGrupos.reduce((n, g) => n + g.proyectos.length, 0);
+
+  // Vocabulario del selector de cada fila: las columnas del Kanban que le
+  // competen al técnico, tal como las configuró la empresa.
+  const opcionesEstado = estados.map((e) => ({ value: e.id, label: e.nombre }));
+  const estadoPausadoId = estados.find((e) => e.codigo === "pausado")?.id ?? null;
+  // Reanudar devuelve el proyecto a la primera columna de trabajo del tablero.
+  const estadoReanudarId = estados.find((e) => e.codigo !== "pausado")?.id ?? null;
 
   if (totalProyectos === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
         <p className="text-sm font-medium text-slate-700">No hay proyectos en curso</p>
         <p className="mt-1 text-xs text-slate-500">
-          Todos los proyectos activos están en etapa “Finalizado” o no hay proyectos cargados.
+          Ningún proyecto está en las columnas que sigue el equipo técnico
+          (Desarrollo, Cambios solicitados, QA, Publicado / Pendiente de Capacitación o Pausado).
         </p>
       </div>
     );
@@ -758,8 +846,8 @@ function ActivosSeccion({
                       label: e.label,
                       description: QA_ETAPA_AYUDA[e.codigo],
                     }))}
-                    dias={p.dias}
-                    diasEnEtapa={null}
+                    msBase={p.ms_trabajados}
+                    generadoAt={generadoAt}
                     asignadoA={g.qa_id}
                     fechaPrometida={p.fecha_prometida}
                     metaExtra={p.tecnico_nombre ? `dev ${nombreCorto(p.tecnico_nombre)}` : null}
@@ -794,46 +882,75 @@ function ActivosSeccion({
             italic={sinTecnico}
             subtitulo={`${g.cantidad === 1 ? "1 proyecto" : `${g.cantidad} proyectos`}${
               g.pausados > 0 ? ` · ${g.pausados} en pausa` : ""
-            }`}
+            }${g.alertas_esqueleto > 0 ? ` · ${g.alertas_esqueleto} con esqueleto por vencer` : ""}`}
             contador={g.cantidad}
           >
-            <ul className="divide-y divide-slate-100">
-              {g.proyectos.map((p) => (
-                <FilaProyecto
-                  key={p.id}
-                  modo="dev"
-                  id={p.id}
-                  cliente={p.cliente}
-                  tipo={p.tipo}
-                  titulo={p.titulo}
-                  etapa={p.pausado ? OPCION_PAUSA : p.etapa_desarrollo}
-                  color={p.pausado ? "#f59e0b" : etapaColor(p.etapa_desarrollo)}
-                  opcionesEtapa={[
-                    ...PROYECTO_ETAPAS.map((e) => ({ value: e.codigo as string, label: e.label })),
-                    { value: OPCION_PAUSA, label: "Pausado…" },
-                  ]}
-                  dias={p.dias}
-                  diasEnEtapa={p.dias_en_etapa}
-                  asignadoA={g.tecnico_id}
-                  fechaPrometida={p.fecha_prometida}
-                  metaExtra={null}
-                  pausado={p.pausado}
-                  pausaMotivo={p.pausa_motivo}
-                  pausadoAt={p.pausado_at}
-                  bloqueado={p.bloqueado}
-                  qaChip={
-                    p.qa_responsable_nombre
-                      ? { nombre: p.qa_responsable_nombre, etapa: p.qa_etapa }
-                      : null
-                  }
-                  desde={p.desde}
-                  opcionesUsuario={opcionesDev}
-                  saving={savingId === p.id}
-                  onPatch={onPatch}
-                  onVeredicto={onVeredicto}
-                />
+            {/*
+              Una subsección por estado del Kanban. Las vacías no se dibujan: en
+              una tarjeta con seis proyectos en Desarrollo, cuatro encabezados en
+              cero son ruido y no información.
+            */}
+            {g.secciones
+              .filter((sec) => sec.proyectos.length > 0)
+              .map((sec) => (
+                <section key={sec.estado_id}>
+                  <header
+                    className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-1.5 first:border-t-0"
+                    style={{ boxShadow: `inset 3px 0 0 ${sec.color}` }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: sec.color }}
+                    />
+                    <h4 className="min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-[0.06em] text-slate-600">
+                      {sec.nombre}
+                    </h4>
+                    <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">
+                      {sec.cantidad}
+                    </span>
+                  </header>
+                  <ul className="divide-y divide-slate-100">
+                    {sec.proyectos.map((p) => (
+                      <FilaProyecto
+                        key={p.id}
+                        modo="dev"
+                        id={p.id}
+                        cliente={p.cliente}
+                        tipo={p.tipo}
+                        titulo={p.titulo}
+                        etapa={p.estado_id}
+                        color={p.estado_color}
+                        opcionesEtapa={opcionesEstado}
+                        msBase={p.ms_trabajados}
+                        generadoAt={generadoAt}
+                        esqueleto={p.esqueleto}
+                        esqueletoTexto={textoEsqueletoUI(p)}
+                        estadoPausadoId={estadoPausadoId}
+                        estadoReanudarId={estadoReanudarId}
+                        onCambiarEstado={onCambiarEstado}
+                        asignadoA={g.tecnico_id}
+                        fechaPrometida={p.fecha_prometida}
+                        metaExtra={null}
+                        pausado={p.pausado}
+                        pausaMotivo={p.pausa_motivo}
+                        pausadoAt={p.pausado_at}
+                        bloqueado={p.bloqueado}
+                        qaChip={
+                          p.qa_responsable_nombre
+                            ? { nombre: p.qa_responsable_nombre, etapa: p.qa_etapa }
+                            : null
+                        }
+                        desde={p.desde}
+                        opcionesUsuario={opcionesDev}
+                        saving={savingId === p.id}
+                        onPatch={onPatch}
+                        onVeredicto={onVeredicto}
+                      />
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
           </TarjetaGrupo>
         );
       })}
@@ -854,8 +971,13 @@ function FilaProyecto({
   etapa,
   color,
   opcionesEtapa,
-  dias,
-  diasEnEtapa,
+  msBase,
+  generadoAt,
+  esqueleto,
+  esqueletoTexto,
+  estadoPausadoId,
+  estadoReanudarId,
+  onCambiarEstado,
   asignadoA,
   fechaPrometida,
   metaExtra,
@@ -878,8 +1000,15 @@ function FilaProyecto({
   etapa: string;
   color: string;
   opcionesEtapa: { value: string; label: string; description?: string }[];
-  dias: number | null;
-  diasEnEtapa: number | null;
+  msBase: number | null;
+  generadoAt: string | null;
+  esqueleto?: "ok" | "por_vencer" | "vencido" | null;
+  esqueletoTexto?: string | null;
+  /** Id del estado "Pausado" del tablero. `null` en las tarjetas de QA. */
+  estadoPausadoId?: string | null;
+  /** Estado al que vuelve un proyecto al reanudarlo (la primera columna de trabajo). */
+  estadoReanudarId?: string | null;
+  onCambiarEstado?: (id: string, estadoId: string) => void | Promise<void>;
   asignadoA: string | null;
   fechaPrometida: string | null;
   metaExtra: string | null;
@@ -932,6 +1061,18 @@ function FilaProyecto({
             {metaExtra ? <span>{metaExtra}</span> : null}
             {fechaPrometida ? <span>entrega {formatFecha(fechaPrometida)}</span> : null}
             {bloqueado ? <span className="font-semibold text-rose-600">bloqueado</span> : null}
+            {esqueletoTexto ? (
+              <span
+                className={`inline-flex animate-pulse items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold ${
+                  esqueleto === "vencido"
+                    ? "bg-rose-100 text-rose-700"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+                title="Compromiso de entrega del esqueleto de un Proyecto Web: 48 h corridas sin contar domingos"
+              >
+                {esqueletoTexto}
+              </span>
+            ) : null}
             {qaChip ? (
               qaChip.etapa === "finalizado" ? (
                 // Ciclo de QA cerrado: el proyecto ya no está en la tarjeta de
@@ -957,14 +1098,15 @@ function FilaProyecto({
           </div>
         </div>
 
-        <DiasBadge
-          dias={dias}
-          diasEnEtapa={diasEnEtapa}
+        <ContadorVivo
+          msBase={msBase}
+          generadoAt={generadoAt}
+          esqueleto={esqueleto}
           asignado={asignadoA != null}
           pausado={pausado}
           activo={editandoFecha}
           onClick={modo === "dev" ? () => setEditandoFecha((v) => !v) : undefined}
-          titulo={modo === "qa" ? "Días desde que se le asignó la revisión" : undefined}
+          titulo={modo === "qa" ? "Tiempo de trabajo desde que se le asignó la revisión" : undefined}
         />
 
         <FancySelect
@@ -975,8 +1117,15 @@ function FilaProyecto({
           options={opcionesEtapa}
           value={etapa}
           onChange={(v) => {
-            if (v === OPCION_PAUSA) {
-              setEditandoPausa(true);
+            // Tarjeta de programador: el selector mueve el estado del Kanban,
+            // que es el mismo eje que ve comercial. Elegir "Pausado" pide antes
+            // el motivo, porque es lo que después se lee en el tablero.
+            if (modo === "dev") {
+              if (v === estadoPausadoId) {
+                setEditandoPausa(true);
+                return;
+              }
+              void onCambiarEstado?.(id, v);
               return;
             }
             // En la tarjeta de QA, dos de las tres etapas SON el veredicto:
@@ -1031,7 +1180,13 @@ function FilaProyecto({
           </button>
           <button
             type="button"
-            onClick={() => void onPatch(id, { pausado: false })}
+            onClick={() => {
+              // Reanudar es sacarlo de la columna Pausado: si sólo limpiáramos
+              // la marca de pausa el proyecto seguiría figurando "Pausado" en el
+              // Kanban, que ahora es el mismo eje.
+              if (modo === "dev" && estadoReanudarId) void onCambiarEstado?.(id, estadoReanudarId);
+              else void onPatch(id, { pausado: false });
+            }}
             className="rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-200 transition-colors hover:bg-emerald-50"
           >
             Reanudar
@@ -1051,6 +1206,14 @@ function FilaProyecto({
           onCancel={() => setEditandoPausa(false)}
           onSubmit={(motivo) => {
             setEditandoPausa(false);
+            if (modo === "dev" && estadoPausadoId) {
+              // Primero el estado (abre la pausa y congela el contador) y
+              // después el motivo, que es un dato del proyecto y no del estado.
+              void Promise.resolve(onCambiarEstado?.(id, estadoPausadoId)).then(() =>
+                onPatch(id, { pausa_motivo: motivo })
+              );
+              return;
+            }
             void onPatch(id, { pausado: true, pausa_motivo: motivo });
           }}
         />
@@ -1190,30 +1353,60 @@ function MotivoForm({
 }
 
 /**
- * El contador son los días desde la asignación, descontando el tiempo pausado.
- * Sin responsable el contador no corre: se muestra inerte, sin color de alerta.
+ * Un solo temporizador para todo el tablero.
+ *
+ * Cada fila necesita repintarse una vez por segundo, pero montar un `setInterval`
+ * por proyecto haría decenas de timers compitiendo. Este hook mantiene uno solo
+ * y devuelve el instante actual; todas las filas se repintan en el mismo tick,
+ * que además es lo que hace que los segundos avancen sincronizados.
  */
-function DiasBadge({
-  dias,
-  diasEnEtapa,
+function useSegundero(activo: boolean): number {
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    if (!activo) return;
+    const id = window.setInterval(() => setAhora(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [activo]);
+  return ahora;
+}
+
+/**
+ * Contador de trabajo del proyecto: días, horas, minutos y segundos de HORARIO
+ * LABORAL desde que el proyecto quedó en manos del técnico.
+ *
+ * El valor base lo calcula la API; acá sólo se le suma el horario laboral
+ * transcurrido desde que se generó la respuesta. Fuera de hora —de noche, un
+ * domingo— ese incremento da cero y el contador se queda quieto solo, sin
+ * ninguna lógica especial.
+ *
+ * Un proyecto pausado congela en el valor base: los días están detenidos, no
+ * atrasados.
+ */
+function ContadorVivo({
+  msBase,
+  generadoAt,
   asignado,
   pausado,
+  esqueleto,
   activo,
   onClick,
   titulo,
 }: {
-  dias: number | null;
-  diasEnEtapa: number | null;
+  msBase: number | null;
+  generadoAt: string | null;
   asignado: boolean;
   pausado: boolean;
+  esqueleto?: "ok" | "por_vencer" | "vencido" | null;
   activo: boolean;
   onClick?: () => void;
   titulo?: string;
 }) {
-  if (!asignado || dias == null) {
+  const ahora = useSegundero(!pausado && msBase != null);
+
+  if (!asignado || msBase == null) {
     return (
       <span
-        className="inline-flex min-w-[3.1rem] items-center justify-center rounded-lg border border-dashed border-slate-200 px-2 py-1.5 text-[11px] font-medium text-slate-300"
+        className="inline-flex min-w-[6.5rem] items-center justify-center rounded-lg border border-dashed border-slate-200 px-2 py-1.5 text-[11px] font-medium text-slate-300"
         title={
           asignado
             ? "Sin fecha de asignación"
@@ -1225,34 +1418,45 @@ function DiasBadge({
     );
   }
 
-  // Pausado gana sobre el color de alerta: los días están congelados, no atrasados.
+  const transcurrido = pausado
+    ? 0
+    : msLaborables(generadoAt, new Date(ahora).toISOString()) ?? 0;
+  const ms = msBase + transcurrido;
+  const jornadas = enJornadas(ms);
+
+  // El aviso de esqueleto manda sobre el color de antigüedad: es un compromiso
+  // con fecha, no una señal de que el proyecto viene lento.
+  const alerta = esqueleto === "vencido" || esqueleto === "por_vencer";
   const tono = pausado
     ? "border-amber-200 bg-amber-50 text-amber-700"
-    : dias >= 30
-      ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-      : dias >= 14
-        ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100";
+    : esqueleto === "vencido"
+      ? "border-rose-300 bg-rose-50 text-rose-700"
+      : esqueleto === "por_vencer"
+        ? "border-amber-300 bg-amber-50 text-amber-800"
+        : ms >= 30 * MS_JORNADA_UI
+          ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+          : ms >= 14 * MS_JORNADA_UI
+            ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+            : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100";
 
   const title =
     titulo ??
     (pausado
-      ? "Días trabajados — congelado mientras el proyecto está pausado"
-      : diasEnEtapa == null
-        ? "Días desde que se asignó al programador — clic para corregir la fecha"
-        : `Días desde la asignación · ${diasEnEtapa} d en la etapa actual — clic para corregir la fecha`);
+      ? "Tiempo trabajado — congelado mientras el proyecto está pausado"
+      : `Tiempo de trabajo (lun–vie 8–17, sáb 8–12)${
+          jornadas != null ? ` · ${jornadas} jornadas` : ""
+        } — clic para corregir la fecha de inicio`);
+
+  const clases = `inline-flex min-w-[6.5rem] items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-bold tabular-nums transition-colors ${tono} ${
+    activo ? "ring-2 ring-[#4FAEB2]/30" : ""
+  } ${alerta && !pausado ? "animate-pulse" : ""}`;
 
   const contenido = (
     <>
       {pausado ? <IconPause /> : null}
-      {dias}
-      <span className="font-medium opacity-60">d</span>
+      {formatearDuracion(ms)}
     </>
   );
-
-  const clases = `inline-flex min-w-[3.1rem] items-center justify-center gap-0.5 rounded-lg border px-2 py-1.5 text-[11px] font-bold tabular-nums transition-colors ${tono} ${
-    activo ? "ring-2 ring-[#4FAEB2]/30" : ""
-  }`;
 
   if (!onClick) {
     return (
@@ -1268,6 +1472,9 @@ function DiasBadge({
     </button>
   );
 }
+
+/** Jornada de 9 h: la unidad con la que se colorea la antigüedad del contador. */
+const MS_JORNADA_UI = 9 * 3_600_000;
 
 function FinalizadosSeccion({ data, mes }: { data: TareasEquipoData | null; mes: string }) {
   const grupos = data?.finalizados_por_programador ?? [];
@@ -1297,7 +1504,7 @@ function FinalizadosSeccion({ data, mes }: { data: TareasEquipoData | null; mes:
             titulo={sinTecnico ? "Sin asignar" : nombreCorto(g.tecnico_nombre)}
             italic={sinTecnico}
             subtitulo={`${g.cantidad === 1 ? "1 finalizado" : `${g.cantidad} finalizados`}${
-              g.promedio_dias != null ? ` · promedio ${g.promedio_dias} d` : ""
+              g.promedio_ms != null ? ` · promedio ${enJornadas(g.promedio_ms)} jornadas` : ""
             }`}
             contador={g.cantidad}
           >
@@ -1319,9 +1526,9 @@ function FinalizadosSeccion({ data, mes }: { data: TareasEquipoData | null; mes:
                   </div>
                   <span
                     className="shrink-0 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold tabular-nums text-emerald-700"
-                    title="Días trabajados desde la asignación hasta finalizar (sin contar pausas)"
+                    title="Tiempo de trabajo desde la asignación hasta finalizar, en horario laboral y sin contar pausas"
                   >
-                    {p.dias_tardados == null ? "—" : `${p.dias_tardados} d`}
+                    {formatearDuracion(p.ms_trabajados)}
                   </span>
                 </li>
               ))}

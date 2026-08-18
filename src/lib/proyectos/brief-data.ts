@@ -40,6 +40,13 @@ export const PROYECTO_DATOS_BRIEF_FIELDS: BriefFieldDef[] = [
   { kind: "url_list", key: "redes_sociales", label: "Redes sociales", placeholder: "https://..." },
   { kind: "text", key: "whatsapp_contacto", label: "WhatsApp de contacto" },
   { kind: "text", key: "referencias_urls", label: "Referencias de páginas" },
+  /**
+   * Hito operativo, no dato del brief, pero vive acá porque es donde el técnico
+   * ya está cargando la información del proyecto. Al marcarlo se apaga el aviso
+   * de las 48 h del esqueleto en el tablero y en la campanita.
+   * Ver `BRIEF_KEY_ESQUELETO_ENTREGADO` en `esqueleto.ts`.
+   */
+  { kind: "checkbox", key: "esqueleto_entregado", label: "Esqueleto entregado al cliente" },
 ];
 
 export const PROYECTO_SAAS_BRIEF_KEYS = {

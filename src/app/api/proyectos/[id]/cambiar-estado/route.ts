@@ -6,6 +6,8 @@ import { cerrarSegmentoHistorialAbierto, insertHistorialCambioEstado } from "@/l
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { notificarEntradaQA } from "@/lib/proyectos/qa-notificaciones";
+import { esEstadoPausado, etapaDesdeEstado } from "@/lib/proyectos/estados-tablero";
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireProyectosApiAccess(request);
@@ -31,7 +33,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const { data: proyecto, error: e1 } = await sb
       .from("proyectos")
-      .select("id, titulo, estado_id, responsable_tecnico_id, qa_responsable_id")
+      .select(
+        "id, titulo, estado_id, responsable_tecnico_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms"
+      )
       .eq("empresa_id", empresaId)
       .eq("id", pid)
       .maybeSingle();
@@ -69,12 +73,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json(errorResponse("Estado destino no válido"), { status: 400 });
     }
 
-    const tipoSla = String((estNuevo as { tipo_sla?: string }).tipo_sla ?? "interno");
-    const codigoNuevo = String((estNuevo as { codigo?: string }).codigo ?? "").trim().toLowerCase();
+    const est = estNuevo as { codigo?: string | null; tipo_sla?: string | null };
+    const tipoSla = String(est.tipo_sla ?? "interno");
+    const codigoNuevo = String(est.codigo ?? "").trim().toLowerCase();
 
     await cerrarSegmentoHistorialAbierto(sb, empresaId, pid);
 
     const now = new Date().toISOString();
+    const cur = proyecto as {
+      etapa_desarrollo?: string | null;
+      pausado_at?: string | null;
+      pausa_acumulada_ms?: number | null;
+    };
+
     const update: Record<string, unknown> = {
       estado_id: nuevoEstadoId,
       ultimo_movimiento_at: now,
@@ -90,6 +101,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (codigoNuevo === "qa" && !qaResponsableActual) {
       qaAsignadoId = await resolverQaUnica(empresaId);
       if (qaAsignadoId) Object.assign(update, patchAsignacionQa(qaAsignadoId, now));
+    }
+
+    // --- Pausa gobernada por el estado ---------------------------------------
+    // "Pausado" es una columna del Kanban como cualquier otra, pero además es lo
+    // que congela el contador del tablero. Mover el proyecto a esa columna abre
+    // la pausa, y sacarlo de ahí la cierra acumulando el tiempo detenido — el
+    // mismo mecanismo que ya usaba el botón de pausa del tablero.
+    const estabaPausado = typeof cur.pausado_at === "string" && !!cur.pausado_at;
+    const quedaPausado = esEstadoPausado({ tipo_sla: tipoSla });
+
+    if (quedaPausado && !estabaPausado) {
+      update.pausado_at = now;
+    } else if (!quedaPausado && estabaPausado) {
+      const previo = Number(cur.pausa_acumulada_ms ?? 0);
+      const base = Number.isFinite(previo) && previo > 0 ? previo : 0;
+      // Se acumula la porción LABORAL de la pausa, no el calendario: es la
+      // unidad en la que el tablero mide el contador, y así una pausa que cae
+      // entera en fin de semana no descuenta trabajo que nunca existió.
+      update.pausa_acumulada_ms = base + (msLaborables(cur.pausado_at as string, now) ?? 0);
+      update.pausado_at = null;
+      update.pausa_motivo = null;
+    }
+
+    // --- Proyección sobre el eje técnico -------------------------------------
+    // Ver `etapaDesdeEstado`: la etapa ya no se edita a mano, se deriva, para
+    // que los reportes que la leen sigan vivos.
+    const etapaDerivada = etapaDesdeEstado(est.codigo ?? null);
+    if (etapaDerivada && etapaDerivada !== (cur.etapa_desarrollo ?? null)) {
+      update.etapa_desarrollo = etapaDerivada;
+      update.etapa_desarrollo_at = now;
+      // Volver atrás desde "finalizado" limpia la marca: el proyecto reaparece
+      // como activo y deja de contar en el reporte de entregados del mes.
+      update.etapa_finalizado_at = etapaDerivada === "finalizado" ? now : null;
     }
 
     const { error: e3 } = await sb

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireNotificacionesAccess } from "@/lib/notificaciones/notificaciones-auth";
+import { avisosEsqueletoDe } from "@/lib/proyectos/esqueleto-avisos";
 
 /**
  * GET /api/notificaciones?limit=20&solo_no_leidas=1
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
       .eq("usuario_id", auth.usuarioId);
     if (soloNoLeidas) listado = listado.is("leida_at", null);
 
-    const [itemsRes, countRes] = await Promise.all([
+    const [itemsRes, countRes, avisos] = await Promise.all([
       listado.order("created_at", { ascending: false }).limit(limit),
       sb
         .from("usuario_notificaciones")
@@ -47,16 +48,22 @@ export async function GET(request: Request) {
         .eq("empresa_id", auth.empresaId)
         .eq("usuario_id", auth.usuarioId)
         .is("leida_at", null),
+      // Avisos de esqueleto: se calculan en vivo, no salen de la tabla.
+      // Ver `esqueleto-avisos.ts` para por qué no se persisten.
+      avisosEsqueletoDe(sb, auth.empresaId, auth.usuarioId),
     ]);
 
     if (itemsRes.error) {
       return NextResponse.json(errorResponse(itemsRes.error.message), { status: 400 });
     }
 
+    // Los avisos derivados van arriba de todo: son los únicos que tienen una
+    // fecha comprometida encima. Y suman al contador, que es lo que hace que la
+    // campanita se encienda sin que nadie tenga que abrir el tablero.
     return NextResponse.json(
       successResponse({
-        notificaciones: itemsRes.data ?? [],
-        no_leidas: countRes.count ?? 0,
+        notificaciones: [...avisos, ...(itemsRes.data ?? [])],
+        no_leidas: (countRes.count ?? 0) + avisos.length,
       })
     );
   } catch (e) {

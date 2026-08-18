@@ -17,6 +17,7 @@ import {
   esEtapaQA,
   type ProyectoEtapaQA,
 } from "@/lib/proyectos/etapas-qa";
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
 import { puedeEliminarProyectos, requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
@@ -389,12 +390,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           if (!estabaPausado) patch.pausado_at = ahora;
         } else {
           if (estabaPausado) {
-            const inicio = Date.parse(cur.pausado_at as string);
             const previo = Number(cur.pausa_acumulada_ms ?? 0);
             const base = Number.isFinite(previo) && previo > 0 ? previo : 0;
-            patch.pausa_acumulada_ms = Number.isFinite(inicio)
-              ? base + Math.max(0, Date.now() - inicio)
-              : base;
+            // Milisegundos LABORALES, misma unidad que el contador del tablero.
+            // Ver `msTrabajados` en la ruta de tareas-equipo.
+            patch.pausa_acumulada_ms = base + (msLaborables(cur.pausado_at as string, ahora) ?? 0);
           }
           patch.pausado_at = null;
           patch.pausa_motivo = null;

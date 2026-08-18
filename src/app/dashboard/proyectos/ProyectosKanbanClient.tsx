@@ -825,9 +825,13 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       return;
     }
     setEstados(jEst.data ?? []);
-    // El tablero muestra el trabajo activo + lo entregado del MES en curso. Los entregados de
-    // meses anteriores se ven en el panel gerencial (Dashboard → Proyectos → "Entregados por mes").
-    setProyectos((jPr.data ?? []).filter((p: ProyectoCard) => !esEntregadoDeMesAnterior(p)));
+    // Por defecto el tablero muestra el trabajo activo + lo entregado del MES en curso; los
+    // entregados de meses anteriores se ven en el panel gerencial. PERO si hay una búsqueda o
+    // filtro activo, el usuario está buscando algo puntual: mostramos todo lo que matchea
+    // (incluidos los entregados viejos), si no "desaparecen" al buscarlos.
+    const hayBusquedaOFiltro = Boolean(q.trim() || filtroEstado || filtroTipo || filtroRc || filtroRt);
+    const proyectosApi = (jPr.data ?? []) as ProyectoCard[];
+    setProyectos(hayBusquedaOFiltro ? proyectosApi : proyectosApi.filter((p) => !esEntregadoDeMesAnterior(p)));
 
     if (jTipos.success && jTipos.data) setTipoOpts(jTipos.data);
     if (jUsers.usuarios) setUserOpts(jUsers.usuarios);

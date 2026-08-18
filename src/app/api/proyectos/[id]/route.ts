@@ -5,6 +5,7 @@ import { mergeBriefDataPatch } from "@/lib/proyectos/brief-data";
 import { listProyectoCambios } from "@/lib/proyectos/cambios-config";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { enrichProyectoHistorialRows } from "@/lib/proyectos/historial-enrich";
+import { insertHistorialReasignacionTecnico } from "@/lib/proyectos/historial-actions";
 import {
   ETAPA_FINAL,
   ETAPA_INICIAL,
@@ -57,7 +58,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       sb
         .from("proyecto_estado_historial")
         .select(
-          "id, estado_anterior_id, estado_nuevo_id, changed_by, changed_at, entered_at, exited_at, duration_seconds, tipo_sla_snapshot"
+          "id, estado_anterior_id, estado_nuevo_id, changed_by, changed_at, entered_at, exited_at, duration_seconds, tipo_sla_snapshot, metadata"
         )
         .eq("empresa_id", empresaId)
         .eq("proyecto_id", pid)
@@ -194,6 +195,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       updated_by: auth.usuarioCatalogId,
       last_activity_at: new Date().toISOString(),
     };
+    // Reasignación de responsable técnico a registrar en el historial (tras el update OK).
+    let reasignacionTecnico: { de: string | null; a: string | null } | null = null;
 
     if (typeof body.titulo === "string") patch.titulo = body.titulo.trim();
     if (typeof body.descripcion === "string") patch.descripcion = body.descripcion;
@@ -330,6 +333,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
       if (pideTecnico && patch.responsable_tecnico_id !== (cur.responsable_tecnico_id ?? null)) {
         patch.tecnico_asignado_at = patch.responsable_tecnico_id ? ahora : null;
+        reasignacionTecnico = {
+          de: cur.responsable_tecnico_id ?? null,
+          a: (patch.responsable_tecnico_id as string | null) ?? null,
+        };
       }
 
       // --- QA: responsable + etapa propia ------------------------------------
@@ -439,6 +446,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const row = Array.isArray(updated) ? updated[0] : updated;
     if (!row) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+
+    // Reasignación de técnico → queda en el historial. No bloqueante: el update ya
+    // se aplicó, un fallo del registro no debe voltear la operación.
+    if (reasignacionTecnico && reasignacionTecnico.de !== reasignacionTecnico.a) {
+      try {
+        await insertHistorialReasignacionTecnico({
+          sb,
+          empresaId: auth.empresaId,
+          proyectoId: pid,
+          deTecnicoId: reasignacionTecnico.de,
+          aTecnicoId: reasignacionTecnico.a,
+          changedBy: auth.usuarioCatalogId,
+        });
+      } catch (e) {
+        console.error("[proyectos] no se pudo registrar la reasignación de técnico en historial", e);
+      }
+    }
 
     const enriched = await enrichProyectosRows(sb, auth.empresaId, [row as Record<string, unknown>]);
     return NextResponse.json(successResponse(enriched[0] ?? row));

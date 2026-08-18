@@ -2960,6 +2960,34 @@ export default function ProyectoDetalleInner({
                 <tbody className="divide-y divide-slate-100">
                   {(data.historial ?? []).map((h) => {
                     const hr = h as Record<string, unknown>;
+                    const usr = (hr.usuario_cambio_label as string | undefined) ?? "No registrado";
+
+                    // Evento de reasignación de técnico: fila especial ("de → a"), no un cambio de estado.
+                    if (hr.evento_tipo === "reasignacion_tecnico") {
+                      const de = (hr.reasignacion_de_label as string | undefined) ?? "Sin asignar";
+                      const a = (hr.reasignacion_a_label as string | undefined) ?? "Sin asignar";
+                      return (
+                        <tr key={String(h.id)} className="bg-amber-50/40 text-slate-700 hover:bg-amber-50/70">
+                          <td colSpan={3} className="px-3 py-2 text-xs">
+                            <span className="mr-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                              Reasignación de técnico
+                            </span>
+                            <span className="font-medium text-slate-600">{de}</span>
+                            <span className="mx-1.5 text-slate-400">→</span>
+                            <span className="font-semibold text-slate-900">{a}</span>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-600">
+                            {formatFechaPyFull(String(h.entered_at ?? ""))}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-400">—</td>
+                          <td className="px-3 py-2 text-xs text-slate-400">—</td>
+                          <td className="max-w-[140px] truncate px-3 py-2 text-xs text-slate-500" title={usr}>
+                            {usr}
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const ant =
                       (hr.estado_anterior_nombre as string | undefined) ??
                       (hr.estado_anterior_id ? String(hr.estado_anterior_id) : "—");
@@ -2969,7 +2997,6 @@ export default function ProyectoDetalleInner({
                     const slaL =
                       (hr.tipo_sla_label as string | undefined) ??
                       String(hr.tipo_sla_snapshot ?? "—");
-                    const usr = (hr.usuario_cambio_label as string | undefined) ?? "No registrado";
                     const dur =
                       (hr.duration_label as string | undefined) ??
                       (hr.duration_seconds != null ? String(hr.duration_seconds) + " s" : "—");

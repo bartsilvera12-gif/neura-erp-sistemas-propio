@@ -18,6 +18,7 @@ export type HistorialRowRaw = {
   exited_at?: string | null;
   duration_seconds?: number | null;
   tipo_sla_snapshot?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type HistorialRowEnriched = HistorialRowRaw & {
@@ -26,7 +27,23 @@ export type HistorialRowEnriched = HistorialRowRaw & {
   tipo_sla_label: string;
   usuario_cambio_label: string;
   duration_label: string;
+  /** "estado" (cambio de estado) | "reasignacion_tecnico" (cambio de responsable). */
+  evento_tipo: "estado" | "reasignacion_tecnico";
+  reasignacion_de_label: string | null;
+  reasignacion_a_label: string | null;
 };
+
+/** Lee metadata.tipo/de/a de una fila de reasignación (defensivo con jsonb suelto). */
+function leerReasignacion(meta: Record<string, unknown> | null | undefined): { de: string | null; a: string | null } | null {
+  if (!meta || typeof meta !== "object") return null;
+  if (String((meta as { tipo?: unknown }).tipo ?? "") !== "reasignacion_tecnico") return null;
+  const de = (meta as { de?: unknown }).de;
+  const a = (meta as { a?: unknown }).a;
+  return {
+    de: typeof de === "string" && de ? de : null,
+    a: typeof a === "string" && a ? a : null,
+  };
+}
 
 export async function enrichProyectoHistorialRows(
   sb: AppSupabaseClient,
@@ -41,6 +58,9 @@ export async function enrichProyectoHistorialRows(
     if (r.estado_anterior_id) estadoIds.add(r.estado_anterior_id);
     if (r.estado_nuevo_id) estadoIds.add(r.estado_nuevo_id);
     if (r.changed_by) userIds.add(r.changed_by);
+    const rea = leerReasignacion(r.metadata);
+    if (rea?.de) userIds.add(rea.de);
+    if (rea?.a) userIds.add(rea.a);
   }
 
   const catalog = createServiceRoleClient();
@@ -74,6 +94,10 @@ export async function enrichProyectoHistorialRows(
       usuarioLabel = nombreUsuario.get(uid) ?? "Usuario desconocido";
     }
 
+    const rea = leerReasignacion(r.metadata);
+    const nombreDe = (id: string | null) =>
+      id ? nombreUsuario.get(id) ?? "Usuario desconocido" : "Sin asignar";
+
     return {
       ...r,
       estado_anterior_nombre: antId ? nombreEstado.get(antId) ?? "—" : null,
@@ -83,6 +107,9 @@ export async function enrichProyectoHistorialRows(
       duration_label: formatDurationHuman(
         r.duration_seconds != null ? Number(r.duration_seconds) : null
       ),
+      evento_tipo: rea ? "reasignacion_tecnico" : "estado",
+      reasignacion_de_label: rea ? nombreDe(rea.de) : null,
+      reasignacion_a_label: rea ? nombreDe(rea.a) : null,
     };
   });
 }

@@ -28,6 +28,39 @@ export async function cerrarSegmentoHistorialAbierto(
     .eq("empresa_id", empresaId);
 }
 
+/**
+ * Registra en el historial la reasignación del responsable técnico como un evento
+ * puntual (entrada = salida, sin duración). Va en la misma tabla que los cambios de
+ * estado pero con `estado_*` en null y `metadata.tipo = "reasignacion_tecnico"`, así
+ * queda en la misma línea de tiempo del proyecto sin interferir con los segmentos de
+ * estado (al tener `exited_at` seteado, `cerrarSegmentoHistorialAbierto` lo ignora).
+ */
+export async function insertHistorialReasignacionTecnico(input: {
+  sb: AppSupabaseClient;
+  empresaId: string;
+  proyectoId: string;
+  deTecnicoId: string | null;
+  aTecnicoId: string | null;
+  changedBy: string | null;
+}): Promise<void> {
+  const { sb, empresaId, proyectoId, deTecnicoId, aTecnicoId, changedBy } = input;
+  const ahora = new Date().toISOString();
+  const { error } = await sb.from("proyecto_estado_historial").insert({
+    empresa_id: empresaId,
+    proyecto_id: proyectoId,
+    estado_anterior_id: null,
+    estado_nuevo_id: null,
+    changed_by: changedBy,
+    changed_at: ahora,
+    entered_at: ahora,
+    exited_at: ahora,
+    duration_seconds: 0,
+    metadata: { tipo: "reasignacion_tecnico", de: deTecnicoId, a: aTecnicoId },
+    responsable_tecnico_id: aTecnicoId,
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function insertHistorialCambioEstado(input: {
   sb: AppSupabaseClient;
   empresaId: string;

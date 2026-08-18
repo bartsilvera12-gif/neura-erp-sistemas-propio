@@ -103,6 +103,7 @@ export default function UsuarioNuevoForm({
           ips: form.ips,
           area: form.area,
           rol: rolFromNivelForm(form.nivel),
+          es_qa: form.es_qa,
         }),
       });
       const json = await res.json();

@@ -44,6 +44,8 @@ export type UsuarioFormValues = {
   nivel: NivelUsuario;
   area: AreaUsuario;
   estado: "activo" | "inactivo";
+  /** Función QA: recibe los proyectos que entran a control de calidad. No es un nivel de permisos. */
+  es_qa: boolean;
   password: string;
   password2: string;
   /** Solo edición: módulos asignados (ids). */
@@ -68,6 +70,7 @@ export function emptyUsuarioForm(): UsuarioFormValues {
     nivel: "usuario",
     area: "ventas",
     estado: "activo",
+    es_qa: false,
     password: "",
     password2: "",
     modulo_ids: [],
@@ -317,6 +320,26 @@ export function UsuarioFormFields({
               onChange={(v) => setField("estado", v)}
               ariaLabel="Estado"
             />
+          </div>
+          <div className="sm:col-span-2">
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
+              <input
+                type="checkbox"
+                id="es_qa"
+                name="es_qa"
+                checked={form.es_qa}
+                onChange={onChange}
+                disabled={nivelAccesoDisabled}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <label htmlFor="es_qa" className="cursor-pointer text-sm font-medium text-slate-700">
+                Es QA (control de calidad)
+                <span className="mt-0.5 block text-xs font-normal text-slate-400">
+                  Cuando un proyecto entra a QA, se le asigna automáticamente a esta persona. Es una función,
+                  no cambia el nivel de permisos.
+                </span>
+              </label>
+            </div>
           </div>
         </div>
       </SectionCard>

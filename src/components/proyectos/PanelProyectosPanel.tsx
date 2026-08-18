@@ -49,7 +49,9 @@ type DetalleProy = {
   titulo: string;
   cliente: string;
   estado: string;
+  estado_orden: number;
   es_final: boolean;
+  vendedor: string;
   presupuesto: number;
   dias_en_estado: number | null;
   sla_vencido: boolean;
@@ -60,16 +62,20 @@ function fmtGs(n: number): string {
   return `₲ ${new Intl.NumberFormat("es-PY", { maximumFractionDigits: 0 }).format(n || 0)}`;
 }
 
-/** Tabla de proyectos de un responsable (etapa, presupuesto, SLA). */
-function ProyectosDetalleTabla({ proyectos }: { proyectos: DetalleProy[] }) {
+/** Tabla de proyectos de un responsable (etapa, vendedor, presupuesto, SLA). */
+function ProyectosDetalleTabla({ proyectos, mostrarVendedor = false }: { proyectos: DetalleProy[]; mostrarVendedor?: boolean }) {
   if (!proyectos.length) return <p className="px-3 py-3 text-xs text-slate-400">Sin proyectos.</p>;
+  const cols = mostrarVendedor
+    ? ["Cliente / Proyecto", "Etapa", "Vendedor", "Presupuesto", "SLA"]
+    : ["Cliente / Proyecto", "Etapa", "Presupuesto", "SLA"];
+  const rightFrom = mostrarVendedor ? 3 : 2;
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[560px] text-sm">
         <thead className="border-b border-slate-100 bg-slate-50/60">
           <tr>
-            {["Cliente / Proyecto", "Etapa", "Presupuesto", "SLA"].map((h, i) => (
-              <th key={i} className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ${i >= 2 ? "text-right" : "text-left"}`}>
+            {cols.map((h, i) => (
+              <th key={i} className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ${i >= rightFrom ? "text-right" : "text-left"}`}>
                 {h}
               </th>
             ))}
@@ -87,6 +93,9 @@ function ProyectosDetalleTabla({ proyectos }: { proyectos: DetalleProy[] }) {
                   {p.estado}
                 </span>
               </td>
+              {mostrarVendedor ? (
+                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-slate-600">{p.vendedor}</td>
+              ) : null}
               <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">
                 {p.presupuesto > 0 ? fmtGs(p.presupuesto) : <span className="text-slate-300">—</span>}
               </td>
@@ -277,7 +286,7 @@ export default function PanelProyectosPanel() {
                   </button>
                   {open ? (
                     <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40">
-                      <ProyectosDetalleTabla proyectos={t.proyectos} />
+                      <ProyectosDetalleTabla proyectos={t.proyectos} mostrarVendedor />
                     </div>
                   ) : null}
                 </div>

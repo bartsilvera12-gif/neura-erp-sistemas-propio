@@ -246,7 +246,12 @@ export async function GET(request: Request) {
         titulo: String(p.titulo ?? "").trim() || "(sin título)",
         cliente: cliLabel.get(String(p.cliente_id ?? "")) ?? "—",
         estado: meta?.nombre ?? "(sin estado)",
+        estado_orden: meta?.orden ?? 99,
         es_final: meta?.final ?? false,
+        vendedor: (() => {
+          const k = String(p.responsable_comercial_id ?? "");
+          return k ? comNombre.get(k) || "—" : "Sin asignar";
+        })(),
         presupuesto: Math.round(presupuestoDe(p)),
         dias_en_estado: diasEnEstado,
         sla_vencido: slaVencido,
@@ -282,8 +287,14 @@ export async function GET(request: Request) {
       }));
 
     type DetalleProy = ReturnType<typeof proyectoDetalle>;
+    // Orden: por estado (orden del pipeline), luego SLA vencido primero, luego presupuesto desc.
     const ordenarProys = (arr: DetalleProy[]) =>
-      arr.sort((a, b) => Number(b.sla_vencido) - Number(a.sla_vencido) || b.presupuesto - a.presupuesto);
+      arr.sort(
+        (a, b) =>
+          a.estado_orden - b.estado_orden ||
+          Number(b.sla_vencido) - Number(a.sla_vencido) ||
+          b.presupuesto - a.presupuesto
+      );
 
     // Por asesor. Solo carga vigente: activos + entregados este mes (los entregados de meses
     // anteriores no aparecen ni suman presupuesto).

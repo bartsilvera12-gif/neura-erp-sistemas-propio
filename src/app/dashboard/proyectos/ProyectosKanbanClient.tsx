@@ -19,6 +19,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
+import { isErpRolAdministrador, isErpRolSupervisor } from "@/lib/usuarios/erp-rol-normalize";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
@@ -783,12 +784,55 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     }
   }, [vista]);
 
+  /**
+   * Alcance del tablero: "mios" (solo donde soy responsable — comercial/técnico/QA)
+   * o "todos". Recuerda la última elección por navegador. El DEFAULT depende del
+   * nivel: gerencia (admin/supervisor) arranca en "todos"; el resto en "mios".
+   * Queda `null` hasta resolver el nivel del usuario, para no cargar con el alcance
+   * equivocado (evita el parpadeo "todos → míos").
+   */
+  const [alcance, setAlcance] = useState<"mios" | "todos" | null>(() => {
+    if (typeof window === "undefined") return null;
+    const s = window.localStorage.getItem("proyectos:alcance");
+    return s === "mios" || s === "todos" ? s : null;
+  });
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
+        const j = (await r.json().catch(() => ({}))) as { usuario?: { rol?: string | null } };
+        const rol = j.usuario?.rol ?? null;
+        if (cancel) return;
+        setAlcance((prev) => {
+          if (prev !== null) return prev; // ya venía de una elección guardada
+          const esGerencia = isErpRolAdministrador(rol) || isErpRolSupervisor(rol);
+          return esGerencia ? "todos" : "mios";
+        });
+      } catch {
+        if (!cancel) setAlcance((prev) => prev ?? "todos");
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (alcance === null) return;
+    try {
+      window.localStorage.setItem("proyectos:alcance", alcance);
+    } catch {
+      /* ignore */
+    }
+  }, [alcance]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor)
   );
 
   const load = useCallback(async () => {
+    if (alcance === null) return; // esperar a resolver el default por nivel
     setLoading(true);
     setErr(null);
     const sp = new URLSearchParams();
@@ -797,6 +841,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     if (filtroTipo) sp.set("tipo_id", filtroTipo);
     if (filtroRc) sp.set("responsable_comercial_id", filtroRc);
     if (filtroRt) sp.set("responsable_tecnico_id", filtroRt);
+    if (alcance === "mios") sp.set("mios", "1");
 
     const [rEst, rPr, rTipos, rUsers, rPrioridades] = await Promise.all([
       fetchWithSupabaseSession("/api/proyectos/estados", { cache: "no-store" }),
@@ -846,7 +891,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     }
 
     setLoading(false);
-  }, [q, filtroEstado, filtroTipo, filtroRc, filtroRt]);
+  }, [q, filtroEstado, filtroTipo, filtroRc, filtroRt, alcance]);
 
   useEffect(() => {
     void load();
@@ -1095,6 +1140,33 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
             </svg>
             Reportes
           </Link>
+          {/* Alcance: "Mías" (donde soy responsable) | "Todas". Default por nivel, recuerda elección. */}
+          {alcance !== null ? (
+            <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
+              <button
+                type="button"
+                onClick={() => setAlcance("mios")}
+                aria-pressed={alcance === "mios"}
+                title="Solo los proyectos donde soy responsable (comercial, técnico o QA)"
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  alcance === "mios" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Mías
+              </button>
+              <button
+                type="button"
+                onClick={() => setAlcance("todos")}
+                aria-pressed={alcance === "todos"}
+                title="Todos los proyectos del equipo"
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  alcance === "todos" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Todas
+              </button>
+            </div>
+          ) : null}
           {/* Toggle de vista: Kanban (cards) | Lista (tabla). Mismo patrón que CRM Funnel. */}
           <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
             <button

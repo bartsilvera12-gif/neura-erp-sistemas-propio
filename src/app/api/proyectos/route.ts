@@ -74,6 +74,21 @@ export async function GET(request: Request) {
       });
     }
 
+    // "Mi vista": solo los proyectos donde el usuario actual es responsable, en
+    // cualquier función — comercial, técnico o QA. Para la persona de QA sus
+    // proyectos son los que se le auto-asignaron al entrar a QA (qa_responsable_id).
+    if (sp.get("mios") === "1") {
+      const yo = auth.usuarioCatalogId ?? "";
+      rows = yo
+        ? rows.filter((r) => {
+            const rcid = typeof r.responsable_comercial_id === "string" ? r.responsable_comercial_id : "";
+            const rtid = typeof r.responsable_tecnico_id === "string" ? r.responsable_tecnico_id : "";
+            const qaid = typeof r.qa_responsable_id === "string" ? r.qa_responsable_id : "";
+            return rcid === yo || rtid === yo || qaid === yo;
+          })
+        : [];
+    }
+
     const enriched = await enrichProyectosRows(sb, empresaId, rows);
 
     // Badge de novedades de QA: una sola query agregada para todo el listado

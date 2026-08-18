@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 export type FancySelectOption = {
   value: string;
@@ -35,6 +36,20 @@ export type FancySelectProps = {
 const TRIGGER_BASE =
   "group relative flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white text-left text-slate-900 shadow-sm transition-all hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
+/** Posición calculada del popover, en coordenadas de viewport (`position: fixed`). */
+type PopoverPos = {
+  left: number;
+  width: number;
+  /** Se usa `top` al abrir hacia abajo y `bottom` al abrir hacia arriba. */
+  top?: number;
+  bottom?: number;
+  maxHeight: number;
+};
+
+const SEPARACION = 6;
+const MARGEN_VIEWPORT = 8;
+const ALTO_MAXIMO = 280;
+
 export function FancySelect({
   options,
   value,
@@ -50,9 +65,10 @@ export function FancySelect({
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [dropUp, setDropUp] = useState(false);
+  const [pos, setPos] = useState<PopoverPos | null>(null);
   const listboxId = useId();
 
   const selected = useMemo(
@@ -93,35 +109,83 @@ export function FancySelect({
     [options, onChange, closeMenu]
   );
 
-  // Close on outside click
+  // Close on outside click. El popover vive en un portal fuera de `wrapRef`,
+  // así que hay que contemplarlo aparte o clickear una opción cerraría el menú
+  // antes de que el click llegue a ella.
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) closeMenu();
+      const target = e.target as Node;
+      if (wrapRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      closeMenu();
     }
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [open, closeMenu]);
 
-  // Auto open direction based on available viewport space
-  useLayoutEffect(() => {
-    if (!open || openDirection !== "auto") {
-      if (openDirection === "up") setDropUp(true);
-      else if (openDirection === "down") setDropUp(false);
-      return;
-    }
+  /**
+   * Posición del popover en coordenadas de viewport.
+   *
+   * Se renderiza en un portal sobre `body` con `position: fixed` en vez de
+   * `absolute` dentro del trigger: cualquier ancestro con `overflow` —la tabla
+   * de la vista lista, el scroll de las columnas del Kanban— recortaba el menú
+   * y dejaba las opciones a medias. Fuera del árbol no hay nada que lo recorte.
+   */
+  const recalcularPos = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    const estimatedHeight = Math.min(280, options.length * 40 + 24);
-    if (spaceBelow < estimatedHeight && spaceAbove > spaceBelow) {
-      setDropUp(true);
-    } else {
-      setDropUp(false);
-    }
-  }, [open, openDirection, options.length]);
+    const r = trigger.getBoundingClientRect();
+    const espacioAbajo = window.innerHeight - r.bottom - MARGEN_VIEWPORT - SEPARACION;
+    const espacioArriba = r.top - MARGEN_VIEWPORT - SEPARACION;
+    const alturaDeseada = Math.min(ALTO_MAXIMO, options.length * 44 + 12);
+
+    const haciaArriba =
+      openDirection === "up"
+        ? true
+        : openDirection === "down"
+          ? false
+          : espacioAbajo < alturaDeseada && espacioArriba > espacioAbajo;
+
+    // El menú nunca se sale por el costado: si el trigger está pegado al borde
+    // derecho, se corre hacia adentro en vez de desbordar.
+    const ancho = Math.max(r.width, 180);
+    const left = Math.min(
+      Math.max(MARGEN_VIEWPORT, r.left),
+      Math.max(MARGEN_VIEWPORT, window.innerWidth - ancho - MARGEN_VIEWPORT)
+    );
+
+    setPos({
+      left,
+      width: ancho,
+      ...(haciaArriba
+        ? { bottom: window.innerHeight - r.top + SEPARACION }
+        : { top: r.bottom + SEPARACION }),
+      maxHeight: Math.max(120, Math.min(ALTO_MAXIMO, haciaArriba ? espacioArriba : espacioAbajo)),
+    });
+  }, [openDirection, options.length]);
+
+  // Sólo se recalcula al abrir. No hace falta limpiar la posición al cerrar: el
+  // popover no se renderiza cerrado, y al reabrir este efecto corre antes del
+  // paint, así que nunca se llega a ver la posición vieja.
+  useLayoutEffect(() => {
+    if (!open) return;
+    recalcularPos();
+  }, [open, recalcularPos]);
+
+  // Mientras está abierto el menú sigue al trigger: `capture` es lo que hace
+  // que también se entere del scroll de los contenedores internos, no sólo del
+  // de la ventana.
+  useEffect(() => {
+    if (!open) return;
+    const onMove = () => recalcularPos();
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, recalcularPos]);
 
   // Scroll active item into view
   useEffect(() => {
@@ -238,18 +302,31 @@ export function FancySelect({
         </span>
       </button>
 
-      {open ? (
+      {open && pos && typeof document !== "undefined"
+        ? createPortal(
         <div
-          className={`absolute left-0 right-0 z-50 ${
-            dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
-          }`}
+          ref={popoverRef}
+          style={{
+            position: "fixed",
+            left: pos.left,
+            width: pos.width,
+            top: pos.top,
+            bottom: pos.bottom,
+            zIndex: 70,
+          }}
+          // El portal cuelga de `body`, fuera del modal o la fila que lo abrió.
+          // Sin frenar la propagación, los cierres por "click afuera" de esos
+          // contenedores se dispararían al elegir una opción.
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <ul
             ref={listRef}
             id={listboxId}
             role="listbox"
             tabIndex={-1}
-            className="max-h-[260px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl ring-1 ring-[#4FAEB2]/15"
+            style={{ maxHeight: pos.maxHeight }}
+            className="overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl ring-1 ring-[#4FAEB2]/15"
           >
             {options.length === 0 ? (
               <li className="px-3 py-3 text-center text-xs text-slate-400">
@@ -314,8 +391,10 @@ export function FancySelect({
               })
             )}
           </ul>
-        </div>
-      ) : null}
+        </div>,
+        document.body
+      )
+        : null}
     </div>
   );
 }

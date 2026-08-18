@@ -6,6 +6,7 @@ type UsuarioMeRow = {
   nombre: string | null;
   email: string | null;
   rol: string | null;
+  es_project_manager: boolean | null;
 };
 
 function pickAuthMetadataName(authUser: { user_metadata?: Record<string, unknown> | null }): string | null {
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
     if (catalogUsuario?.id) {
       const { data, error } = await supabaseSr
         .from("usuarios")
-        .select("nombre, email, rol")
+        .select("nombre, email, rol, es_project_manager")
         .eq("id", catalogUsuario.id)
         .maybeSingle();
 
@@ -56,7 +57,14 @@ export async function GET(request: Request) {
     const dataSchema = await resolveDataSchemaForCurrentUserServer().catch(() => null);
 
     return NextResponse.json({
-      usuario: { id: catalogUsuario?.id ?? null, nombre, rol, email, data_schema: dataSchema },
+      usuario: {
+        id: catalogUsuario?.id ?? null,
+        nombre,
+        rol,
+        email,
+        data_schema: dataSchema,
+        es_project_manager: row?.es_project_manager === true,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error al obtener el usuario actual";

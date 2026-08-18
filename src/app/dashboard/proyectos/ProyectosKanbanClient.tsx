@@ -793,7 +793,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
    */
   const [alcance, setAlcance] = useState<"mios" | "todos" | null>(() => {
     if (typeof window === "undefined") return null;
-    const s = window.localStorage.getItem("proyectos:alcance");
+    const s = window.localStorage.getItem("proyectos:alcance:v2");
     return s === "mios" || s === "todos" ? s : null;
   });
   useEffect(() => {
@@ -801,12 +801,17 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     (async () => {
       try {
         const r = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
-        const j = (await r.json().catch(() => ({}))) as { usuario?: { rol?: string | null } };
+        const j = (await r.json().catch(() => ({}))) as {
+          usuario?: { rol?: string | null; es_project_manager?: boolean | null };
+        };
         const rol = j.usuario?.rol ?? null;
+        const esPm = j.usuario?.es_project_manager === true;
         if (cancel) return;
         setAlcance((prev) => {
           if (prev !== null) return prev; // ya venía de una elección guardada
-          const esGerencia = isErpRolAdministrador(rol) || isErpRolSupervisor(rol);
+          // Gerencia (admin/supervisor) y project managers ven todo por defecto: no
+          // trabajan sobre proyectos propios sino que supervisan a todo el equipo.
+          const esGerencia = isErpRolAdministrador(rol) || isErpRolSupervisor(rol) || esPm;
           return esGerencia ? "todos" : "mios";
         });
       } catch {
@@ -820,7 +825,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   useEffect(() => {
     if (alcance === null) return;
     try {
-      window.localStorage.setItem("proyectos:alcance", alcance);
+      window.localStorage.setItem("proyectos:alcance:v2", alcance);
     } catch {
       /* ignore */
     }

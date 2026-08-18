@@ -229,7 +229,7 @@ export default function PanelProyectosPanel() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">Por asesor comercial</h2>
-        <p className="mb-3 text-[11px] text-slate-400">Tocá un asesor para ver sus proyectos (etapa, presupuesto y SLA).</p>
+        <p className="mb-3 text-[11px] text-slate-400">Carga vigente: activos + entregados este mes (no arrastra entregas de meses anteriores). Tocá para ver sus proyectos.</p>
         <div className="space-y-2">
           {data.por_asesor.map((a) => {
             const open = aseAbierto === a.asesor;
@@ -257,7 +257,7 @@ export default function PanelProyectosPanel() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">Por técnico</h2>
-        <p className="mb-3 text-[11px] text-slate-400">Tocá un técnico para ver sus proyectos (etapa, presupuesto y SLA).</p>
+        <p className="mb-3 text-[11px] text-slate-400">Carga vigente: activos + entregados este mes (no arrastra entregas de meses anteriores). Tocá para ver sus proyectos.</p>
         {data.por_tecnico.length === 0 ? (
           <p className="text-xs text-slate-400">Sin proyectos con técnico asignado.</p>
         ) : (

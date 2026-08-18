@@ -209,6 +209,17 @@ export async function GET(request: Request) {
     // ── Agregaciones ──
     const now = Date.now();
     const ymActual = ymEnAsuncion(new Date());
+    const entregaYm = (pid: string): string | null => {
+      const ms = entregaMs.get(pid);
+      return ms != null ? ymEnAsuncion(new Date(ms)) : null;
+    };
+    // Para las vistas POR PERSONA (asesor / técnico): un proyecto entregado en un mes anterior deja
+    // de contar en la carga de esa persona (y en su presupuesto). Se mantienen los activos y lo
+    // entregado este mes. El resto del panel (por estado / KPIs / histórico) sigue mostrando todo.
+    const entregadoMesAnterior = (p: Record<string, unknown>) => {
+      const meta = estMeta.get(String(p.estado_id ?? ""));
+      return !!(meta?.final && !meta.cancel && entregaYm(String(p.id)) !== ymActual);
+    };
 
     // Detalle de un proyecto para los drill-down (por asesor / por técnico): etapa, monto y SLA.
     const proyectoDetalle = (p: Record<string, unknown>) => {
@@ -274,9 +285,11 @@ export async function GET(request: Request) {
     const ordenarProys = (arr: DetalleProy[]) =>
       arr.sort((a, b) => Number(b.sla_vencido) - Number(a.sla_vencido) || b.presupuesto - a.presupuesto);
 
-    // Por asesor.
+    // Por asesor. Solo carga vigente: activos + entregados este mes (los entregados de meses
+    // anteriores no aparecen ni suman presupuesto).
     const porAseMap = new Map<string, { cantidad: number; presupuesto: number; proyectos: DetalleProy[] }>();
     for (const p of cohort) {
+      if (entregadoMesAnterior(p)) continue;
       const k = String(p.responsable_comercial_id ?? "");
       const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0, proyectos: [] };
       agg.cantidad += 1;
@@ -293,9 +306,10 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => b.presupuesto - a.presupuesto || b.cantidad - a.cantidad);
 
-    // Por técnico (responsable técnico) — qué proyectos tiene asociados cada uno.
+    // Por técnico (responsable técnico) — carga vigente: activos + entregados este mes.
     const porTecMap = new Map<string, { cantidad: number; presupuesto: number; proyectos: DetalleProy[] }>();
     for (const p of cohort) {
+      if (entregadoMesAnterior(p)) continue;
       const k = String(p.responsable_tecnico_id ?? "");
       const agg = porTecMap.get(k) ?? { cantidad: 0, presupuesto: 0, proyectos: [] };
       agg.cantidad += 1;

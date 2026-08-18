@@ -134,6 +134,11 @@ export default function ProyectoNuevoForm({
       setErr("El título es requerido.");
       return;
     }
+    // Para proyectos web (o mixto saas+web) el rubro/tipo de web es obligatorio.
+    if (esWeb && !(brief.tipo_web ?? "").trim()) {
+      setErr("El tipo de web (rubro) es obligatorio para proyectos web.");
+      return;
+    }
     setSaving(true);
     setErr(null);
     // Se aplican en cadena, no en if/else: el tipo mixto guarda ambos briefs.
@@ -373,7 +378,9 @@ export default function ProyectoNuevoForm({
                 if (f.key === "tipo_web") {
                   return (
                     <label key={f.key} className="block text-sm sm:col-span-2">
-                      <span className={LABEL_CLS}>{f.label}</span>
+                      <span className={LABEL_CLS}>
+                        {f.label} <span className="text-rose-500">*</span>
+                      </span>
                       <RubroWebSelect
                         value={brief[f.key] ?? ""}
                         onChange={(v) => setBrief((b) => ({ ...b, [f.key]: v }))}

@@ -101,9 +101,15 @@ const TAB_LABELS: Record<TabId, string> = {
   historial: "Historial",
 };
 
+// Pestañas ocultas por ahora (no se usan). Se mantiene el código/contenido por si se reactivan,
+// pero no se muestran en la barra ni son accesibles por URL.
+const HIDDEN_TABS: readonly TabId[] = ["tareas", "cambios"];
+const VISIBLE_TAB_IDS = TAB_IDS.filter((t) => !HIDDEN_TABS.includes(t));
+
 function normalizeTab(raw: string | null | undefined): TabId {
   if (!raw) return "resumen";
   if (raw === "brief") return "datos";
+  if ((HIDDEN_TABS as readonly string[]).includes(raw ?? "")) return "resumen";
   return (TAB_IDS as readonly string[]).includes(raw) ? (raw as TabId) : "resumen";
 }
 
@@ -1542,7 +1548,7 @@ export default function ProyectoDetalleInner({
             : "flex flex-wrap gap-1.5 border-b border-slate-200 pb-2"
         }
       >
-        {TAB_IDS.map((t) => {
+        {VISIBLE_TAB_IDS.map((t) => {
           const active = tab === t;
           return (
             <button

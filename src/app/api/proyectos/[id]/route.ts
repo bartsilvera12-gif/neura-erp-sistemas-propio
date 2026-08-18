@@ -19,6 +19,7 @@ import {
 } from "@/lib/proyectos/etapas-qa";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
 import { puedeEliminarProyectos, requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 
@@ -320,20 +321,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           // empresa; con varias no hay forma de adivinar cuál, y se elige a
           // mano desde el selector de responsable.
           if (nueva === "qa" && !cur.qa_responsable_id && !pideQaResponsable) {
-            const catalog = createServiceRoleClient();
-            const { data: qas } = await catalog
-              .from("usuarios")
-              .select("id")
-              .eq("empresa_id", auth.empresaId)
-              .eq("es_qa", true)
-              .ilike("estado", "activo");
-            const ids = (qas ?? []) as { id: string }[];
-            if (ids.length === 1) {
-              patch.qa_responsable_id = ids[0].id;
-              patch.qa_asignado_at = ahora;
-              patch.qa_etapa = QA_ETAPA_INICIAL;
-              patch.qa_etapa_at = ahora;
-            }
+            const qaId = await resolverQaUnica(auth.empresaId);
+            if (qaId) Object.assign(patch, patchAsignacionQa(qaId, ahora));
           }
         }
       }

@@ -16,6 +16,69 @@ type NotifSupabase = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
 
 export type TipoNotificacion = "qa_novedad" | "qa_aprobado" | "qa_rechazado";
 
+/**
+ * Aviso a la persona de QA de que un proyecto entró a control de calidad y se le
+ * asignó. Se dispara al mover la tarjeta al estado QA del tablero.
+ *
+ * Va como `qa_novedad` (el catálogo de tipos permitidos no incluye uno propio y
+ * la tabla es de otro owner), reusando el mismo índice único parcial y el patrón
+ * update-or-insert anti-duplicados: si la QA ya tiene una novedad sin leer de ese
+ * proyecto se le refresca; si no, se inserta. Nunca lanza: un fallo de aviso no
+ * puede abortar el cambio de estado que lo originó.
+ */
+export async function notificarEntradaQA(
+  sb: NotifSupabase,
+  args: {
+    empresaId: string;
+    proyectoId: string;
+    qaUsuarioId: string;
+    tituloProyecto: string;
+    actorId: string | null;
+  }
+): Promise<void> {
+  try {
+    if (!args.qaUsuarioId || args.qaUsuarioId === args.actorId) return;
+    const ahora = new Date().toISOString();
+
+    const refrescar = async (): Promise<boolean> => {
+      const { data: existente } = await sb
+        .from("usuario_notificaciones")
+        .select("id")
+        .eq("empresa_id", args.empresaId)
+        .eq("usuario_id", args.qaUsuarioId)
+        .eq("proyecto_id", args.proyectoId)
+        .eq("tipo", "qa_novedad")
+        .is("leida_at", null)
+        .maybeSingle();
+      const row = existente as { id: string } | null;
+      if (!row) return false;
+      await sb
+        .from("usuario_notificaciones")
+        .update({ titulo: `Entró a QA · ${args.tituloProyecto}`, cuerpo: "Se te asignó para control de calidad.", created_at: ahora, actor_id: args.actorId })
+        .eq("empresa_id", args.empresaId)
+        .eq("id", row.id);
+      return true;
+    };
+
+    if (await refrescar()) return;
+
+    const { error } = await sb.from("usuario_notificaciones").insert({
+      empresa_id: args.empresaId,
+      usuario_id: args.qaUsuarioId,
+      tipo: "qa_novedad",
+      titulo: `Entró a QA · ${args.tituloProyecto}`,
+      cuerpo: "Se te asignó para control de calidad.",
+      proyecto_id: args.proyectoId,
+      actor_id: args.actorId,
+      agrupadas: 1,
+    });
+    // Carrera perdida contra otro request: la fila ya existe, refrescamos.
+    if (error) await refrescar();
+  } catch (e) {
+    console.error("[qa-notificaciones] no se pudo notificar la entrada a QA", e);
+  }
+}
+
 /** Texto corto por acción, para el cuerpo de la notificación agrupada. */
 const ACCION_LEGIBLE: Record<QAAccion, string> = {
   grupo_creado: "creó un grupo",

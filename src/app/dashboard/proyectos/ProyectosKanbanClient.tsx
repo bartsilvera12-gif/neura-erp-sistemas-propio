@@ -247,13 +247,17 @@ function formatSlaTarget(hours: number | null | undefined): string | null {
   return formatSlaDuration(hours * 3600);
 }
 
+// Tiempo que la tarjeta lleva en su área/estado actual (se reinicia al moverla).
+// No hay metas de SLA definidas (objetivo en horas vacío), así que se muestra el
+// tiempo transcurrido como "En área: Xd". Si algún día se cargan metas, se
+// resalta el exceso ("Vencido: +…") y se muestra el objetivo al lado.
 function slaEstadoLabel(p: ProyectoCard): string {
   const sla = p.sla_estado_actual;
-  if (!sla?.cuenta_sla) return "SLA —";
-  if (sla.vencido) return `SLA vencido: +${formatSlaDuration(sla.excedido_segundos)}`;
+  if (sla?.cuenta_sla && sla.vencido) return `Vencido: +${formatSlaDuration(sla.excedido_segundos)}`;
   const elapsed = formatSlaDuration(p.tiempo_en_estado_segundos);
-  const target = formatSlaTarget(sla.objetivo_horas);
-  return target ? `SLA: ${elapsed} / ${target}` : `SLA: ${elapsed}`;
+  if (elapsed === "—") return "—";
+  const target = sla?.cuenta_sla ? formatSlaTarget(sla.objetivo_horas) : null;
+  return target ? `En área: ${elapsed} / ${target}` : `En área: ${elapsed}`;
 }
 
 function saasModuleCountLabel(p: ProyectoCard): string | null {

@@ -493,8 +493,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    const enriched = await enrichProyectosRows(sb, auth.empresaId, [row as Record<string, unknown>]);
-    return NextResponse.json(successResponse(enriched[0] ?? row));
+    // Se devuelve la fila cruda, sin enriquecer. El enriquecido son cinco
+    // consultas más (tipos, estados, clientes, usuarios, historial) y ningún
+    // cliente usaba el resultado del PATCH: todos miran sólo `success` y
+    // después recargan. Era latencia pura en el camino de guardar.
+    return NextResponse.json(successResponse(row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

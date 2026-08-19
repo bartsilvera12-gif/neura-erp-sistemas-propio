@@ -647,19 +647,34 @@ export default function ProyectoDetalleInner({
   const [responsableTecnicoId, setResponsableTecnicoId] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [datosSnapshot, setDatosSnapshot] = useState("");
+  const [guardandoDatos, setGuardandoDatos] = useState(false);
 
-  const load = useCallback(async () => {
+  /**
+   * `silencioso` refresca sin encender el spinner: se usa después de guardar,
+   * cuando el dato ya está confirmado y la recarga es sólo para reconciliar.
+   * Con el spinner, ese refresco de fondo tapaba la pantalla y hacía sentir el
+   * guardado mucho más lento de lo que era.
+   */
+  const load = useCallback(async (silencioso = false) => {
     if (!projectId) return;
-    setLoading(true);
+    if (!silencioso) setLoading(true);
     setErr(null);
     const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, { cache: "no-store" });
     const j = (await res.json()) as { success?: boolean; data?: DetalleResp; error?: string };
     if (!res.ok || !j.success || !j.data) {
       setErr(j.error ?? "Error al cargar");
-      setLoading(false);
+      if (!silencioso) setLoading(false);
       return;
     }
     setData(j.data);
+
+    // En modo silencioso no se re-hidratan los campos editables. Es un refresco
+    // posterior a guardar, así que el formulario ya tiene lo que el usuario
+    // escribió; pisarlo con la respuesta del servidor borraría lo que haya
+    // empezado a tipear mientras la recarga volvía. Historial, SLA, archivos y
+    // comentarios sí se actualizan, porque salen de `data` y no se editan acá.
+    if (silencioso) return;
+
     const p = j.data.proyecto;
     const merged = coalesceBriefData(p.brief_data);
     const saas = readSaasBriefData(p.brief_data);
@@ -689,7 +704,7 @@ export default function ProyectoDetalleInner({
       if (!draft[nro]) draft[nro] = { realizado: false, comentario: "" };
     }
     setCambiosDraft(draft);
-    setLoading(false);
+    if (!silencioso) setLoading(false);
   }, [projectId]);
 
   useEffect(() => {
@@ -855,7 +870,9 @@ export default function ProyectoDetalleInner({
 
   async function guardarDatos() {
     const proyecto = data?.proyecto;
-    if (!proyecto) return;
+    if (!proyecto || guardandoDatos) return;
+    setGuardandoDatos(true);
+    setErr(null);
     const tipoCodigo = proyecto.proyecto_tipo?.codigo ?? "";
     // En cadena y no en if/else: el tipo mixto guarda los dos briefs, y sus
     // claves son disjuntas (`saas_*` vs. marca/dominio/…).
@@ -878,9 +895,29 @@ export default function ProyectoDetalleInner({
     const j = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !j.success) {
       setErr(j.error ?? "No se pudo guardar");
+      setGuardandoDatos(false);
       return;
     }
-    await load();
+
+    // Guardado confirmado por el servidor. El formulario se marca limpio acá,
+    // con lo que el usuario acaba de escribir, y NO se espera la recarga: el
+    // botón se apaga apenas responde el PATCH.
+    setDatosSnapshot(
+      JSON.stringify({
+        bf: briefForm,
+        bl: briefLists,
+        saas: saasForm,
+        responsable_tecnico_id: responsableTecnicoId,
+        obs: observaciones,
+      })
+    );
+    setGuardandoDatos(false);
+
+    // Reconciliación en segundo plano: trae historial, SLA y lo que el servidor
+    // haya derivado del cambio. Antes esto se esperaba, y entre la recarga del
+    // detalle y la del tablero el guardado tardaba varios segundos en devolver
+    // el control aunque el dato ya estuviera escrito.
+    void load(true);
     onProjectUpdated?.();
   }
 
@@ -1738,10 +1775,10 @@ export default function ProyectoDetalleInner({
               <button
                 type="button"
                 className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
-                disabled={!datosDirty}
+                disabled={!datosDirty || guardandoDatos}
                 onClick={() => void guardarDatos()}
               >
-                Guardar datos
+                {guardandoDatos ? "Guardando…" : "Guardar datos"}
               </button>
             </div>
 

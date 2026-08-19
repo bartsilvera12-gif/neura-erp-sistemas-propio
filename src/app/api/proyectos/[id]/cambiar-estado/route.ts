@@ -7,6 +7,7 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { notificarEntradaQA } from "@/lib/proyectos/qa-notificaciones";
 import { esEstadoPausado, etapaDesdeEstado } from "@/lib/proyectos/estados-tablero";
+import { notificarCambioEstado } from "@/lib/proyectos/estado-notificaciones";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,7 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: proyecto, error: e1 } = await sb
       .from("proyectos")
       .select(
-        "id, titulo, estado_id, responsable_tecnico_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms"
+        "id, titulo, estado_id, responsable_tecnico_id, responsable_comercial_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms"
       )
       .eq("empresa_id", empresaId)
       .eq("id", pid)
@@ -63,7 +64,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const { data: estNuevo, error: e2 } = await sb
       .from("proyecto_estados")
-      .select("id, codigo, tipo_sla")
+      .select("id, codigo, nombre, tipo_sla, es_estado_final")
       .eq("empresa_id", empresaId)
       .eq("id", nuevoEstadoId)
       .eq("activo", true)
@@ -73,7 +74,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json(errorResponse("Estado destino no válido"), { status: 400 });
     }
 
-    const est = estNuevo as { codigo?: string | null; tipo_sla?: string | null };
+    const est = estNuevo as {
+      codigo?: string | null;
+      nombre?: string | null;
+      tipo_sla?: string | null;
+      es_estado_final?: boolean | null;
+    };
     const tipoSla = String(est.tipo_sla ?? "interno");
     const codigoNuevo = String(est.codigo ?? "").trim().toLowerCase();
 
@@ -143,6 +149,38 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .eq("id", pid);
 
     if (e3) return NextResponse.json(errorResponse(e3.message), { status: 400 });
+
+    // Aviso al comercial del proyecto. Va después del update por la misma razón
+    // que el de QA: si falla, el movimiento ya está guardado y no se revierte.
+    {
+      const comercialId =
+        (proyecto as { responsable_comercial_id?: string | null }).responsable_comercial_id ?? null;
+      // El nombre del estado anterior se lee acá y no antes: sólo hace falta
+      // para el texto del aviso, y evita una consulta cuando no hay a quién avisar.
+      let estadoAnteriorNombre: string | null = null;
+      if (comercialId && comercialId !== auth.usuarioCatalogId && anteriorId) {
+        const { data: estAnt } = await sb
+          .from("proyecto_estados")
+          .select("nombre")
+          .eq("empresa_id", empresaId)
+          .eq("id", anteriorId)
+          .maybeSingle();
+        estadoAnteriorNombre = (estAnt as { nombre?: string | null } | null)?.nombre ?? null;
+      }
+
+      await notificarCambioEstado(sb, {
+        empresaId,
+        proyectoId: pid,
+        tituloProyecto,
+        comercialId,
+        actorId: auth.usuarioCatalogId,
+        estadoAnteriorNombre,
+        estadoNuevoNombre: (est.nombre ?? "").trim() || codigoNuevo || "otro estado",
+        // "Entregado" sale de la configuración de la empresa, no de un código
+        // fijo: es el estado que la empresa marcó como final.
+        esFinal: est.es_estado_final === true,
+      });
+    }
 
     // Aviso a la QA (no bloqueante: si falla, el cambio de estado ya quedó hecho).
     if (qaAsignadoId) {

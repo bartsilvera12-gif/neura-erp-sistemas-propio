@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlarmClock, Bell, CheckCircle2, ClipboardList, TimerOff, XCircle } from "lucide-react";
+import {
+  AlarmClock,
+  Bell,
+  CheckCircle2,
+  ClipboardList,
+  PackageCheck,
+  TimerOff,
+  MoveRight,
+  XCircle,
+} from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { fechaRelativa } from "@/app/dashboard/proyectos/components/qa/ui";
@@ -12,7 +21,9 @@ type TipoNotificacion =
   | "qa_aprobado"
   | "qa_rechazado"
   | "esqueleto_por_vencer"
-  | "esqueleto_vencido";
+  | "esqueleto_vencido"
+  | "proyecto_estado_cambio"
+  | "proyecto_entregado";
 
 type Notificacion = {
   id: string;
@@ -76,6 +87,16 @@ const ESTILO_TIPO: Record<
     icon: TimerOff,
     wrap: "bg-rose-50 text-rose-600",
     label: "Esqueleto vencido",
+  },
+  proyecto_estado_cambio: {
+    icon: MoveRight,
+    wrap: "bg-sky-50 text-sky-600",
+    label: "Cambio de estado",
+  },
+  proyecto_entregado: {
+    icon: PackageCheck,
+    wrap: "bg-emerald-50 text-emerald-600",
+    label: "Proyecto entregado",
   },
 };
 

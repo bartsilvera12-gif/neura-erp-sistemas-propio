@@ -801,7 +801,7 @@ function ActivosSeccion({
         <p className="text-sm font-medium text-slate-700">No hay proyectos en curso</p>
         <p className="mt-1 text-xs text-slate-500">
           Ningún proyecto está en las columnas que sigue el equipo técnico
-          (Desarrollo, Cambios solicitados, QA, Publicado / Pendiente de Capacitación o Pausado).
+          (Desarrollo, Cambios solicitados, QA, Revisión Cliente, Publicado / Pendiente de Capacitación o Pausado).
         </p>
       </div>
     );

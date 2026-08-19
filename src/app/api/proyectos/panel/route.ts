@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { tipoEsMixto, tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 
 /**
  * GET /api/proyectos/panel — Panel GERENCIAL de proyectos.
@@ -90,10 +91,29 @@ export async function GET(request: Request) {
     // Tipos.
     const tipoIds = [...new Set(proys.map((p) => String(p.tipo_id ?? "")).filter(Boolean))];
     const tipoNombre = new Map<string, string>();
+    const tipoCodigo = new Map<string, string>();
     for (let i = 0; i < tipoIds.length; i += 120) {
       const slice = tipoIds.slice(i, i + 120);
-      const { data } = await sb.from("proyecto_tipos").select("id, nombre").in("id", slice);
-      for (const t of (data ?? []) as Record<string, unknown>[]) tipoNombre.set(String(t.id), String(t.nombre ?? ""));
+      const { data } = await sb.from("proyecto_tipos").select("id, nombre, codigo").in("id", slice);
+      for (const t of (data ?? []) as Record<string, unknown>[]) {
+        tipoNombre.set(String(t.id), String(t.nombre ?? ""));
+        tipoCodigo.set(String(t.id), String(t.codigo ?? ""));
+      }
+    }
+
+    /**
+     * Bucket EXCLUSIVO del proyecto para "Entregados por mes": cada proyecto
+     * cuenta en un solo grupo, así la suma de los tres coincide siempre con el
+     * total del mes. El tipo mixto ("Página Web + SaaS/ERP") es su propio
+     * bucket y no se reparte entre los otros dos — contarlo en ambos inflaría
+     * el total del mes por encima de la cantidad real de entregas.
+     */
+    function bucketDeTipo(tipoId: unknown): "web" | "saas" | "mixto" | "otros" {
+      const codigo = tipoCodigo.get(String(tipoId ?? "")) ?? "";
+      if (tipoEsMixto(codigo)) return "mixto";
+      if (tipoIncluyeWeb(codigo)) return "web";
+      if (tipoIncluyeSaas(codigo)) return "saas";
+      return "otros";
     }
 
     // Nombres de usuarios (comercial + técnico).
@@ -377,12 +397,22 @@ export async function GET(request: Request) {
       d.setMonth(d.getMonth() - i);
       meses6.push(ymEnAsuncion(d));
     }
-    const detalleMes = (ym: string) => {
+    const BUCKET_LABEL: Record<ReturnType<typeof bucketDeTipo>, string> = {
+      web: "Proyecto Web",
+      saas: "SaaS / ERP",
+      mixto: "Página Web + SaaS/ERP",
+      otros: "Sin tipo",
+    };
+
+    /** `filtroBucket` opcional: sólo entra al detalle el proyecto de ese bucket. */
+    const detalleMes = (ym: string, filtroBucket?: ReturnType<typeof bucketDeTipo>) => {
       const set = entregadoMesProy.get(ym) ?? new Set<string>();
       return [...set]
         .map((pid) => {
           const p = proyById.get(pid);
           if (!p) return null;
+          const bucket = bucketDeTipo(p.tipo_id);
+          if (filtroBucket && bucket !== filtroBucket) return null;
           const ms = entregaMs.get(pid);
           return {
             id: pid,
@@ -390,15 +420,27 @@ export async function GET(request: Request) {
             cliente: cliLabel.get(String(p.cliente_id ?? "")) ?? "—",
             monto: Math.round(presupuestoDe(p)),
             fecha: ms != null ? new Date(ms).toISOString().slice(0, 10) : null,
+            tipo: BUCKET_LABEL[bucket],
           };
         })
         .filter((x): x is NonNullable<typeof x> => x != null)
         .sort((a, b) => b.monto - a.monto || (b.fecha ?? "").localeCompare(a.fecha ?? ""));
     };
-    const entregados_por_mes = meses6.map((ym) => {
-      const proyectos = detalleMes(ym);
-      return { ym, cantidad: proyectos.length, monto: proyectos.reduce((a, x) => a + x.monto, 0), proyectos };
+    const resumenMes = (proyectos: ReturnType<typeof detalleMes>) => ({
+      cantidad: proyectos.length,
+      monto: proyectos.reduce((a, x) => a + x.monto, 0),
+      proyectos,
     });
+    // "Web" y "SaaS/ERP" son EXCLUSIVOS entre sí (el mixto va aparte, ver
+    // `bucketDeTipo`), así que `web.cantidad + saas.cantidad + mixto.cantidad`
+    // da siempre el total del mes — no hay entregas contadas dos veces.
+    const entregados_por_mes = meses6.map((ym) => ({
+      ym,
+      ...resumenMes(detalleMes(ym)),
+      web: resumenMes(detalleMes(ym, "web")),
+      saas: resumenMes(detalleMes(ym, "saas")),
+      mixto: resumenMes(detalleMes(ym, "mixto")),
+    }));
     // Entregados DEL PERÍODO (por fecha de entrega). Sin período → mes en curso.
     const [yyE, mmE] = ymActual.split("-").map((x) => parseInt(x, 10));
     const lastDayE = new Date(yyE, mmE, 0).getDate();

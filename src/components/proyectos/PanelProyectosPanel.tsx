@@ -26,12 +26,7 @@ type Panel = {
   por_tecnico: { tecnico: string; cantidad: number; presupuesto: number; proyectos: DetalleProy[] }[];
   por_tipo: { tipo: string; cantidad: number; presupuesto: number }[];
   por_rubro: { rubro: string; cantidad: number }[];
-  entregados_por_mes: {
-    ym: string;
-    cantidad: number;
-    monto: number;
-    proyectos: { id: string; titulo: string; cliente: string; monto: number; fecha: string | null }[];
-  }[];
+  entregados_por_mes: EntregadosMes[];
   periodo_ym: string;
   periodo_filtrado?: boolean;
   periodo_desde?: string;
@@ -56,6 +51,16 @@ type DetalleProy = {
   dias_en_estado: number | null;
   sla_vencido: boolean;
   sla_texto: string;
+};
+
+type EntregaProy = { id: string; titulo: string; cliente: string; monto: number; fecha: string | null; tipo: string };
+type ResumenTipoMes = { cantidad: number; monto: number; proyectos: EntregaProy[] };
+type EntregadosMes = ResumenTipoMes & {
+  ym: string;
+  /** Exclusivos entre sí: web.cantidad + saas.cantidad + mixto.cantidad === cantidad. */
+  web: ResumenTipoMes;
+  saas: ResumenTipoMes;
+  mixto: ResumenTipoMes;
 };
 
 function fmtGs(n: number): string {
@@ -182,7 +187,11 @@ export default function PanelProyectosPanel() {
   const maxEstadoCant = Math.max(1, ...data.por_estado.map((e) => e.cantidad));
   const maxAsePres = Math.max(1, ...data.por_asesor.map((a) => a.presupuesto));
   const maxTecCant = Math.max(1, ...data.por_tecnico.map((t) => t.cantidad));
-  const maxMesCant = Math.max(1, ...data.entregados_por_mes.map((m) => m.cantidad));
+  const maxMesCant = Math.max(
+    1,
+    ...data.entregados_por_mes.flatMap((m) => [m.web.cantidad, m.saas.cantidad, m.mixto.cantidad])
+  );
+  const hayMixtos = data.entregados_por_mes.some((m) => m.mixto.cantidad > 0);
   const maxRubro = Math.max(1, ...data.por_rubro.map((r) => r.cantidad));
 
   return (
@@ -328,10 +337,23 @@ export default function PanelProyectosPanel() {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">Entregados por mes (últimos 6)</h2>
-        <p className="mb-3 text-[11px] text-slate-400">Tocá una barra para ver los proyectos entregados de ese mes.</p>
+        <p className="mb-1 text-[11px] text-slate-400">Tocá un mes para ver el detalle. Web y SaaS/ERP son exclusivos entre sí, así que suman el total.</p>
+        <div className="mb-3 flex items-center gap-4 text-[11px] text-slate-500">
+          <span className="inline-flex items-center gap-1.5">
+            <i className="h-2 w-2 rounded-sm bg-[#4FAEB2]" aria-hidden="true" /> Proyecto Web
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <i className="h-2 w-2 rounded-sm bg-[#8b5cf6]" aria-hidden="true" /> SaaS / ERP
+          </span>
+          {hayMixtos ? (
+            <span className="inline-flex items-center gap-1.5">
+              <i className="h-2 w-2 rounded-sm bg-slate-400" aria-hidden="true" /> Web + SaaS/ERP
+            </span>
+          ) : null}
+        </div>
         <div className="flex items-end justify-between gap-2">
           {data.entregados_por_mes.map((m) => {
-            const h = maxMesCant > 0 ? Math.max(6, Math.round((m.cantidad / maxMesCant) * 90)) : 6;
+            const alto = (cant: number) => (maxMesCant > 0 && cant > 0 ? Math.max(4, Math.round((cant / maxMesCant) * 90)) : 0);
             const activo = mesSel === m.ym;
             return (
               <button
@@ -339,14 +361,24 @@ export default function PanelProyectosPanel() {
                 type="button"
                 onClick={() => setMesSel(activo ? null : m.ym)}
                 className="flex flex-1 flex-col items-center gap-1 rounded-lg px-1 py-1 transition-colors hover:bg-slate-50"
-                title={`${m.cantidad} entregados · ${fmtGs(m.monto)}`}
+                title={`${m.web.cantidad} web · ${m.saas.cantidad} SaaS/ERP${hayMixtos ? ` · ${m.mixto.cantidad} mixto` : ""} · ${fmtGs(m.monto)}`}
               >
                 <span className="text-[11px] font-semibold tabular-nums text-slate-700">{m.cantidad}</span>
-                <div className="flex h-[90px] w-full items-end">
+                <div className="flex h-[90px] w-full items-end justify-center gap-1">
                   <div
-                    className={`mx-auto w-8 rounded-t-md transition-colors ${activo ? "bg-[#3F8E91]" : "bg-[#4FAEB2] hover:bg-[#3F8E91]"}`}
-                    style={{ height: `${h}px` }}
+                    className={`w-3.5 rounded-t-md transition-colors ${activo ? "bg-[#3F8E91]" : "bg-[#4FAEB2] hover:bg-[#3F8E91]"}`}
+                    style={{ height: `${alto(m.web.cantidad)}px` }}
                   />
+                  <div
+                    className={`w-3.5 rounded-t-md transition-colors ${activo ? "bg-[#6d28d9]" : "bg-[#8b5cf6] hover:bg-[#6d28d9]"}`}
+                    style={{ height: `${alto(m.saas.cantidad)}px` }}
+                  />
+                  {hayMixtos ? (
+                    <div
+                      className={`w-3.5 rounded-t-md transition-colors ${activo ? "bg-slate-500" : "bg-slate-400 hover:bg-slate-500"}`}
+                      style={{ height: `${alto(m.mixto.cantidad)}px` }}
+                    />
+                  ) : null}
                 </div>
                 <span className={`text-[10px] ${activo ? "font-semibold text-[#3F8E91]" : "text-slate-500"}`}>{mesLabel(m.ym)}</span>
               </button>
@@ -379,6 +411,19 @@ export default function PanelProyectosPanel() {
                             <td className="px-3 py-2">
                               <span className="block font-medium text-slate-800">{p.cliente}</span>
                               {p.titulo && p.titulo !== p.cliente ? <span className="block text-[11px] text-slate-400">{p.titulo}</span> : null}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2">
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                  p.tipo === "SaaS / ERP"
+                                    ? "bg-violet-50 text-violet-700"
+                                    : p.tipo === "Página Web + SaaS/ERP"
+                                      ? "bg-slate-100 text-slate-600"
+                                      : "bg-[#4FAEB2]/10 text-[#3F8E91]"
+                                }`}
+                              >
+                                {p.tipo}
+                              </span>
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-500">{fmtFecha(p.fecha)}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">{fmtGs(p.monto)}</td>

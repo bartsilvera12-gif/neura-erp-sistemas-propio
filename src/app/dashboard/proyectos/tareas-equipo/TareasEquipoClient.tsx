@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
+import ProyectoDetalleModal from "@/app/dashboard/proyectos/components/ProyectoDetalleModal";
 import { type ProyectoEtapaDesarrollo } from "@/lib/proyectos/etapas-desarrollo";
 import {
   QA_ETAPAS,
@@ -250,6 +251,24 @@ function textoEsqueletoUI(p: ActivoItem): string | null {
   });
 }
 
+/**
+ * Abre el proyecto en el modal en vez de navegar.
+ *
+ * Se mantiene el `href` real y sólo se intercepta el click simple: así
+ * ctrl/cmd/rueda siguen abriendo el detalle en una pestaña nueva, que es lo que
+ * espera cualquiera que quiera comparar dos proyectos.
+ */
+function abrirEnModal(
+  e: React.MouseEvent<HTMLAnchorElement>,
+  id: string,
+  onAbrir?: (id: string) => void
+) {
+  if (!onAbrir) return;
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  e.preventDefault();
+  onAbrir(id);
+}
+
 /** El título sólo aporta si dice algo distinto al nombre del cliente. */
 function subtituloUtil(p: { cliente: string; titulo: string }): string | null {
   const norm = (s: string) => s.trim().toLowerCase();
@@ -325,13 +344,15 @@ function buildMensajeWhatsapp(grupos: GrupoActivo[], qaGrupos: GrupoQA[]): strin
   return lineas.join("\n").trimEnd();
 }
 
-export default function TareasEquipoClient() {
+export default function TareasEquipoClient({ dataSchema }: { dataSchema: string }) {
   const [mes, setMes] = useState<string>(() => currentYearMonth());
   const [data, setData] = useState<TareasEquipoData | null>(null);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  /** Proyecto abierto en el modal de detalle, el mismo que usa el Kanban. */
+  const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [verFinalizados, setVerFinalizados] = useState(false);
 
@@ -608,7 +629,7 @@ export default function TareasEquipoClient() {
           Cargando tablero…
         </div>
       ) : verFinalizados ? (
-        <FinalizadosSeccion data={data} mes={mes} />
+        <FinalizadosSeccion data={data} mes={mes} onAbrir={setModalProjectId} />
       ) : (
         <>
           <ActivosSeccion
@@ -621,6 +642,7 @@ export default function TareasEquipoClient() {
             onPatch={patchProyecto}
             onVeredicto={veredictoQA}
             onCambiarEstado={cambiarEstado}
+            onAbrir={setModalProjectId}
           />
           {mensaje ? (
             <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -637,6 +659,20 @@ export default function TareasEquipoClient() {
           ) : null}
         </>
       )}
+
+      {/* Mismo modal de detalle que el Kanban y la vista lista. Al cerrarlo se
+          recarga el tablero: abrir el proyecto marca leídas sus novedades de QA
+          y puede cambiarle el estado o el responsable desde adentro. */}
+      <ProyectoDetalleModal
+        projectId={modalProjectId}
+        open={modalProjectId != null}
+        onClose={() => {
+          setModalProjectId(null);
+          void load(mes);
+        }}
+        onUpdated={() => void load(mes)}
+        dataSchema={dataSchema}
+      />
     </div>
   );
 }
@@ -732,6 +768,7 @@ function ActivosSeccion({
   onPatch,
   onVeredicto,
   onCambiarEstado,
+  onAbrir,
 }: {
   grupos: GrupoActivo[];
   qaGrupos: GrupoQA[];
@@ -742,6 +779,7 @@ function ActivosSeccion({
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
   onVeredicto: (id: string, aprobado: boolean, motivo: string | null) => void | Promise<void>;
   onCambiarEstado: (id: string, estadoId: string) => void | Promise<void>;
+  onAbrir: (id: string) => void;
 }) {
   // Las tarjetas de QA existen aunque no tengan proyectos, así que el vacío se
   // mide por proyectos y no por tarjetas: si no, este estado nunca se veria.
@@ -861,6 +899,7 @@ function ActivosSeccion({
                     saving={savingId === p.id}
                     onPatch={onPatch}
                     onVeredicto={onVeredicto}
+                    onAbrir={onAbrir}
                   />
                 ))}
               </ul>
@@ -966,6 +1005,7 @@ function ActivosSeccion({
                         saving={savingId === p.id}
                         onPatch={onPatch}
                         onVeredicto={onVeredicto}
+                        onAbrir={onAbrir}
                       />
                     ))}
                   </ul>
@@ -1011,6 +1051,7 @@ function FilaProyecto({
   saving,
   onPatch,
   onVeredicto,
+  onAbrir,
 }: {
   modo: "dev" | "qa";
   id: string;
@@ -1042,6 +1083,7 @@ function FilaProyecto({
   saving: boolean;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
   onVeredicto: (id: string, aprobado: boolean, motivo: string | null) => void | Promise<void>;
+  onAbrir?: (id: string) => void;
 }) {
   const [editandoFecha, setEditandoFecha] = useState(false);
   const [editandoPausa, setEditandoPausa] = useState(false);
@@ -1066,16 +1108,17 @@ function FilaProyecto({
     <li className={`px-4 py-3 transition-colors hover:bg-slate-50/70 ${saving ? "opacity-50" : ""}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1 basis-[11rem]">
-          <Link
+          <a
             href={`/dashboard/proyectos/${id}`}
-            className="block truncate text-[13.5px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
+            onClick={(e) => abrirEnModal(e, id, onAbrir)}
+            className="block cursor-pointer truncate text-[13.5px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
             title={etiquetaProyecto({ cliente, tipo })}
           >
             {cliente}
             {tipo ? (
               <span className="ml-1.5 text-[12px] font-normal text-slate-400">{tipo}</span>
             ) : null}
-          </Link>
+          </a>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
             {subtitulo ? <span className="truncate">{subtitulo}</span> : null}
             {metaExtra ? <span>{metaExtra}</span> : null}
@@ -1503,7 +1546,15 @@ function ContadorVivo({
 /** Jornada de 9 h: la unidad con la que se colorea la antigüedad del contador. */
 const MS_JORNADA_UI = 9 * 3_600_000;
 
-function FinalizadosSeccion({ data, mes }: { data: TareasEquipoData | null; mes: string }) {
+function FinalizadosSeccion({
+  data,
+  mes,
+  onAbrir,
+}: {
+  data: TareasEquipoData | null;
+  mes: string;
+  onAbrir: (id: string) => void;
+}) {
   const grupos = data?.finalizados_por_programador ?? [];
 
   if (grupos.length === 0) {
@@ -1539,14 +1590,15 @@ function FinalizadosSeccion({ data, mes }: { data: TareasEquipoData | null; mes:
               {g.proyectos.map((p) => (
                 <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="min-w-0 flex-1">
-                    <Link
+                    <a
                       href={`/dashboard/proyectos/${p.id}`}
-                      className="block truncate text-[13px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
+                      onClick={(e) => abrirEnModal(e, p.id, onAbrir)}
+                      className="block cursor-pointer truncate text-[13px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
                       title={etiquetaProyecto(p)}
                     >
                       {p.cliente}
                       {p.tipo ? <span className="ml-1.5 font-normal text-slate-400">{p.tipo}</span> : null}
-                    </Link>
+                    </a>
                     <div className="truncate text-[11px] text-slate-500">
                       Finalizado el {formatFecha(p.finalizado_at)}
                     </div>

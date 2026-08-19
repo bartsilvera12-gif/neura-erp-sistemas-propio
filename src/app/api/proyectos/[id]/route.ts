@@ -277,6 +277,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const pideQaResponsable = "qa_responsable_id" in body;
     const pideQaEtapa = "qa_etapa" in body;
     const pidePausa = "pausado" in body;
+    // Editar sólo el texto del motivo también entra al bloque de abajo: si no,
+    // un body con únicamente `pausa_motivo` no encontraba dónde aplicarse y la
+    // request terminaba en "Nada para actualizar".
+    const pideMotivo = "pausa_motivo" in body;
 
     if (pideEtapa && !esEtapaDesarrollo(body.etapa_desarrollo)) {
       return NextResponse.json(errorResponse("Etapa de desarrollo inválida"), { status: 400 });
@@ -288,7 +292,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json(errorResponse("`pausado` debe ser booleano"), { status: 400 });
     }
 
-    if (pideEtapa || pideTecnico || pideQaResponsable || pideQaEtapa || pidePausa) {
+    if (pideEtapa || pideTecnico || pideQaResponsable || pideQaEtapa || pidePausa || pideMotivo) {
       const { data: actual, error: eActual } = await sb
         .from("proyectos")
         .select(

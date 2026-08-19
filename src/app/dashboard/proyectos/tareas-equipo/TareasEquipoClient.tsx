@@ -893,24 +893,44 @@ function ActivosSeccion({
             {g.secciones
               .filter((sec) => sec.proyectos.length > 0)
               .map((sec) => (
-                <section key={sec.estado_id}>
+                <section
+                  key={sec.estado_id}
+                  // Banda gruesa entre subsecciones: es lo que hace que se lean
+                  // como bloques separados y no como una lista continua.
+                  className="border-t-[6px] border-slate-100 first:border-t-0"
+                >
                   <header
-                    className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-1.5 first:border-t-0"
-                    style={{ boxShadow: `inset 3px 0 0 ${sec.color}` }}
+                    className="flex items-center gap-2 px-4 py-2"
+                    style={{
+                      // Fondo teñido con el color del estado + riel sólido a la
+                      // izquierda. El texto queda en slate: los colores los
+                      // configura cada empresa y no se puede garantizar
+                      // contraste si se usaran como color de letra.
+                      backgroundColor: `${sec.color}1A`,
+                      borderLeft: `4px solid ${sec.color}`,
+                    }}
                   >
                     <span
                       aria-hidden="true"
-                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      className="h-2 w-2 shrink-0 rounded-full ring-2 ring-white"
                       style={{ backgroundColor: sec.color }}
                     />
-                    <h4 className="min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-[0.06em] text-slate-600">
+                    <h4 className="min-w-0 flex-1 truncate text-[11.5px] font-bold uppercase tracking-[0.07em] text-slate-800">
                       {sec.nombre}
                     </h4>
-                    <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">
+                    <span
+                      className="shrink-0 rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-700"
+                      title={`${sec.cantidad} ${sec.cantidad === 1 ? "proyecto" : "proyectos"} en ${sec.nombre}`}
+                    >
                       {sec.cantidad}
                     </span>
                   </header>
-                  <ul className="divide-y divide-slate-100">
+                  {/* El riel sigue por las filas, en tono suave, para que el
+                      bloque se lea de una sola pieza hasta el final. */}
+                  <ul
+                    className="divide-y divide-slate-100"
+                    style={{ borderLeft: `4px solid ${sec.color}33` }}
+                  >
                     {sec.proyectos.map((p) => (
                       <FilaProyecto
                         key={p.id}
@@ -1207,6 +1227,13 @@ function FilaProyecto({
           onSubmit={(motivo) => {
             setEditandoPausa(false);
             if (modo === "dev" && estadoPausadoId) {
+              // Ya está en la columna Pausado (se está editando el motivo): sólo
+              // se guarda el texto. Mover al mismo estado no haría nada y
+              // gastaría un request de más.
+              if (pausado) {
+                void onPatch(id, { pausa_motivo: motivo });
+                return;
+              }
               // Primero el estado (abre la pausa y congela el contador) y
               // después el motivo, que es un dato del proyecto y no del estado.
               void Promise.resolve(onCambiarEstado?.(id, estadoPausadoId)).then(() =>

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import ChecklistView from "./ChecklistView";
 import ObservacionesBoard from "./ObservacionesBoard";
-import VeredictoQA from "./VeredictoQA";
 import type { QATabProps } from "./types";
 
 type Vista = "observaciones" | "checklist";
@@ -18,10 +17,10 @@ export default function QATabRoot({ projectId, dataSchema, usuarios, projectTitl
 
   return (
     <div className="space-y-4">
-      {/* Fuera del switch de vista: el veredicto cierra la ronda de QA entera,
-          no la vista de observaciones ni la del checklist por separado. */}
-      <VeredictoQA projectId={projectId} />
-
+      {/* El veredicto (aprobar/rechazar) se da desde el selector de etapa QA en
+          el tablero de "Tareas del equipo", no acá — dos lugares para la misma
+          acción generaban confusión. La ruta de veredicto y sus notificaciones
+          siguen intactas; sólo se quitó esta tarjeta duplicada. */}
       <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         {(
           [

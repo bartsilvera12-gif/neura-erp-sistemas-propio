@@ -20,6 +20,7 @@ export async function GET(request: Request) {
     const prioridad = sp.get("prioridad");
     const rc = sp.get("responsable_comercial_id");
     const rt = sp.get("responsable_tecnico_id");
+    const clienteId = sp.get("cliente_id");
     const archivado = sp.get("archivado") === "1";
     const qRaw = sp.get("q");
 
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
       if (prioridad && PRIORIDADES.has(prioridad)) qq = qq.eq("prioridad", prioridad);
       if (rc) qq = qq.eq("responsable_comercial_id", rc);
       if (rt) qq = qq.eq("responsable_tecnico_id", rt);
+      if (clienteId) qq = qq.eq("cliente_id", clienteId);
       return qq;
     }
 

@@ -81,6 +81,18 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 type TabId = "informacion" | "estado_cuenta" | "suscripciones" | "marketing" | "proyectos" | "actividad" | "notas";
 
+/** Proyecto enriquecido (subset que muestra la ficha del cliente). */
+type ProyectoClienteRow = {
+  id: string;
+  titulo?: string | null;
+  prioridad?: string | null;
+  created_at?: string | null;
+  proyecto_estado?: { nombre?: string | null; color?: string | null } | null;
+  proyecto_tipo?: { nombre?: string | null } | null;
+  responsable_tecnico?: { nombre?: string | null } | null;
+  responsable_comercial?: { nombre?: string | null } | null;
+};
+
 const TABS: { id: TabId; label: string; showWhen?: (c: Cliente) => boolean }[] = [
   { id: "informacion",   label: "Información"      },
   { id: "estado_cuenta", label: "Estado de cuenta" },
@@ -279,6 +291,33 @@ export default function ClienteDetalleClient({
       void cargarHistorial();
     }
   }, [activeTab, historialCargado, cargandoHistorial, cargarHistorial]);
+
+  // Proyectos asociados al cliente (pestaña Proyectos).
+  const [proyectos, setProyectos] = useState<ProyectoClienteRow[]>([]);
+  const [cargandoProyectos, setCargandoProyectos] = useState(false);
+  const [proyectosCargados, setProyectosCargados] = useState(false);
+
+  const cargarProyectos = useCallback(async () => {
+    if (!id) return;
+    setCargandoProyectos(true);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos?cliente_id=${id}&archivado=0`, {
+        cache: "no-store",
+      });
+      const json = await res.json();
+      setProyectos(res.ok && json?.success ? ((json.data ?? []) as ProyectoClienteRow[]) : []);
+    } catch {
+      setProyectos([]);
+    }
+    setProyectosCargados(true);
+    setCargandoProyectos(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "proyectos" && !proyectosCargados && !cargandoProyectos) {
+      void cargarProyectos();
+    }
+  }, [activeTab, proyectosCargados, cargandoProyectos, cargarProyectos]);
 
   // Estados del formulario de información
   const [form, setForm] = useState({
@@ -2378,11 +2417,72 @@ export default function ClienteDetalleClient({
 
           {/* ── PROYECTOS ────────────────────────────────────────────────── */}
           {activeTab === "proyectos" && (
-            <PlaceholderTab
-              icon="📁"
-              title="Proyectos"
-              desc="Proyectos en curso y finalizados asociados a este cliente, con etapas y responsables."
-            />
+            <div className="max-w-3xl">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">Proyectos del cliente</h3>
+                  <p className="text-[11px] text-slate-500">En curso y finalizados asociados a este cliente.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void cargarProyectos()}
+                  disabled={cargandoProyectos}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2] disabled:opacity-50"
+                >
+                  {cargandoProyectos ? "Actualizando…" : "Actualizar"}
+                </button>
+              </div>
+
+              {cargandoProyectos && proyectos.length === 0 ? (
+                <p className="text-sm text-slate-400">Cargando proyectos…</p>
+              ) : proyectos.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-10 text-center">
+                  <p className="text-3xl">📁</p>
+                  <p className="mt-2 text-sm font-medium text-slate-600">Este cliente no tiene proyectos aún</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Al crear un proyecto en{" "}
+                    <Link href="/dashboard/proyectos" className="font-semibold text-[#4FAEB2] hover:underline">
+                      Proyectos
+                    </Link>{" "}
+                    y elegir este cliente, aparecerá acá.
+                  </p>
+                </div>
+              ) : (
+                <ol className="space-y-2">
+                  {proyectos.map((p) => {
+                    const estado = p.proyecto_estado?.nombre ?? "—";
+                    const color = p.proyecto_estado?.color ?? "#94a3b8";
+                    const resp = p.responsable_tecnico?.nombre ?? p.responsable_comercial?.nombre ?? null;
+                    return (
+                      <Link
+                        key={p.id}
+                        href={`/dashboard/proyectos/${p.id}`}
+                        className="block rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-slate-50/60"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">
+                              {p.titulo || "(sin título)"}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              {p.proyecto_tipo?.nombre ? `${p.proyecto_tipo.nombre} · ` : ""}
+                              {resp ? `Resp: ${resp}` : "Sin responsable"}
+                              {p.created_at ? ` · ${formatFecha(p.created_at)}` : ""}
+                            </p>
+                          </div>
+                          <span
+                            className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                            style={{ backgroundColor: `${color}1a`, color }}
+                          >
+                            {estado}
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
           )}
 
           {/* ── ACTIVIDAD ────────────────────────────────────────────────── */}

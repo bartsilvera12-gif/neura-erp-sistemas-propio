@@ -14,6 +14,7 @@ import {
 } from "@/lib/proyectos/etapas-qa";
 import { formatearDuracion, enJornadas, msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { textoEsqueleto } from "@/lib/proyectos/esqueleto";
+import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 
 type EstadoTableroDTO = { id: string; codigo: string; nombre: string; color: string };
 
@@ -1546,6 +1547,9 @@ function ContadorVivo({
 /** Jornada de 9 h: la unidad con la que se colorea la antigüedad del contador. */
 const MS_JORNADA_UI = 9 * 3_600_000;
 
+/** Cuántos finalizados se muestran por tarjeta antes de tener que desplegar. */
+const FINALIZADOS_VISIBLES = 5;
+
 function FinalizadosSeccion({
   data,
   mes,
@@ -1555,7 +1559,35 @@ function FinalizadosSeccion({
   mes: string;
   onAbrir: (id: string) => void;
 }) {
-  const grupos = data?.finalizados_por_programador ?? [];
+  const [busqueda, setBusqueda] = useState("");
+  /** Tarjetas donde el usuario pidió ver todos, más allá de los primeros 5. */
+  const [desplegados, setDesplegados] = useState<Set<string>>(new Set());
+
+  const grupos = useMemo(() => data?.finalizados_por_programador ?? [], [data]);
+  const tokens = useMemo(() => tokenizarBusqueda(busqueda), [busqueda]);
+
+  /**
+   * Grupos filtrados y ordenados por fecha de finalización descendente: los
+   * "últimos 5" son los más recientes, no los primeros que devolvió la API.
+   * El nombre del técnico entra en el texto buscable, que es lo que permite
+   * filtrar por persona escribiéndola.
+   */
+  const visibles = useMemo(() => {
+    return grupos
+      .map((g) => {
+        const proyectos = g.proyectos
+          .filter((p) =>
+            coincideBusqueda(tokens, `${p.cliente} ${p.titulo} ${p.tipo} ${g.tecnico_nombre}`)
+          )
+          .slice()
+          .sort((a, b) => (b.finalizado_at ?? "").localeCompare(a.finalizado_at ?? ""));
+        return { ...g, proyectos };
+      })
+      .filter((g) => g.proyectos.length > 0);
+  }, [grupos, tokens]);
+
+  const totalEncontrados = visibles.reduce((n, g) => n + g.proyectos.length, 0);
+  const buscando = tokens.length > 0;
 
   if (grupos.length === 0) {
     return (
@@ -1569,52 +1601,111 @@ function FinalizadosSeccion({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      {grupos.map((g) => {
-        const key = g.tecnico_id ?? "__SIN__";
-        const sinTecnico = g.tecnico_id == null;
-        const col = sinTecnico ? { bg: "#94a3b8", soft: "rgba(148,163,184,0.10)" } : paleta(g.tecnico_nombre);
-        return (
-          <TarjetaGrupo
-            key={key}
-            color={col}
-            inicial={sinTecnico ? "—" : initials(g.tecnico_nombre)}
-            titulo={sinTecnico ? "Sin asignar" : nombreCorto(g.tecnico_nombre)}
-            italic={sinTecnico}
-            subtitulo={`${g.cantidad === 1 ? "1 finalizado" : `${g.cantidad} finalizados`}${
-              g.promedio_ms != null ? ` · promedio ${enJornadas(g.promedio_ms)} jornadas` : ""
-            }`}
-            contador={g.cantidad}
-          >
-            <ul className="divide-y divide-slate-100">
-              {g.proyectos.map((p) => (
-                <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <a
-                      href={`/dashboard/proyectos/${p.id}`}
-                      onClick={(e) => abrirEnModal(e, p.id, onAbrir)}
-                      className="block cursor-pointer truncate text-[13px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
-                      title={etiquetaProyecto(p)}
-                    >
-                      {p.cliente}
-                      {p.tipo ? <span className="ml-1.5 font-normal text-slate-400">{p.tipo}</span> : null}
-                    </a>
-                    <div className="truncate text-[11px] text-slate-500">
-                      Finalizado el {formatFecha(p.finalizado_at)}
-                    </div>
-                  </div>
-                  <span
-                    className="shrink-0 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold tabular-nums text-emerald-700"
-                    title="Tiempo de trabajo desde la asignación hasta finalizar, en horario laboral y sin contar pausas"
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[16rem] flex-1">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+            <IconBuscar />
+          </span>
+          <input
+            type="search"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por cliente, tipo o técnico…"
+            aria-label="Buscar entre los proyectos finalizados"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 shadow-sm outline-none transition-colors placeholder:text-slate-400 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+          />
+        </div>
+        {buscando ? (
+          <span className="text-xs text-slate-500">
+            {totalEncontrados === 0
+              ? "Sin coincidencias"
+              : `${totalEncontrados} ${totalEncontrados === 1 ? "proyecto" : "proyectos"} · ${
+                  visibles.length
+                } ${visibles.length === 1 ? "técnico" : "técnicos"}`}
+          </span>
+        ) : null}
+      </div>
+
+      {visibles.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
+          <p className="text-sm font-medium text-slate-700">Sin coincidencias</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Ningún finalizado de {formatMesLargo(mes)} coincide con “{busqueda.trim()}”.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {visibles.map((g) => {
+            const key = g.tecnico_id ?? "__SIN__";
+            const sinTecnico = g.tecnico_id == null;
+            const col = sinTecnico ? { bg: "#94a3b8", soft: "rgba(148,163,184,0.10)" } : paleta(g.tecnico_nombre);
+            // Buscando se muestran todas las coincidencias: recortar a 5 justo
+            // cuando alguien busca algo puntual sería esconder el resultado.
+            const desplegado = buscando || desplegados.has(key);
+            const mostrados = desplegado ? g.proyectos : g.proyectos.slice(0, FINALIZADOS_VISIBLES);
+            const ocultos = g.proyectos.length - mostrados.length;
+            const puedePlegar = desplegado && !buscando && g.proyectos.length > FINALIZADOS_VISIBLES;
+            return (
+              <TarjetaGrupo
+                key={key}
+                color={col}
+                inicial={sinTecnico ? "—" : initials(g.tecnico_nombre)}
+                titulo={sinTecnico ? "Sin asignar" : nombreCorto(g.tecnico_nombre)}
+                italic={sinTecnico}
+                subtitulo={`${g.cantidad === 1 ? "1 finalizado" : `${g.cantidad} finalizados`}${
+                  g.promedio_ms != null ? ` · promedio ${enJornadas(g.promedio_ms)} jornadas` : ""
+                }`}
+                contador={g.cantidad}
+              >
+                <ul className="divide-y divide-slate-100">
+                  {mostrados.map((p) => (
+                    <li key={p.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <a
+                          href={`/dashboard/proyectos/${p.id}`}
+                          onClick={(e) => abrirEnModal(e, p.id, onAbrir)}
+                          className="block cursor-pointer truncate text-[13px] font-semibold text-slate-800 transition-colors hover:text-[#3F8E91]"
+                          title={etiquetaProyecto(p)}
+                        >
+                          {p.cliente}
+                          {p.tipo ? <span className="ml-1.5 font-normal text-slate-400">{p.tipo}</span> : null}
+                        </a>
+                        <div className="truncate text-[11px] text-slate-500">
+                          Finalizado el {formatFecha(p.finalizado_at)}
+                        </div>
+                      </div>
+                      <span
+                        className="shrink-0 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold tabular-nums text-emerald-700"
+                        title="Tiempo de trabajo desde la asignación hasta finalizar, en horario laboral y sin contar pausas"
+                      >
+                        {formatearDuracion(p.ms_trabajados)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                {ocultos > 0 || puedePlegar ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDesplegados((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      })
+                    }
+                    className="w-full border-t border-slate-100 px-4 py-2 text-[11px] font-semibold text-[#3F8E91] transition-colors hover:bg-slate-50"
                   >
-                    {formatearDuracion(p.ms_trabajados)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </TarjetaGrupo>
-        );
-      })}
+                    {ocultos > 0 ? `Ver ${ocultos} más` : `Ver sólo los últimos ${FINALIZADOS_VISIBLES}`}
+                  </button>
+                ) : null}
+              </TarjetaGrupo>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1632,6 +1723,15 @@ const SVG_PROPS = {
   className: "h-3.5 w-3.5",
   "aria-hidden": true,
 };
+
+function IconBuscar() {
+  return (
+    <svg {...SVG_PROPS}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
 
 function IconCopy() {
   return (

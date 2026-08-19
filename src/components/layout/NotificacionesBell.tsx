@@ -5,16 +5,24 @@ import Link from "next/link";
 import {
   AlarmClock,
   Bell,
+  Check,
   CheckCircle2,
   ClipboardList,
   PackageCheck,
   TimerOff,
   MoveRight,
+  Volume2,
+  VolumeX,
   XCircle,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { fechaRelativa } from "@/app/dashboard/proyectos/components/qa/ui";
+import {
+  escribirSonidoActivado,
+  leerSonidoActivado,
+  reproducirSonidoNotificacion,
+} from "@/lib/notificaciones/sonido";
 
 type TipoNotificacion =
   | "qa_novedad"
@@ -106,6 +114,13 @@ export default function NotificacionesBell() {
   const [noLeidas, setNoLeidas] = useState(0);
   /** Cuántos de los no leídos son avisos derivados (no se pueden marcar). */
   const derivadasRef = useRef(0);
+  /**
+   * Último `no_leidas` conocido, para saber si el sonido corresponde. `null`
+   * marca "todavía no cargó nunca": la primera carga no debe sonar aunque ya
+   * haya notificaciones sin leer, o sonaría cada vez que alguien abre la app.
+   */
+  const noLeidasPreviasRef = useRef<number | null>(null);
+  const [sonidoActivado, setSonidoActivado] = useState(true);
   const [cargando, setCargando] = useState(false);
   const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -122,6 +137,12 @@ export default function NotificacionesBell() {
         setItems(j.data.notificaciones);
         setNoLeidas(j.data.no_leidas);
         derivadasRef.current = j.data.notificaciones.filter((n) => n.derivada).length;
+        // Suena sólo si el total de no leídas SUBIÓ desde la última carga: una
+        // notificación nueva de verdad, no el resultado de marcar algo leído
+        // (que lo hace bajar) ni una recarga que trae lo mismo de antes.
+        const previas = noLeidasPreviasRef.current;
+        if (previas != null && j.data.no_leidas > previas) reproducirSonidoNotificacion();
+        noLeidasPreviasRef.current = j.data.no_leidas;
       }
     } catch {
       // Sin conexión el header sigue funcionando: se reintenta en el próximo poll.
@@ -137,6 +158,18 @@ export default function NotificacionesBell() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    setSonidoActivado(leerSonidoActivado());
+  }, []);
+
+  const alternarSonido = useCallback(() => {
+    setSonidoActivado((prev) => {
+      const next = !prev;
+      escribirSonidoActivado(next);
+      return next;
+    });
+  }, []);
 
   // Identidad + tenant para el canal de Realtime.
   useEffect(() => {
@@ -257,15 +290,27 @@ export default function NotificacionesBell() {
         <div className="absolute right-0 top-full z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5">
             <span className="text-sm font-semibold text-slate-900">Notificaciones</span>
-            {noLeidas > 0 ? (
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => void marcarLeidas({ todas: true })}
-                className="text-[11px] font-semibold text-[#0EA5E9] transition-colors hover:text-[#0284c7]"
+                onClick={alternarSonido}
+                title={sonidoActivado ? "Silenciar sonido de notificaciones" : "Activar sonido de notificaciones"}
+                aria-label={sonidoActivado ? "Silenciar sonido de notificaciones" : "Activar sonido de notificaciones"}
+                aria-pressed={sonidoActivado}
+                className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
               >
-                Marcar todas como leídas
+                {sonidoActivado ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
               </button>
-            ) : null}
+              {noLeidas > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => void marcarLeidas({ todas: true })}
+                  className="text-[11px] font-semibold text-[#0EA5E9] transition-colors hover:text-[#0284c7]"
+                >
+                  Marcar todas como leídas
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <ul className="max-h-[26rem] divide-y divide-slate-100 overflow-y-auto">
@@ -282,7 +327,7 @@ export default function NotificacionesBell() {
                 // marcar-leidas rompería la consulta (no es un uuid).
                 const marcable = noLeida && !n.derivada;
                 const contenido = (
-                  <div className={`flex gap-3 px-3.5 py-3 ${noLeida ? "bg-sky-50/40" : ""}`}>
+                  <div className={`flex gap-3 px-3.5 py-3 ${marcable ? "pr-9" : ""} ${noLeida ? "bg-sky-50/40" : ""}`}>
                     <span
                       className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${estilo.wrap}`}
                       aria-hidden="true"
@@ -314,7 +359,7 @@ export default function NotificacionesBell() {
                 );
 
                 return (
-                  <li key={n.id}>
+                  <li key={n.id} className="relative">
                     {n.proyecto_id ? (
                       <Link
                         href={`/dashboard/proyectos/${n.proyecto_id}`}
@@ -335,6 +380,21 @@ export default function NotificacionesBell() {
                         {contenido}
                       </button>
                     )}
+                    {/* Botón explícito, aparte del click en toda la fila (que en
+                        las notificaciones con proyecto también navega). Es un
+                        hermano del Link/botón de arriba y no un hijo — así el
+                        click nunca dispara la navegación por accidente. */}
+                    {marcable ? (
+                      <button
+                        type="button"
+                        onClick={() => void marcarLeidas({ ids: [n.id] })}
+                        title="Marcar como leída"
+                        aria-label={`Marcar "${n.titulo}" como leída`}
+                        className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-emerald-600 hover:ring-emerald-300"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                   </li>
                 );
               })

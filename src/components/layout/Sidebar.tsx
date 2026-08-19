@@ -589,15 +589,22 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     setExpandedItems((prev) => ({ ...prev, [menuKey]: !prev[menuKey] }));
   };
 
-  const slugToId = (slug: string) => modulos.find((m) => m.slug === slug)?.id ?? slug;
-
+  /**
+   * Identidad del favorito: SIEMPRE `item.key`, nunca `item.slug`.
+   *
+   * Varios ítems del menú comparten `slug` a propósito porque reusan el
+   * permiso de otro módulo (p. ej. Producción usa el slug "proyectos" — ver
+   * el comentario en MENU_STRUCTURE). Antes el favorito se guardaba con el id
+   * del módulo resuelto por slug, así que marcar uno de los dos marcaba los
+   * dos: para el localStorage eran el mismo id. `key` es única por ítem del
+   * menú y no se comparte nunca.
+   */
   const favoritosItemsFiltered = useMemo(() => {
     const slugs = new Set(modulos.map((m) => m.slug));
-    const idForSlug = (slug: string) => modulos.find((m) => m.slug === slug)?.id ?? slug;
     const access = (slug: string) => canAccessSidebarSlug(slug, slugs, esSuperAdmin);
     return MENU_STRUCTURE.filter(
       (item) =>
-        favoritos.includes(idForSlug(item.slug)) &&
+        favoritos.includes(item.key) &&
         access(item.slug) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
@@ -605,11 +612,10 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
 
   const mainItemsFiltered = useMemo(() => {
     const slugs = new Set(modulos.map((m) => m.slug));
-    const idForSlug = (slug: string) => modulos.find((m) => m.slug === slug)?.id ?? slug;
     const access = (slug: string) => canAccessSidebarSlug(slug, slugs, esSuperAdmin);
     return MENU_STRUCTURE.filter(
       (item) =>
-        !favoritos.includes(idForSlug(item.slug)) &&
+        !favoritos.includes(item.key) &&
         access(item.slug) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
@@ -757,7 +763,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                 <NavItem
                   key={item.key}
                   item={item}
-                  itemId={slugToId(item.slug)}
+                  itemId={item.key}
                   isActive={isActive(item.slug, item.href)}
                   isFavorito={true}
                   onToggleFavorito={handleToggleFavorito}
@@ -785,9 +791,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
               <NavItem
                 key={item.key}
                 item={item}
-                itemId={slugToId(item.slug)}
+                itemId={item.key}
                 isActive={isActive(item.slug, item.href)}
-                isFavorito={favoritos.includes(slugToId(item.slug))}
+                isFavorito={favoritos.includes(item.key)}
                 onToggleFavorito={handleToggleFavorito}
                 hasAccess={hasAccess(item.slug)}
                 collapsed={collapsed}
@@ -825,9 +831,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                         <NavItem
                           key={item.key}
                           item={item}
-                          itemId={slugToId(item.slug)}
+                          itemId={item.key}
                           isActive={isActive(item.slug, item.href)}
-                          isFavorito={favoritos.includes(slugToId(item.slug))}
+                          isFavorito={favoritos.includes(item.key)}
                           onToggleFavorito={handleToggleFavorito}
                           hasAccess={hasAccess(item.slug)}
                           collapsed={collapsed}

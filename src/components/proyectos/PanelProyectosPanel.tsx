@@ -336,51 +336,80 @@ export default function PanelProyectosPanel() {
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-1 text-sm font-semibold text-slate-900">Entregados por mes (últimos 6)</h2>
-        <p className="mb-1 text-[11px] text-slate-400">Tocá un mes para ver el detalle. Web y SaaS/ERP son exclusivos entre sí, así que suman el total.</p>
-        <div className="mb-3 flex items-center gap-4 text-[11px] text-slate-500">
-          <span className="inline-flex items-center gap-1.5">
-            <i className="h-2 w-2 rounded-sm bg-[#4FAEB2]" aria-hidden="true" /> Proyecto Web
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <i className="h-2 w-2 rounded-sm bg-[#8b5cf6]" aria-hidden="true" /> SaaS / ERP
-          </span>
-          {hayMixtos ? (
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Entregados por mes</h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Últimos 6 meses · tocá una barra para ver el detalle
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-slate-500">
             <span className="inline-flex items-center gap-1.5">
-              <i className="h-2 w-2 rounded-sm bg-slate-400" aria-hidden="true" /> Web + SaaS/ERP
+              <i className="h-2 w-2 rounded-full bg-[#3F8E91]" aria-hidden="true" />
+              Proyecto Web
             </span>
-          ) : null}
+            <span className="inline-flex items-center gap-1.5">
+              <i className="h-2 w-2 rounded-full bg-[#8b5cf6]" aria-hidden="true" />
+              SaaS / ERP
+            </span>
+            {hayMixtos ? (
+              <span className="inline-flex items-center gap-1.5">
+                <i className="h-2 w-2 rounded-full bg-slate-400" aria-hidden="true" />
+                Mixto
+              </span>
+            ) : null}
+          </div>
         </div>
-        <div className="flex items-end justify-between gap-2">
+
+        {/* Una sola línea de base corrida bajo los seis meses: el borde vive en
+            el contenedor, no en cada barra, para que quede un único eje. */}
+        <div className="flex items-end justify-between gap-1 border-b border-slate-200">
           {data.entregados_por_mes.map((m) => {
-            const alto = (cant: number) => (maxMesCant > 0 && cant > 0 ? Math.max(4, Math.round((cant / maxMesCant) * 90)) : 0);
             const activo = mesSel === m.ym;
+            const PLOT_H = 84;
+            const alto = (cant: number) =>
+              maxMesCant > 0 && cant > 0 ? Math.max(3, Math.round((cant / maxMesCant) * PLOT_H)) : 0;
+
+            const barra = (cant: number, color: string, colorActivo: string) => (
+              <div className="flex flex-col items-center justify-end" style={{ height: PLOT_H + 18 }}>
+                <span
+                  className={`mb-1 text-[10px] font-semibold tabular-nums ${
+                    cant > 0 ? "text-slate-600" : "text-slate-300"
+                  }`}
+                >
+                  {cant}
+                </span>
+                <div
+                  className="w-2 rounded-t-[4px] transition-colors sm:w-2.5"
+                  style={{ height: alto(cant), backgroundColor: activo ? colorActivo : color }}
+                />
+              </div>
+            );
+
             return (
               <button
                 key={m.ym}
                 type="button"
                 onClick={() => setMesSel(activo ? null : m.ym)}
-                className="flex flex-1 flex-col items-center gap-1 rounded-lg px-1 py-1 transition-colors hover:bg-slate-50"
-                title={`${m.web.cantidad} web · ${m.saas.cantidad} SaaS/ERP${hayMixtos ? ` · ${m.mixto.cantidad} mixto` : ""} · ${fmtGs(m.monto)}`}
+                className={`group flex flex-1 flex-col items-center gap-2 rounded-t-lg pb-2 pt-1.5 transition-colors ${
+                  activo ? "bg-slate-50" : "hover:bg-slate-50/70"
+                }`}
+                title={`${mesLabel(m.ym)} · ${m.web.cantidad} Proyecto Web · ${m.saas.cantidad} SaaS/ERP${
+                  hayMixtos ? ` · ${m.mixto.cantidad} mixto` : ""
+                } · ${fmtGs(m.monto)}`}
               >
-                <span className="text-[11px] font-semibold tabular-nums text-slate-700">{m.cantidad}</span>
-                <div className="flex h-[90px] w-full items-end justify-center gap-1">
-                  <div
-                    className={`w-3.5 rounded-t-md transition-colors ${activo ? "bg-[#3F8E91]" : "bg-[#4FAEB2] hover:bg-[#3F8E91]"}`}
-                    style={{ height: `${alto(m.web.cantidad)}px` }}
-                  />
-                  <div
-                    className={`w-3.5 rounded-t-md transition-colors ${activo ? "bg-[#6d28d9]" : "bg-[#8b5cf6] hover:bg-[#6d28d9]"}`}
-                    style={{ height: `${alto(m.saas.cantidad)}px` }}
-                  />
-                  {hayMixtos ? (
-                    <div
-                      className={`w-3.5 rounded-t-md transition-colors ${activo ? "bg-slate-500" : "bg-slate-400 hover:bg-slate-500"}`}
-                      style={{ height: `${alto(m.mixto.cantidad)}px` }}
-                    />
-                  ) : null}
+                <div className="flex items-end gap-[3px]">
+                  {barra(m.web.cantidad, "#3F8E91", "#2F6E71")}
+                  {barra(m.saas.cantidad, "#8b5cf6", "#6d28d9")}
+                  {hayMixtos ? barra(m.mixto.cantidad, "#94a3b8", "#64748b") : null}
                 </div>
-                <span className={`text-[10px] ${activo ? "font-semibold text-[#3F8E91]" : "text-slate-500"}`}>{mesLabel(m.ym)}</span>
+                <span
+                  className={`text-[10px] font-medium ${
+                    activo ? "text-[#2F6E71]" : "text-slate-500 group-hover:text-slate-700"
+                  }`}
+                >
+                  {mesLabel(m.ym)}
+                </span>
               </button>
             );
           })}

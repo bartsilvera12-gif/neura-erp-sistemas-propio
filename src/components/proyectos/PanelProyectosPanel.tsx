@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Activity,
+  CheckCircle2,
+  FolderKanban,
+  PackageCheck,
+  Receipt,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 type Panel = {
@@ -82,6 +92,20 @@ function fmtGs(n: number): string {
   return `₲ ${new Intl.NumberFormat("es-PY", { maximumFractionDigits: 0 }).format(n || 0)}`;
 }
 
+/**
+ * Monto compacto para el número grande de una tarjeta KPI: `₲184,4M` en vez de
+ * `₲ 184.440.000`. El monto completo (con miles) sigue en las tablas de
+ * detalle vía `fmtGs` — ahí hay una columna entera para leerlo; acá el número
+ * es lo único grande en la tarjeta y tiene que entrar en una línea.
+ */
+function fmtGsCompacto(n: number): string {
+  const v = Math.abs(n || 0);
+  if (v >= 1e9) return `₲${(n / 1e9).toFixed(1).replace(".", ",")}MM`;
+  if (v >= 1e6) return `₲${(n / 1e6).toFixed(1).replace(".", ",")}M`;
+  if (v >= 1e3) return `₲${Math.round(n / 1e3)}K`;
+  return fmtGs(n);
+}
+
 /** Tabla de proyectos de un responsable (etapa, vendedor, presupuesto, SLA). */
 function ProyectosDetalleTabla({ proyectos, mostrarVendedor = false }: { proyectos: DetalleProy[]; mostrarVendedor?: boolean }) {
   if (!proyectos.length) return <p className="px-3 py-3 text-xs text-slate-400">Sin proyectos.</p>;
@@ -142,14 +166,50 @@ function mesLabel(ym: string): string {
   return `${meses[mi - 1] ?? m} ${(y ?? "").slice(2)}`;
 }
 
-function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: "danger" | "money" | "ok" }) {
-  const color =
-    accent === "danger" ? "text-rose-700" : accent === "money" ? "text-[#3F8E91]" : accent === "ok" ? "text-emerald-700" : "text-slate-900";
+type KpiTono = "neutral" | "money" | "ok" | "danger";
+
+const KPI_TONOS: Record<KpiTono, { chip: string; value: string }> = {
+  neutral: { chip: "bg-slate-100 text-slate-500", value: "text-slate-900" },
+  money: { chip: "bg-[#4FAEB2]/10 text-[#3F8E91]", value: "text-[#3F8E91]" },
+  ok: { chip: "bg-emerald-50 text-emerald-600", value: "text-emerald-700" },
+  danger: { chip: "bg-rose-50 text-rose-600", value: "text-rose-700" },
+};
+
+/**
+ * Tarjeta KPI: ícono (identidad, no depende del color) + etiqueta ómnibus +
+ * número grande + dato secundario opcional.
+ *
+ * El número NO lleva `tabular-nums`: esa es la opción correcta para columnas
+ * que tienen que alinear dígito contra dígito (las tablas de abajo sí la
+ * llevan), pero en un número grande y solo hace que se vea más suelto de lo
+ * normal. Acá se usan las cifras proporcionales por defecto de la tipografía.
+ */
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  tono = "neutral",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  sub?: string;
+  tono?: KpiTono;
+}) {
+  const t = KPI_TONOS[tono];
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
-      <p className={`mt-1 text-2xl font-bold tabular-nums ${color}`}>{value}</p>
-      {sub ? <p className="mt-0.5 text-[11px] text-slate-500">{sub}</p> : null}
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-2">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${t.chip}`}>
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+        <p className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+          {label}
+        </p>
+      </div>
+      <p className={`mt-2.5 text-2xl font-bold leading-none ${t.value}`}>{value}</p>
+      {sub ? <p className="mt-1.5 text-[11px] text-slate-500">{sub}</p> : null}
     </div>
   );
 }
@@ -238,12 +298,30 @@ export default function PanelProyectosPanel() {
         Vista completa — <span className="font-medium">todos los proyectos</span> activos (sin filtro por mes).
       </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Kpi label="Proyectos" value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
-        <Kpi label="Entregados (mes)" value={String(data.kpis.entregados_mes)} sub={fmtGs(data.kpis.entregados_mes_monto)} accent="ok" />
-        <Kpi label="Presupuesto cerrado" value={fmtGs(data.kpis.presupuesto_total)} sub={`${data.kpis.con_presupuesto}/${data.kpis.total} con factura`} accent="money" />
-        <Kpi label="Ticket promedio" value={fmtGs(data.kpis.ticket_promedio)} accent="money" />
-        <Kpi label="SLA vencidos" value={String(data.kpis.sla_vencidos)} accent={data.kpis.sla_vencidos > 0 ? "danger" : undefined} />
-        <Kpi label="En curso" value={String(data.kpis.en_curso)} sub="no entregados" />
+        <Kpi icon={FolderKanban} label="Proyectos" value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
+        <Kpi
+          icon={PackageCheck}
+          label="Entregados (mes)"
+          value={String(data.kpis.entregados_mes)}
+          sub={fmtGsCompacto(data.kpis.entregados_mes_monto)}
+          tono="ok"
+        />
+        <Kpi
+          icon={Wallet}
+          label="Presupuesto cerrado"
+          value={fmtGsCompacto(data.kpis.presupuesto_total)}
+          sub={`${data.kpis.con_presupuesto}/${data.kpis.total} con factura`}
+          tono="money"
+        />
+        <Kpi icon={Receipt} label="Ticket promedio" value={fmtGsCompacto(data.kpis.ticket_promedio)} tono="money" />
+        <Kpi
+          icon={data.kpis.sla_vencidos > 0 ? AlertTriangle : CheckCircle2}
+          label="SLA vencidos"
+          value={String(data.kpis.sla_vencidos)}
+          sub={data.kpis.sla_vencidos > 0 ? "revisar ahora" : "todo al día"}
+          tono={data.kpis.sla_vencidos > 0 ? "danger" : "ok"}
+        />
+        <Kpi icon={Activity} label="En curso" value={String(data.kpis.en_curso)} sub="no entregados" />
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

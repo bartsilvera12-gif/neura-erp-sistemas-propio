@@ -9,7 +9,7 @@ import {
   ensureProyectosBucket,
 } from "@/lib/proyectos/proyectos-archivos-storage";
 
-const ARCHIVO_SELECT = "id, nombre, mime_type, size_bytes, uploaded_by, created_at";
+const ARCHIVO_SELECT = "id, nombre, mime_type, size_bytes, uploaded_by, created_at, confirmacion_cliente";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireProyectosApiAccess(request);
@@ -66,6 +66,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const nombre = (file.name || "archivo").trim().slice(0, 200) || "archivo";
     const mimeType = file.type || "application/octet-stream";
+    // El marcador sólo tiene sentido en imágenes: es evidencia visual de que el
+    // cliente pidió o confirmó algo. Se ignora en silencio en cualquier otro
+    // tipo de archivo en vez de devolver error, para no romper un upload de PDF
+    // porque el cliente mandó el checkbox tildado de una subida anterior.
+    const confirmacionCliente = form?.get("confirmacion_cliente") === "1" && mimeType.startsWith("image/");
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
@@ -102,6 +107,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         mime_type: mimeType,
         size_bytes: file.size,
         uploaded_by: auth.usuarioCatalogId,
+        confirmacion_cliente: confirmacionCliente,
       })
       .select(ARCHIVO_SELECT);
 

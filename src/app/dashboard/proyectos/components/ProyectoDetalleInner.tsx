@@ -483,6 +483,24 @@ const IconCheckSquare = () => (
   </svg>
 );
 
+/** Confirmación de solicitud del cliente: burbuja de mensaje con un check. */
+const IconConfirmacionCliente = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    className={className ?? "h-4 w-4"}
+  >
+    <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-4-1L3 20l1.3-3.9a8.5 8.5 0 1 1 16.7-4.6z" />
+    <path d="m8.5 12 2.2 2.2L15.5 9" />
+  </svg>
+);
+
 // Ícono por tipo de archivo (categoría). Líneas finas, estilo coherente con el resto del set.
 function ArchivoTipoIcon({ cat }: { cat: ArchivoCategoria }) {
   const common = {
@@ -631,6 +649,13 @@ export default function ProyectoDetalleInner({
   const [archivoFiltro, setArchivoFiltro] = useState<ArchivoCategoria | "todos">("todos");
   const [archivosSel, setArchivosSel] = useState<Set<string>>(() => new Set());
   const [archivoBulkBusy, setArchivoBulkBusy] = useState(false);
+  /**
+   * Tildado antes de subir, marca las imágenes de esa tanda como confirmación
+   * de solicitud del cliente. Se resetea después de cada subida para no
+   * arrastrar el tilde a la próxima tanda por accidente.
+   */
+  const [subirComoConfirmacion, setSubirComoConfirmacion] = useState(false);
+  const [confirmacionActionId, setConfirmacionActionId] = useState<string | null>(null);
   // Miniaturas (signed URL inline) para archivos de imagen. id → url.
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const thumbFetchingRef = useRef<Set<string>>(new Set());
@@ -1246,11 +1271,15 @@ export default function ProyectoDetalleInner({
       validos.push(f);
     }
     if (validos.length === 0) return;
+    const comoConfirmacion = subirComoConfirmacion;
     setArchivoUploading(true);
     try {
       for (const file of validos) {
         const fd = new FormData();
         fd.append("file", file);
+        // El servidor lo ignora en archivos que no son imagen: no hace falta
+        // filtrar acá cuáles son imágenes antes de mandarlo.
+        if (comoConfirmacion) fd.append("confirmacion_cliente", "1");
         const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos`, {
           method: "POST",
           body: fd,
@@ -1261,10 +1290,32 @@ export default function ProyectoDetalleInner({
           break;
         }
       }
+      setSubirComoConfirmacion(false);
       await load();
       onProjectUpdated?.();
     } finally {
       setArchivoUploading(false);
+    }
+  }
+
+  /** Alterna el marcador de confirmación de cliente en una imagen ya subida. */
+  async function alternarConfirmacionCliente(aid: string, valor: boolean) {
+    setConfirmacionActionId(aid);
+    setErr(null);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos/${aid}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmacion_cliente: valor }),
+      });
+      const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (!res.ok || !j?.success) {
+        setErr(j?.error ?? "No se pudo actualizar el archivo");
+        return;
+      }
+      await load();
+    } finally {
+      setConfirmacionActionId(null);
     }
   }
 
@@ -2465,17 +2516,23 @@ export default function ProyectoDetalleInner({
 
         {tab === "archivos" ? (() => {
           const archivosAll = data.archivos ?? [];
-          // Conteo por categoría sobre el total.
+          const esConfirmacionCliente = (a: Record<string, unknown>) => a.confirmacion_cliente === true;
+          // Las marcadas como confirmación del cliente se discriminan del resto:
+          // tienen su propia sección más abajo y no aparecen también dentro de
+          // "Imágenes", que sería mostrarlas dos veces.
+          const archivosConfirmacion = archivosAll.filter(esConfirmacionCliente);
+          const archivosCategorizables = archivosAll.filter((a) => !esConfirmacionCliente(a));
+          // Conteo por categoría sobre lo categorizable (sin las confirmaciones).
           const conteo = new Map<ArchivoCategoria, number>();
-          for (const a of archivosAll) {
+          for (const a of archivosCategorizables) {
             const cat = categoriaArchivo(a.nombre, a.mime_type);
             conteo.set(cat, (conteo.get(cat) ?? 0) + 1);
           }
           const categoriasPresentes = ARCHIVO_CATEGORIAS_ORDEN.filter((c) => (conteo.get(c.key) ?? 0) > 0);
           const filtrados =
             archivoFiltro === "todos"
-              ? archivosAll
-              : archivosAll.filter((a) => categoriaArchivo(a.nombre, a.mime_type) === archivoFiltro);
+              ? archivosCategorizables
+              : archivosCategorizables.filter((a) => categoriaArchivo(a.nombre, a.mime_type) === archivoFiltro);
           const filtradosIds = filtrados.map((a) => String(a.id ?? ""));
           const selEnFiltro = filtradosIds.filter((id) => archivosSel.has(id));
           const todosFiltradosSel = filtradosIds.length > 0 && selEnFiltro.length === filtradosIds.length;
@@ -2511,6 +2568,8 @@ export default function ProyectoDetalleInner({
             const seleccionado = archivosSel.has(aid);
             const fijarCheck = seleccionado || selectionMode;
             const thumb = cat === "imagen" ? thumbUrls[aid] : undefined;
+            const esConfirmacion = esConfirmacionCliente(a);
+            const enAccionConfirmacion = confirmacionActionId === aid;
             return (
               <li
                 key={aid}
@@ -2588,6 +2647,30 @@ export default function ProyectoDetalleInner({
                     selectionMode ? "opacity-40" : "opacity-100"
                   }`}
                 >
+                  {cat === "imagen" ? (
+                    <button
+                      type="button"
+                      onClick={() => void alternarConfirmacionCliente(aid, !esConfirmacion)}
+                      disabled={enAccionConfirmacion || archivoBulkBusy}
+                      title={
+                        esConfirmacion
+                          ? "Quitar de Confirmación de Solicitudes del cliente"
+                          : "Marcar como Confirmación de Solicitud del cliente"
+                      }
+                      aria-label={
+                        esConfirmacion
+                          ? `Quitar confirmación de cliente de ${nombre}`
+                          : `Marcar ${nombre} como confirmación de cliente`
+                      }
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                        esConfirmacion
+                          ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                          : "text-slate-400 hover:bg-white hover:text-emerald-600"
+                      }`}
+                    >
+                      {enAccionConfirmacion ? <IconSpinner /> : <IconConfirmacionCliente />}
+                    </button>
+                  ) : null}
                   {isPreviewableMime(mime) ? (
                     <button
                       type="button"
@@ -2682,6 +2765,34 @@ export default function ProyectoDetalleInner({
               </span>
               <span className="text-xs text-slate-400">Se aceptan varios archivos a la vez</span>
             </div>
+
+            <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={subirComoConfirmacion}
+                onChange={(e) => setSubirComoConfirmacion(e.target.checked)}
+                disabled={archivoUploading}
+                className="h-4 w-4 rounded border-slate-300 accent-emerald-600"
+              />
+              Estas imágenes son <strong className="font-semibold text-slate-800">Confirmación de Solicitud del cliente</strong>
+            </label>
+
+            {archivosConfirmacion.length > 0 ? (
+              <div className="mt-5">
+                <div className="mb-2.5 flex items-center gap-2.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                    <IconConfirmacionCliente className="h-3.5 w-3.5" />
+                  </span>
+                  <h3 className="text-sm font-semibold text-slate-800">Confirmación de Solicitudes del cliente</h3>
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    {archivosConfirmacion.length}
+                  </span>
+                </div>
+                <ul className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/30 p-1.5">
+                  {archivosConfirmacion.map((a) => renderArchivoLi(a))}
+                </ul>
+              </div>
+            ) : null}
 
             {/* Filtros por tipo + entrada a modo selección */}
             {archivosAll.length > 0 ? (

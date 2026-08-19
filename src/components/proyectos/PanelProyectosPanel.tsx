@@ -63,6 +63,21 @@ type EntregadosMes = ResumenTipoMes & {
   mixto: ResumenTipoMes;
 };
 
+/**
+ * Degradés de "Entregados por mes": cada barra va de un tinte claro arriba a
+ * su color validado abajo, y el color validado es siempre el stop de mayor
+ * peso (el que ancla contraste e identidad) — el degradé es hondura dentro
+ * del MISMO tono, nunca una mezcla hacia el otro color de la serie. Reusa
+ * tokens que ya existen en la app (el teal claro/oscuro de marca, los pasos
+ * de Tailwind violet/slate) en vez de inventar hex nuevos.
+ */
+const GRADIENTE_WEB = "linear-gradient(180deg, #4FAEB2 0%, #3F8E91 100%)";
+const GRADIENTE_WEB_ACTIVO = "linear-gradient(180deg, #3F8E91 0%, #2F6E71 100%)";
+const GRADIENTE_SAAS = "linear-gradient(180deg, #a78bfa 0%, #8b5cf6 100%)";
+const GRADIENTE_SAAS_ACTIVO = "linear-gradient(180deg, #8b5cf6 0%, #6d28d9 100%)";
+const GRADIENTE_MIXTO = "linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%)";
+const GRADIENTE_MIXTO_ACTIVO = "linear-gradient(180deg, #94a3b8 0%, #64748b 100%)";
+
 function fmtGs(n: number): string {
   return `₲ ${new Intl.NumberFormat("es-PY", { maximumFractionDigits: 0 }).format(n || 0)}`;
 }
@@ -157,6 +172,13 @@ export default function PanelProyectosPanel() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [mesSel, setMesSel] = useState<string | null>(null); // ym del histórico abierto
+  /**
+   * Arranca en `false` a propósito: las barras de "Entregados por mes" pintan
+   * su primer frame en altura 0 y recién después suben a su altura real, para
+   * que la animación de entrada tenga desde dónde partir. Sin este paso extra
+   * React pintaría la altura final de una, sin nada que animar.
+   */
+  const [barrasMontadas, setBarrasMontadas] = useState(false);
   const [aseAbierto, setAseAbierto] = useState<string | null>(null); // asesor expandido
   const [tecAbierto, setTecAbierto] = useState<string | null>(null); // técnico expandido
 
@@ -179,6 +201,22 @@ export default function PanelProyectosPanel() {
       cancel = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (loading || !data) return;
+    setBarrasMontadas(false);
+    // Doble rAF: el primero deja que el navegador pinte la altura 0, el
+    // segundo recién dispara el cambio a la altura real — con uno solo, a
+    // veces el navegador agrupa los dos frames y la transición no se ve.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setBarrasMontadas(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [loading, data]);
 
   if (loading) return <div className="py-20 text-center text-sm text-slate-400">Cargando panel…</div>;
   if (err) return <div className="py-20 text-center text-sm text-rose-600">{err}</div>;
@@ -366,22 +404,28 @@ export default function PanelProyectosPanel() {
         <div className="flex items-end justify-between gap-1 border-b border-slate-200">
           {data.entregados_por_mes.map((m) => {
             const activo = mesSel === m.ym;
-            const PLOT_H = 84;
+            const PLOT_H = 88;
             const alto = (cant: number) =>
-              maxMesCant > 0 && cant > 0 ? Math.max(3, Math.round((cant / maxMesCant) * PLOT_H)) : 0;
+              maxMesCant > 0 && cant > 0 ? Math.max(4, Math.round((cant / maxMesCant) * PLOT_H)) : 0;
 
-            const barra = (cant: number, color: string, colorActivo: string) => (
-              <div className="flex flex-col items-center justify-end" style={{ height: PLOT_H + 18 }}>
+            const barra = (cant: number, gradiente: string, gradienteActivo: string) => (
+              <div className="flex flex-col items-center justify-end" style={{ height: PLOT_H + 22 }}>
                 <span
-                  className={`mb-1 text-[10px] font-semibold tabular-nums ${
-                    cant > 0 ? "text-slate-600" : "text-slate-300"
-                  }`}
+                  className={`mb-1.5 text-[13px] font-bold tabular-nums transition-transform duration-300 ${
+                    cant > 0 ? "text-slate-700" : "text-slate-300"
+                  } ${activo ? "scale-110" : ""}`}
                 >
                   {cant}
                 </span>
+                {/* origin-bottom: al agrandarse en el mes activo, crece hacia
+                    arriba desde la base — nunca se despega de la línea de base. */}
                 <div
-                  className="w-2 rounded-t-[4px] transition-colors sm:w-2.5"
-                  style={{ height: alto(cant), backgroundColor: activo ? colorActivo : color }}
+                  className="w-3.5 origin-bottom rounded-t-[4px] shadow-sm transition-[height,transform] duration-500 ease-out sm:w-4"
+                  style={{
+                    height: barrasMontadas ? alto(cant) : 0,
+                    backgroundImage: activo ? gradienteActivo : gradiente,
+                    transform: activo ? "scale(1.08)" : "scale(1)",
+                  }}
                 />
               </div>
             );
@@ -398,14 +442,14 @@ export default function PanelProyectosPanel() {
                   hayMixtos ? ` · ${m.mixto.cantidad} mixto` : ""
                 } · ${fmtGs(m.monto)}`}
               >
-                <div className="flex items-end gap-[3px]">
-                  {barra(m.web.cantidad, "#3F8E91", "#2F6E71")}
-                  {barra(m.saas.cantidad, "#8b5cf6", "#6d28d9")}
-                  {hayMixtos ? barra(m.mixto.cantidad, "#94a3b8", "#64748b") : null}
+                <div className="flex items-end gap-1">
+                  {barra(m.web.cantidad, GRADIENTE_WEB, GRADIENTE_WEB_ACTIVO)}
+                  {barra(m.saas.cantidad, GRADIENTE_SAAS, GRADIENTE_SAAS_ACTIVO)}
+                  {hayMixtos ? barra(m.mixto.cantidad, GRADIENTE_MIXTO, GRADIENTE_MIXTO_ACTIVO) : null}
                 </div>
                 <span
-                  className={`text-[10px] font-medium ${
-                    activo ? "text-[#2F6E71]" : "text-slate-500 group-hover:text-slate-700"
+                  className={`text-[10px] font-medium transition-colors ${
+                    activo ? "font-semibold text-[#2F6E71]" : "text-slate-500 group-hover:text-slate-700"
                   }`}
                 >
                   {mesLabel(m.ym)}

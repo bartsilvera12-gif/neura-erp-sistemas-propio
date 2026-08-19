@@ -12,7 +12,15 @@ import {
   type QAObservacionSeveridad,
 } from "@/lib/proyectos/qa-observaciones-config";
 import QAImageDropzone from "./QAImageDropzone";
-import type { QAApiResp, QAArchivo, QAComentario, QAObservacion, QASeccion, QAUsuario } from "./types";
+import type {
+  QAApiResp,
+  QAArchivo,
+  QAComentario,
+  QAComentarioOrigen,
+  QAObservacion,
+  QASeccion,
+  QAUsuario,
+} from "./types";
 import {
   BTN_GHOST_CLS,
   BTN_PRIMARY_CLS,
@@ -58,11 +66,23 @@ export default function ObservacionModal({
 
   const [comentarios, setComentarios] = useState<QAComentario[]>([]);
   const [comentariosCargando, setComentariosCargando] = useState(true);
-  const [nuevoComentario, setNuevoComentario] = useState("");
+  // Dos borradores, uno por carril: lo que se está tipeando en "Nota de QA" no
+  // se mezcla con lo que se está tipeando en "Respuesta del técnico".
+  const [nuevoComentarioQa, setNuevoComentarioQa] = useState("");
+  const [nuevoComentarioTecnico, setNuevoComentarioTecnico] = useState("");
 
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [subiendo, setSubiendo] = useState(0);
   const enviandoRef = useRef(false);
+
+  // El carril lo decide `origen` (en qué caja se escribió), no el autor: los
+  // comentarios de antes de esta funcionalidad no tienen `origen` propio y
+  // quedaron migrados a "qa" — ver la nota en la migración.
+  const comentariosQa = useMemo(() => comentarios.filter((c) => c.origen !== "tecnico"), [comentarios]);
+  const comentariosTecnico = useMemo(
+    () => comentarios.filter((c) => c.origen === "tecnico"),
+    [comentarios]
+  );
 
   const imagenes = useMemo(
     () => obs.archivos.filter((a) => (a.mime_type ?? "").startsWith("image/")),
@@ -183,8 +203,14 @@ export default function ObservacionModal({
     onEliminada(obsId);
   }
 
-  async function publicarComentario() {
-    const texto = nuevoComentario.trim();
+  /**
+   * `origen` decide el carril donde aparece el mensaje — "Nota de QA" o
+   * "Respuesta del técnico" —, no quién lo escribe: cualquiera con acceso al
+   * proyecto puede publicar en cualquiera de los dos, igual que antes cuando
+   * era un solo hilo.
+   */
+  async function publicarComentario(origen: QAComentarioOrigen) {
+    const texto = (origen === "qa" ? nuevoComentarioQa : nuevoComentarioTecnico).trim();
     if (!texto || enviandoRef.current) return;
     enviandoRef.current = true;
     try {
@@ -193,7 +219,7 @@ export default function ObservacionModal({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ texto }),
+          body: JSON.stringify({ texto, origen }),
         }
       );
       const j = (await res.json().catch(() => null)) as QAApiResp<QAComentario> | null;
@@ -202,7 +228,8 @@ export default function ObservacionModal({
         return;
       }
       setErr(null);
-      setNuevoComentario("");
+      if (origen === "qa") setNuevoComentarioQa("");
+      else setNuevoComentarioTecnico("");
       setComentarios((prev) => {
         const next = [...prev, j.data as QAComentario];
         onComentariosCambio(obsId, next.length);
@@ -555,66 +582,36 @@ export default function ObservacionModal({
             />
           </div>
 
-          {/* Comentarios */}
-          <div className="space-y-2">
-            <span className={LABEL_CLS}>Comentarios</span>
-            {comentariosCargando ? (
-              <p className="text-xs text-slate-400">Cargando…</p>
-            ) : comentarios.length === 0 ? (
-              <p className="text-xs text-slate-400">Sin comentarios todavía.</p>
-            ) : (
-              <ul className="space-y-2">
-                {comentarios.map((c) => (
-                  <li key={c.id} className="group flex gap-2">
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4FAEB2]/15 text-[9px] font-semibold text-[#3F8E91]">
-                      {iniciales(c.autor_nombre)}
-                    </span>
-                    <div className="min-w-0 flex-1 rounded-xl bg-slate-50 px-3 py-2">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-xs font-medium text-slate-800">
-                          {c.autor_nombre ?? "Usuario"}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          {fechaRelativa(c.created_at)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void eliminarComentario(c)}
-                          className="ml-auto hidden text-[11px] text-slate-400 transition-colors hover:text-rose-600 group-hover:block"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                      <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{c.texto}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <div className="flex items-start gap-2">
-              <textarea
-                value={nuevoComentario}
-                onChange={(e) => setNuevoComentario(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    void publicarComentario();
-                  }
-                }}
-                rows={2}
-                placeholder="Escribí una respuesta… (Ctrl/Cmd+Enter para enviar)"
-                className={`${INPUT_CLS} min-h-[56px] resize-y`}
-              />
-              <button
-                type="button"
-                onClick={() => void publicarComentario()}
-                disabled={!nuevoComentario.trim()}
-                className={BTN_PRIMARY_CLS}
-              >
-                Enviar
-              </button>
-            </div>
+          {/* Comentarios — dos carriles separados: lo que registra QA y lo que
+              responde el técnico, cada uno con su propia lista y su propia
+              caja de texto. Antes era un solo hilo mezclado. */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <HiloComentario
+              titulo="Nota de QA"
+              colorAvatar="bg-[#4FAEB2]/15 text-[#3F8E91]"
+              colorAcento="border-l-[#4FAEB2]"
+              comentarios={comentariosQa}
+              cargando={comentariosCargando}
+              vacio="Sin notas de QA todavía."
+              borrador={nuevoComentarioQa}
+              onBorrador={setNuevoComentarioQa}
+              placeholder="Nota para el técnico… (Ctrl/Cmd+Enter para enviar)"
+              onEnviar={() => void publicarComentario("qa")}
+              onEliminar={(c) => void eliminarComentario(c)}
+            />
+            <HiloComentario
+              titulo="Respuesta del técnico"
+              colorAvatar="bg-violet-100 text-violet-700"
+              colorAcento="border-l-violet-400"
+              comentarios={comentariosTecnico}
+              cargando={comentariosCargando}
+              vacio="Sin respuestas del técnico todavía."
+              borrador={nuevoComentarioTecnico}
+              onBorrador={setNuevoComentarioTecnico}
+              placeholder="Respuesta para QA… (Ctrl/Cmd+Enter para enviar)"
+              onEnviar={() => void publicarComentario("tecnico")}
+              onEliminar={(c) => void eliminarComentario(c)}
+            />
           </div>
         </div>
       </div>
@@ -721,6 +718,94 @@ function SeccionCombobox({
           ) : null}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Un carril de comentarios dentro de una observación: su propia lista y su
+ * propia caja de texto. `ObservacionModal` renderiza dos —"Nota de QA" y
+ * "Respuesta del técnico"— con los mismos comentarios ya filtrados por
+ * `origen`, cada uno con su color de acento para distinguirse de un vistazo.
+ */
+function HiloComentario({
+  titulo,
+  colorAvatar,
+  colorAcento,
+  comentarios,
+  cargando,
+  vacio,
+  borrador,
+  onBorrador,
+  placeholder,
+  onEnviar,
+  onEliminar,
+}: {
+  titulo: string;
+  colorAvatar: string;
+  colorAcento: string;
+  comentarios: QAComentario[];
+  cargando: boolean;
+  vacio: string;
+  borrador: string;
+  onBorrador: (v: string) => void;
+  placeholder: string;
+  onEnviar: () => void;
+  onEliminar: (c: QAComentario) => void;
+}) {
+  return (
+    <div className={`space-y-2 border-l-2 pl-3 ${colorAcento}`}>
+      <span className={LABEL_CLS}>{titulo}</span>
+      {cargando ? (
+        <p className="text-xs text-slate-400">Cargando…</p>
+      ) : comentarios.length === 0 ? (
+        <p className="text-xs text-slate-400">{vacio}</p>
+      ) : (
+        <ul className="space-y-2">
+          {comentarios.map((c) => (
+            <li key={c.id} className="group flex gap-2">
+              <span
+                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${colorAvatar}`}
+              >
+                {iniciales(c.autor_nombre)}
+              </span>
+              <div className="min-w-0 flex-1 rounded-xl bg-slate-50 px-3 py-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-medium text-slate-800">{c.autor_nombre ?? "Usuario"}</span>
+                  <span className="text-[11px] text-slate-400">{fechaRelativa(c.created_at)}</span>
+                  <button
+                    type="button"
+                    onClick={() => onEliminar(c)}
+                    className="ml-auto hidden text-[11px] text-slate-400 transition-colors hover:text-rose-600 group-hover:block"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+                <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{c.texto}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex items-start gap-2">
+        <textarea
+          value={borrador}
+          onChange={(e) => onBorrador(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              onEnviar();
+            }
+          }}
+          rows={2}
+          placeholder={placeholder}
+          className={`${INPUT_CLS} min-h-[56px] resize-y`}
+        />
+        <button type="button" onClick={onEnviar} disabled={!borrador.trim()} className={BTN_PRIMARY_CLS}>
+          Enviar
+        </button>
+      </div>
     </div>
   );
 }

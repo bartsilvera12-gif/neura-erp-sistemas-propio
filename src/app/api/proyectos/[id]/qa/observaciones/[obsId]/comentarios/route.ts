@@ -5,6 +5,7 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import {
   QA_OBSERVACION_COMENTARIO_SELECT,
   bumpProyectoActividad,
+  esQAComentarioOrigen,
   fetchObservacion,
   nombresUsuarios,
   registrarEventoQA,
@@ -68,6 +69,10 @@ export async function POST(
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const texto = typeof body?.texto === "string" ? body.texto.trim().slice(0, 5000) : "";
     if (!texto) return NextResponse.json(errorResponse("texto obligatorio"), { status: 400 });
+    // Elige el carril donde aparece el mensaje ("Nota de QA" o "Respuesta del
+    // técnico") — no depende de quién lo escribe, sino de en qué caja lo tipeó,
+    // así que cualquiera con acceso puede publicar en cualquiera de los dos.
+    const origen = esQAComentarioOrigen(body?.origen) ? body.origen : "qa";
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
     const observacion = await fetchObservacion(sb, auth.empresaId, pid, oid);
@@ -82,6 +87,7 @@ export async function POST(
         proyecto_id: pid,
         observacion_id: oid,
         texto,
+        origen,
         autor_id: auth.usuarioCatalogId,
       })
       .select(QA_OBSERVACION_COMENTARIO_SELECT);

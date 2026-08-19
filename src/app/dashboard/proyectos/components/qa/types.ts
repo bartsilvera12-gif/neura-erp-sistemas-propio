@@ -37,10 +37,14 @@ export type QAArchivo = {
   url: string | null;
 };
 
+/** Carril del comentario — no quién lo escribió, sino en qué caja lo tipeó. */
+export type QAComentarioOrigen = "qa" | "tecnico";
+
 export type QAComentario = {
   id: string;
   observacion_id: string;
   texto: string;
+  origen: QAComentarioOrigen;
   autor_id: string | null;
   created_at: string;
   updated_at: string;

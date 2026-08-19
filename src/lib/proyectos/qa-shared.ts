@@ -197,7 +197,7 @@ export const QA_OBSERVACION_ARCHIVO_SELECT =
   "id, observacion_id, nombre, storage_bucket, storage_path, mime_type, size_bytes, sort_order, uploaded_by, created_at" as const;
 
 export const QA_OBSERVACION_COMENTARIO_SELECT =
-  "id, observacion_id, texto, autor_id, created_at, updated_at" as const;
+  "id, observacion_id, texto, origen, autor_id, created_at, updated_at" as const;
 
 export type QASeccionRow = {
   id: string;
@@ -252,10 +252,23 @@ export type QAObservacionArchivoPublico = Omit<
   "storage_bucket" | "storage_path"
 > & { url: string | null };
 
+/**
+ * `origen` del COMENTARIO — quién habla en ese mensaje ("qa" o "tecnico") —, no
+ * confundir con `QAObservacionRow.origen` (de dónde salió el HALLAZGO: cliente,
+ * interno, etc.). Son dos campos del mismo nombre en tablas distintas, con
+ * significados distintos.
+ */
+export type QAComentarioOrigen = "qa" | "tecnico";
+
+export function esQAComentarioOrigen(value: unknown): value is QAComentarioOrigen {
+  return value === "qa" || value === "tecnico";
+}
+
 export type QAObservacionComentarioRow = {
   id: string;
   observacion_id: string;
   texto: string;
+  origen: QAComentarioOrigen;
   autor_id: string | null;
   created_at: string;
   updated_at: string;

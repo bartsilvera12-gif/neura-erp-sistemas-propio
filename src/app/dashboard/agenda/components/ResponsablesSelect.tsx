@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
+import { nombreCapitular } from "@/lib/format/nombres";
 
 export type UsuarioOpcion = { id: string; nombre?: string | null };
 
@@ -29,7 +30,10 @@ export function ResponsablesSelect({
   /** Ids seleccionados. El primero es el responsable principal. */
   valor: string[];
   onChange: (ids: string[]) => void;
-  /** Id del principal; no se puede quitar sin elegir otro antes. */
+  /**
+   * Id del principal (el primero de `valor`). Sólo se usa para marcarlo con el
+   * chip: se puede desmarcar como cualquier otro, y el siguiente hereda el rol.
+   */
   principalId: string | null;
   disabled?: boolean;
 }) {
@@ -40,7 +44,7 @@ export function ResponsablesSelect({
   const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
 
   const nombreDe = useMemo(() => {
-    const m = new Map(opciones.map((o) => [o.id, (o.nombre ?? "").trim() || o.id]));
+    const m = new Map(opciones.map((o) => [o.id, nombreCapitular(o.nombre) !== "—" ? nombreCapitular(o.nombre) : o.id]));
     return (id: string) => m.get(id) ?? id;
   }, [opciones]);
 
@@ -96,9 +100,9 @@ export function ResponsablesSelect({
 
   function alternar(id: string) {
     if (valor.includes(id)) {
-      // El principal no se saca desde acá: primero hay que elegir otro. Si no,
-      // la cita quedaría sin responsable principal y la API la rechazaría.
-      if (id === principalId) return;
+      // Cualquiera se puede sacar, el principal incluido: al quitarlo, el
+      // siguiente de la lista hereda ese rol. Bloquearlo dejaba la primera
+      // persona marcada sin forma de deshacer el clic.
       onChange(valor.filter((v) => v !== id));
     } else {
       onChange([...valor, id]);
@@ -150,7 +154,7 @@ export function ResponsablesSelect({
                             </svg>
                           ) : null}
                         </span>
-                        <span className="min-w-0 flex-1 truncate">{(o.nombre ?? "").trim() || o.id}</span>
+                        <span className="min-w-0 flex-1 truncate">{nombreDe(o.id)}</span>
                         {esPrincipal ? (
                           <span className="shrink-0 rounded-md bg-[#4FAEB2]/12 px-1.5 py-0.5 text-[10px] font-semibold text-[#3F8E91]">
                             principal
@@ -185,20 +189,18 @@ export function ResponsablesSelect({
                 className="inline-flex max-w-full items-center gap-1 rounded-md bg-[#4FAEB2]/12 px-1.5 py-0.5 text-[12px] font-medium text-[#3F8E91]"
               >
                 <span className="truncate">{nombreDe(id)}</span>
-                {id === principalId ? null : (
-                  <span
-                    role="button"
-                    tabIndex={-1}
-                    aria-label={`Quitar a ${nombreDe(id)}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onChange(valor.filter((v) => v !== id));
-                    }}
-                    className="cursor-pointer text-[#3F8E91]/60 hover:text-[#3F8E91]"
-                  >
-                    ×
-                  </span>
-                )}
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  aria-label={`Quitar a ${nombreDe(id)}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange(valor.filter((v) => v !== id));
+                  }}
+                  className="cursor-pointer text-[#3F8E91]/60 hover:text-[#3F8E91]"
+                >
+                  ×
+                </span>
               </span>
             ))
           )}

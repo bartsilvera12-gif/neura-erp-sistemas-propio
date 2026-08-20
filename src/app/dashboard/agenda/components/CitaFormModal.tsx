@@ -111,8 +111,11 @@ export default function CitaFormModal({
       const ini = prefill?.inicio ?? (() => { const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; })();
       const fin = prefill?.fin ?? (() => { const d = new Date(ini); d.setMinutes(d.getMinutes() + 30); return d; })();
       setTitulo("");
-      setResponsableId(options.responsables[0]?.id ?? "");
-      setResponsableIds(options.responsables[0]?.id ? [options.responsables[0].id] : []);
+      // Sin preselección: elegir al primero de la lista metía a alguien que
+      // muy probablemente no participa de la reunión, y encima quedaba como
+      // principal. Se arranca vacío y lo elige quien carga.
+      setResponsableId("");
+      setResponsableIds([]);
       setTipo("");
       setEstado("pendiente");
       setFecha(ymd(ini));
@@ -202,7 +205,7 @@ export default function CitaFormModal({
     const inicioIso = combinar(fecha, horaInicio);
     const finIso = combinar(fecha, horaFin);
     if (mode !== "reprogramar" && !titulo.trim()) return setError("El título es obligatorio.");
-    if (!responsableId) return setError("Elegí un responsable.");
+    if (!responsableId) return setError("Elegí al menos un responsable.");
     if (!inicioIso || !finIso) return setError("Indicá fecha, hora de inicio y fin.");
     if (Date.parse(finIso) <= Date.parse(inicioIso)) return setError("El fin debe ser posterior al inicio.");
 
@@ -303,9 +306,10 @@ export default function CitaFormModal({
                     principalId={responsableId || null}
                     onChange={(ids) => {
                       setResponsableIds(ids);
-                      // El primero manda: es el que va a `responsable_id` y el
-                      // que usan disponibilidad y anti-doble-reserva.
-                      if (!ids.includes(responsableId)) setResponsableId(ids[0] ?? "");
+                      // El principal es SIEMPRE el primero de la lista. Si se
+                      // lo saca, hereda el siguiente; si no queda ninguno, se
+                      // vacía y el formulario lo pide al guardar.
+                      setResponsableId(ids[0] ?? "");
                     }}
                   />
                   <p className="mt-1 text-[11px] text-slate-400">

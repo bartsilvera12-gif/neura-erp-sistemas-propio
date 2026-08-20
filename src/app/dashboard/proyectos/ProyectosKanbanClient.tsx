@@ -1187,7 +1187,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
                 type="button"
                 onClick={() => setAlcance("mios")}
                 aria-pressed={alcance === "mios"}
-                title="Solo los proyectos donde soy responsable (comercial, técnico o QA)"
+                title="Solo los proyectos donde soy responsable, en mi función (comercial, técnico o QA)"
                 className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                   alcance === "mios" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
                 }`}

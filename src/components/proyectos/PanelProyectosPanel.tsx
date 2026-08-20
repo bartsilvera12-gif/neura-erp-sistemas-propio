@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import CountUp from "@/components/reactbits/CountUp";
+import SpotlightCard from "@/components/reactbits/SpotlightCard";
 
 type Panel = {
   kpis: {
@@ -101,11 +102,21 @@ function fmtGs(n: number): string {
  * es lo único grande en la tarjeta y tiene que entrar en una línea.
  */
 function fmtGsCompacto(n: number): string {
+  const { valor, unidad } = partesGsCompacto(n);
+  return `₲${valor.toFixed(unidad ? 1 : 0).replace(".", ",")}${unidad}`;
+}
+
+/**
+ * Igual que `fmtGsCompacto` pero devuelve el número y su unidad por separado,
+ * para poder animar sólo la cifra con CountUp y dejar el sufijo ("M", "MM")
+ * quieto al lado. Animar el string entero haría parpadear la unidad.
+ */
+function partesGsCompacto(n: number): { valor: number; unidad: string; decimales: number } {
   const v = Math.abs(n || 0);
-  if (v >= 1e9) return `₲${(n / 1e9).toFixed(1).replace(".", ",")}MM`;
-  if (v >= 1e6) return `₲${(n / 1e6).toFixed(1).replace(".", ",")}M`;
-  if (v >= 1e3) return `₲${Math.round(n / 1e3)}K`;
-  return fmtGs(n);
+  if (v >= 1e9) return { valor: Math.round((n / 1e9) * 10) / 10, unidad: "MM", decimales: 1 };
+  if (v >= 1e6) return { valor: Math.round((n / 1e6) * 10) / 10, unidad: "M", decimales: 1 };
+  if (v >= 1e3) return { valor: Math.round(n / 1e3), unidad: "K", decimales: 0 };
+  return { valor: n || 0, unidad: "", decimales: 0 };
 }
 
 /**
@@ -261,11 +272,18 @@ function mesLabel(ym: string): string {
 
 type KpiTono = "neutral" | "money" | "ok" | "danger";
 
-const KPI_TONOS: Record<KpiTono, { chip: string; value: string }> = {
-  neutral: { chip: "bg-slate-100 text-slate-500", value: "text-slate-900" },
-  money: { chip: "bg-[#4FAEB2]/10 text-[#3F8E91]", value: "text-[#3F8E91]" },
-  ok: { chip: "bg-emerald-50 text-emerald-600", value: "text-emerald-700" },
-  danger: { chip: "bg-rose-50 text-rose-600", value: "text-rose-700" },
+/**
+ * El tono pinta el ÍCONO, no el número. El valor va siempre en tinta: seis
+ * tarjetas con seis números de colores distintos compiten entre sí y ninguna
+ * termina destacando. La excepción es `danger`, que es un estado real (SLA
+ * vencido) y ahí el rojo sí está diciendo algo — y aun así viene acompañado de
+ * ícono y etiqueta, nunca color solo.
+ */
+const KPI_TONOS: Record<KpiTono, { chip: string; value: string; spot: `rgba(${number}, ${number}, ${number}, ${number})` }> = {
+  neutral: { chip: "bg-slate-100 text-slate-500", value: "text-slate-900", spot: "rgba(100, 116, 139, 0.10)" },
+  money: { chip: "bg-[#4FAEB2]/10 text-[#3F8E91]", value: "text-slate-900", spot: "rgba(79, 174, 178, 0.16)" },
+  ok: { chip: "bg-emerald-50 text-emerald-600", value: "text-slate-900", spot: "rgba(16, 185, 129, 0.14)" },
+  danger: { chip: "bg-rose-50 text-rose-600", value: "text-rose-700", spot: "rgba(225, 29, 72, 0.14)" },
 };
 
 /**
@@ -276,23 +294,33 @@ const KPI_TONOS: Record<KpiTono, { chip: string; value: string }> = {
  * que tienen que alinear dígito contra dígito (las tablas de abajo sí la
  * llevan), pero en un número grande y solo hace que se vea más suelto de lo
  * normal. Acá se usan las cifras proporcionales por defecto de la tipografía.
+ *
+ * `count` anima la cifra al entrar; `prefijo`/`unidad` quedan fijos a los
+ * costados para que sólo se mueva el número.
  */
 function Kpi({
   icon: Icon,
   label,
-  value,
+  count,
+  prefijo,
+  unidad,
   sub,
   tono = "neutral",
 }: {
   icon: LucideIcon;
   label: string;
-  value: string;
+  count: number;
+  prefijo?: string;
+  unidad?: string;
   sub?: string;
   tono?: KpiTono;
 }) {
   const t = KPI_TONOS[tono];
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+    <SpotlightCard
+      spotlightColor={t.spot}
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+    >
       <div className="flex items-center gap-2">
         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${t.chip}`}>
           <Icon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -301,17 +329,38 @@ function Kpi({
           {label}
         </p>
       </div>
-      <p className={`mt-2.5 text-2xl font-bold leading-none ${t.value}`}>{value}</p>
+      <p className={`mt-2.5 flex items-baseline text-2xl font-bold leading-none ${t.value}`}>
+        {prefijo ? <span className="mr-0.5 text-base font-semibold text-slate-400">{prefijo}</span> : null}
+        <CountUp to={count} duration={0.9} separator="." />
+        {unidad ? <span className="ml-0.5 text-base font-semibold text-slate-400">{unidad}</span> : null}
+      </p>
       {sub ? <p className="mt-1.5 text-[11px] text-slate-500">{sub}</p> : null}
-    </div>
+    </SpotlightCard>
   );
 }
 
-function Bar({ value, max, className = "bg-[#4FAEB2]" }: { value: number; max: number; className?: string }) {
-  const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+/**
+ * Barra de magnitud. Fina y con extremos redondeados; el riel gris es el 100 %
+ * de referencia para que dos filas se puedan comparar de un vistazo.
+ */
+function Bar({
+  value,
+  max,
+  color = "#4FAEB2",
+  montada = true,
+}: {
+  value: number;
+  max: number;
+  color?: string;
+  montada?: boolean;
+}) {
+  const pct = max > 0 ? Math.max(value > 0 ? 2 : 0, Math.round((value / max) * 100)) : 0;
   return (
-    <div className="h-2 w-full rounded-full bg-slate-100">
-      <div className={`h-2 rounded-full ${className}`} style={{ width: `${pct}%` }} />
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div
+        className="h-full rounded-full transition-[width] duration-700 ease-out"
+        style={{ width: montada ? `${pct}%` : "0%", background: color }}
+      />
     </div>
   );
 }
@@ -377,7 +426,14 @@ export default function PanelProyectosPanel() {
   if (!data) return null;
 
   const maxEstadoCant = Math.max(1, ...data.por_estado.map((e) => e.cantidad));
-  const maxAsePres = Math.max(1, ...data.por_asesor.map((a) => a.presupuesto));
+  // "Por asesor": mismo criterio que "Por técnico" — ranking por la magnitud que
+  // se está mostrando, para que las barras bajen de mayor a menor.
+  const asesoresOrdenados = [...data.por_asesor].sort(
+    (a, b) => b.presupuesto - a.presupuesto || b.cantidad - a.cantidad
+  );
+  const maxAsePres = Math.max(1, ...asesoresOrdenados.map((a) => a.presupuesto));
+  const totalAsePresupuesto = asesoresOrdenados.reduce((acc, a) => acc + a.presupuesto, 0);
+  const totalAseProyectos = asesoresOrdenados.reduce((acc, a) => acc + a.cantidad, 0);
   // "Por técnico": el ranking sigue SIEMPRE a la medida activa del switch, así
   // las barras bajan de mayor a menor y la lista se lee de un vistazo. (Antes
   // ordenaba por cantidad de proyectos y las barras quedaban desordenadas.)
@@ -396,6 +452,7 @@ export default function PanelProyectosPanel() {
   );
   const hayMixtos = data.entregados_por_mes.some((m) => m.mixto.cantidad > 0);
   const maxRubro = Math.max(1, ...data.por_rubro.map((r) => r.cantidad));
+  const maxTipoCant = Math.max(1, ...data.por_tipo.map((t) => t.cantidad));
 
   return (
     <div className="space-y-5">
@@ -403,40 +460,57 @@ export default function PanelProyectosPanel() {
         Vista completa — <span className="font-medium">todos los proyectos</span> activos (sin filtro por mes).
       </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Kpi icon={FolderKanban} label="Proyectos" value={String(data.kpis.total)} sub={`${data.kpis.en_curso} en curso`} />
+        <Kpi icon={FolderKanban} label="Proyectos" count={data.kpis.total} sub={`${data.kpis.en_curso} en curso`} />
         <Kpi
           icon={PackageCheck}
           label="Entregados (mes)"
-          value={String(data.kpis.entregados_mes)}
+          count={data.kpis.entregados_mes}
           sub={fmtGsCompacto(data.kpis.entregados_mes_monto)}
           tono="ok"
         />
         <Kpi
           icon={Wallet}
-          label="Presupuesto cerrado"
-          value={fmtGsCompacto(data.kpis.presupuesto_total)}
+          label="Presupuesto"
+          count={partesGsCompacto(data.kpis.presupuesto_total).valor}
+          prefijo="₲"
+          unidad={partesGsCompacto(data.kpis.presupuesto_total).unidad}
           sub={`${data.kpis.con_presupuesto}/${data.kpis.total} con factura`}
           tono="money"
         />
-        <Kpi icon={Receipt} label="Ticket promedio" value={fmtGsCompacto(data.kpis.ticket_promedio)} tono="money" />
+        <Kpi
+          icon={Receipt}
+          label="Ticket promedio"
+          count={partesGsCompacto(data.kpis.ticket_promedio).valor}
+          prefijo="₲"
+          unidad={partesGsCompacto(data.kpis.ticket_promedio).unidad}
+          tono="money"
+        />
         <Kpi
           icon={data.kpis.sla_vencidos > 0 ? AlertTriangle : CheckCircle2}
           label="SLA vencidos"
-          value={String(data.kpis.sla_vencidos)}
+          count={data.kpis.sla_vencidos}
           sub={data.kpis.sla_vencidos > 0 ? "revisar ahora" : "todo al día"}
           tono={data.kpis.sla_vencidos > 0 ? "danger" : "ok"}
         />
-        <Kpi icon={Activity} label="En curso" value={String(data.kpis.en_curso)} sub="no entregados" />
+        <Kpi icon={Activity} label="En curso" count={data.kpis.en_curso} sub="no entregados" />
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Por estado — cantidad y presupuesto</h2>
-        <div className="overflow-x-auto">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Por estado</h2>
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          Todos los proyectos activos, en el orden del pipeline.
+        </p>
+        <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50/70">
-              <tr>
-                {["Estado", "Proyectos", "", "Presupuesto", "SLA vencidos"].map((h, i) => (
-                  <th key={i} className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 ${i === 3 || i === 4 ? "text-right" : "text-left"}`}>
+            <thead>
+              <tr className="border-b border-slate-200">
+                {["Estado", "Proy.", "", "Presupuesto", "SLA vencidos"].map((h, i) => (
+                  <th
+                    key={i}
+                    className={`px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 ${
+                      i === 0 || i === 2 ? "text-left" : "text-right"
+                    }`}
+                  >
                     {h}
                   </th>
                 ))}
@@ -447,14 +521,27 @@ export default function PanelProyectosPanel() {
                 <tr key={e.estado} className="hover:bg-slate-50/60">
                   <td className="px-3 py-2.5 font-medium text-slate-800">
                     {e.estado}
-                    {e.es_final ? <span className="ml-2 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">final</span> : null}
+                    {e.es_final ? (
+                      <span className="ml-2 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+                        final
+                      </span>
+                    ) : null}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-slate-900">{e.cantidad}</td>
-                  <td className="px-3 py-2.5 w-[30%]"><Bar value={e.cantidad} max={maxEstadoCant} className={e.es_final ? "bg-emerald-400" : "bg-[#4FAEB2]"} /></td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#3F8E91]">{fmtGs(e.presupuesto)}</td>
+                  <td className="w-14 px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900">{e.cantidad}</td>
+                  <td className="w-[28%] px-3 py-2.5">
+                    <Bar
+                      value={e.cantidad}
+                      max={maxEstadoCant}
+                      montada={barrasMontadas}
+                    />
+                  </td>
+                  {/* Importe en tinta: la magnitud ya la cuenta la barra de al lado. */}
+                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900">{fmtGs(e.presupuesto)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {e.sla_configurado ? (
-                      <span className={e.sla_vencidos > 0 ? "font-semibold text-rose-600" : "text-slate-400"}>{e.sla_vencidos}</span>
+                      <span className={e.sla_vencidos > 0 ? "font-semibold text-rose-600" : "text-slate-400"}>
+                        {e.sla_vencidos}
+                      </span>
                     ) : (
                       <span className="text-[11px] text-slate-300">sin SLA</span>
                     )}
@@ -466,32 +553,90 @@ export default function PanelProyectosPanel() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-1 text-sm font-semibold text-slate-900">Por asesor comercial</h2>
-        <p className="mb-3 text-[11px] text-slate-400">Carga vigente: activos + entregados este mes (no arrastra entregas de meses anteriores). Tocá para ver sus proyectos.</p>
-        <div className="space-y-2">
-          {data.por_asesor.map((a) => {
-            const open = aseAbierto === a.asesor;
-            return (
-              <div key={a.asesor} className="min-w-0">
-                <button type="button" onClick={() => setAseAbierto(open ? null : a.asesor)} className="w-full rounded-lg px-1 py-1 text-left transition-colors hover:bg-slate-50">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`truncate text-sm font-medium ${open ? "text-[#3F8E91]" : "text-slate-800"}`}>{a.asesor}</span>
-                    <span className="shrink-0 text-xs text-slate-500">
-                      {a.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(a.presupuesto)}</span>
-                    </span>
-                  </div>
-                  <div className="mt-1"><Bar value={a.presupuesto} max={maxAsePres} /></div>
-                </button>
-                {open ? (
-                  <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40">
-                    <ProyectosDetalleTabla proyectos={a.proyectos} />
-                  </div>
-                ) : null}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Por asesor comercial</h2>
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          Carga vigente: activos + entregados este mes. Tocá un asesor para ver sus proyectos.
+        </p>
+        {data.por_asesor.length === 0 ? (
+          <p className="mt-4 text-xs text-slate-400">Sin proyectos con asesor asignado.</p>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 px-4 py-3.5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#3F8E91]" />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    Presupuesto total
+                  </span>
+                </div>
+                <p className="mt-1 text-[26px] font-semibold leading-none tracking-tight text-slate-900">
+                  <span className="mr-1 text-lg font-medium text-slate-400">₲</span>
+                  <CountUp to={totalAsePresupuesto} duration={0.9} separator="." />
+                </p>
               </div>
-            );
-          })}
-        </div>
+              <p className="text-right text-[11px] leading-relaxed text-slate-500">
+                {data.por_asesor.length} asesor{data.por_asesor.length === 1 ? "" : "es"} · {totalAseProyectos} proyecto
+                {totalAseProyectos === 1 ? "" : "s"}
+              </p>
+            </div>
+
+            <div className="mt-3 divide-y divide-slate-100">
+              {asesoresOrdenados.map((a, i) => {
+                const open = aseAbierto === a.asesor;
+                const share = totalAsePresupuesto > 0 ? (a.presupuesto / totalAsePresupuesto) * 100 : 0;
+                const ancho = maxAsePres > 0 ? Math.max(a.presupuesto > 0 ? 2 : 0, (a.presupuesto / maxAsePres) * 100) : 0;
+                return (
+                  <div key={a.asesor} className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setAseAbierto(open ? null : a.asesor)}
+                      aria-expanded={open}
+                      className={`group w-full rounded-lg px-2 py-2 text-left transition-colors ${
+                        open ? "bg-slate-50" : "hover:bg-slate-50/70"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-4 shrink-0 text-right text-[10px] font-medium tabular-nums text-slate-300">
+                          {i + 1}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${avatarClass(a.asesor)}`}
+                        >
+                          {iniciales(a.asesor)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-800">
+                          {nombreCapitular(a.asesor)}
+                        </span>
+                        <div className="hidden h-1.5 w-[150px] shrink-0 overflow-hidden rounded-full bg-slate-100 md:block lg:w-[200px]">
+                          <div
+                            className="h-full rounded-full transition-[width] duration-700 ease-out"
+                            style={{ width: barrasMontadas ? `${ancho}%` : "0%", background: "#3F8E91" }}
+                          />
+                        </div>
+                        <span className="w-11 shrink-0 text-right text-[11px] tabular-nums text-slate-400">
+                          {share.toFixed(1).replace(".", ",")}%
+                        </span>
+                        <span className="hidden w-16 shrink-0 text-right text-[11px] tabular-nums text-slate-400 sm:block">
+                          {a.cantidad} proy
+                        </span>
+                        <span className="w-28 shrink-0 text-right text-[13px] font-semibold tabular-nums text-slate-900">
+                          {fmtGs(a.presupuesto)}
+                        </span>
+                      </div>
+                    </button>
+                    {open ? (
+                      <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                        <ProyectosDetalleTabla proyectos={a.proyectos} />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -648,36 +793,65 @@ export default function PanelProyectosPanel() {
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Por tipo</h2>
-          <div className="space-y-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Por tipo</h2>
+          <p className="mt-0.5 text-[11px] text-slate-400">Proyectos y presupuesto según el tipo contratado.</p>
+          {/*
+            Antes era una lista de texto sin nada que comparar. La barra de
+            cantidad hace visible de una cuál tipo pesa más; el importe sigue a
+            la derecha, en tinta y en columna tabular.
+          */}
+          <div className="mt-3 divide-y divide-slate-100">
             {data.por_tipo.map((t) => (
-              <div key={t.tipo} className="flex items-center justify-between text-sm">
-                <span className="text-slate-700">{t.tipo}</span>
-                <span className="text-slate-500">
-                  {t.cantidad} · <span className="font-semibold text-[#3F8E91]">{fmtGs(t.presupuesto)}</span>
+              <div key={t.tipo} className="flex items-center gap-3 py-2.5">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-slate-700">{t.tipo}</span>
+                <div className="hidden h-1.5 w-[90px] shrink-0 overflow-hidden rounded-full bg-slate-100 sm:block">
+                  <div
+                    className="h-full rounded-full bg-[#4FAEB2] transition-[width] duration-700 ease-out"
+                    style={{
+                      width: barrasMontadas
+                        ? `${maxTipoCant > 0 ? Math.max(t.cantidad > 0 ? 2 : 0, (t.cantidad / maxTipoCant) * 100) : 0}%`
+                        : "0%",
+                    }}
+                  />
+                </div>
+                <span className="w-8 shrink-0 text-right text-[12px] font-semibold tabular-nums text-slate-900">
+                  {t.cantidad}
+                </span>
+                <span className="w-28 shrink-0 text-right text-[12px] font-semibold tabular-nums text-slate-900">
+                  {fmtGs(t.presupuesto)}
                 </span>
               </div>
             ))}
           </div>
         </section>
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-900">Por rubro (web)</h2>
-          <div className="space-y-1.5">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Por rubro (web)</h2>
+          <p className="mt-0.5 text-[11px] text-slate-400">Los 10 rubros con más proyectos web.</p>
+          <div className="mt-3 divide-y divide-slate-100">
             {data.por_rubro.slice(0, 10).map((r) => (
-              <div key={r.rubro} className="min-w-0">
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className="truncate text-slate-700">{r.rubro}</span>
-                  <span className="shrink-0 tabular-nums text-slate-500">{r.cantidad}</span>
+              <div key={r.rubro} className="flex items-center gap-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-slate-700">{r.rubro}</span>
+                <div className="h-1.5 w-[110px] shrink-0 overflow-hidden rounded-full bg-slate-100 sm:w-[150px]">
+                  <div
+                    className="h-full rounded-full bg-[#4FAEB2] transition-[width] duration-700 ease-out"
+                    style={{
+                      width: barrasMontadas
+                        ? `${maxRubro > 0 ? Math.max(r.cantidad > 0 ? 2 : 0, (r.cantidad / maxRubro) * 100) : 0}%`
+                        : "0%",
+                    }}
+                  />
                 </div>
-                <div className="mt-0.5"><Bar value={r.cantidad} max={maxRubro} className="bg-[#4FAEB2]/70" /></div>
+                <span className="w-8 shrink-0 text-right text-[12px] font-semibold tabular-nums text-slate-900">
+                  {r.cantidad}
+                </span>
               </div>
             ))}
           </div>
         </section>
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Entregados por mes</h2>
@@ -771,7 +945,7 @@ export default function PanelProyectosPanel() {
               <div className="mt-4 rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
                   <span className="text-xs font-semibold text-slate-700">
-                    Entregados en {mesLabel(mesSel)} · {mes.cantidad} · <span className="text-[#3F8E91]">{fmtGs(mes.monto)}</span>
+                    Entregados en {mesLabel(mesSel)} · {mes.cantidad} · <span className="text-slate-900">{fmtGs(mes.monto)}</span>
                   </span>
                   <button type="button" onClick={() => setMesSel(null)} className="text-[11px] text-slate-400 hover:text-slate-600">
                     Cerrar
@@ -803,7 +977,7 @@ export default function PanelProyectosPanel() {
                               </span>
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-500">{fmtFecha(p.fecha)}</td>
-                            <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">{fmtGs(p.monto)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-900">{fmtGs(p.monto)}</td>
                           </tr>
                         ))}
                       </tbody>

@@ -38,6 +38,7 @@ type ProyectoRow = {
   tipo_id: string | null;
   estado_id: string | null;
   prioridad: string | null;
+  responsable_comercial_id: string | null;
   responsable_tecnico_id: string | null;
   etapa_desarrollo: ProyectoEtapaDesarrollo | null;
   etapa_desarrollo_at: string | null;
@@ -57,7 +58,7 @@ type ProyectoRow = {
 };
 
 const PROYECTO_COLUMNS =
-  "id, titulo, cliente_id, tipo_id, estado_id, prioridad, responsable_tecnico_id, etapa_desarrollo, etapa_desarrollo_at, etapa_finalizado_at, tecnico_asignado_at, fecha_ingreso, fecha_prometida, bloqueado, qa_responsable_id, qa_asignado_at, qa_etapa, qa_etapa_at, pausado_at, pausa_motivo, pausa_acumulada_ms, brief_data";
+  "id, titulo, cliente_id, tipo_id, estado_id, prioridad, responsable_comercial_id, responsable_tecnico_id, etapa_desarrollo, etapa_desarrollo_at, etapa_finalizado_at, tecnico_asignado_at, fecha_ingreso, fecha_prometida, bloqueado, qa_responsable_id, qa_asignado_at, qa_etapa, qa_etapa_at, pausado_at, pausa_motivo, pausa_acumulada_ms, brief_data";
 
 /**
  * Tiempo de trabajo acumulado de un proyecto, en milisegundos de horario laboral.
@@ -174,6 +175,8 @@ export async function GET(request: Request) {
     const tecnicoIds = uniq([
       ...todos.map((p) => p.responsable_tecnico_id),
       ...todos.map((p) => p.qa_responsable_id),
+      // Los comerciales salen del mismo catálogo de usuarios que los técnicos.
+      ...todos.map((p) => p.responsable_comercial_id),
     ]);
 
     const [clientesRes, tiposRes] = await Promise.all([
@@ -246,6 +249,8 @@ export async function GET(request: Request) {
       qa_responsable_id: string | null;
       qa_responsable_nombre: string | null;
       qa_etapa: ProyectoEtapaQA | null;
+      /** Quién desarrolla. Lo usa la vista comercial, que agrupa por asesor. */
+      tecnico_nombre: string | null;
     };
     type SeccionEstado = {
       estado_id: string;
@@ -266,6 +271,10 @@ export async function GET(request: Request) {
 
     const ahoraIso = new Date().toISOString();
     const gruposActivos = new Map<string, GrupoActivo>();
+
+    // El item de cada proyecto se arma una sola vez y se referencia desde los
+    // dos agrupados (por programador y por comercial).
+    const itemPorProyecto = new Map<string, ActivoItem>();
 
     for (const p of activos) {
       const estado = p.estado_id ? estadoPorId.get(p.estado_id) : undefined;
@@ -340,7 +349,12 @@ export async function GET(request: Request) {
           ? tecnicoNombre.get(p.qa_responsable_id) ?? null
           : null,
         qa_etapa: p.qa_etapa,
+        tecnico_nombre: p.responsable_tecnico_id
+          ? tecnicoNombre.get(p.responsable_tecnico_id) ?? null
+          : null,
       };
+
+      itemPorProyecto.set(p.id, item);
 
       const seccion = g.secciones.find((s) => s.estado_id === estado.id);
       if (seccion) {
@@ -360,6 +374,65 @@ export async function GET(request: Request) {
     };
 
     const activosPorProgramador = Array.from(gruposActivos.values())
+      .map((g) => ({
+        ...g,
+        secciones: g.secciones.map((s) => ({
+          ...s,
+          proyectos: s.proyectos.slice().sort(ordenarActivos),
+        })),
+      }))
+      .sort((a, b) => {
+        if (a.tecnico_id == null && b.tecnico_id != null) return 1;
+        if (a.tecnico_id != null && b.tecnico_id == null) return -1;
+        return a.tecnico_nombre.localeCompare(b.tecnico_nombre);
+      });
+
+    // --- Bloque 1c: los mismos activos, agrupados por COMERCIAL ---------------
+    // Vista para el equipo comercial: en que estado estan los proyectos que cada
+    // asesor vendio. Es el mismo universo y el mismo item que el bloque de
+    // programadores — solo cambia por que campo se agrupa —, asi que el cliente
+    // reusa la tarjeta y la fila sin nada especifico.
+    const gruposComercial = new Map<string, GrupoActivo>();
+    for (const p of activos) {
+      const estado = p.estado_id ? estadoPorId.get(p.estado_id) : undefined;
+      if (!estado) continue;
+      const key = p.responsable_comercial_id ?? SIN_ASIGNAR;
+      let g = gruposComercial.get(key);
+      if (!g) {
+        g = {
+          tecnico_id: p.responsable_comercial_id,
+          tecnico_nombre: p.responsable_comercial_id
+            ? tecnicoNombre.get(p.responsable_comercial_id) ?? "Comercial sin nombre"
+            : "Sin asignar",
+          cantidad: 0,
+          pausados: 0,
+          alertas_esqueleto: 0,
+          secciones: estadosTablero.map((e) => ({
+            estado_id: e.id,
+            codigo: e.codigo ?? "",
+            nombre: (e.nombre ?? "").trim() || e.codigo || "—",
+            color: e.color ?? "#94a3b8",
+            cantidad: 0,
+            proyectos: [],
+          })),
+        };
+        gruposComercial.set(key, g);
+      }
+      // El item ya se construyo en el bloque de programadores; se referencia el
+      // mismo objeto en vez de recalcularlo.
+      const item = itemPorProyecto.get(p.id);
+      if (!item) continue;
+      g.cantidad += 1;
+      if (item.pausado) g.pausados += 1;
+      if (item.esqueleto != null && item.esqueleto !== "ok") g.alertas_esqueleto += 1;
+      const seccion = g.secciones.find((sec) => sec.estado_id === estado.id);
+      if (seccion) {
+        seccion.cantidad += 1;
+        seccion.proyectos.push(item);
+      }
+    }
+
+    const activosPorComercial = Array.from(gruposComercial.values())
       .map((g) => ({
         ...g,
         secciones: g.secciones.map((s) => ({
@@ -545,6 +618,7 @@ export async function GET(request: Request) {
         })),
         activos_total: activos.length,
         activos_por_programador: activosPorProgramador,
+        activos_por_comercial: activosPorComercial,
         qa_total: enQa.length,
         qa_por_responsable: qaPorResponsable,
         finalizados_total: finalizados.length,

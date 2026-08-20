@@ -44,6 +44,8 @@ type ActivoItem = {
   qa_responsable_id: string | null;
   qa_responsable_nombre: string | null;
   qa_etapa: ProyectoEtapaQA | null;
+  /** Quién desarrolla. Lo usa la vista comercial, que agrupa por asesor. */
+  tecnico_nombre: string | null;
 };
 
 type SeccionEstado = {
@@ -111,6 +113,8 @@ type TareasEquipoData = {
   estados_tablero: EstadoTableroDTO[];
   activos_total: number;
   activos_por_programador: GrupoActivo[];
+  /** Los mismos activos, agrupados por asesor comercial. */
+  activos_por_comercial: GrupoActivo[];
   qa_total: number;
   qa_por_responsable: GrupoQA[];
   finalizados_total: number;
@@ -364,7 +368,12 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
   /** Proyecto abierto en el modal de detalle, el mismo que usa el Kanban. */
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
-  const [verFinalizados, setVerFinalizados] = useState(false);
+  /**
+   * Vista activa. "curso" y "comercial" son el mismo universo de proyectos
+   * mirado por ejes distintos (quién lo desarrolla / quién lo vendió).
+   */
+  const [vista, setVista] = useState<"curso" | "comercial" | "finalizados">("curso");
+  const verFinalizados = vista === "finalizados";
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
@@ -437,6 +446,26 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
       return todas ? new Set() : new Set(clavesEquipo);
     });
   }, [clavesEquipo]);
+
+  // La vista comercial comparte el Set de abiertas, pero sus claves llevan otro
+  // prefijo (`com:`): así abrir a alguien en una vista no abre a otra persona
+  // distinta en la otra.
+  const clavesComercial = useMemo(
+    () => (data?.activos_por_comercial ?? []).map((g) => `com:${g.tecnico_id ?? "__SIN__"}`),
+    [data]
+  );
+
+  const todasComercialAbiertas =
+    clavesComercial.length > 0 && clavesComercial.every((k) => equipoAbiertos.has(k));
+
+  const toggleTodasComercial = useCallback(() => {
+    setEquipoAbiertos((prev) => {
+      const todas = clavesComercial.length > 0 && clavesComercial.every((k) => prev.has(k));
+      const next = new Set(prev);
+      clavesComercial.forEach((k) => (todas ? next.delete(k) : next.add(k)));
+      return next;
+    });
+  }, [clavesComercial]);
 
   /** Único punto de escritura: todas las ediciones de la fila pasan por acá. */
   const patchProyecto = useCallback(
@@ -591,20 +620,30 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
         <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
           <button
             type="button"
-            onClick={() => setVerFinalizados(false)}
-            aria-pressed={!verFinalizados}
+            onClick={() => setVista("curso")}
+            aria-pressed={vista === "curso"}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              !verFinalizados ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+              vista === "curso" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             En curso ({data?.activos_total ?? 0})
           </button>
           <button
             type="button"
-            onClick={() => setVerFinalizados(true)}
-            aria-pressed={verFinalizados}
+            onClick={() => setVista("comercial")}
+            aria-pressed={vista === "comercial"}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              verFinalizados ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+              vista === "comercial" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Comercial ({data?.activos_total ?? 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setVista("finalizados")}
+            aria-pressed={vista === "finalizados"}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              vista === "finalizados" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             Finalizados ({data?.finalizados_total ?? 0})
@@ -652,9 +691,15 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
             </button>
             <span className="ml-2 hidden text-sm text-slate-500 sm:inline">{formatMesLargo(mes)}</span>
           </div>
-        ) : (
+        ) : vista === "curso" ? (
           <div className="ml-auto flex items-center gap-3 pr-1 text-[11px] text-slate-400">
             <LeyendaDias />
+          </div>
+        ) : (
+          // La vista comercial no muestra contador de tiempo, así que la
+          // leyenda de días trabajados no tendría a qué referirse.
+          <div className="ml-auto pr-1 text-[11px] text-slate-400">
+            Estado de los proyectos por asesor comercial.
           </div>
         )}
       </div>
@@ -667,8 +712,23 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
           Cargando tablero…
         </div>
-      ) : verFinalizados ? (
+      ) : vista === "finalizados" ? (
         <FinalizadosSeccion data={data} mes={mes} onAbrir={setModalProjectId} />
+      ) : vista === "comercial" ? (
+        <ComercialSeccion
+          grupos={data?.activos_por_comercial ?? []}
+          estados={data?.estados_tablero ?? []}
+          generadoAt={data?.generado_at ?? null}
+          savingId={savingId}
+          abiertas={equipoAbiertos}
+          onToggle={toggleEquipo}
+          onToggleTodas={toggleTodasComercial}
+          todasAbiertas={todasComercialAbiertas}
+          onPatch={patchProyecto}
+          onVeredicto={veredictoQA}
+          onCambiarEstado={cambiarEstado}
+          onAbrir={setModalProjectId}
+        />
       ) : (
         <>
           <ActivosSeccion
@@ -1190,11 +1250,180 @@ function ActivosSeccion({
 }
 
 /**
+ * Los mismos proyectos activos, agrupados por asesor comercial.
+ *
+ * Reusa la tarjeta plegable y la fila de la vista técnica; el cambio es el eje
+ * (se agrupa por quién vendió) y que la fila va en modo lectura de estado: sin
+ * el contador de tiempo de trabajo, que es una métrica del equipo técnico.
+ */
+function ComercialSeccion({
+  grupos,
+  estados,
+  generadoAt,
+  savingId,
+  abiertas,
+  onToggle,
+  onToggleTodas,
+  todasAbiertas,
+  onPatch,
+  onVeredicto,
+  onCambiarEstado,
+  onAbrir,
+}: {
+  grupos: GrupoActivo[];
+  estados: EstadoTableroDTO[];
+  generadoAt: string | null;
+  savingId: string | null;
+  abiertas: Set<string>;
+  onToggle: (key: string) => void;
+  onToggleTodas: () => void;
+  todasAbiertas: boolean;
+  onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
+  onVeredicto: (id: string, aprobado: boolean, motivo: string | null) => void | Promise<void>;
+  onCambiarEstado: (id: string, estadoId: string) => void | Promise<void>;
+  onAbrir: (id: string) => void;
+}) {
+  const total = grupos.reduce((n, g) => n + g.cantidad, 0);
+  const opcionesEstado = estados.map((e) => ({ value: e.id, label: e.nombre }));
+  const estadoPausadoId = estados.find((e) => e.codigo === "pausado")?.id ?? null;
+  const estadoReanudarId = estados.find((e) => e.codigo !== "pausado")?.id ?? null;
+
+  if (total === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+        <p className="text-sm font-medium text-slate-700">No hay proyectos en curso</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Ningún proyecto con asesor comercial está en las columnas que sigue el equipo.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {estados.map((e) => (
+            <span key={e.id} className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+              <i aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: e.color }} />
+              {e.nombre}
+            </span>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onToggleTodas}
+          className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+        >
+          {todasAbiertas ? "Contraer todo" : "Expandir todo"}
+        </button>
+      </div>
+
+      {grupos.map((g) => {
+        const key = `com:${g.tecnico_id ?? "__SIN__"}`;
+        const sinComercial = g.tecnico_id == null;
+        const col = sinComercial
+          ? { bg: "#94a3b8", soft: "rgba(148,163,184,0.14)" }
+          : paleta(g.tecnico_nombre);
+        return (
+          <TarjetaGrupo
+            key={key}
+            color={col}
+            inicial={sinComercial ? "—" : initials(g.tecnico_nombre)}
+            titulo={sinComercial ? "Sin asignar" : nombreCorto(g.tecnico_nombre)}
+            italic={sinComercial}
+            subtitulo={`${g.cantidad === 1 ? "1 proyecto" : `${g.cantidad} proyectos`}${
+              g.pausados > 0 ? ` · ${g.pausados} en pausa` : ""
+            }`}
+            contador={g.cantidad}
+            abierta={abiertas.has(key)}
+            onToggle={() => onToggle(key)}
+            distribucion={g.secciones
+              .filter((sec) => sec.proyectos.length > 0)
+              .map((sec) => ({
+                key: sec.estado_id,
+                nombre: sec.nombre,
+                cantidad: sec.cantidad,
+                color: sec.color,
+              }))}
+          >
+            {g.secciones
+              .filter((sec) => sec.proyectos.length > 0)
+              .map((sec) => (
+                <section key={sec.estado_id} className="border-t-[6px] border-slate-100 first:border-t-0">
+                  <header
+                    className="flex items-center gap-2 px-4 py-2"
+                    style={{ backgroundColor: `${sec.color}1A`, borderLeft: `4px solid ${sec.color}` }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-2 w-2 shrink-0 rounded-full ring-2 ring-white"
+                      style={{ backgroundColor: sec.color }}
+                    />
+                    <h4 className="min-w-0 flex-1 truncate text-[11.5px] font-bold uppercase tracking-[0.07em] text-slate-800">
+                      {sec.nombre}
+                    </h4>
+                    <span className="shrink-0 rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-700">
+                      {sec.cantidad}
+                    </span>
+                  </header>
+                  <ul className="divide-y divide-slate-100" style={{ borderLeft: `4px solid ${sec.color}33` }}>
+                    {sec.proyectos.map((p) => (
+                      <FilaProyecto
+                        key={p.id}
+                        modo="comercial"
+                        tecnicoNombre={p.tecnico_nombre ? nombreCorto(p.tecnico_nombre) : null}
+                        id={p.id}
+                        cliente={p.cliente}
+                        tipo={p.tipo}
+                        titulo={p.titulo}
+                        etapa={p.estado_id}
+                        color={p.estado_color}
+                        opcionesEtapa={opcionesEstado}
+                        msBase={p.ms_trabajados}
+                        generadoAt={generadoAt}
+                        esqueleto={p.esqueleto}
+                        esqueletoTexto={textoEsqueletoUI(p)}
+                        estadoPausadoId={estadoPausadoId}
+                        estadoReanudarId={estadoReanudarId}
+                        onCambiarEstado={onCambiarEstado}
+                        asignadoA={g.tecnico_id}
+                        fechaPrometida={p.fecha_prometida}
+                        metaExtra={null}
+                        pausado={p.pausado}
+                        pausaMotivo={p.pausa_motivo}
+                        pausadoAt={p.pausado_at}
+                        bloqueado={p.bloqueado}
+                        qaChip={
+                          p.qa_responsable_nombre
+                            ? { nombre: p.qa_responsable_nombre, etapa: p.qa_etapa }
+                            : null
+                        }
+                        desde={p.desde}
+                        opcionesUsuario={[]}
+                        saving={savingId === p.id}
+                        onPatch={onPatch}
+                        onVeredicto={onVeredicto}
+                        onAbrir={onAbrir}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ))}
+          </TarjetaGrupo>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Fila de proyecto, la misma para programadores y para QA. Lo único que cambia
  * es el vocabulario de etapas y a qué campo escribe el selector de responsable.
  */
 function FilaProyecto({
   modo,
+  tecnicoNombre,
   id,
   cliente,
   tipo,
@@ -1224,7 +1453,9 @@ function FilaProyecto({
   onVeredicto,
   onAbrir,
 }: {
-  modo: "dev" | "qa";
+  modo: "dev" | "qa" | "comercial";
+  /** Sólo en modo comercial: quién desarrolla el proyecto (chip de lectura). */
+  tecnicoNombre?: string | null;
   id: string;
   cliente: string;
   tipo: string;
@@ -1332,6 +1563,12 @@ function FilaProyecto({
           </div>
         </div>
 
+        {/*
+          El comercial mira en qué estado va cada proyecto que vendió, no cuánto
+          tiempo lleva trabajándolo el técnico: ese contador es una métrica del
+          equipo técnico y acá sería ruido.
+        */}
+        {modo === "comercial" ? null : (
         <ContadorVivo
           msBase={msBase}
           generadoAt={generadoAt}
@@ -1342,6 +1579,7 @@ function FilaProyecto({
           onClick={modo === "dev" ? () => setEditandoFecha((v) => !v) : undefined}
           titulo={modo === "qa" ? "Tiempo de trabajo desde que se le asignó la revisión" : undefined}
         />
+        )}
 
         <FancySelect
           size="sm"
@@ -1354,7 +1592,7 @@ function FilaProyecto({
             // Tarjeta de programador: el selector mueve el estado del Kanban,
             // que es el mismo eje que ve comercial. Elegir "Pausado" pide antes
             // el motivo, porque es lo que después se lee en el tablero.
-            if (modo === "dev") {
+            if (modo === "dev" || modo === "comercial") {
               if (v === estadoPausadoId) {
                 setEditandoPausa(true);
                 return;
@@ -1381,16 +1619,32 @@ function FilaProyecto({
           triggerStyle={{ backgroundColor: `${color}12`, borderColor: `${color}55`, color }}
         />
 
-        <FancySelect
-          size="sm"
-          className="w-[9.5rem] shrink-0"
-          ariaLabel="Responsable"
-          placeholder="Sin asignar"
-          disabled={saving || opcionesUsuario.length <= 1}
-          options={opcionesUsuario}
-          value={asignadoA ?? ""}
-          onChange={asignar}
-        />
+        {/*
+          En la vista comercial la tarjeta agrupa por asesor, así que este
+          selector mostraría una lista de técnicos contra el id de un comercial:
+          no coincide, y editarlo reasignaría al técnico desde una pantalla de
+          lectura. Se reemplaza por quién lo está desarrollando, que es lo que
+          el comercial necesita saber.
+        */}
+        {modo === "comercial" ? (
+          <span
+            className="w-[9.5rem] shrink-0 truncate rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[12px] text-slate-600"
+            title={tecnicoNombre ? `Desarrolla ${tecnicoNombre}` : "Sin técnico asignado"}
+          >
+            {tecnicoNombre ?? <span className="italic text-slate-400">Sin técnico</span>}
+          </span>
+        ) : (
+          <FancySelect
+            size="sm"
+            className="w-[9.5rem] shrink-0"
+            ariaLabel="Responsable"
+            placeholder="Sin asignar"
+            disabled={saving || opcionesUsuario.length <= 1}
+            options={opcionesUsuario}
+            value={asignadoA ?? ""}
+            onChange={asignar}
+          />
+        )}
       </div>
 
       {pausado && !editandoPausa ? (
@@ -1418,7 +1672,7 @@ function FilaProyecto({
               // Reanudar es sacarlo de la columna Pausado: si sólo limpiáramos
               // la marca de pausa el proyecto seguiría figurando "Pausado" en el
               // Kanban, que ahora es el mismo eje.
-              if (modo === "dev" && estadoReanudarId) void onCambiarEstado?.(id, estadoReanudarId);
+              if (modo !== "qa" && estadoReanudarId) void onCambiarEstado?.(id, estadoReanudarId);
               else void onPatch(id, { pausado: false });
             }}
             className="rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700 shadow-sm ring-1 ring-emerald-200 transition-colors hover:bg-emerald-50"
@@ -1440,7 +1694,7 @@ function FilaProyecto({
           onCancel={() => setEditandoPausa(false)}
           onSubmit={(motivo) => {
             setEditandoPausa(false);
-            if (modo === "dev" && estadoPausadoId) {
+            if (modo !== "qa" && estadoPausadoId) {
               // Ya está en la columna Pausado (se está editando el motivo): sólo
               // se guarda el texto. Mover al mismo estado no haría nada y
               // gastaría un request de más.

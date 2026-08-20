@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import ProyectoDetalleModal from "@/app/dashboard/proyectos/components/ProyectoDetalleModal";
 import { type ProyectoEtapaDesarrollo } from "@/lib/proyectos/etapas-desarrollo";
@@ -352,6 +354,13 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  /**
+   * Tarjetas de equipo desplegadas (`dev:<id>` / `qa:<id>`). Arrancan todas
+   * plegadas a propósito: con el listado apilado, el valor de la pantalla es
+   * ver a todo el equipo de una — la barra de distribución de cada encabezado
+   * ya cuenta en qué anda cada uno — y recién después abrir a quien interese.
+   */
+  const [equipoAbiertos, setEquipoAbiertos] = useState<Set<string>>(() => new Set());
   /** Proyecto abierto en el modal de detalle, el mismo que usa el Kanban. */
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
@@ -399,6 +408,35 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
       cancelado = true;
     };
   }, []);
+
+  const toggleEquipo = useCallback((key: string) => {
+    setEquipoAbiertos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Claves de todas las tarjetas visibles. Se calcula acá (y no dentro de
+   * `ActivosSeccion`) porque "expandir todo" necesita conocerlas desde el
+   * componente que guarda el estado.
+   */
+  const clavesEquipo = useMemo(() => {
+    const devs = (data?.activos_por_programador ?? []).map((g) => `dev:${g.tecnico_id ?? "__SIN__"}`);
+    const qas = (data?.qa_por_responsable ?? []).map((g) => `qa:${g.qa_id}`);
+    return [...devs, ...qas];
+  }, [data]);
+
+  const todasEquipoAbiertas = clavesEquipo.length > 0 && clavesEquipo.every((k) => equipoAbiertos.has(k));
+
+  const toggleTodasEquipo = useCallback(() => {
+    setEquipoAbiertos((prev) => {
+      const todas = clavesEquipo.length > 0 && clavesEquipo.every((k) => prev.has(k));
+      return todas ? new Set() : new Set(clavesEquipo);
+    });
+  }, [clavesEquipo]);
 
   /** Único punto de escritura: todas las ediciones de la fila pasan por acá. */
   const patchProyecto = useCallback(
@@ -640,6 +678,10 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
             generadoAt={data?.generado_at ?? null}
             usuarios={usuarios}
             savingId={savingId}
+            abiertas={equipoAbiertos}
+            onToggle={toggleEquipo}
+            onToggleTodas={toggleTodasEquipo}
+            todasAbiertas={todasEquipoAbiertas}
             onPatch={patchProyecto}
             onVeredicto={veredictoQA}
             onCambiarEstado={cambiarEstado}
@@ -703,6 +745,17 @@ function LeyendaDias() {
  * `FancySelect` de las filas despliegan un popover absoluto que un
  * `overflow-hidden` en la tarjeta recortaría.
  */
+/** Un tramo de la barra de distribución del encabezado (un estado del tablero). */
+type TramoDistribucion = { key: string; nombre: string; cantidad: number; color: string };
+
+/**
+ * Tarjeta de una persona del equipo, apilada y plegable.
+ *
+ * Colapsada tiene que seguir diciendo algo útil: por eso el encabezado lleva
+ * la barra de distribución por estado. De un vistazo se ve quién está cargado y
+ * en qué etapa está su trabajo, sin abrir a nadie. Las tareas se despliegan al
+ * tocar la fila.
+ */
 function TarjetaGrupo({
   color,
   inicial,
@@ -711,6 +764,9 @@ function TarjetaGrupo({
   contador,
   badge,
   italic,
+  distribucion,
+  abierta,
+  onToggle,
   children,
 }: {
   color: { bg: string; soft: string };
@@ -720,41 +776,99 @@ function TarjetaGrupo({
   contador: number;
   badge?: React.ReactNode;
   italic?: boolean;
+  distribucion: TramoDistribucion[];
+  abierta: boolean;
+  onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const totalTramos = distribucion.reduce((n, d) => n + d.cantidad, 0);
+  const panelId = `equipo-panel-${titulo.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <section className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-[0_8px_24px_-12px_rgba(15,23,42,0.15)]">
-      <header
-        className="flex items-center gap-3 rounded-t-2xl border-b border-slate-100 px-4 py-3"
-        style={{ backgroundColor: color.soft }}
-      >
-        <span
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ring-2 ring-white"
-          style={{ backgroundColor: color.bg }}
-          aria-hidden="true"
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]">
+      <SpotlightCard spotlightColor={`${color.bg}1F` as `rgba(${number}, ${number}, ${number}, ${number})`}>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={abierta}
+          aria-controls={panelId}
+          className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
+            abierta ? "bg-slate-50/80" : "hover:bg-slate-50/60"
+          }`}
         >
-          {inicial}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span
-              className={`truncate text-sm font-semibold ${italic ? "italic text-slate-500" : "text-slate-900"}`}
-              title={titulo}
-            >
-              {titulo}
-            </span>
-            {badge}
+          <span
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+            style={{ backgroundColor: color.soft, color: color.bg }}
+            aria-hidden="true"
+          >
+            {inicial}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span
+                className={`truncate text-sm font-semibold ${italic ? "italic text-slate-500" : "text-slate-900"}`}
+                title={titulo}
+              >
+                {titulo}
+              </span>
+              {badge}
+            </div>
+            <div className="text-[11px] text-slate-500">{subtitulo}</div>
           </div>
-          <div className="text-[11px] text-slate-500">{subtitulo}</div>
-        </div>
-        <span
-          className="shrink-0 rounded-full px-2.5 py-1 text-[13px] font-bold tabular-nums text-white"
-          style={{ backgroundColor: color.bg }}
-        >
-          {contador}
-        </span>
-      </header>
-      {children}
+
+          {/*
+            Barra de distribución: un tramo por estado, proporcional. Es lo que
+            hace que la lista colapsada siga siendo un reporte y no un índice.
+            Los colores los define cada empresa por estado, así que el
+            significado lo carga el `title` y el detalle al abrir — nunca el
+            color solo.
+          */}
+          {totalTramos > 0 ? (
+            <div className="hidden w-[168px] shrink-0 gap-0.5 md:flex lg:w-[220px]" aria-hidden="true">
+              {distribucion.map((d) => (
+                <span
+                  key={d.key}
+                  className="h-1.5 rounded-full first:rounded-l-full last:rounded-r-full"
+                  style={{
+                    width: `${(d.cantidad / totalTramos) * 100}%`,
+                    backgroundColor: d.color,
+                  }}
+                  title={`${d.nombre}: ${d.cantidad}`}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          <span
+            className="shrink-0 rounded-full px-2.5 py-1 text-[13px] font-bold tabular-nums"
+            style={{ backgroundColor: color.soft, color: color.bg }}
+          >
+            {contador}
+          </span>
+          <span
+            aria-hidden="true"
+            className={`shrink-0 text-slate-400 transition-transform duration-200 ${abierta ? "rotate-180" : ""}`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </button>
+      </SpotlightCard>
+      <AnimatePresence initial={false}>
+        {abierta ? (
+          <motion.div
+            id={panelId}
+            key="panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden border-t border-slate-100"
+          >
+            {children}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
   );
 }
@@ -766,6 +880,10 @@ function ActivosSeccion({
   generadoAt,
   usuarios,
   savingId,
+  abiertas,
+  onToggle,
+  onToggleTodas,
+  todasAbiertas,
   onPatch,
   onVeredicto,
   onCambiarEstado,
@@ -777,6 +895,11 @@ function ActivosSeccion({
   generadoAt: string | null;
   usuarios: Usuario[];
   savingId: string | null;
+  /** Claves (`dev:<id>` / `qa:<id>`) de las tarjetas desplegadas. */
+  abiertas: Set<string>;
+  onToggle: (key: string) => void;
+  onToggleTodas: () => void;
+  todasAbiertas: boolean;
   onPatch: (id: string, cambios: Record<string, unknown>) => void | Promise<void>;
   onVeredicto: (id: string, aprobado: boolean, motivo: string | null) => void | Promise<void>;
   onCambiarEstado: (id: string, estadoId: string) => void | Promise<void>;
@@ -842,20 +965,57 @@ function ActivosSeccion({
   ].sort((a, b) => a.orden.localeCompare(b.orden));
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    <div className="space-y-2.5">
+      {/*
+        Leyenda de la barra de distribución. Sin esto, plegada la tarjeta el
+        color no se puede decodificar: los estados los configura cada empresa y
+        nadie tiene por qué saber de memoria cuál es cuál.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {estados.map((e) => (
+            <span key={e.id} className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+              <i aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: e.color }} />
+              {e.nombre}
+            </span>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onToggleTodas}
+          className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+        >
+          {todasAbiertas ? "Contraer todo" : "Expandir todo"}
+        </button>
+      </div>
       {tarjetas.map((t) => {
         if (t.kind === "qa") {
           const g = t.grupo;
           return (
             <TarjetaGrupo
               key={t.key}
-              color={{ bg: "#6366f1", soft: "rgba(99,102,241,0.08)" }}
+              color={{ bg: "#6366f1", soft: "rgba(99,102,241,0.12)" }}
               inicial={initials(g.qa_nombre)}
               titulo={nombreCorto(g.qa_nombre)}
               subtitulo={
                 g.cantidad === 1 ? "1 proyecto en revisión" : `${g.cantidad} proyectos en revisión`
               }
               contador={g.cantidad}
+              abierta={abiertas.has(t.key)}
+              onToggle={() => onToggle(t.key)}
+              // QA no se divide por estado del Kanban: sus proyectos se agrupan
+              // por etapa de revisión, así que la barra usa esas etapas.
+              distribucion={Object.entries(
+                g.proyectos.reduce<Record<string, number>>((acc, p) => {
+                  acc[p.qa_etapa] = (acc[p.qa_etapa] ?? 0) + 1;
+                  return acc;
+                }, {})
+              ).map(([etapa, cantidad]) => ({
+                key: etapa,
+                nombre: QA_ETAPAS.find((e) => e.codigo === etapa)?.label ?? etapa,
+                cantidad,
+                color: qaEtapaColor(etapa as ProyectoEtapaQA),
+              }))}
               badge={
                 <span className="shrink-0 rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
                   QA
@@ -911,7 +1071,7 @@ function ActivosSeccion({
         const g = t.grupo;
         const sinTecnico = g.tecnico_id == null;
         const col = sinTecnico
-          ? { bg: "#94a3b8", soft: "rgba(148,163,184,0.10)" }
+          ? { bg: "#94a3b8", soft: "rgba(148,163,184,0.14)" }
           : paleta(g.tecnico_nombre);
         return (
           <TarjetaGrupo
@@ -924,6 +1084,16 @@ function ActivosSeccion({
               g.pausados > 0 ? ` · ${g.pausados} en pausa` : ""
             }${g.alertas_esqueleto > 0 ? ` · ${g.alertas_esqueleto} con esqueleto por vencer` : ""}`}
             contador={g.cantidad}
+            abierta={abiertas.has(t.key)}
+            onToggle={() => onToggle(t.key)}
+            distribucion={g.secciones
+              .filter((sec) => sec.proyectos.length > 0)
+              .map((sec) => ({
+                key: sec.estado_id,
+                nombre: sec.nombre,
+                cantidad: sec.cantidad,
+                color: sec.color,
+              }))}
           >
             {/*
               Una subsección por estado del Kanban. Las vacías no se dibujan: en
@@ -1562,6 +1732,15 @@ function FinalizadosSeccion({
   const [busqueda, setBusqueda] = useState("");
   /** Tarjetas donde el usuario pidió ver todos, más allá de los primeros 5. */
   const [desplegados, setDesplegados] = useState<Set<string>>(new Set());
+  /** Tarjetas de persona abiertas (mismo acordeón que la vista "En curso"). */
+  const [abiertas, setAbiertas] = useState<Set<string>>(() => new Set());
+  const toggleAbierta = (key: string) =>
+    setAbiertas((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const grupos = useMemo(() => data?.finalizados_por_programador ?? [], [data]);
   const tokens = useMemo(() => tokenizarBusqueda(busqueda), [busqueda]);
@@ -1635,7 +1814,7 @@ function FinalizadosSeccion({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="space-y-2.5">
           {visibles.map((g) => {
             const key = g.tecnico_id ?? "__SIN__";
             const sinTecnico = g.tecnico_id == null;
@@ -1657,6 +1836,13 @@ function FinalizadosSeccion({
                   g.promedio_ms != null ? ` · promedio ${enJornadas(g.promedio_ms)} jornadas` : ""
                 }`}
                 contador={g.cantidad}
+                // Los finalizados no viven en columnas del tablero: la barra de
+                // distribución no aplica y se deja vacía.
+                distribucion={[]}
+                // Buscando, las coincidencias se muestran abiertas: si no, el
+                // resultado quedaría escondido detrás de un clic.
+                abierta={buscando || abiertas.has(key)}
+                onToggle={() => toggleAbierta(key)}
               >
                 <ul className="divide-y divide-slate-100">
                   {mostrados.map((p) => (

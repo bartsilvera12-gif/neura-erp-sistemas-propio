@@ -6,6 +6,7 @@ import { cerrarSegmentoHistorialAbierto, insertHistorialCambioEstado } from "@/l
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { notificarEntradaQA } from "@/lib/proyectos/qa-notificaciones";
+import { abrirRevisionQA, cerrarRevisionQA } from "@/lib/proyectos/qa-revisiones";
 import { esEstadoPausado, etapaDesdeEstado } from "@/lib/proyectos/estados-tablero";
 import { notificarCambioEstado } from "@/lib/proyectos/estado-notificaciones";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
@@ -82,6 +83,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     };
     const tipoSla = String(est.tipo_sla ?? "interno");
     const codigoNuevo = String(est.codigo ?? "").trim().toLowerCase();
+
+    // Código de la columna de la que sale. Hace falta para saber si el
+    // proyecto está entrando o saliendo de QA (ver el bloque de medición más
+    // abajo); el id solo no alcanza porque cada empresa configura los suyos.
+    let estadoAnteriorCodigo: string | null = null;
+    if (anteriorId) {
+      const { data: estPrev } = await sb
+        .from("proyecto_estados")
+        .select("codigo")
+        .eq("empresa_id", empresaId)
+        .eq("id", anteriorId)
+        .maybeSingle();
+      estadoAnteriorCodigo = (estPrev as { codigo?: string | null } | null)?.codigo ?? null;
+    }
 
     await cerrarSegmentoHistorialAbierto(sb, empresaId, pid);
 
@@ -205,6 +220,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         tituloProyecto,
         actorId: auth.usuarioCatalogId,
       });
+    }
+
+    // Medición del tiempo de respuesta de QA. Va después del update y no
+    // bloquea: si falla, el cambio de estado ya quedó guardado. Ver
+    // `qa-revisiones.ts` para por qué es una tabla aparte del historial.
+    {
+      const codigoAnterior = String(estadoAnteriorCodigo ?? "").trim().toLowerCase();
+      const entraAQa = codigoNuevo === "qa" && codigoAnterior !== "qa";
+      const saleDeQa = codigoAnterior === "qa" && codigoNuevo !== "qa";
+
+      if (entraAQa) {
+        await abrirRevisionQA(sb, {
+          empresaId,
+          proyectoId: pid,
+          qaResponsableId: qaAsignadoId,
+          ahoraIso: now,
+        });
+      } else if (saleDeQa) {
+        // El veredicto se infiere del destino: si vuelve a manos del técnico
+        // (desarrollo o cambios solicitados) es un rechazo; cualquier otra
+        // columna es que QA lo dejó avanzar. Si no encaja en ninguno, queda
+        // null en vez de inventar un resultado.
+        const resultado =
+          codigoNuevo === "desarrollo" || codigoNuevo === "cambios_solicitados"
+            ? ("cambios" as const)
+            : ("aprobado" as const);
+        await cerrarRevisionQA(sb, {
+          empresaId,
+          proyectoId: pid,
+          ahoraIso: now,
+          resultado,
+          estadoSalidaId: nuevoEstadoId,
+        });
+      }
     }
 
     await insertHistorialCambioEstado({

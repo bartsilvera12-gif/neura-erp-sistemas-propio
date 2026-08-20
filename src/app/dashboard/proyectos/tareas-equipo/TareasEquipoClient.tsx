@@ -85,6 +85,10 @@ type GrupoQA = {
   qa_id: string;
   qa_nombre: string;
   cantidad: number;
+  /** Pasadas por QA ya cerradas, histórico. */
+  revisiones_cerradas: number;
+  /** Promedio de horario laboral por revisión, en ms. */
+  ms_promedio_revision: number | null;
   proyectos: QAItem[];
 };
 
@@ -1135,9 +1139,16 @@ function ActivosSeccion({
               color={{ bg: "#6366f1", soft: "rgba(99,102,241,0.12)" }}
               inicial={initials(g.qa_nombre)}
               titulo={nombreCorto(g.qa_nombre)}
-              subtitulo={
-                g.cantidad === 1 ? "1 proyecto en revisión" : `${g.cantidad} proyectos en revisión`
-              }
+              subtitulo={[
+                g.cantidad === 1 ? "1 proyecto en revisión" : `${g.cantidad} proyectos en revisión`,
+                // Tiempo de respuesta: promedio de sus revisiones ya cerradas,
+                // en horario laboral. Es la métrica que se le mide.
+                g.ms_promedio_revision != null
+                  ? `responde en ${formatearDuracion(g.ms_promedio_revision)} (prom. de ${g.revisiones_cerradas})`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               contador={g.cantidad}
               abierta={abiertas.has(t.key)}
               onToggle={() => onToggle(t.key)}

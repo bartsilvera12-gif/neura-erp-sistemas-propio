@@ -479,6 +479,10 @@ export async function GET(request: Request) {
       qa_id: string;
       qa_nombre: string;
       cantidad: number;
+      /** Pasadas por QA ya cerradas (histórico), para el tiempo de respuesta. */
+      revisiones_cerradas: number;
+      /** Promedio de horario laboral por revisión cerrada, en ms. */
+      ms_promedio_revision: number | null;
       proyectos: QAItem[];
     };
 
@@ -492,6 +496,8 @@ export async function GET(request: Request) {
           qa_id: qaId,
           qa_nombre: tecnicoNombre.get(qaId) ?? "QA sin nombre",
           cantidad: 0,
+          revisiones_cerradas: 0,
+          ms_promedio_revision: null,
           proyectos: [],
         };
         gruposQa.set(qaId, g);
@@ -533,8 +539,38 @@ export async function GET(request: Request) {
           qa_id: u.id,
           qa_nombre: (u.nombre ?? "").trim() || (u.email ?? "").trim() || "QA sin nombre",
           cantidad: 0,
+          revisiones_cerradas: 0,
+          ms_promedio_revision: null,
           proyectos: [],
         });
+      }
+    }
+
+    // Tiempo de respuesta histórico de cada QA: promedio de horario laboral de
+    // sus revisiones ya cerradas. Sale de `proyecto_qa_revisiones`; si la tabla
+    // no está disponible, las tarjetas simplemente no muestran el promedio.
+    {
+      const { data: revs, error: eRev } = await sb
+        .from("proyecto_qa_revisiones")
+        .select("qa_responsable_id, ms_laborables")
+        .eq("empresa_id", empresaId)
+        .not("salida_at", "is", null);
+      if (!eRev) {
+        const acc = new Map<string, { n: number; ms: number }>();
+        for (const row of (revs ?? []) as { qa_responsable_id: string | null; ms_laborables: number | null }[]) {
+          const k = row.qa_responsable_id;
+          if (!k) continue;
+          const a = acc.get(k) ?? { n: 0, ms: 0 };
+          a.n += 1;
+          a.ms += Number(row.ms_laborables) || 0;
+          acc.set(k, a);
+        }
+        for (const [qaId, g] of gruposQa) {
+          const a = acc.get(qaId);
+          if (!a || a.n === 0) continue;
+          g.revisiones_cerradas = a.n;
+          g.ms_promedio_revision = Math.round(a.ms / a.n);
+        }
       }
     }
 

@@ -33,7 +33,7 @@ type Panel = {
     sla_configurado: boolean;
   }[];
   por_asesor: { asesor: string; cantidad: number; presupuesto: number; proyectos: DetalleProy[] }[];
-  por_tecnico: { tecnico: string; cantidad: number; presupuesto: number; proyectos: DetalleProy[] }[];
+  por_tecnico: { tecnico: string; cantidad: number; presupuesto: number; deuda: number; proyectos: DetalleProy[] }[];
   por_tipo: { tipo: string; cantidad: number; presupuesto: number }[];
   por_rubro: { rubro: string; cantidad: number }[];
   entregados_por_mes: EntregadosMes[];
@@ -58,6 +58,7 @@ type DetalleProy = {
   es_final: boolean;
   vendedor: string;
   presupuesto: number;
+  deuda: number;
   dias_en_estado: number | null;
   sla_vencido: boolean;
   sla_texto: string;
@@ -106,12 +107,48 @@ function fmtGsCompacto(n: number): string {
   return fmtGs(n);
 }
 
-/** Tabla de proyectos de un responsable (etapa, vendedor, presupuesto, SLA). */
-function ProyectosDetalleTabla({ proyectos, mostrarVendedor = false }: { proyectos: DetalleProy[]; mostrarVendedor?: boolean }) {
+const AVATAR_PALETTE = [
+  "bg-[#4FAEB2] text-white",
+  "bg-violet-500 text-white",
+  "bg-amber-500 text-white",
+  "bg-emerald-600 text-white",
+  "bg-rose-500 text-white",
+  "bg-sky-600 text-white",
+  "bg-indigo-500 text-white",
+  "bg-fuchsia-500 text-white",
+];
+
+function avatarClass(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h += name.charCodeAt(i);
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+function iniciales(name: string): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+type MetricaMonto = "presupuesto" | "deuda";
+
+/** Tabla de proyectos de un responsable (etapa, vendedor, presupuesto o deuda, SLA). */
+function ProyectosDetalleTabla({
+  proyectos,
+  mostrarVendedor = false,
+  metrica = "presupuesto",
+}: {
+  proyectos: DetalleProy[];
+  mostrarVendedor?: boolean;
+  metrica?: MetricaMonto;
+}) {
   if (!proyectos.length) return <p className="px-3 py-3 text-xs text-slate-400">Sin proyectos.</p>;
+  const etiquetaMonto = metrica === "deuda" ? "Deuda" : "Presupuesto";
+  const tonoMonto = metrica === "deuda" ? "text-rose-600" : "text-[#3F8E91]";
   const cols = mostrarVendedor
-    ? ["Cliente / Proyecto", "Etapa", "Vendedor", "Presupuesto", "SLA"]
-    : ["Cliente / Proyecto", "Etapa", "Presupuesto", "SLA"];
+    ? ["Cliente / Proyecto", "Etapa", "Vendedor", etiquetaMonto, "SLA"]
+    : ["Cliente / Proyecto", "Etapa", etiquetaMonto, "SLA"];
   const rightFrom = mostrarVendedor ? 3 : 2;
   return (
     <div className="overflow-x-auto">
@@ -126,34 +163,38 @@ function ProyectosDetalleTabla({ proyectos, mostrarVendedor = false }: { proyect
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {proyectos.map((p) => (
-            <tr key={p.id} className="hover:bg-slate-50/60">
-              <td className="px-3 py-2">
-                <span className="block font-medium text-slate-800">{p.cliente}</span>
-                {p.titulo && p.titulo !== p.cliente ? <span className="block text-[11px] text-slate-400">{p.titulo}</span> : null}
-              </td>
-              <td className="px-3 py-2">
-                <span className="inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
-                  {p.estado}
-                </span>
-              </td>
-              {mostrarVendedor ? (
-                <td className="whitespace-nowrap px-3 py-2 text-[12px] text-slate-600">{p.vendedor}</td>
-              ) : null}
-              <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-[#3F8E91]">
-                {p.presupuesto > 0 ? fmtGs(p.presupuesto) : <span className="text-slate-300">—</span>}
-              </td>
-              <td className="whitespace-nowrap px-3 py-2 text-right text-[11px]">
-                <span className={p.sla_vencido ? "font-semibold text-rose-600" : "text-slate-400"}>{p.sla_texto}</span>
-              </td>
-            </tr>
-          ))}
+          {proyectos.map((p) => {
+            const monto = metrica === "deuda" ? p.deuda : p.presupuesto;
+            return (
+              <tr key={p.id} className="hover:bg-slate-50/60">
+                <td className="px-3 py-2">
+                  <span className="block font-medium text-slate-800">{p.cliente}</span>
+                  {p.titulo && p.titulo !== p.cliente ? <span className="block text-[11px] text-slate-400">{p.titulo}</span> : null}
+                </td>
+                <td className="px-3 py-2">
+                  <span className="inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+                    {p.estado}
+                  </span>
+                </td>
+                {mostrarVendedor ? (
+                  <td className="whitespace-nowrap px-3 py-2 text-[12px] text-slate-600">{p.vendedor}</td>
+                ) : null}
+                <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${tonoMonto}`}>
+                  {monto > 0 ? fmtGs(monto) : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-right text-[11px]">
+                  <span className={p.sla_vencido ? "font-semibold text-rose-600" : "text-slate-400"}>{p.sla_texto}</span>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-      {proyectos.some((p) => p.presupuesto <= 0) ? (
+      {proyectos.some((p) => (metrica === "deuda" ? p.deuda : p.presupuesto) <= 0) ? (
         <p className="px-3 py-1.5 text-[10px] text-slate-400">
-          &quot;—&quot; = sin presupuesto atribuido (cliente sin factura, o ya contado en otro proyecto del mismo
-          cliente).
+          {metrica === "deuda"
+            ? "“—” = sin saldo pendiente atribuido (cliente sin deuda, o ya contada en otro proyecto del mismo cliente)."
+            : "“—” = sin presupuesto atribuido (cliente sin factura, o ya contado en otro proyecto del mismo cliente)."}
         </p>
       ) : null}
     </div>
@@ -241,6 +282,7 @@ export default function PanelProyectosPanel() {
   const [barrasMontadas, setBarrasMontadas] = useState(false);
   const [aseAbierto, setAseAbierto] = useState<string | null>(null); // asesor expandido
   const [tecAbierto, setTecAbierto] = useState<string | null>(null); // técnico expandido
+  const [tecMetrica, setTecMetrica] = useState<MetricaMonto>("presupuesto"); // "Por técnico": Presupuesto vs Deuda
 
   useEffect(() => {
     let cancel = false;
@@ -284,7 +326,10 @@ export default function PanelProyectosPanel() {
 
   const maxEstadoCant = Math.max(1, ...data.por_estado.map((e) => e.cantidad));
   const maxAsePres = Math.max(1, ...data.por_asesor.map((a) => a.presupuesto));
-  const maxTecCant = Math.max(1, ...data.por_tecnico.map((t) => t.cantidad));
+  const maxTecPres = Math.max(1, ...data.por_tecnico.map((t) => t.presupuesto));
+  const maxTecDeuda = Math.max(1, ...data.por_tecnico.map((t) => t.deuda));
+  const maxTecMetrica = tecMetrica === "deuda" ? maxTecDeuda : maxTecPres;
+  const deudaTotalTecnicos = data.por_tecnico.reduce((a, t) => a + t.deuda, 0);
   const maxMesCant = Math.max(
     1,
     ...data.entregados_por_mes.flatMap((m) => [m.web.cantidad, m.saas.cantidad, m.mixto.cantidad])
@@ -390,28 +435,81 @@ export default function PanelProyectosPanel() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-1 text-sm font-semibold text-slate-900">Por técnico</h2>
-        <p className="mb-3 text-[11px] text-slate-400">Carga vigente: activos + entregados este mes (no arrastra entregas de meses anteriores). Tocá para ver sus proyectos.</p>
+        <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Por técnico</h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Carga vigente: activos + entregados este mes. Tocá un técnico para ver sus proyectos.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-0.5">
+            {(["presupuesto", "deuda"] as MetricaMonto[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setTecMetrica(m)}
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                  tecMetrica === m
+                    ? m === "deuda"
+                      ? "bg-rose-600 text-white shadow-sm"
+                      : "bg-[#3F8E91] text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {m === "deuda" ? "Deuda" : "Monto"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {tecMetrica === "deuda" ? (
+          <p className="mb-3 text-[11px] text-rose-500">
+            Deuda total del cliente al día de hoy (saldo pendiente de sus facturas de venta), atribuida una sola vez
+            al técnico del proyecto más antiguo de ese cliente · total {fmtGs(deudaTotalTecnicos)}.
+          </p>
+        ) : (
+          <div className="mb-3" />
+        )}
         {data.por_tecnico.length === 0 ? (
           <p className="text-xs text-slate-400">Sin proyectos con técnico asignado.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {data.por_tecnico.map((t) => {
               const open = tecAbierto === t.tecnico;
+              const monto = tecMetrica === "deuda" ? t.deuda : t.presupuesto;
               return (
                 <div key={t.tecnico} className="min-w-0">
-                  <button type="button" onClick={() => setTecAbierto(open ? null : t.tecnico)} className="w-full rounded-lg px-1 py-1 text-left transition-colors hover:bg-slate-50">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`truncate text-sm font-medium ${open ? "text-[#3F8E91]" : "text-slate-800"}`}>{t.tecnico}</span>
-                      <span className="shrink-0 text-xs text-slate-500">
-                        {t.cantidad} proy · <span className="font-semibold text-[#3F8E91]">{fmtGs(t.presupuesto)}</span>
+                  <button
+                    type="button"
+                    onClick={() => setTecAbierto(open ? null : t.tecnico)}
+                    className={`w-full rounded-xl border px-2.5 py-2 text-left transition-colors ${
+                      open ? "border-[#4FAEB2]/40 bg-[#4FAEB2]/5" : "border-transparent hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${avatarClass(t.tecnico)}`}
+                      >
+                        {iniciales(t.tecnico)}
                       </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`truncate text-sm font-medium ${open ? "text-[#3F8E91]" : "text-slate-800"}`}>{t.tecnico}</span>
+                          <span className="shrink-0 text-xs text-slate-500">
+                            {t.cantidad} proy ·{" "}
+                            <span className={`font-semibold ${tecMetrica === "deuda" ? "text-rose-600" : "text-[#3F8E91]"}`}>
+                              {fmtGs(monto)}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="mt-1.5">
+                          <Bar value={monto} max={maxTecMetrica} className={tecMetrica === "deuda" ? "bg-rose-500" : "bg-[#4FAEB2]"} />
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-1"><Bar value={t.cantidad} max={maxTecCant} className="bg-[#4FAEB2]/80" /></div>
                   </button>
                   {open ? (
                     <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40">
-                      <ProyectosDetalleTabla proyectos={t.proyectos} mostrarVendedor />
+                      <ProyectosDetalleTabla proyectos={t.proyectos} mostrarVendedor metrica={tecMetrica} />
                     </div>
                   ) : null}
                 </div>

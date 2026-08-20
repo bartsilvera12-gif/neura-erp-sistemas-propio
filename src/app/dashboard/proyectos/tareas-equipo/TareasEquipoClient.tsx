@@ -288,6 +288,52 @@ function subtituloUtil(p: { cliente: string; titulo: string }): string | null {
  * motivo en la misma línea — es la información que el resto del equipo pregunta.
  * QA va al final, con sus propias etapas.
  */
+/**
+ * Mismo formato de mensaje que el del equipo técnico —para que al equipo le
+ * resulte familiar— pero agrupado por asesor comercial y sin el tiempo de
+ * trabajo, que es una métrica del equipo técnico.
+ */
+function buildMensajeComercial(grupos: GrupoActivo[]): string {
+  const lineas: string[] = ["*Proyectos por comercial*", `*${formatFechaCorta(new Date())}*`, ""];
+
+  for (const g of grupos) {
+    const proyectos = g.secciones.flatMap((s) => s.proyectos);
+    if (proyectos.length === 0) continue;
+
+    lineas.push("*Comercial:*");
+    lineas.push(`•${g.tecnico_id == null ? "Sin asignar" : nombreCorto(g.tecnico_nombre)}`);
+
+    lineas.push("*Cliente:*");
+    for (const p of proyectos) {
+      const pausa = p.pausado ? ` · ⏸ PAUSADO${p.pausa_motivo ? `: ${p.pausa_motivo}` : ""}` : "";
+      const aviso =
+        p.esqueleto === "vencido"
+          ? " · ⚠ ESQUELETO VENCIDO"
+          : p.esqueleto === "por_vencer"
+            ? " · ⚠ esqueleto por vencer"
+            : "";
+      // Quién lo desarrolla es lo primero que se pregunta cuando el mensaje sale
+      // de una lista por comercial.
+      const dev = p.tecnico_nombre ? ` · dev ${nombreCorto(p.tecnico_nombre)}` : "";
+      lineas.push(`•${etiquetaProyecto(p)} — ${p.estado_nombre}${pausa}${aviso}${dev}`);
+    }
+
+    // El encabezado sólo va si hay al menos una fecha: si no, queda un título
+    // colgado sin nada debajo (pasa cuando ningún proyecto tiene entrega cargada).
+    const entregas = proyectos
+      .map((p) => ({ cliente: p.cliente, entrega: formatEntrega(p.fecha_prometida) }))
+      .filter((e): e is { cliente: string; entrega: string } => e.entrega != null);
+    if (entregas.length > 0) {
+      lineas.push("*Fecha/hora de entrega:*");
+      for (const e of entregas) lineas.push(`•${e.cliente}: ${e.entrega}`);
+    }
+
+    lineas.push("");
+  }
+
+  return lineas.join("\n").trimEnd();
+}
+
 function buildMensajeWhatsapp(grupos: GrupoActivo[], qaGrupos: GrupoQA[]): string {
   const lineas: string[] = ["*Tareas del equipo*", `*${formatFechaCorta(new Date())}*`, ""];
 
@@ -351,7 +397,23 @@ function buildMensajeWhatsapp(grupos: GrupoActivo[], qaGrupos: GrupoQA[]): strin
   return lineas.join("\n").trimEnd();
 }
 
-export default function TareasEquipoClient({ dataSchema }: { dataSchema: string }) {
+/**
+ * Tablero del equipo. Dos pantallas sobre el MISMO universo de proyectos, que
+ * se distinguen por el eje de agrupación:
+ *
+ * - `"equipo"` (por defecto): por programador y por QA, con el contador de
+ *   tiempo de trabajo. Es la pantalla de /dashboard/proyectos/tareas-equipo.
+ * - `"comercial"`: por asesor comercial, sin contador. Vive en su propia
+ *   página (/dashboard/proyectos/comercial) y comparte este componente para no
+ *   duplicar la tarjeta y la fila de proyecto.
+ */
+export default function TareasEquipoClient({
+  dataSchema,
+  pantalla = "equipo",
+}: {
+  dataSchema: string;
+  pantalla?: "equipo" | "comercial";
+}) {
   const [mes, setMes] = useState<string>(() => currentYearMonth());
   const [data, setData] = useState<TareasEquipoData | null>(null);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -372,7 +434,9 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
    * Vista activa. "curso" y "comercial" son el mismo universo de proyectos
    * mirado por ejes distintos (quién lo desarrolla / quién lo vendió).
    */
-  const [vista, setVista] = useState<"curso" | "comercial" | "finalizados">("curso");
+  const [vista, setVista] = useState<"curso" | "comercial" | "finalizados">(
+    pantalla === "comercial" ? "comercial" : "curso"
+  );
   const verFinalizados = vista === "finalizados";
 
   const load = useCallback(async (target: string) => {
@@ -559,8 +623,11 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
   );
 
   const mensaje = useMemo(
-    () => buildMensajeWhatsapp(data?.activos_por_programador ?? [], data?.qa_por_responsable ?? []),
-    [data]
+    () =>
+      pantalla === "comercial"
+        ? buildMensajeComercial(data?.activos_por_comercial ?? [])
+        : buildMensajeWhatsapp(data?.activos_por_programador ?? [], data?.qa_por_responsable ?? []),
+    [data, pantalla]
   );
 
   const copiar = useCallback(async () => {
@@ -587,12 +654,17 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
               aria-hidden="true"
               className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
             />
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4FAEB2]">Equipo</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4FAEB2]">
+              {pantalla === "comercial" ? "Comercial" : "Equipo"}
+            </p>
           </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Tareas del equipo</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+            {pantalla === "comercial" ? "Proyectos por comercial" : "Tareas del equipo"}
+          </h1>
           <p className="text-sm text-slate-500">
-            Proyectos por programador y por QA, divididos por estado, con el tiempo de
-            trabajo acumulado en horario laboral.
+            {pantalla === "comercial"
+              ? "Proyectos por asesor comercial, divididos por estado, para ver en qué va lo que cada uno vendió."
+              : "Proyectos por programador y por QA, divididos por estado, con el tiempo de trabajo acumulado en horario laboral."}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -601,7 +673,11 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
             onClick={() => void copiar()}
             disabled={!mensaje}
             className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#3F8E91] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-            title="Copiar el pase del día con el formato de WhatsApp"
+            title={
+              pantalla === "comercial"
+                ? "Copiar el estado por comercial con el formato de WhatsApp"
+                : "Copiar el pase del día con el formato de WhatsApp"
+            }
           >
             {copiado ? <IconCheck /> : <IconCopy />}
             {copiado ? "¡Copiado!" : "Copiar para WhatsApp"}
@@ -616,8 +692,16 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
+      <div
+        className={`flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm ${
+          pantalla === "comercial" ? "justify-between" : ""
+        }`}
+      >
+        <div
+          className={`items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5 ${
+            pantalla === "comercial" ? "hidden" : "flex"
+          }`}
+        >
           <button
             type="button"
             onClick={() => setVista("curso")}
@@ -627,16 +711,6 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
             }`}
           >
             En curso ({data?.activos_total ?? 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setVista("comercial")}
-            aria-pressed={vista === "comercial"}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              vista === "comercial" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Comercial ({data?.activos_total ?? 0})
           </button>
           <button
             type="button"
@@ -714,39 +788,43 @@ export default function TareasEquipoClient({ dataSchema }: { dataSchema: string 
         </div>
       ) : vista === "finalizados" ? (
         <FinalizadosSeccion data={data} mes={mes} onAbrir={setModalProjectId} />
-      ) : vista === "comercial" ? (
-        <ComercialSeccion
-          grupos={data?.activos_por_comercial ?? []}
-          estados={data?.estados_tablero ?? []}
-          generadoAt={data?.generado_at ?? null}
-          savingId={savingId}
-          abiertas={equipoAbiertos}
-          onToggle={toggleEquipo}
-          onToggleTodas={toggleTodasComercial}
-          todasAbiertas={todasComercialAbiertas}
-          onPatch={patchProyecto}
-          onVeredicto={veredictoQA}
-          onCambiarEstado={cambiarEstado}
-          onAbrir={setModalProjectId}
-        />
       ) : (
         <>
-          <ActivosSeccion
-            grupos={data?.activos_por_programador ?? []}
-            qaGrupos={data?.qa_por_responsable ?? []}
-            estados={data?.estados_tablero ?? []}
-            generadoAt={data?.generado_at ?? null}
-            usuarios={usuarios}
-            savingId={savingId}
-            abiertas={equipoAbiertos}
-            onToggle={toggleEquipo}
-            onToggleTodas={toggleTodasEquipo}
-            todasAbiertas={todasEquipoAbiertas}
-            onPatch={patchProyecto}
-            onVeredicto={veredictoQA}
-            onCambiarEstado={cambiarEstado}
-            onAbrir={setModalProjectId}
-          />
+          {vista === "comercial" ? (
+            <ComercialSeccion
+              grupos={data?.activos_por_comercial ?? []}
+              estados={data?.estados_tablero ?? []}
+              generadoAt={data?.generado_at ?? null}
+              savingId={savingId}
+              abiertas={equipoAbiertos}
+              onToggle={toggleEquipo}
+              onToggleTodas={toggleTodasComercial}
+              todasAbiertas={todasComercialAbiertas}
+              onPatch={patchProyecto}
+              onVeredicto={veredictoQA}
+              onCambiarEstado={cambiarEstado}
+              onAbrir={setModalProjectId}
+            />
+          ) : (
+            <ActivosSeccion
+              grupos={data?.activos_por_programador ?? []}
+              qaGrupos={data?.qa_por_responsable ?? []}
+              estados={data?.estados_tablero ?? []}
+              generadoAt={data?.generado_at ?? null}
+              usuarios={usuarios}
+              savingId={savingId}
+              abiertas={equipoAbiertos}
+              onToggle={toggleEquipo}
+              onToggleTodas={toggleTodasEquipo}
+              todasAbiertas={todasEquipoAbiertas}
+              onPatch={patchProyecto}
+              onVeredicto={veredictoQA}
+              onCambiarEstado={cambiarEstado}
+              onAbrir={setModalProjectId}
+            />
+          )}
+          {/* La vista previa acompaña a las dos pantallas: cada una arma su
+              propio mensaje (por programador o por comercial). */}
           {mensaje ? (
             <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
               <summary className="flex cursor-pointer select-none items-center gap-2 px-4 py-3 text-xs font-semibold text-slate-600 transition-colors hover:text-[#3F8E91]">

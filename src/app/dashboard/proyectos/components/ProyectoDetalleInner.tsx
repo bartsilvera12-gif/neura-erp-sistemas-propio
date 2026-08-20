@@ -1280,14 +1280,33 @@ export default function ProyectoDetalleInner({
         // El servidor lo ignora en archivos que no son imagen: no hace falta
         // filtrar acá cuáles son imágenes antes de mandarlo.
         if (comoConfirmacion) fd.append("confirmacion_cliente", "1");
-        const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos`, {
-          method: "POST",
-          body: fd,
-        });
-        const j = (await res.json()) as { success?: boolean; error?: string };
-        if (!res.ok || !j.success) {
-          setErr(j.error ?? `No se pudo subir "${file.name}"`);
+        // Sin este timeout, si algo entre el navegador y el servidor (proxy,
+        // firewall) corta la conexión en silencio en vez de responder con un
+        // error, el fetch nunca resuelve y el botón queda en "Subiendo…" para
+        // siempre. Con el timeout, al menos se ve un error accionable.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90_000);
+        try {
+          const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos`, {
+            method: "POST",
+            body: fd,
+            signal: controller.signal,
+          });
+          const j = (await res.json()) as { success?: boolean; error?: string };
+          if (!res.ok || !j.success) {
+            setErr(j.error ?? `No se pudo subir "${file.name}"`);
+            break;
+          }
+        } catch (e) {
+          const abortado = e instanceof DOMException && e.name === "AbortError";
+          setErr(
+            abortado
+              ? `"${file.name}" tardó demasiado y se canceló. Puede ser un bloqueo de red para ese tipo de archivo — probá con otro formato o avisá a soporte.`
+              : `No se pudo subir "${file.name}": ${e instanceof Error ? e.message : "error de red"}`
+          );
           break;
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
       setSubirComoConfirmacion(false);
@@ -2721,7 +2740,7 @@ export default function ProyectoDetalleInner({
               </span>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Subí documentos, imágenes o PDFs (hasta {Math.round(ARCHIVO_MAX_BYTES / (1024 * 1024))} MB cada uno).
+              Subí documentos, imágenes, PDFs, audios o comprimidos .zip (hasta {Math.round(ARCHIVO_MAX_BYTES / (1024 * 1024))} MB cada uno).
               Podés previsualizarlos y descargarlos cuando quieras.
             </p>
 

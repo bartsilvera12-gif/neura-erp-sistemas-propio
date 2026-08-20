@@ -91,12 +91,23 @@ BEGIN
         'DROP POLICY IF EXISTS agenda_cita_resp_all ON %I.agenda_cita_responsables',
         sch
       );
-      EXECUTE format(
-        'CREATE POLICY agenda_cita_resp_all ON %I.agenda_cita_responsables
-           FOR ALL USING (public.puede_acceder_empresa(empresa_id))
-           WITH CHECK (public.puede_acceder_empresa(empresa_id))',
-        sch
-      );
+
+      -- `puede_acceder_empresa` vive DENTRO de cada schema de tenant, no en
+      -- `public` (así están escritas las policies de agenda_citas). Si en algún
+      -- schema no existiera, se deja la tabla con RLS activo y sin policy: sin
+      -- acceso es el lado seguro para fallar, y service_role la sigue leyendo.
+      IF to_regprocedure(format('%I.puede_acceder_empresa(uuid)', sch)) IS NOT NULL THEN
+        EXECUTE format(
+          'CREATE POLICY agenda_cita_resp_all ON %1$I.agenda_cita_responsables
+             FOR ALL USING (%1$I.puede_acceder_empresa(empresa_id))
+             WITH CHECK (%1$I.puede_acceder_empresa(empresa_id))',
+          sch
+        );
+      ELSE
+        RAISE NOTICE
+          'Schema %: sin puede_acceder_empresa(); agenda_cita_responsables queda con RLS y sin policy.',
+          sch;
+      END IF;
 
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
         EXECUTE format(

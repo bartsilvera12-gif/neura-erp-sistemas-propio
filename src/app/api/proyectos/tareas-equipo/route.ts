@@ -119,6 +119,9 @@ export async function GET(request: Request) {
     const estadosTablero = estadosDeTablero((estadosData ?? []) as EstadoTablero[]);
     const estadosTableroIds = estadosTablero.map((e) => e.id);
     const estadoPorId = new Map(estadosTablero.map((e) => [e.id, e] as const));
+    // Columna "QA" del tablero. Si la empresa no la tiene configurada, el bloque
+    // de QA queda vacío en vez de mostrar proyectos de cualquier estado.
+    const estadoQaId = estadosTablero.find((e) => (e.codigo ?? "") === "qa")?.id ?? null;
 
     const [activosRes, qaRes, finalizadosRes] = await Promise.all([
       // Sin estados configurados no hay tablero que armar: se evita un `.in()`
@@ -135,14 +138,23 @@ export async function GET(request: Request) {
       // Bloque de QA: eje independiente del de desarrollo. Un proyecto puede
       // estar acá y en el bloque del programador a la vez (aparece en las dos
       // tarjetas), o sólo acá si el programador ya lo dio por finalizado.
-      sb
-        .from("proyectos")
-        .select(PROYECTO_COLUMNS)
-        .eq("empresa_id", empresaId)
-        .eq("archivado", false)
-        .not("qa_responsable_id", "is", null)
-        .in("qa_etapa", QA_ETAPAS_ACTIVAS)
-        .order("qa_asignado_at", { ascending: true, nullsFirst: false }),
+      // La tarjeta de QA muestra lo que ESTÁ en QA, no todo lo que alguna vez
+      // pasó por sus manos. Antes filtraba sólo por `qa_etapa` activa, que es un
+      // eje aparte del tablero: un proyecto que QA aprobó y el técnico ya movió
+      // a "Revisión Cliente" seguía colgado en la lista de la QA, inflándola con
+      // trabajo que ya no era suyo. Ahora además tiene que estar parado en la
+      // columna QA del Kanban.
+      estadoQaId == null
+        ? Promise.resolve({ data: [] as Record<string, unknown>[], error: null })
+        : sb
+            .from("proyectos")
+            .select(PROYECTO_COLUMNS)
+            .eq("empresa_id", empresaId)
+            .eq("archivado", false)
+            .eq("estado_id", estadoQaId)
+            .not("qa_responsable_id", "is", null)
+            .in("qa_etapa", QA_ETAPAS_ACTIVAS)
+            .order("qa_asignado_at", { ascending: true, nullsFirst: false }),
       sb
         .from("proyectos")
         .select(PROYECTO_COLUMNS)

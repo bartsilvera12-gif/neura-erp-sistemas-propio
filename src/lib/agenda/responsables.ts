@@ -11,13 +11,28 @@ import type { AppSupabaseClient } from "@/lib/supabase/schema";
  * un 42P01. Cuando la tabla aparece, empieza a usarse sola.
  */
 
-/** `42P01 undefined_table` — la migración todavía no corrió en este schema. */
+/**
+ * ¿El error significa "esta tabla todavía no está disponible"?
+ *
+ * Hay DOS formas distintas de que pase, y las dos tienen que degradar igual:
+ *
+ *  - `42P01 undefined_table`: Postgres no tiene la tabla porque la migración no
+ *    corrió en ese schema.
+ *  - `PGRST205`: la tabla SÍ existe en Postgres, pero PostgREST todavía no
+ *    recargó su cache de schema y no la ve ("Could not find the table ... in
+ *    the schema cache"). Pasa justo después de aplicar la migración, hasta que
+ *    se le manda `NOTIFY pgrst, 'reload schema'`.
+ *
+ * El segundo caso faltaba y por eso una recarga pendiente del cache tumbaba
+ * toda la agenda en vez de caer de vuelta al responsable único.
+ */
 function esTablaInexistente(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as { code?: string; message?: string };
-  if (e.code === "42P01") return true;
+  if (e.code === "42P01" || e.code === "PGRST205") return true;
   const msg = (e.message ?? "").toLowerCase();
-  return msg.includes("agenda_cita_responsables") && msg.includes("does not exist");
+  if (!msg.includes("agenda_cita_responsables")) return false;
+  return msg.includes("does not exist") || msg.includes("schema cache");
 }
 
 /**

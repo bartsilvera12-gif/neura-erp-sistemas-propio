@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
+import { citaIdsDeUsuario, guardarResponsables } from "@/lib/agenda/responsables";
 import { requireAgendaApiAccess } from "@/lib/agenda/agenda-auth";
 import { enrichAgendaRows } from "@/lib/agenda/enrich";
 import { buscarConflictoHorario, mensajeConflicto } from "@/lib/agenda/solapes";
@@ -38,7 +39,18 @@ export async function GET(request: Request) {
     if (desde) qq = qq.gte("inicio_at", desde);
     if (hasta) qq = qq.lte("inicio_at", hasta);
     if (estado && isAgendaEstado(estado)) qq = qq.eq("estado", estado);
-    if (responsableId) qq = qq.eq("responsable_id", responsableId);
+    if (responsableId) {
+      // Una cita cuenta como "de" alguien si es su responsable principal O si
+      // figura entre los responsables. Con la migración sin correr,
+      // `citaIdsDeUsuario` devuelve null y queda el filtro de antes.
+      const ids = await citaIdsDeUsuario(sb, empresaId, responsableId);
+      if (ids && ids.length > 0) {
+        const lista = ids.map((id) => `"${id}"`).join(",");
+        qq = qq.or(`responsable_id.eq.${responsableId},id.in.(${lista})`);
+      } else {
+        qq = qq.eq("responsable_id", responsableId);
+      }
+    }
     if (clienteId) qq = qq.eq("cliente_id", clienteId);
     if (q) qq = qq.or(`titulo.ilike.%${q}%,contacto_nombre.ilike.%${q}%`);
 
@@ -87,6 +99,12 @@ export async function POST(request: Request) {
         status: 400,
       });
     }
+
+    // `responsable_ids` es la lista completa; `responsable_id` sigue siendo el
+    // principal (el que usan disponibilidad y anti-doble-reserva).
+    const responsablesExtra = Array.isArray(body.responsable_ids)
+      ? body.responsable_ids.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+      : [];
 
     const estadoRaw = typeof body.estado === "string" ? body.estado : "pendiente";
     const estado = isAgendaEstado(estadoRaw) ? estadoRaw : "pendiente";
@@ -141,6 +159,7 @@ export async function POST(request: Request) {
     }
 
     const row = (Array.isArray(created) ? created[0] : created) as AgendaCitaRow;
+    await guardarResponsables(sb, empresaId, row.id, responsableId, responsablesExtra);
     const enriched = await enrichAgendaRows(sb, empresaId, [row]);
     return NextResponse.json(successResponse(enriched[0] ?? row));
   } catch (e) {

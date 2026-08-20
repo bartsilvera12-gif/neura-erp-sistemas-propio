@@ -105,7 +105,20 @@ export default function CitaDetalleModal({
           <Row label="Estado" value={cita.estado} />
           <Row label="Inicio" value={fmt(cita.inicio_at)} />
           <Row label="Fin" value={fmt(cita.fin_at)} />
-          <Row label="Responsable" value={cita.responsable?.nombre ?? cita.responsable_id} />
+          <Row
+            label={(cita.responsables?.length ?? 0) > 1 ? "Responsables" : "Responsable"}
+            value={
+              cita.responsables?.length
+                ? cita.responsables.map((r) => r.nombre ?? r.id).join(", ")
+                : cita.responsable?.nombre ?? cita.responsable_id
+            }
+          />
+          {/* Quién la cargó: `created_by` ya se guardaba, pero no se mostraba
+              en ningún lado. Es lo primero que se pregunta cuando una cita
+              aparece en la agenda de alguien que no la agendó. */}
+          {cita.creado_por ? (
+            <Row label="Cargada por" value={cita.creado_por.nombre ?? cita.creado_por.id} />
+          ) : null}
           <Row
             label="Cliente / contacto"
             value={cita.cliente?.nombre ?? cita.contacto_nombre ?? "—"}

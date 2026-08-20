@@ -72,3 +72,59 @@ export function reproducirSonidoNotificacion(): void {
        la notificación igual llegó y se ve en el panel. */
   }
 }
+
+/**
+ * Sonido de recordatorio de REUNIÓN. Deliberadamente distinto y más insistente
+ * que el de arriba: una reunión que arranca en 30 minutos no puede sonar igual
+ * que una observación de QA, o se confunde con el ruido de fondo y pasa
+ * desapercibida — que es justo lo que hay que evitar.
+ *
+ * Qué lo hace destacar, sin llegar a alarma de incendio:
+ *  - Tres repeticiones espaciadas (~1,2 s en total) en vez de un tono corto.
+ *  - Onda `triangle`, con más armónicos que la `sine` y por lo tanto más
+ *    presencia sobre el ruido ambiente de una oficina.
+ *  - Cada repetición son dos notas que SALTAN una quinta (E5→B5), un intervalo
+ *    que el oído lee como llamada y no como confirmación.
+ *  - Volumen algo mayor (0.11 contra 0.07), todavía lejos de molestar.
+ */
+export function reproducirSonidoReunion(): void {
+  if (!leerSonidoActivado()) return;
+  if (typeof window === "undefined") return;
+  try {
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const ahora = ctx.currentTime;
+
+    const PATRON = [0, 0.4, 0.8]; // arranque de cada repetición, en segundos
+    const NOTAS = [
+      { freq: 659.25, offset: 0 }, // E5
+      { freq: 987.77, offset: 0.11 }, // B5 — salto de quinta
+    ];
+
+    for (const base of PATRON) {
+      for (const { freq, offset } of NOTAS) {
+        const inicio = ahora + base + offset;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, inicio);
+        gain.gain.linearRampToValueAtTime(0.11, inicio + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(inicio);
+        osc.stop(inicio + 0.2);
+      }
+    }
+
+    window.setTimeout(() => {
+      void ctx.close().catch(() => {});
+    }, 1600);
+  } catch {
+    /* Igual que arriba: sin audio, la notificación se ve en el panel. */
+  }
+}

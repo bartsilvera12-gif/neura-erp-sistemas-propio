@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlarmClock,
   Bell,
+  CalendarClock,
   Check,
   CheckCircle2,
   ClipboardList,
@@ -22,6 +23,7 @@ import {
   escribirSonidoActivado,
   leerSonidoActivado,
   reproducirSonidoNotificacion,
+  reproducirSonidoReunion,
 } from "@/lib/notificaciones/sonido";
 
 type TipoNotificacion =
@@ -31,7 +33,8 @@ type TipoNotificacion =
   | "esqueleto_por_vencer"
   | "esqueleto_vencido"
   | "proyecto_estado_cambio"
-  | "proyecto_entregado";
+  | "proyecto_entregado"
+  | "agenda_recordatorio";
 
 type Notificacion = {
   id: string;
@@ -48,6 +51,10 @@ type Notificacion = {
    * esqueleto). No se puede marcar leído: se apaga cuando el proyecto avanza.
    */
   derivada?: boolean;
+  /** Sólo en recordatorios de agenda: minutos que faltan para la reunión. */
+  minutos_restantes?: number;
+  /** Sólo en recordatorios de agenda: la cita a la que apunta. */
+  cita_id?: string;
 };
 
 type ApiResp = {
@@ -71,6 +78,13 @@ const ESTILO_TIPO: Record<
   TipoNotificacion,
   { icon: typeof Bell; wrap: string; label: string }
 > = {
+  agenda_recordatorio: {
+    icon: CalendarClock,
+    // Teal de marca: es un aviso de agenda, no una alarma de error. El énfasis
+    // lo pone el sonido, que sí es distinto del resto.
+    wrap: "bg-[#4FAEB2]/12 text-[#3F8E91]",
+    label: "Reunión próxima",
+  },
   qa_novedad: {
     icon: ClipboardList,
     wrap: "bg-indigo-50 text-indigo-600",
@@ -120,6 +134,12 @@ export default function NotificacionesBell() {
    * haya notificaciones sin leer, o sonaría cada vez que alguien abre la app.
    */
   const noLeidasPreviasRef = useRef<number | null>(null);
+  /**
+   * Ids de recordatorios de reunión por los que ya sonó la alerta. Como los
+   * avisos se calculan en vivo, el mismo recordatorio vuelve en cada poll: sin
+   * esto sonaría cada 60 segundos hasta que empiece la reunión.
+   */
+  const reunionesAvisadasRef = useRef<Set<string>>(new Set());
   const [sonidoActivado, setSonidoActivado] = useState(true);
   const [cargando, setCargando] = useState(false);
   const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
@@ -141,7 +161,27 @@ export default function NotificacionesBell() {
         // notificación nueva de verdad, no el resultado de marcar algo leído
         // (que lo hace bajar) ni una recarga que trae lo mismo de antes.
         const previas = noLeidasPreviasRef.current;
-        if (previas != null && j.data.no_leidas > previas) reproducirSonidoNotificacion();
+        if (previas != null && j.data.no_leidas > previas) {
+          // Los recordatorios de reunión llevan su propio sonido, más
+          // insistente: tienen una hora encima y no pueden confundirse con el
+          // aviso de una observación de QA.
+          const idsReunion = new Set(
+            j.data.notificaciones.filter((n) => n.tipo === "agenda_recordatorio").map((n) => n.id)
+          );
+          const hayReunionNueva = [...idsReunion].some((id) => !reunionesAvisadasRef.current.has(id));
+          if (hayReunionNueva) {
+            reproducirSonidoReunion();
+          } else {
+            reproducirSonidoNotificacion();
+          }
+          reunionesAvisadasRef.current = idsReunion;
+        } else {
+          // Se mantiene al día aunque no suene, para no volver a avisar por un
+          // recordatorio que ya sonó.
+          reunionesAvisadasRef.current = new Set(
+            j.data.notificaciones.filter((n) => n.tipo === "agenda_recordatorio").map((n) => n.id)
+          );
+        }
         noLeidasPreviasRef.current = j.data.no_leidas;
       }
     } catch {
@@ -360,9 +400,9 @@ export default function NotificacionesBell() {
 
                 return (
                   <li key={n.id} className="relative">
-                    {n.proyecto_id ? (
+                    {n.proyecto_id || n.cita_id ? (
                       <Link
-                        href={`/dashboard/proyectos/${n.proyecto_id}`}
+                        href={n.cita_id ? "/dashboard/agenda" : `/dashboard/proyectos/${n.proyecto_id}`}
                         onClick={() => {
                           setAbierto(false);
                           if (marcable) void marcarLeidas({ ids: [n.id] });

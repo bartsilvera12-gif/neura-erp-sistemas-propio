@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import CountUp from "@/components/reactbits/CountUp";
 
 type Panel = {
   kpis: {
@@ -107,15 +108,21 @@ function fmtGsCompacto(n: number): string {
   return fmtGs(n);
 }
 
+/**
+ * Avatares en tinte suave (fondo lavado + tinta oscura del mismo hue) en vez de
+ * relleno saturado. Mantienen la identidad de cada persona, pero dejan de
+ * competir con las barras: en un ranking el color que tiene que llamar la
+ * atención es el del dato, no el de la inicial.
+ */
 const AVATAR_PALETTE = [
-  "bg-[#4FAEB2] text-white",
-  "bg-violet-500 text-white",
-  "bg-amber-500 text-white",
-  "bg-emerald-600 text-white",
-  "bg-rose-500 text-white",
-  "bg-sky-600 text-white",
-  "bg-indigo-500 text-white",
-  "bg-fuchsia-500 text-white",
+  "bg-[#4FAEB2]/15 text-[#2F6E71]",
+  "bg-violet-500/15 text-violet-700",
+  "bg-amber-500/20 text-amber-700",
+  "bg-emerald-600/15 text-emerald-700",
+  "bg-rose-500/15 text-rose-700",
+  "bg-sky-600/15 text-sky-700",
+  "bg-indigo-500/15 text-indigo-700",
+  "bg-fuchsia-500/15 text-fuchsia-700",
 ];
 
 function avatarClass(name: string): string {
@@ -131,7 +138,50 @@ function iniciales(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+/**
+ * Los nombres vienen en MAYÚSCULAS desde la base. En un listado de 5 filas eso
+ * grita y además es más lento de leer; se muestran en capitular. Las partículas
+ * ("de", "del", "da"…) quedan en minúscula como en un nombre bien escrito.
+ */
+const PARTICULAS_NOMBRE = new Set(["de", "del", "la", "las", "los", "da", "do", "dos", "y", "e"]);
+
+function nombreCapitular(name: string): string {
+  const limpio = (name ?? "").trim();
+  if (!limpio) return "—";
+  // Si ya viene en mixto (no está todo en mayúsculas) se respeta tal cual.
+  if (limpio !== limpio.toUpperCase()) return limpio;
+  return limpio
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w, i) => (i > 0 && PARTICULAS_NOMBRE.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(" ");
+}
+
 type MetricaMonto = "presupuesto" | "deuda";
+
+/**
+ * Color de la sección "Por técnico". El switch muestra UNA sola medida a la vez,
+ * así que cada vista es una serie única: un solo hue de magnitud, no una paleta
+ * categórica. Ambos superan 3:1 sobre el blanco de la tarjeta (validado con el
+ * script de paleta). Deliberadamente NO se usa el rojo de estado crítico para la
+ * deuda: en un reporte gerencial el rojo dice "emergencia", y acá el número es
+ * una magnitud a comparar, no una alarma. El ámbar lee como "pendiente" sin
+ * teñir de urgencia a todo el equipo.
+ */
+const METRICA_META: Record<MetricaMonto, { label: string; color: string; totalLabel: string; nota: string }> = {
+  presupuesto: {
+    label: "Monto",
+    color: "#3F8E91",
+    totalLabel: "Monto total",
+    nota: "Venta cerrada del cliente (primera factura), atribuida una sola vez al proyecto más antiguo de ese cliente.",
+  },
+  deuda: {
+    label: "Deuda",
+    color: "#B45309",
+    totalLabel: "Deuda total",
+    nota: "Saldo pendiente de las facturas de venta del cliente, atribuido una sola vez al proyecto más antiguo de ese cliente.",
+  },
+};
 
 /** Tabla de proyectos de un responsable (etapa, vendedor, presupuesto o deuda, SLA). */
 function ProyectosDetalleTabla({
@@ -145,7 +195,9 @@ function ProyectosDetalleTabla({
 }) {
   if (!proyectos.length) return <p className="px-3 py-3 text-xs text-slate-400">Sin proyectos.</p>;
   const etiquetaMonto = metrica === "deuda" ? "Deuda" : "Presupuesto";
-  const tonoMonto = metrica === "deuda" ? "text-rose-600" : "text-[#3F8E91]";
+  // Mismo hue que la barra de la fila que abrió esta tabla, para que el detalle
+  // no cambie de color respecto del resumen.
+  const tonoMonto = METRICA_META[metrica].color;
   const cols = mostrarVendedor
     ? ["Cliente / Proyecto", "Etapa", "Vendedor", etiquetaMonto, "SLA"]
     : ["Cliente / Proyecto", "Etapa", etiquetaMonto, "SLA"];
@@ -179,7 +231,7 @@ function ProyectosDetalleTabla({
                 {mostrarVendedor ? (
                   <td className="whitespace-nowrap px-3 py-2 text-[12px] text-slate-600">{p.vendedor}</td>
                 ) : null}
-                <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${tonoMonto}`}>
+                <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums" style={{ color: tonoMonto }}>
                   {monto > 0 ? fmtGs(monto) : <span className="text-slate-300">—</span>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right text-[11px]">
@@ -326,10 +378,18 @@ export default function PanelProyectosPanel() {
 
   const maxEstadoCant = Math.max(1, ...data.por_estado.map((e) => e.cantidad));
   const maxAsePres = Math.max(1, ...data.por_asesor.map((a) => a.presupuesto));
-  const maxTecPres = Math.max(1, ...data.por_tecnico.map((t) => t.presupuesto));
-  const maxTecDeuda = Math.max(1, ...data.por_tecnico.map((t) => t.deuda));
-  const maxTecMetrica = tecMetrica === "deuda" ? maxTecDeuda : maxTecPres;
-  const deudaTotalTecnicos = data.por_tecnico.reduce((a, t) => a + t.deuda, 0);
+  // "Por técnico": el ranking sigue SIEMPRE a la medida activa del switch, así
+  // las barras bajan de mayor a menor y la lista se lee de un vistazo. (Antes
+  // ordenaba por cantidad de proyectos y las barras quedaban desordenadas.)
+  const tecMetricaMeta = METRICA_META[tecMetrica];
+  const montoTecnico = (t: { presupuesto: number; deuda: number }) =>
+    tecMetrica === "deuda" ? t.deuda : t.presupuesto;
+  const tecnicosOrdenados = [...data.por_tecnico].sort(
+    (a, b) => montoTecnico(b) - montoTecnico(a) || b.cantidad - a.cantidad
+  );
+  const maxTecMetrica = Math.max(1, ...tecnicosOrdenados.map(montoTecnico));
+  const totalTecMetrica = tecnicosOrdenados.reduce((a, t) => a + montoTecnico(t), 0);
+  const totalTecProyectos = tecnicosOrdenados.reduce((a, t) => a + t.cantidad, 0);
   const maxMesCant = Math.max(
     1,
     ...data.entregados_por_mes.flatMap((m) => [m.web.cantidad, m.saas.cantidad, m.mixto.cantidad])
@@ -434,88 +494,156 @@ export default function PanelProyectosPanel() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Por técnico</h2>
             <p className="mt-0.5 text-[11px] text-slate-400">
               Carga vigente: activos + entregados este mes. Tocá un técnico para ver sus proyectos.
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-0.5">
-            {(["presupuesto", "deuda"] as MetricaMonto[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setTecMetrica(m)}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
-                  tecMetrica === m
-                    ? m === "deuda"
-                      ? "bg-rose-600 text-white shadow-sm"
-                      : "bg-[#3F8E91] text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {m === "deuda" ? "Deuda" : "Monto"}
-              </button>
-            ))}
-          </div>
-        </div>
-        {tecMetrica === "deuda" ? (
-          <p className="mb-3 text-[11px] text-rose-500">
-            Deuda total del cliente al día de hoy (saldo pendiente de sus facturas de venta), atribuida una sola vez
-            al técnico del proyecto más antiguo de ese cliente · total {fmtGs(deudaTotalTecnicos)}.
-          </p>
-        ) : (
-          <div className="mb-3" />
-        )}
-        {data.por_tecnico.length === 0 ? (
-          <p className="text-xs text-slate-400">Sin proyectos con técnico asignado.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {data.por_tecnico.map((t) => {
-              const open = tecAbierto === t.tecnico;
-              const monto = tecMetrica === "deuda" ? t.deuda : t.presupuesto;
+          {/*
+            Control segmentado: la pastilla activa es blanca sobre riel gris y el
+            color de la medida viaja en un punto, no tiñendo todo el botón. Así el
+            único elemento saturado de la fila sigue siendo el dato.
+          */}
+          <div
+            role="tablist"
+            aria-label="Medida a mostrar"
+            className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-100/70 p-0.5"
+          >
+            {(["presupuesto", "deuda"] as MetricaMonto[]).map((m) => {
+              const activo = tecMetrica === m;
               return (
-                <div key={t.tecnico} className="min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => setTecAbierto(open ? null : t.tecnico)}
-                    className={`w-full rounded-xl border px-2.5 py-2 text-left transition-colors ${
-                      open ? "border-[#4FAEB2]/40 bg-[#4FAEB2]/5" : "border-transparent hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${avatarClass(t.tecnico)}`}
-                      >
-                        {iniciales(t.tecnico)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`truncate text-sm font-medium ${open ? "text-[#3F8E91]" : "text-slate-800"}`}>{t.tecnico}</span>
-                          <span className="shrink-0 text-xs text-slate-500">
-                            {t.cantidad} proy ·{" "}
-                            <span className={`font-semibold ${tecMetrica === "deuda" ? "text-rose-600" : "text-[#3F8E91]"}`}>
-                              {fmtGs(monto)}
-                            </span>
-                          </span>
-                        </div>
-                        <div className="mt-1.5">
-                          <Bar value={monto} max={maxTecMetrica} className={tecMetrica === "deuda" ? "bg-rose-500" : "bg-[#4FAEB2]"} />
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                  {open ? (
-                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40">
-                      <ProyectosDetalleTabla proyectos={t.proyectos} mostrarVendedor metrica={tecMetrica} />
-                    </div>
-                  ) : null}
-                </div>
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={activo}
+                  onClick={() => setTecMetrica(m)}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                    activo
+                      ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-900/5"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 rounded-full transition-colors"
+                    style={{ background: activo ? METRICA_META[m].color : "#cbd5e1" }}
+                  />
+                  {METRICA_META[m].label}
+                </button>
               );
             })}
           </div>
+        </div>
+
+        {data.por_tecnico.length === 0 ? (
+          <p className="mt-4 text-xs text-slate-400">Sin proyectos con técnico asignado.</p>
+        ) : (
+          <>
+            {/*
+              Total de la medida activa. Es la cifra que se lee primero en una
+              revisión gerencial, así que va sola y en grande, con figuras
+              proporcionales (no tabulares: eso se reserva para las columnas que
+              tienen que alinearse). El `key` fuerza que el contador vuelva a
+              correr al cambiar de medida.
+            */}
+            <div className="mt-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 px-4 py-3.5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: tecMetricaMeta.color }}
+                  />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    {tecMetricaMeta.totalLabel}
+                  </span>
+                </div>
+                <p className="mt-1 text-[26px] font-semibold leading-none tracking-tight text-slate-900">
+                  <span className="mr-1 text-lg font-medium text-slate-400">₲</span>
+                  <CountUp key={tecMetrica} to={totalTecMetrica} duration={0.9} separator="." />
+                </p>
+              </div>
+              <p className="text-right text-[11px] leading-relaxed text-slate-500">
+                {tecnicosOrdenados.length} técnico{tecnicosOrdenados.length === 1 ? "" : "s"} ·{" "}
+                {totalTecProyectos} proyecto{totalTecProyectos === 1 ? "" : "s"}
+              </p>
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-400">{tecMetricaMeta.nota}</p>
+
+            <div className="mt-3 divide-y divide-slate-100">
+              {tecnicosOrdenados.map((t, i) => {
+                const open = tecAbierto === t.tecnico;
+                const monto = montoTecnico(t);
+                const share = totalTecMetrica > 0 ? (monto / totalTecMetrica) * 100 : 0;
+                const ancho = maxTecMetrica > 0 ? Math.max(monto > 0 ? 2 : 0, (monto / maxTecMetrica) * 100) : 0;
+                return (
+                  <div key={t.tecnico} className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setTecAbierto(open ? null : t.tecnico)}
+                      aria-expanded={open}
+                      className={`group w-full rounded-lg px-2 py-2 text-left transition-colors ${
+                        open ? "bg-slate-50" : "hover:bg-slate-50/70"
+                      }`}
+                    >
+                      {/*
+                        Una sola línea con columnas alineadas: nombre a la
+                        izquierda, barra en un ancho FIJO y las cifras en
+                        columnas tabulares a la derecha. La barra acotada se lee
+                        como gráfico; estirada a todo el ancho se leía como un
+                        subrayado y le ganaba en peso visual al número.
+                      */}
+                      <div className="flex items-center gap-3">
+                        <span className="w-4 shrink-0 text-right text-[10px] font-medium tabular-nums text-slate-300">
+                          {i + 1}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${avatarClass(t.tecnico)}`}
+                        >
+                          {iniciales(t.tecnico)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-800">
+                          {nombreCapitular(t.tecnico)}
+                        </span>
+                        <div className="hidden h-1.5 w-[150px] shrink-0 overflow-hidden rounded-full bg-slate-100 md:block lg:w-[200px]">
+                          <div
+                            className="h-full rounded-full transition-[width] duration-700 ease-out"
+                            style={{
+                              width: barrasMontadas ? `${ancho}%` : "0%",
+                              background: tecMetricaMeta.color,
+                            }}
+                          />
+                        </div>
+                        <span className="w-11 shrink-0 text-right text-[11px] tabular-nums text-slate-400">
+                          {share.toFixed(1).replace(".", ",")}%
+                        </span>
+                        <span className="hidden w-16 shrink-0 text-right text-[11px] tabular-nums text-slate-400 sm:block">
+                          {t.cantidad} proy
+                        </span>
+                        {/*
+                          El importe va en tinta, no en el color de la serie: el
+                          color ya lo lleva la barra de la misma fila.
+                        */}
+                        <span className="w-28 shrink-0 text-right text-[13px] font-semibold tabular-nums text-slate-900">
+                          {fmtGs(monto)}
+                        </span>
+                      </div>
+                    </button>
+                    {open ? (
+                      <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                        <ProyectosDetalleTabla proyectos={t.proyectos} mostrarVendedor metrica={tecMetrica} />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </section>
 

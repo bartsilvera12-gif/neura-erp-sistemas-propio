@@ -74,6 +74,8 @@ type ProyectoCard = Record<string, unknown> & {
     restante_segundos: number | null;
     excedido_segundos: number | null;
   };
+  /** Se fija una sola vez, la primera vez que el proyecto llega a Entregado. */
+  primera_entrega_at?: string | null;
 };
 
 const ESTADO_ENTREGADO_CODIGO = "publicado";
@@ -121,7 +123,14 @@ type PostentregaInfo = {
 
 function getPostentregaInfo(p: ProyectoCard): PostentregaInfo | null {
   if (!isEntregado(p)) return null;
-  const desde = p.estado_actual_desde;
+  // Ancla fija: la ventana de cambios gratis corre desde la PRIMERA entrega,
+  // no desde "hace cuánto está en el estado actual" — eso se resetea si el
+  // proyecto sale de Entregado (p. ej. a Cambios solicitados) y vuelve a
+  // entrar, regalando 30 días nuevos cada vez. `estado_actual_desde` queda
+  // sólo como respaldo para proyectos ya entregados antes de que existiera
+  // `primera_entrega_at` (se completa solo la próxima vez que cambien de
+  // estado; hasta entonces sigue viéndose, sólo que sin el anclaje fijo).
+  const desde = p.primera_entrega_at ?? p.estado_actual_desde;
   if (!desde) return null;
   const desdeMs = Date.parse(desde);
   if (!Number.isFinite(desdeMs)) return null;

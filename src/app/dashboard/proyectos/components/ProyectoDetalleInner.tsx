@@ -2960,7 +2960,15 @@ export default function ProyectoDetalleInner({
             (proyecto as { proyecto_estado?: { codigo?: string } }).proyecto_estado?.codigo ?? ""
           ).toLowerCase();
           const estaEntregado = estadoCodigo === ESTADO_ENTREGADO_CODIGO;
-          const desde = (proyecto as { estado_actual_desde?: string | null }).estado_actual_desde;
+          // Ancla fija: la ventana corre desde la PRIMERA entrega, no desde
+          // "hace cuánto está en el estado actual" — eso se resetea si el
+          // proyecto sale de Entregado y vuelve a entrar. Ver el mismo
+          // razonamiento en `getPostentregaInfo` de ProyectosKanbanClient.
+          const proyectoConEntrega = proyecto as {
+            estado_actual_desde?: string | null;
+            primera_entrega_at?: string | null;
+          };
+          const desde = proyectoConEntrega.primera_entrega_at ?? proyectoConEntrega.estado_actual_desde;
           const desdeMs = typeof desde === "string" ? Date.parse(desde) : Number.NaN;
           const diaActual = Number.isFinite(desdeMs)
             ? Math.max(1, Math.floor((Date.now() - desdeMs) / (1000 * 60 * 60 * 24)) + 1)

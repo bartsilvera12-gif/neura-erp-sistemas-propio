@@ -35,7 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: proyecto, error: e1 } = await sb
       .from("proyectos")
       .select(
-        "id, titulo, estado_id, responsable_tecnico_id, responsable_comercial_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms"
+        "id, titulo, estado_id, responsable_tecnico_id, responsable_comercial_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms, primera_entrega_at"
       )
       .eq("empresa_id", empresaId)
       .eq("id", pid)
@@ -90,6 +90,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       etapa_desarrollo?: string | null;
       pausado_at?: string | null;
       pausa_acumulada_ms?: number | null;
+      primera_entrega_at?: string | null;
     };
 
     const update: Record<string, unknown> = {
@@ -128,6 +129,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       update.pausa_acumulada_ms = base + (msLaborables(cur.pausado_at as string, now) ?? 0);
       update.pausado_at = null;
       update.pausa_motivo = null;
+    }
+
+    // --- Ancla fija de la ventana de cambios gratis post-entrega -------------
+    // `primera_entrega_at` se fija UNA sola vez —la primera vez que el
+    // proyecto entra a un estado final que no es cancelación— y nunca se
+    // vuelve a tocar. Sin este anclaje, sacar el proyecto de "Entregado" para
+    // una corrección y volver a entrarlo le regalaba al cliente 30 días
+    // nuevos de cambios gratis cada vez, porque el badge se calculaba desde
+    // "hace cuánto está en el estado actual", que sí se resetea en cada
+    // transición (correcto para SLA por estado, mal para esto).
+    const esCancelacion = /cancel/i.test(est.nombre ?? "") || /cancel/i.test(est.codigo ?? "");
+    if (est.es_estado_final === true && !esCancelacion && !cur.primera_entrega_at) {
+      update.primera_entrega_at = now;
     }
 
     // --- Proyección sobre el eje técnico -------------------------------------

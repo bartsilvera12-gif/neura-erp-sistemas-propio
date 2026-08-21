@@ -13,6 +13,8 @@ import {
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
 import { PersonaSearchSelect } from "@/app/dashboard/proyectos/components/PersonaSearchSelect";
+import SpotlightCard from "@/components/reactbits/SpotlightCard";
+import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
@@ -128,15 +130,6 @@ function normalizeTab(raw: string | null | undefined): TabId {
   if (raw === "brief") return "datos";
   if ((HIDDEN_TABS as readonly string[]).includes(raw ?? "")) return "resumen";
   return (TAB_IDS as readonly string[]).includes(raw) ? (raw as TabId) : "resumen";
-}
-
-function clienteNombre(p: Record<string, unknown>): string {
-  const c = p.cliente as { empresa?: string | null; nombre_contacto?: string | null } | undefined;
-  if (!c) return "—";
-  const a = (c.empresa ?? "").trim();
-  const b = (c.nombre_contacto ?? "").trim();
-  if (a && b) return `${a} · ${b}`;
-  return a || b || "—";
 }
 
 function prioridadLabel(value: unknown): string {
@@ -1591,6 +1584,19 @@ export default function ProyectoDetalleInner({
   const esWeb = tipoIncluyeWeb(codigoTipo);
   const esSaas = tipoIncluyeSaas(codigoTipo);
   const briefCoerced = coalesceBriefData(proyecto?.brief_data);
+  // El hero del resumen los muestra en dos niveles; `clienteNombre` los pega
+  // con " · ", que sirve para una fila pero no para un encabezado.
+  const clienteRef = (proyecto?.cliente ?? null) as
+    | { empresa?: string | null; nombre_contacto?: string | null }
+    | null;
+  const clienteEmpresa = (clienteRef?.empresa ?? "").trim();
+  const clienteContacto = (clienteRef?.nombre_contacto ?? "").trim();
+  /**
+   * WhatsApp del contacto. En SaaS vive en `saas_whatsapp_contacto` y en web en
+   * la clave general del brief; se toma el primero que tenga valor.
+   */
+  const contactoWhatsapp =
+    saasForm.whatsapp_contacto.trim() || String(briefCoerced.whatsapp_contacto ?? "").trim();
   const saasModuloIds = saasForm.modulos_necesarios
     .map((modulo) => modulo.id)
     .filter((id): id is string => typeof id === "string" && id.length > 0);
@@ -1759,109 +1765,118 @@ export default function ProyectoDetalleInner({
         }
       >
         {tab === "resumen" ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className={panelCls}>
+          <div className="grid gap-4 md:grid-cols-3">
+            {/*
+              El cliente arriba y a lo ancho: es el dato que se busca primero al
+              abrir un proyecto y antes venía como una fila más de la lista,
+              con el mismo peso que "Prioridad". Nombre y contacto se copian de
+              un clic, que es lo que se pega en WhatsApp para escribirle.
+            */}
+            <SpotlightCard
+              spotlightColor="rgba(79, 174, 178, 0.12)"
+              className={`${panelCls} md:col-span-3`}
+            >
+              <div className="flex flex-wrap items-start gap-4">
+                <span
+                  aria-hidden="true"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2]/12 text-[13px] font-bold text-[#2F6E71]"
+                >
+                  {inicialesNombre(clienteEmpresa || clienteContacto)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-slate-400">Cliente</p>
+                  <div className="mt-0.5 text-[15px] font-semibold text-slate-900">
+                    <CopiarTexto valor={clienteEmpresa || clienteContacto} etiqueta="el nombre del cliente" />
+                  </div>
+                  {clienteEmpresa && clienteContacto ? (
+                    <div className="mt-0.5 text-[13px] text-slate-500">
+                      <CopiarTexto valor={clienteContacto} etiqueta="el contacto" />
+                    </div>
+                  ) : null}
+                </div>
+                {contactoWhatsapp ? (
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-slate-400">
+                      WhatsApp
+                    </p>
+                    <div className="mt-0.5 text-[13px] font-medium text-slate-800">
+                      <CopiarTexto valor={contactoWhatsapp} etiqueta="el WhatsApp" />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </SpotlightCard>
+
+            <div className={`${panelCls} md:col-span-2`}>
               <div className="flex items-center gap-2">
                 <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
-                <h2 className="text-sm font-semibold text-slate-900">Resumen del proyecto</h2>
+                <h2 className="text-sm font-semibold text-slate-900">Ficha del proyecto</h2>
               </div>
-              <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                  <dt className={labelCls}>Cliente</dt>
-                  <dd className="max-w-[60%] text-right font-medium text-slate-900">
-                    <CopiarTexto valor={clienteNombre(proyecto)} etiqueta="el nombre del cliente" />
-                  </dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                  <dt className={labelCls}>Vendedor / comercial</dt>
-                  <dd className="text-right font-medium text-slate-900">
-                    {(proyecto as { responsable_comercial?: { nombre?: string } }).responsable_comercial?.nombre ?? "—"}
-                  </dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                  <dt className={labelCls}>Técnico responsable</dt>
-                  <dd className="text-right font-medium text-slate-900">
-                    {(proyecto as { responsable_tecnico?: { nombre?: string } }).responsable_tecnico?.nombre ?? "—"}
-                  </dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                  <dt className={labelCls}>Fecha prometida</dt>
-                  <dd className="text-right font-medium text-slate-900">
-                    {proyecto.fecha_prometida != null && String(proyecto.fecha_prometida).trim() !== ""
-                      ? formatFechaPyFull(String(proyecto.fecha_prometida))
-                      : "—"}
-                  </dd>
-                </div>
+
+              <div className="mt-4 grid gap-x-6 gap-y-3.5 sm:grid-cols-2">
+                <DatoResumen etiqueta="Asesor comercial">
+                  {nombreCapitular(
+                    (proyecto as { responsable_comercial?: { nombre?: string } }).responsable_comercial?.nombre
+                  )}
+                </DatoResumen>
+                <DatoResumen etiqueta="Técnico responsable">
+                  {nombreCapitular(
+                    (proyecto as { responsable_tecnico?: { nombre?: string } }).responsable_tecnico?.nombre
+                  )}
+                </DatoResumen>
+                <DatoResumen etiqueta="Fecha prometida">
+                  {proyecto.fecha_prometida != null && String(proyecto.fecha_prometida).trim() !== ""
+                    ? formatFechaPyFull(String(proyecto.fecha_prometida))
+                    : "—"}
+                </DatoResumen>
+                <DatoResumen etiqueta="Prioridad">{prioridadLabel(proyecto.prioridad)}</DatoResumen>
+
                 {esSaas ? (
                   <>
-                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                      <dt className={labelCls}>Empresa SaaS / ERP</dt>
-                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
-                        {saasForm.empresa_nombre.trim() || "—"}
-                      </dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                      <dt className={labelCls}>Módulos necesarios</dt>
-                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
-                        {saasForm.modulos_necesarios.length > 0
-                          ? saasForm.modulos_necesarios.map((m) => m.nombre).join(", ")
-                          : "—"}
-                      </dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                      <dt className={labelCls}>WhatsApp contacto</dt>
-                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
-                        <CopiarTexto valor={saasForm.whatsapp_contacto} etiqueta="el contacto" />
-                      </dd>
-                    </div>
+                    <DatoResumen etiqueta="Empresa SaaS / ERP">
+                      {saasForm.empresa_nombre.trim() || "—"}
+                    </DatoResumen>
+                    <DatoResumen etiqueta="Módulos necesarios" ancho>
+                      {saasForm.modulos_necesarios.length > 0
+                        ? saasForm.modulos_necesarios.map((m) => m.nombre).join(", ")
+                        : "—"}
+                    </DatoResumen>
                   </>
                 ) : (
                   <>
-                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                      <dt className={labelCls}>Nombre de la marca</dt>
-                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
-                        {(briefCoerced.marca || "").trim() || "—"}
-                      </dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                      <dt className={labelCls}>Dominio a usar</dt>
-                      <dd className="max-w-[55%] break-all text-right font-medium text-slate-900">
-                        {(briefCoerced.dominio_usar || "").trim() || "—"}
-                      </dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
-                      <dt className={labelCls}>Tipo de web</dt>
-                      <dd className="max-w-[55%] text-right font-medium text-slate-900">
-                        {(briefCoerced.tipo_web || "").trim() || "—"}
-                      </dd>
-                    </div>
+                    <DatoResumen etiqueta="Nombre de la marca">
+                      {(briefCoerced.marca || "").trim() || "—"}
+                    </DatoResumen>
+                    <DatoResumen etiqueta="Tipo de web">
+                      {(briefCoerced.tipo_web || "").trim() || "—"}
+                    </DatoResumen>
+                    <DatoResumen etiqueta="Dominio a usar" ancho>
+                      {(briefCoerced.dominio_usar || "").trim() ? (
+                        <CopiarTexto valor={briefCoerced.dominio_usar} etiqueta="el dominio" />
+                      ) : (
+                        "—"
+                      )}
+                    </DatoResumen>
                   </>
                 )}
-                <div className="flex items-baseline justify-between gap-3">
-                  <dt className={labelCls}>Prioridad</dt>
-                  <dd className="text-right font-medium text-slate-900">{prioridadLabel(proyecto.prioridad)}</dd>
-                </div>
-              </dl>
+              </div>
             </div>
+
+            {/*
+              SLA como tarjetas y no como filas: son tres magnitudes que se
+              comparan entre sí, y en una lista de etiqueta/valor los números
+              quedaban perdidos contra el texto.
+            */}
             <div className={panelCls}>
               <div className="flex items-center gap-2">
                 <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
                 <h2 className="text-sm font-semibold text-slate-900">SLA acumulado</h2>
               </div>
-              <dl className="mt-4 space-y-3 text-sm">
-                <div className="flex items-baseline justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
-                  <dt className={labelCls}>Tiempo interno</dt>
-                  <dd className="font-semibold tabular-nums text-slate-900">{slaFmt?.interno}</dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
-                  <dt className={labelCls}>Espera cliente</dt>
-                  <dd className="font-semibold tabular-nums text-slate-900">{slaFmt?.cliente}</dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
-                  <dt className={labelCls}>Pausado</dt>
-                  <dd className="font-semibold tabular-nums text-slate-900">{slaFmt?.pausado}</dd>
-                </div>
-              </dl>
+              <div className="mt-4 space-y-2">
+                <TileSla etiqueta="Tiempo interno" valor={slaFmt?.interno} tono="teal" />
+                <TileSla etiqueta="Espera cliente" valor={slaFmt?.cliente} tono="ambar" />
+                <TileSla etiqueta="Pausado" valor={slaFmt?.pausado} tono="gris" />
+              </div>
             </div>
 
             {qaResumen && qaResumen.total > 0 ? (
@@ -3479,5 +3494,53 @@ function CopiarTexto({ valor, etiqueta }: { valor: string | null | undefined; et
         )}
       </button>
     </span>
+  );
+}
+
+/**
+ * Campo del resumen: etiqueta arriba y valor abajo, en dos columnas.
+ *
+ * Antes era etiqueta a la izquierda y valor pegado a la derecha, y con nombres
+ * largos el valor se partía en dos líneas dejando un hueco raro en el medio.
+ * Apilado, cada campo ocupa el ancho de su columna y se lee de corrido.
+ */
+function DatoResumen({
+  etiqueta,
+  ancho,
+  children,
+}: {
+  etiqueta: string;
+  /** Ocupa las dos columnas: para valores largos (dominios, listas de módulos). */
+  ancho?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={ancho ? "sm:col-span-2" : undefined}>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">{etiqueta}</p>
+      <div className="mt-0.5 break-words text-[13px] font-medium text-slate-900">{children}</div>
+    </div>
+  );
+}
+
+/** Tarjeta de un tramo de SLA. El tono separa "nuestro tiempo" del "del cliente". */
+function TileSla({
+  etiqueta,
+  valor,
+  tono,
+}: {
+  etiqueta: string;
+  valor: string | undefined;
+  tono: "teal" | "ambar" | "gris";
+}) {
+  const estilos = {
+    teal: "border-[#4FAEB2]/25 bg-[#4FAEB2]/8 text-[#2F6E71]",
+    ambar: "border-amber-200 bg-amber-50 text-amber-700",
+    gris: "border-slate-200 bg-slate-50 text-slate-500",
+  }[tono];
+  return (
+    <div className={`flex items-baseline justify-between gap-2 rounded-xl border px-3 py-2.5 ${estilos}`}>
+      <span className="text-[11px] font-medium">{etiqueta}</span>
+      <span className="text-[15px] font-bold tabular-nums text-slate-900">{valor ?? "—"}</span>
+    </div>
   );
 }

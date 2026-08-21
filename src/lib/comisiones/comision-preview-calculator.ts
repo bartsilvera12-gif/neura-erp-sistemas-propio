@@ -77,7 +77,9 @@ export async function cargarNombresUsuarios(
   const uniq = [...new Set(ids)].filter(Boolean);
   const map = new Map<string, string>();
   if (uniq.length === 0) return map;
-  const chunk = 120;
+  // 50, no más: el gateway (api.neura.com.py) devuelve HTML 502 cuando la URL
+  // del `.in()` supera ~3.5KB (~90 UUIDs). Con 50 queda ~1.6KB, seguro.
+  const chunk = 50;
   for (let i = 0; i < uniq.length; i += chunk) {
     const slice = uniq.slice(i, i + chunk);
     const { data, error } = await catalog.from("usuarios").select("id, nombre, email").in("id", slice);

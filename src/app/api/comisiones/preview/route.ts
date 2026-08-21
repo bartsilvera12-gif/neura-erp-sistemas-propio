@@ -66,6 +66,12 @@ type OverrideRow = {
 
 const PAGE = 800;
 
+// Tamaño de lote para filtros `.in("col", [uuids])`. El gateway
+// (api.neura.com.py / Kong) rechaza URLs largas: medido en prod, un `.in()`
+// con ~90 UUIDs (URL ≳ 3.5KB) devuelve una página HTML 502 en vez de datos.
+// Con 50 la URL queda ~1.6KB, bien por debajo del límite. NO subir sin re-medir.
+const IN_CHUNK = 50;
+
 const ALERTA_NC_OMITIDA =
   "No se pudieron considerar notas de crédito en esta preview para este schema. El neto de factura se calcula sin descontar NC.";
 
@@ -432,8 +438,8 @@ export async function GET(request: Request) {
 
       const facturaIds = [...new Set(pagos.map((p) => String(p.factura_id ?? "")).filter(Boolean))];
       const facturasPorId = new Map<string, FacturaPreviewRow>();
-      for (let i = 0; i < facturaIds.length; i += 120) {
-        const slice = facturaIds.slice(i, i + 120);
+      for (let i = 0; i < facturaIds.length; i += IN_CHUNK) {
+        const slice = facturaIds.slice(i, i + IN_CHUNK);
         const { data: facts, error } = await sb.from("facturas").select("*").eq("empresa_id", empresaId).in("id", slice);
         if (error) throw new Error(error.message);
         for (const f of facts ?? []) {
@@ -448,8 +454,8 @@ export async function GET(request: Request) {
         ...new Set([...facturasPorId.values()].map((f) => String(f.cliente_id ?? "")).filter(Boolean)),
       ];
       const histPorCliente = new Map<string, { fecha: string; valida: boolean }[]>();
-      for (let i = 0; i < clienteIdsScope.length; i += 120) {
-        const slice = clienteIdsScope.slice(i, i + 120);
+      for (let i = 0; i < clienteIdsScope.length; i += IN_CHUNK) {
+        const slice = clienteIdsScope.slice(i, i + IN_CHUNK);
         const { data: hist, error } = await sb
           .from("facturas")
           .select("cliente_id, fecha, estado")
@@ -541,8 +547,8 @@ export async function GET(request: Request) {
 
       const pagosPeriodoPorFactura = new Map<string, number>();
       const facturaIds = [...new Set(facturas.map((f) => String(f.id ?? "")).filter(Boolean))];
-      for (let i = 0; i < facturaIds.length; i += 120) {
-        const slice = facturaIds.slice(i, i + 120);
+      for (let i = 0; i < facturaIds.length; i += IN_CHUNK) {
+        const slice = facturaIds.slice(i, i + IN_CHUNK);
         const { data: pagosPeriodo, error } = await sb
           .from("pagos")
           .select("factura_id, monto, fecha_pago")
@@ -628,8 +634,8 @@ export async function GET(request: Request) {
       );
 
       const facturaIds = candidatos.map(([id]) => id);
-      for (let i = 0; i < facturaIds.length; i += 80) {
-        const slice = facturaIds.slice(i, i + 80);
+      for (let i = 0; i < facturaIds.length; i += IN_CHUNK) {
+        const slice = facturaIds.slice(i, i + IN_CHUNK);
         const { data: facts, error } = await sb.from("facturas").select("*").eq("empresa_id", empresaId).in("id", slice);
         if (error) throw new Error(error.message);
         for (const row of facts ?? []) {

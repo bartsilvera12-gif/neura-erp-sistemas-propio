@@ -30,7 +30,6 @@ import {
   IconTrash,
   fechaRelativa,
   iniciales,
-  textoSobre,
 } from "./ui";
 
 type Props = {
@@ -62,6 +61,47 @@ type Props = {
 
 const LABEL_CLS = "text-[11px] font-medium uppercase tracking-wide text-slate-500";
 
+/**
+ * Bloque blanco con título, que es la unidad visual del rediseño: cada parte de
+ * la incidencia (Descripción, Capturas, Conversación, Información) vive en una
+ * tarjeta sobre el fondo gris, en vez de ser una lista continua de campos.
+ */
+function Tarjeta({
+  titulo,
+  subtitulo,
+  children,
+}: {
+  titulo: string;
+  subtitulo?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <h3 className="text-[13px] font-semibold text-slate-900">{titulo}</h3>
+      {subtitulo ? (
+        <p className="mb-2 mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+          <IconPersonas />
+          {subtitulo}
+        </p>
+      ) : (
+        <div className="mb-2" />
+      )}
+      {children}
+    </section>
+  );
+}
+
+/** Dos siluetas: acompaña al "Visible para QA y Desarrollo". */
+function IconPersonas() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" strokeLinecap="round" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** Candado del chip "Privado": el ícono refuerza el mensaje sin depender del color. */
 function IconCandado() {
   return (
@@ -92,9 +132,7 @@ export default function ObservacionModal({
 
   const [comentarios, setComentarios] = useState<QAComentario[]>([]);
   const [comentariosCargando, setComentariosCargando] = useState(true);
-  // Dos borradores, uno por carril: lo que se está tipeando en "Nota de QA" no
-  // se mezcla con lo que se está tipeando en "Respuesta del técnico".
-  const [nuevoComentarioQa, setNuevoComentarioQa] = useState("");
+  /** Borrador de la conversación técnica: uno solo, lo escriba QA o Desarrollo. */
   const [nuevoComentarioTecnico, setNuevoComentarioTecnico] = useState("");
   const [nuevoComentarioInterno, setNuevoComentarioInterno] = useState("");
 
@@ -105,16 +143,21 @@ export default function ObservacionModal({
   // El carril lo decide `origen` (en qué caja se escribió), no el autor: los
   // comentarios de antes de esta funcionalidad no tienen `origen` propio y
   // quedaron migrados a "qa" — ver la nota en la migración.
-  // Comparación explícita por carril. Antes era `origen !== "tecnico"`, que con
-  // sólo dos valores funcionaba; al aparecer 'interno' habría metido el hilo
-  // privado dentro de las notas de QA.
-  const comentariosQa = useMemo(() => comentarios.filter((c) => c.origen === "qa"), [comentarios]);
   const comentariosInternos = useMemo(
     () => comentarios.filter((c) => c.origen === "interno"),
     [comentarios]
   );
-  const comentariosTecnico = useMemo(
-    () => comentarios.filter((c) => c.origen === "tecnico"),
+  /**
+   * Conversación técnica: QA y Desarrollo en un solo hilo, ordenados por fecha.
+   * Se lee como una conversación y no como dos monólogos en paralelo. El hilo
+   * interno queda fuera a propósito: tiene su propio panel.
+   */
+  const comentariosTecnicos = useMemo(
+    () =>
+      comentarios
+        .filter((c) => c.origen === "qa" || c.origen === "tecnico")
+        .slice()
+        .sort((x, y) => x.created_at.localeCompare(y.created_at)),
     [comentarios]
   );
 
@@ -244,9 +287,10 @@ export default function ObservacionModal({
    * era un solo hilo.
    */
   async function publicarComentario(origen: QAComentarioOrigen) {
-    const texto = (
-      origen === "qa" ? nuevoComentarioQa : origen === "interno" ? nuevoComentarioInterno : nuevoComentarioTecnico
-    ).trim();
+    // La conversación técnica tiene UNA sola caja —la escriban QA o
+    // Desarrollo—, así que `qa` y `tecnico` comparten borrador. El origen sale
+    // del rol de quien escribe, no de en qué caja tipeó.
+    const texto = (origen === "interno" ? nuevoComentarioInterno : nuevoComentarioTecnico).trim();
     if (!texto || enviandoRef.current) return;
     enviandoRef.current = true;
     try {
@@ -264,8 +308,7 @@ export default function ObservacionModal({
         return;
       }
       setErr(null);
-      if (origen === "qa") setNuevoComentarioQa("");
-      else if (origen === "interno") setNuevoComentarioInterno("");
+      if (origen === "interno") setNuevoComentarioInterno("");
       else setNuevoComentarioTecnico("");
       setComentarios((prev) => {
         const next = [...prev, j.data as QAComentario];
@@ -342,6 +385,7 @@ export default function ObservacionModal({
   const seccionActual = obs.seccion_id
     ? secciones.find((s) => s.id === obs.seccion_id) ?? null
     : null;
+  const estadoActual = QA_ESTADOS.find((e) => e.codigo === obs.estado) ?? null;
 
   return (
     <div
@@ -353,33 +397,51 @@ export default function ObservacionModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-2xl">
-        {/* Cabecera */}
-        <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 sm:px-5">
-          <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-slate-600">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[92vh] sm:max-w-6xl sm:rounded-2xl">
+        {/* ---------------------------------------------------------------
+            Cabecera: código, título, y los dos chips que dicen de un vistazo
+            qué se está mirando (qué vista) y en qué estado está la incidencia.
+        ---------------------------------------------------------------- */}
+        <div className="flex shrink-0 items-start gap-3 border-b border-slate-200 px-5 py-3.5">
+          <span className="mt-0.5 shrink-0 rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] font-semibold tabular-nums text-slate-600">
             {qaCodigoObservacion(obs.numero)}
           </span>
-          {seccionActual ? (
-            <span
-              className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-              style={
-                seccionActual.color
-                  ? { backgroundColor: seccionActual.color, color: textoSobre(seccionActual.color) }
-                  : { backgroundColor: "#f1f5f9", color: "#475569" }
-              }
-            >
-              {seccionActual.nombre}
-            </span>
-          ) : null}
-          <div className="ml-auto flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => void eliminarObservacion()}
-              className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
-              aria-label="Eliminar observación"
-            >
-              <IconTrash />
-            </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="truncate text-lg font-bold uppercase tracking-tight text-slate-900">
+                {obs.titulo}
+              </h2>
+              <span
+                className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                  vista === "qa"
+                    ? "border-violet-200 bg-violet-50 text-violet-700"
+                    : "border-sky-200 bg-sky-50 text-sky-700"
+                }`}
+              >
+                {vista === "qa" ? "Vista de QA" : "Vista de Desarrollo"}
+              </span>
+              <span
+                className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                style={{ backgroundColor: estadoActual?.color ?? "#94a3b8" }}
+              >
+                {estadoActual?.label ?? obs.estado}
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-[12px] text-slate-500">
+              {seccionActual ? seccionActual.nombre : "Sin sección"}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {vista === "qa" ? (
+              <button
+                type="button"
+                onClick={() => void eliminarObservacion()}
+                className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                aria-label="Eliminar observación"
+              >
+                <IconTrash />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -390,338 +452,344 @@ export default function ObservacionModal({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
-          {err ? <p className="text-xs text-rose-600">{err}</p> : null}
+        {/* ---------------------------------------------------------------
+            Cuerpo en dos columnas: a la izquierda el contenido de la
+            incidencia (lo que se lee), a la derecha los campos y el hilo
+            interno (lo que se opera). En pantallas angostas se apila.
+        ---------------------------------------------------------------- */}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/60 px-5 py-4">
+          {err ? <p className="mb-3 text-xs text-rose-600">{err}</p> : null}
 
-          {/*
-            Estados. "Verificado" y "Descartado" son el veredicto de QA: el
-            técnico no puede dárselos a sí mismo. Él marca "Resuelto", que es
-            pedir la revisión. El corte también está en la API.
-          */}
-          <div className="flex flex-wrap gap-1.5">
-            {QA_ESTADOS.filter(
-              (e) => vista === "qa" || (e.codigo !== "verificado" && e.codigo !== "descartado")
-            ).map((e) => {
-              const activo = obs.estado === e.codigo;
-              return (
-                <button
-                  key={e.codigo}
-                  type="button"
-                  onClick={() => void cambiarEstado(e.codigo)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    activo
-                      ? "border-transparent text-white"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                  }`}
-                  style={activo ? { backgroundColor: e.color } : undefined}
-                >
-                  {e.label}
-                </button>
-              );
-            })}
-          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {/* ------------------------- IZQUIERDA ------------------------- */}
+            <div className="space-y-4 lg:col-span-2">
+              <Tarjeta titulo="Descripción">
+                <input
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                  onBlur={() => {
+                    const t = titulo.trim();
+                    if (!t) {
+                      setTitulo(obs.titulo);
+                      return;
+                    }
+                    if (t !== obs.titulo) void guardar({ titulo: t });
+                  }}
+                  className={`${INPUT_CLS} font-medium`}
+                  placeholder="Qué hay que ajustar"
+                />
+                <textarea
+                  value={descripcion}
+                  onChange={(e) => setDescripcion(e.target.value)}
+                  onBlur={() => {
+                    if (descripcion !== (obs.descripcion ?? "")) void guardar({ descripcion });
+                  }}
+                  rows={5}
+                  className={`${INPUT_CLS} mt-2 min-h-[110px] resize-y`}
+                  placeholder="Detalle del ajuste. Podés pegar la captura acá con Ctrl/Cmd+V."
+                />
+              </Tarjeta>
 
-          <p className="text-[11px] text-slate-400">
-            {obs.resuelto_at
-              ? `Resuelta por ${obs.resuelto_por_nombre ?? "—"} · ${fechaRelativa(obs.resuelto_at)}`
-              : "Todavía sin resolver"}
-            {obs.verificado_at
-              ? ` · Verificada por ${obs.verificado_por_nombre ?? "—"} · ${fechaRelativa(obs.verificado_at)}`
-              : ""}
-          </p>
+              <Tarjeta titulo="Capturas">
+                {imagenes.length > 0 ? (
+                  <ul className="mb-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {imagenes.map((a, idx) => (
+                      <li key={a.id} className="group relative">
+                        <button
+                          type="button"
+                          onClick={() => setLightboxIdx(idx)}
+                          className="block aspect-square w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                          aria-label={`Ver ${a.nombre}`}
+                        >
+                          {a.url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={a.url} alt={a.nombre} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="flex h-full w-full items-center justify-center text-slate-300">
+                              <IconImage size={20} />
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void eliminarArchivo(a)}
+                          aria-label={`Eliminar ${a.nombre}`}
+                          className="absolute right-1 top-1 hidden rounded-md bg-white/90 p-1 text-slate-500 shadow-sm transition-colors hover:text-rose-600 group-hover:block"
+                        >
+                          <IconTrash size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
 
-          {/* Título + descripción */}
-          <div className="space-y-2">
-            <input
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              onBlur={() => {
-                const t = titulo.trim();
-                if (!t) {
-                  setTitulo(obs.titulo);
-                  return;
-                }
-                if (t !== obs.titulo) void guardar({ titulo: t });
-              }}
-              className={`${INPUT_CLS} text-base font-medium`}
-              placeholder="Qué hay que ajustar"
-            />
-            <textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              onBlur={() => {
-                if (descripcion !== (obs.descripcion ?? "")) void guardar({ descripcion });
-              }}
-              rows={4}
-              className={`${INPUT_CLS} min-h-[96px] resize-y`}
-              placeholder="Detalle del ajuste. Podés pegar la captura acá con Ctrl/Cmd+V."
-            />
-          </div>
+                {adjuntosNoImagen.length > 0 ? (
+                  <ul className="mb-2 space-y-1">
+                    {adjuntosNoImagen.map((a) => (
+                      <li
+                        key={a.id}
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs"
+                      >
+                        <a
+                          href={a.url ?? "#"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="min-w-0 flex-1 truncate text-slate-700 hover:text-[#3F8E91]"
+                        >
+                          {a.nombre}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => void eliminarArchivo(a)}
+                          className="rounded-md p-1 text-slate-400 transition-colors hover:text-rose-600"
+                          aria-label={`Eliminar ${a.nombre}`}
+                        >
+                          <IconTrash size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
 
-          {/* Metadatos */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <span className={LABEL_CLS}>Sección</span>
-              <SeccionCombobox
-                secciones={secciones}
-                valor={obs.seccion_id}
-                onElegir={(id) => void guardar({ seccion_id: id })}
-                onCrear={(nombre) => void crearYAsignarSeccion(nombre)}
-              />
-            </div>
+                <QAImageDropzone
+                  id={obsId}
+                  capturarPaste={lightboxIdx === null}
+                  subiendo={subiendo}
+                  onArchivos={(archivos) => void subirArchivos(archivos)}
+                />
+              </Tarjeta>
 
-            <div>
-              <span className={LABEL_CLS}>Asignada a</span>
-              <div className="mt-1.5">
-                <FiltroSelect
-                  etiqueta="Asignada a"
-                  valor={obs.asignado_a ?? ""}
-                  activo={Boolean(obs.asignado_a)}
-                  bloque
-                  onChange={(v) => void guardar({ asignado_a: v || null })}
-                >
-                  <option value="">Sin asignar</option>
-                  {usuarios.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {(u.nombre ?? "").trim() || (u.email ?? "").trim() || "Usuario"}
-                    </option>
-                  ))}
-                </FiltroSelect>
-              </div>
-            </div>
-
-            <div>
-              <span className={LABEL_CLS}>Severidad</span>
-              <div className="mt-1.5">
-                <FiltroSelect
-                  etiqueta="Severidad"
-                  valor={obs.severidad}
-                  activo={obs.severidad === "bloqueante" || obs.severidad === "alta"}
-                  bloque
-                  onChange={(v) => void guardar({ severidad: v as QAObservacionSeveridad })}
-                >
-                  {QA_SEVERIDADES.map((s) => (
-                    <option key={s.codigo} value={s.codigo}>
-                      {s.label}
-                    </option>
-                  ))}
-                </FiltroSelect>
-              </div>
-            </div>
-
-            <div>
-              <span className={LABEL_CLS}>Origen</span>
-              <div className="mt-1.5">
-                <FiltroSelect
-                  etiqueta="Origen"
-                  valor={obs.origen}
-                  activo={obs.origen === "cliente"}
-                  bloque
-                  onChange={(v) => void guardar({ origen: v as QAObservacionOrigen })}
-                >
-                  {QA_ORIGENES.map((o) => (
-                    <option key={o.codigo} value={o.codigo}>
-                      {o.label}
-                    </option>
-                  ))}
-                </FiltroSelect>
-              </div>
-            </div>
-
-            <div>
-              <span className={LABEL_CLS}>Fecha límite</span>
-              <input
-                type="date"
-                value={obs.fecha_limite ?? ""}
-                onChange={(e) => void guardar({ fecha_limite: e.target.value || null })}
-                className={`${INPUT_CLS} mt-1.5 py-2`}
-              />
-            </div>
-
-            <div>
-              <span className={LABEL_CLS}>URL de referencia</span>
-              <input
-                value={urlRef}
-                onChange={(e) => setUrlRef(e.target.value)}
-                onBlur={() => {
-                  if (urlRef.trim() !== (obs.url_referencia ?? "")) {
-                    void guardar({ url_referencia: urlRef.trim() || null });
+              {/*
+                Conversación técnica: UN solo hilo con QA y Desarrollo
+                intercalados por fecha, como se lee una conversación. El carril
+                del mensaje ya no depende de en qué caja se escribió sino de
+                QUIÉN escribe: antes había dos cajas y cualquiera podía publicar
+                haciéndose pasar por el otro.
+              */}
+              <Tarjeta titulo="Conversación técnica" subtitulo="Visible para QA y Desarrollo">
+                <HiloComentario
+                  titulo=""
+                  colorAvatar="bg-[#4FAEB2]/15 text-[#3F8E91]"
+                  colorAcento="border-l-[#4FAEB2]"
+                  comentarios={comentariosTecnicos}
+                  cargando={comentariosCargando}
+                  vacio="Todavía no hay mensajes."
+                  borrador={nuevoComentarioTecnico}
+                  onBorrador={setNuevoComentarioTecnico}
+                  placeholder={
+                    vista === "qa"
+                      ? "Escribí una indicación para el técnico… (Ctrl/Cmd+Enter para enviar)"
+                      : "Escribí una actualización para QA… (Ctrl/Cmd+Enter para enviar)"
                   }
-                }}
-                placeholder="https://…"
-                className={`${INPUT_CLS} mt-1.5`}
-              />
+                  onEnviar={() => void publicarComentario(vista === "qa" ? "qa" : "tecnico")}
+                  onEliminar={(c) => void eliminarComentario(c)}
+                />
+              </Tarjeta>
+            </div>
+
+            {/* ------------------------- DERECHA ------------------------- */}
+            <div className="space-y-4">
+              <Tarjeta titulo="Información">
+                <div className="space-y-3">
+                  <div>
+                    <span className={LABEL_CLS}>Estado</span>
+                    <div className="mt-1.5 flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                      {QA_ESTADOS.filter(
+                        (e) => vista === "qa" || (e.codigo !== "verificado" && e.codigo !== "descartado")
+                      ).map((e) => {
+                        const activo = obs.estado === e.codigo;
+                        return (
+                          <button
+                            key={e.codigo}
+                            type="button"
+                            onClick={() => void cambiarEstado(e.codigo)}
+                            className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+                              activo ? "text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            }`}
+                            style={activo ? { backgroundColor: e.color } : undefined}
+                          >
+                            {e.corto}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className={LABEL_CLS}>Asignado a</span>
+                    <div className="mt-1.5">
+                      <FiltroSelect
+                        etiqueta="Asignada a"
+                        valor={obs.asignado_a ?? ""}
+                        activo={Boolean(obs.asignado_a)}
+                        bloque
+                        onChange={(v) => void guardar({ asignado_a: v || null })}
+                      >
+                        <option value="">Sin asignar</option>
+                        {usuarios.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {(u.nombre ?? "").trim() || (u.email ?? "").trim() || "Usuario"}
+                          </option>
+                        ))}
+                      </FiltroSelect>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className={LABEL_CLS}>Sección</span>
+                    <div className="mt-1.5">
+                      <SeccionCombobox
+                        secciones={secciones}
+                        valor={obs.seccion_id}
+                        onElegir={(id) => void guardar({ seccion_id: id })}
+                        onCrear={(nombre) => void crearYAsignarSeccion(nombre)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className={LABEL_CLS}>Severidad</span>
+                      <div className="mt-1.5">
+                        <FiltroSelect
+                          etiqueta="Severidad"
+                          valor={obs.severidad}
+                          activo={obs.severidad === "bloqueante" || obs.severidad === "alta"}
+                          bloque
+                          onChange={(v) => void guardar({ severidad: v as QAObservacionSeveridad })}
+                        >
+                          {QA_SEVERIDADES.map((sv) => (
+                            <option key={sv.codigo} value={sv.codigo}>
+                              {sv.label}
+                            </option>
+                          ))}
+                        </FiltroSelect>
+                      </div>
+                    </div>
+                    <div>
+                      <span className={LABEL_CLS}>Origen</span>
+                      <div className="mt-1.5">
+                        <FiltroSelect
+                          etiqueta="Origen"
+                          valor={obs.origen}
+                          activo={obs.origen === "cliente"}
+                          bloque
+                          onChange={(v) => void guardar({ origen: v as QAObservacionOrigen })}
+                        >
+                          {QA_ORIGENES.map((o) => (
+                            <option key={o.codigo} value={o.codigo}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </FiltroSelect>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className={LABEL_CLS}>Fecha límite</span>
+                    <input
+                      type="date"
+                      value={obs.fecha_limite ?? ""}
+                      onChange={(e) => void guardar({ fecha_limite: e.target.value || null })}
+                      className={`${INPUT_CLS} mt-1.5 py-2`}
+                    />
+                  </div>
+
+                  <div>
+                    <span className={LABEL_CLS}>URL de referencia</span>
+                    <input
+                      value={urlRef}
+                      onChange={(e) => setUrlRef(e.target.value)}
+                      onBlur={() => {
+                        if (urlRef.trim() !== (obs.url_referencia ?? "")) {
+                          void guardar({ url_referencia: urlRef.trim() || null });
+                        }
+                      }}
+                      placeholder="https://…"
+                      className={`${INPUT_CLS} mt-1.5`}
+                    />
+                  </div>
+                </div>
+              </Tarjeta>
+
+              {/*
+                Seguimiento interno: hilo privado PM ↔ QA. Sólo se dibuja para
+                quien tiene el permiso, pero lo que de verdad lo protege es la
+                API — a Desarrollo estos comentarios no le llegan siquiera en la
+                respuesta. Ver `qa-permisos.ts`.
+              */}
+              {puedeVerInterno ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h4 className="text-[13px] font-semibold text-slate-900">Seguimiento interno</h4>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                      <IconCandado />
+                      Privado · Solo PM y QA
+                    </span>
+                  </div>
+                  <HiloComentario
+                    titulo=""
+                    colorAvatar="bg-amber-100 text-amber-700"
+                    colorAcento="border-l-amber-400"
+                    comentarios={comentariosInternos}
+                    cargando={comentariosCargando}
+                    vacio="Sin comentarios internos."
+                    borrador={nuevoComentarioInterno}
+                    onBorrador={setNuevoComentarioInterno}
+                    placeholder="Agregar comentario interno… (Ctrl/Cmd+Enter para enviar)"
+                    onEnviar={() => void publicarComentario("interno")}
+                    onEliminar={(c) => void eliminarComentario(c)}
+                  />
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    Este contenido no es visible para Desarrollo.
+                  </p>
+                </div>
+              ) : null}
             </div>
           </div>
-
-          {/* Galería */}
-          <div className="space-y-2">
-            <span className={LABEL_CLS}>Capturas</span>
-            {imagenes.length > 0 ? (
-              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {imagenes.map((a, idx) => (
-                  <li key={a.id} className="group relative">
-                    <button
-                      type="button"
-                      onClick={() => setLightboxIdx(idx)}
-                      className="block aspect-square w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                      aria-label={`Ver ${a.nombre}`}
-                    >
-                      {a.url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={a.url} alt={a.nombre} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-slate-300">
-                          <IconImage size={20} />
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void eliminarArchivo(a)}
-                      aria-label={`Eliminar ${a.nombre}`}
-                      className="absolute right-1 top-1 hidden rounded-md bg-white/90 p-1 text-slate-500 shadow-sm transition-colors hover:text-rose-600 group-hover:block"
-                    >
-                      <IconTrash size={12} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            {adjuntosNoImagen.length > 0 ? (
-              <ul className="space-y-1">
-                {adjuntosNoImagen.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs"
-                  >
-                    <a
-                      href={a.url ?? "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="min-w-0 flex-1 truncate text-slate-700 hover:text-[#3F8E91]"
-                    >
-                      {a.nombre}
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => void eliminarArchivo(a)}
-                      className="rounded-md p-1 text-slate-400 transition-colors hover:text-rose-600"
-                      aria-label={`Eliminar ${a.nombre}`}
-                    >
-                      <IconTrash size={12} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            <QAImageDropzone
-              id={obsId}
-              capturarPaste={lightboxIdx === null}
-              subiendo={subiendo}
-              onArchivos={(archivos) => void subirArchivos(archivos)}
-            />
-          </div>
-
-          {/* Comentarios — dos carriles separados: lo que registra QA y lo que
-              responde el técnico, cada uno con su propia lista y su propia
-              caja de texto. Antes era un solo hilo mezclado. */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <HiloComentario
-              titulo="Nota de QA"
-              colorAvatar="bg-[#4FAEB2]/15 text-[#3F8E91]"
-              colorAcento="border-l-[#4FAEB2]"
-              comentarios={comentariosQa}
-              cargando={comentariosCargando}
-              vacio="Sin notas de QA todavía."
-              borrador={nuevoComentarioQa}
-              onBorrador={setNuevoComentarioQa}
-              placeholder="Nota para el técnico… (Ctrl/Cmd+Enter para enviar)"
-              onEnviar={() => void publicarComentario("qa")}
-              onEliminar={(c) => void eliminarComentario(c)}
-            />
-            <HiloComentario
-              titulo="Respuesta del técnico"
-              colorAvatar="bg-violet-100 text-violet-700"
-              colorAcento="border-l-violet-400"
-              comentarios={comentariosTecnico}
-              cargando={comentariosCargando}
-              vacio="Sin respuestas del técnico todavía."
-              borrador={nuevoComentarioTecnico}
-              onBorrador={setNuevoComentarioTecnico}
-              placeholder="Respuesta para QA… (Ctrl/Cmd+Enter para enviar)"
-              onEnviar={() => void publicarComentario("tecnico")}
-              onEliminar={(c) => void eliminarComentario(c)}
-            />
-          </div>
-
-          {/*
-            Seguimiento interno: hilo privado entre Project Manager y QA. Sólo
-            se dibuja para quien tiene el permiso, pero lo que de verdad lo
-            protege es la API — a Desarrollo estos comentarios no le llegan
-            siquiera en la respuesta. Ver `qa-permisos.ts`.
-          */}
-          {puedeVerInterno ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <h4 className="text-[13px] font-semibold text-slate-900">Seguimiento interno</h4>
-                <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                  <IconCandado />
-                  Privado · Solo PM y QA
-                </span>
-              </div>
-              <HiloComentario
-                titulo=""
-                colorAvatar="bg-amber-100 text-amber-700"
-                colorAcento="border-l-amber-400"
-                comentarios={comentariosInternos}
-                cargando={comentariosCargando}
-                vacio="Sin comentarios internos."
-                borrador={nuevoComentarioInterno}
-                onBorrador={setNuevoComentarioInterno}
-                placeholder="Agregar comentario interno… (Ctrl/Cmd+Enter para enviar)"
-                onEnviar={() => void publicarComentario("interno")}
-                onEliminar={(c) => void eliminarComentario(c)}
-              />
-              <p className="mt-2 text-[11px] text-amber-700">
-                Este contenido no es visible para Desarrollo.
-              </p>
-            </div>
-          ) : null}
         </div>
 
-        {/*
-          Pie con la acción principal, distinta según quién mira:
-           - Desarrollo: "Enviar a revisión" deja la observación en Resuelta,
-             que es como el técnico le devuelve la pelota a QA.
-           - QA: "Verificar y cerrar" es el veredicto final.
-          Ambas se ocultan cuando la observación ya está en ese estado. El corte
-          real está en la API: el técnico no puede verificar aunque forzara esto.
-        */}
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-5">
-          {vista === "desarrollo" && obs.estado !== "resuelto" && obs.estado !== "verificado" ? (
+        {/* ---------------------------------------------------------------
+            Pie: a la izquierda cuándo se tocó por última vez, a la derecha la
+            acción principal según quién mira. El corte real está en la API —
+            el técnico no puede verificar aunque se forzara este botón.
+        ---------------------------------------------------------------- */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-5 py-3">
+          <span className="text-[11px] text-slate-400">
+            {obs.verificado_at
+              ? `Verificada por ${obs.verificado_por_nombre ?? "—"} · ${fechaRelativa(obs.verificado_at)}`
+              : obs.resuelto_at
+                ? `Resuelta por ${obs.resuelto_por_nombre ?? "—"} · ${fechaRelativa(obs.resuelto_at)}`
+                : `Última actualización: ${fechaRelativa(obs.updated_at)}`}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              onClick={() => void cambiarEstado("resuelto")}
-              className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
+              onClick={onClose}
+              className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-800"
             >
-              Enviar a revisión
+              Cancelar
             </button>
-          ) : null}
-          {vista === "qa" && obs.estado !== "verificado" ? (
-            <button
-              type="button"
-              onClick={() => void cambiarEstado("verificado")}
-              className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
-            >
-              Verificar y cerrar
-            </button>
-          ) : null}
-          {obs.estado === "verificado" ? (
-            <span className="text-xs text-slate-400">Observación verificada y cerrada.</span>
-          ) : null}
+            {vista === "desarrollo" && obs.estado !== "resuelto" && obs.estado !== "verificado" ? (
+              <button
+                type="button"
+                onClick={() => void cambiarEstado("resuelto")}
+                className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
+              >
+                Enviar a revisión
+              </button>
+            ) : null}
+            {vista === "qa" && obs.estado !== "verificado" ? (
+              <button
+                type="button"
+                onClick={() => void cambiarEstado("verificado")}
+                className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
+              >
+                Verificar y cerrar
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 

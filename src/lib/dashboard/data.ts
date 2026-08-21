@@ -1,3 +1,4 @@
+import { leerRespuestaApi } from "@/lib/api/leer-respuesta";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { getProspectos } from "@/lib/crm/storage";
 import { toCalendarDateStr } from "@/lib/fechas/calendario";
@@ -293,7 +294,13 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   try {
     const res = await fetchWithSupabaseSession("/api/dashboard/tenant-tables", { cache: "no-store" });
-    if (!res.ok) throw new Error(await res.text());
+    // Antes: `throw new Error(await res.text())`. Con el origen caído, el
+    // cuerpo es la página HTML de Cloudflare y esas ~4 KB terminaban dentro del
+    // mensaje de error, que después se mostraba tal cual en pantalla.
+    if (!res.ok) {
+      const r = await leerRespuestaApi(res);
+      throw new Error(r.ok ? `Error ${res.status}` : r.mensaje);
+    }
     const json = (await res.json()) as {
       success?: boolean;
       data?: {

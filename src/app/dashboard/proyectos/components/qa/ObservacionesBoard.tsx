@@ -99,6 +99,13 @@ export default function ObservacionesBoard({
     vista: "desarrollo",
     puedeVerInterno: false,
   });
+  /**
+   * Ronda destino de lo que se cargue ahora. `null` = la que ya está abierta.
+   * Al tocar "Iniciar nueva revisión" pasa a ser la siguiente, y en cuanto se
+   * carga la primera observación deja de hacer falta: el máximo del proyecto ya
+   * es esa ronda. Por eso no se persiste nada — se deriva del propio dato.
+   */
+  const [rondaNueva, setRondaNueva] = useState<number | null>(null);
   const [secciones, setSecciones] = useState<QASeccion[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -284,6 +291,13 @@ export default function ObservacionesBoard({
     return ordenadas;
   }, [agrupacion, filtradas, secciones, ordenPlano]);
 
+  /** Revisión abierta = la más alta que ya tiene observaciones. */
+  const rondaAbierta = useMemo(
+    () => observaciones.reduce((max, o) => Math.max(max, o.ronda ?? 1), 1),
+    [observaciones]
+  );
+  const rondaDestino = rondaNueva ?? rondaAbierta;
+
   function toggleColapsada(key: string) {
     setColapsadas((prev) => {
       const next = new Set(prev);
@@ -420,6 +434,7 @@ export default function ObservacionesBoard({
         {altaOpen ? (
           <div className="w-full pt-2 text-left">
             <QAComposer
+              ronda={rondaDestino}
               projectId={projectId}
               secciones={secciones}
               usuarios={usuarios}
@@ -478,6 +493,22 @@ export default function ObservacionesBoard({
             { id: "lista", label: "Lista", icono: <IconList />, title: "Lista plana por severidad" },
           ]}
         />
+
+        {permiso.vista === "qa" ? (
+          <button
+            type="button"
+            onClick={() => setRondaNueva(rondaAbierta + 1)}
+            disabled={rondaNueva != null}
+            title={
+              rondaNueva != null
+                ? `Lo que cargues entra en la ${nombreRonda(rondaDestino).toLowerCase()}`
+                : "Las próximas observaciones entran en una revisión nueva"
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-default disabled:border-[#4FAEB2]/40 disabled:bg-[#4FAEB2]/10 disabled:text-[#3F8E91]"
+          >
+            {rondaNueva != null ? `Cargando en ${nombreRonda(rondaDestino)}` : "Iniciar nueva revisión"}
+          </button>
+        ) : null}
 
         <div className="ml-auto">
           <GrupoAcciones>
@@ -625,6 +656,7 @@ export default function ObservacionesBoard({
 
       {altaOpen ? (
         <QAComposer
+          ronda={rondaDestino}
           projectId={projectId}
           secciones={secciones}
           usuarios={usuarios}

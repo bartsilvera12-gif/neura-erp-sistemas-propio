@@ -139,6 +139,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
+    // Sólo QA/PM/admin cargan observaciones. El técnico responde en el hilo,
+    // no abre incidencias sobre sí mismo.
+    const permisoPost = await permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid);
+    if (permisoPost.vista !== "qa") {
+      return NextResponse.json(
+        errorResponse("Sólo QA, Project Manager o un administrador pueden cargar observaciones."),
+        { status: 403 }
+      );
+    }
+
     const seccionId = textoOpcional(body?.seccion_id, 64);
     if (seccionId && !(await existeSeccion(sb, auth.empresaId, pid, seccionId))) {
       return NextResponse.json(errorResponse("Sección no encontrada"), { status: 400 });
@@ -156,6 +166,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       proyecto_id: pid,
     });
 
+    // Ronda de revisión. Si el cliente no la manda, la observación entra en la
+    // ronda que ya está abierta (la más alta del proyecto), no en la 1: si no,
+    // agregar un hallazgo durante la segunda revisión lo mandaría al lote de la
+    // primera y el conteo por revisión quedaría mal.
+    let ronda = 1;
+    {
+      const pedida = Number(body?.ronda);
+      if (Number.isFinite(pedida) && pedida >= 1) {
+        ronda = Math.min(Math.trunc(pedida), 999);
+      } else {
+        const { data: maxR } = await sb
+          .from("proyecto_qa_observaciones")
+          .select("ronda")
+          .eq("empresa_id", auth.empresaId)
+          .eq("proyecto_id", pid)
+          .order("ronda", { ascending: false })
+          .limit(1);
+        const actual = Number((maxR ?? [])[0]?.ronda);
+        ronda = Number.isFinite(actual) && actual >= 1 ? actual : 1;
+      }
+    }
+
     const base = {
       empresa_id: auth.empresaId,
       proyecto_id: pid,
@@ -168,6 +200,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       asignado_a: asignadoA,
       fecha_limite: fechaLimite,
       sort_order,
+      ronda,
       created_by: auth.usuarioCatalogId,
     };
 

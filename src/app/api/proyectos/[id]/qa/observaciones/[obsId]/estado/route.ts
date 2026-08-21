@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
+import { permisoQADe } from "@/lib/proyectos/qa-permisos";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import {
   QA_OBSERVACION_SELECT,
@@ -59,6 +60,21 @@ export async function POST(
     }
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+
+    const permiso = await permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid);
+    if (permiso.vista == null) {
+      return NextResponse.json(errorResponse("No tenés acceso a QA en este proyecto."), { status: 403 });
+    }
+    // "Verificado" y "Descartado" son el veredicto de QA. Sin este corte, el
+    // técnico podría cerrarse sus propias observaciones mandando el estado a
+    // mano, salteándose la revisión — que es justo lo que QA existe para evitar.
+    if (permiso.vista !== "qa" && (estado === "verificado" || estado === "descartado")) {
+      return NextResponse.json(
+        errorResponse("Verificar o descartar una observación es potestad de QA."),
+        { status: 403 }
+      );
+    }
+
     const prev = await fetchObservacion(sb, auth.empresaId, pid, oid);
     if (!prev) return NextResponse.json(errorResponse("Observación no encontrada"), { status: 404 });
 

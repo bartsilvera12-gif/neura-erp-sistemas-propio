@@ -74,6 +74,8 @@ type QAResumen = {
   cerradas: number;
   por_estado: Record<string, number>;
   porcentaje: number;
+  /** Lo decide el servidor. `false` para el comercial del proyecto. */
+  puede_ver_qa?: boolean;
 };
 
 const TAB_IDS = [
@@ -105,6 +107,19 @@ const TAB_LABELS: Record<TabId, string> = {
 // pero no se muestran en la barra ni son accesibles por URL.
 const HIDDEN_TABS: readonly TabId[] = ["tareas", "cambios"];
 const VISIBLE_TAB_IDS = TAB_IDS.filter((t) => !HIDDEN_TABS.includes(t));
+
+/**
+ * QA es una vista del equipo técnico. Al comercial del proyecto se le esconde
+ * la pestaña — igual la API le respondería 403 si entrara a mano, pero mostrar
+ * una pestaña que sólo da error es peor que no mostrarla.
+ *
+ * Mientras el resumen no llegó (`null`) la pestaña se muestra: ocultarla y
+ * volverla a aparecer haría un salto en la barra en cada apertura.
+ */
+function tabsPara(resumen: QAResumen | null): readonly TabId[] {
+  if (resumen && resumen.puede_ver_qa === false) return VISIBLE_TAB_IDS.filter((t) => t !== "qa");
+  return VISIBLE_TAB_IDS;
+}
 
 function normalizeTab(raw: string | null | undefined): TabId {
   if (!raw) return "resumen";
@@ -1655,7 +1670,7 @@ export default function ProyectoDetalleInner({
             : "flex flex-wrap gap-1.5 border-b border-slate-200 pb-2"
         }
       >
-        {VISIBLE_TAB_IDS.map((t) => {
+        {tabsPara(qaResumen).map((t) => {
           const active = tab === t;
           return (
             <button
@@ -2413,7 +2428,7 @@ export default function ProyectoDetalleInner({
           </div>
         ) : null}
 
-        {tab === "qa" ? (
+        {tab === "qa" && qaResumen?.puede_ver_qa !== false ? (
           <ProyectoQATab
             projectId={projectId}
             dataSchema={dataSchema}

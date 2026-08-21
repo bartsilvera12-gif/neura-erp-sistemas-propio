@@ -393,9 +393,15 @@ export default function ObservacionModal({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
           {err ? <p className="text-xs text-rose-600">{err}</p> : null}
 
-          {/* Estados */}
+          {/*
+            Estados. "Verificado" y "Descartado" son el veredicto de QA: el
+            técnico no puede dárselos a sí mismo. Él marca "Resuelto", que es
+            pedir la revisión. El corte también está en la API.
+          */}
           <div className="flex flex-wrap gap-1.5">
-            {QA_ESTADOS.map((e) => {
+            {QA_ESTADOS.filter(
+              (e) => vista === "qa" || (e.codigo !== "verificado" && e.codigo !== "descartado")
+            ).map((e) => {
               const activo = obs.estado === e.codigo;
               return (
                 <button
@@ -683,6 +689,38 @@ export default function ObservacionModal({
                 Este contenido no es visible para Desarrollo.
               </p>
             </div>
+          ) : null}
+        </div>
+
+        {/*
+          Pie con la acción principal, distinta según quién mira:
+           - Desarrollo: "Enviar a revisión" deja la observación en Resuelta,
+             que es como el técnico le devuelve la pelota a QA.
+           - QA: "Verificar y cerrar" es el veredicto final.
+          Ambas se ocultan cuando la observación ya está en ese estado. El corte
+          real está en la API: el técnico no puede verificar aunque forzara esto.
+        */}
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-5">
+          {vista === "desarrollo" && obs.estado !== "resuelto" && obs.estado !== "verificado" ? (
+            <button
+              type="button"
+              onClick={() => void cambiarEstado("resuelto")}
+              className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
+            >
+              Enviar a revisión
+            </button>
+          ) : null}
+          {vista === "qa" && obs.estado !== "verificado" ? (
+            <button
+              type="button"
+              onClick={() => void cambiarEstado("verificado")}
+              className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
+            >
+              Verificar y cerrar
+            </button>
+          ) : null}
+          {obs.estado === "verificado" ? (
+            <span className="text-xs text-slate-400">Observación verificada y cerrada.</span>
           ) : null}
         </div>
       </div>

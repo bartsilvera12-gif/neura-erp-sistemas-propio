@@ -354,13 +354,17 @@ export async function GET(request: Request) {
 
     // Por asesor. Solo carga vigente: activos + entregados este mes (los entregados de meses
     // anteriores no aparecen ni suman presupuesto).
-    const porAseMap = new Map<string, { cantidad: number; presupuesto: number; proyectos: DetalleProy[] }>();
+    const porAseMap = new Map<
+      string,
+      { cantidad: number; presupuesto: number; deuda: number; proyectos: DetalleProy[] }
+    >();
     for (const p of cohort) {
       if (entregadoMesAnterior(p)) continue;
       const k = String(p.responsable_comercial_id ?? "");
-      const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0, proyectos: [] };
+      const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0, deuda: 0, proyectos: [] };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);
+      agg.deuda += deudaDe(p);
       agg.proyectos.push(proyectoDetalle(p));
       porAseMap.set(k, agg);
     }
@@ -369,6 +373,7 @@ export async function GET(request: Request) {
         asesor: k ? comNombre.get(k) || k.slice(0, 8) : "Sin asignar",
         cantidad: v.cantidad,
         presupuesto: Math.round(v.presupuesto),
+        deuda: Math.round(v.deuda),
         proyectos: ordenarProys(v.proyectos),
       }))
       .sort((a, b) => b.presupuesto - a.presupuesto || b.cantidad - a.cantidad);

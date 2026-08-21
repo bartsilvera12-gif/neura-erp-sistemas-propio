@@ -34,7 +34,7 @@ type Panel = {
     sla_vencidos: number;
     sla_configurado: boolean;
   }[];
-  por_asesor: { asesor: string; cantidad: number; presupuesto: number; proyectos: DetalleProy[] }[];
+  por_asesor: { asesor: string; cantidad: number; presupuesto: number; deuda: number; proyectos: DetalleProy[] }[];
   por_tecnico: { tecnico: string; cantidad: number; presupuesto: number; deuda: number; proyectos: DetalleProy[] }[];
   por_tipo: { tipo: string; cantidad: number; presupuesto: number }[];
   por_rubro: { rubro: string; cantidad: number }[];
@@ -384,6 +384,7 @@ export default function PanelProyectosPanel() {
   const [aseAbierto, setAseAbierto] = useState<string | null>(null); // asesor expandido
   const [tecAbierto, setTecAbierto] = useState<string | null>(null); // técnico expandido
   const [tecMetrica, setTecMetrica] = useState<MetricaMonto>("presupuesto"); // "Por técnico": Presupuesto vs Deuda
+  const [aseMetrica, setAseMetrica] = useState<MetricaMonto>("presupuesto"); // "Por asesor": ídem
 
   useEffect(() => {
     let cancel = false;
@@ -428,11 +429,14 @@ export default function PanelProyectosPanel() {
   const maxEstadoCant = Math.max(1, ...data.por_estado.map((e) => e.cantidad));
   // "Por asesor": mismo criterio que "Por técnico" — ranking por la magnitud que
   // se está mostrando, para que las barras bajen de mayor a menor.
+  const aseMetricaMeta = METRICA_META[aseMetrica];
+  const montoAsesor = (a: { presupuesto: number; deuda: number }) =>
+    aseMetrica === "deuda" ? a.deuda : a.presupuesto;
   const asesoresOrdenados = [...data.por_asesor].sort(
-    (a, b) => b.presupuesto - a.presupuesto || b.cantidad - a.cantidad
+    (a, b) => montoAsesor(b) - montoAsesor(a) || b.cantidad - a.cantidad
   );
-  const maxAsePres = Math.max(1, ...asesoresOrdenados.map((a) => a.presupuesto));
-  const totalAsePresupuesto = asesoresOrdenados.reduce((acc, a) => acc + a.presupuesto, 0);
+  const maxAsePres = Math.max(1, ...asesoresOrdenados.map(montoAsesor));
+  const totalAsePresupuesto = asesoresOrdenados.reduce((acc, a) => acc + montoAsesor(a), 0);
   const totalAseProyectos = asesoresOrdenados.reduce((acc, a) => acc + a.cantidad, 0);
   // "Por técnico": el ranking sigue SIEMPRE a la medida activa del switch, así
   // las barras bajan de mayor a menor y la lista se lee de un vistazo. (Antes
@@ -554,10 +558,44 @@ export default function PanelProyectosPanel() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Por asesor comercial</h2>
-        <p className="mt-0.5 text-[11px] text-slate-400">
-          Carga vigente: activos + entregados este mes. Tocá un asesor para ver sus proyectos.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Por asesor comercial</h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Carga vigente: activos + entregados este mes. Tocá un asesor para ver sus proyectos.
+            </p>
+          </div>
+          <div
+            role="tablist"
+            aria-label="Medida a mostrar"
+            className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-100/70 p-0.5"
+          >
+            {(["presupuesto", "deuda"] as MetricaMonto[]).map((m) => {
+              const activo = aseMetrica === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={activo}
+                  onClick={() => setAseMetrica(m)}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                    activo
+                      ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-900/5"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 rounded-full transition-colors"
+                    style={{ background: activo ? METRICA_META[m].color : "#cbd5e1" }}
+                  />
+                  {METRICA_META[m].label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {data.por_asesor.length === 0 ? (
           <p className="mt-4 text-xs text-slate-400">Sin proyectos con asesor asignado.</p>
         ) : (
@@ -565,9 +603,13 @@ export default function PanelProyectosPanel() {
             <div className="mt-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 px-4 py-3.5">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#3F8E91]" />
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: aseMetricaMeta.color }}
+                  />
                   <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    Presupuesto total
+                    {aseMetricaMeta.totalLabel}
                   </span>
                 </div>
                 <p className="mt-1 text-[26px] font-semibold leading-none tracking-tight text-slate-900">
@@ -580,12 +622,14 @@ export default function PanelProyectosPanel() {
                 {totalAseProyectos === 1 ? "" : "s"}
               </p>
             </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-400">{aseMetricaMeta.nota}</p>
 
             <div className="mt-3 divide-y divide-slate-100">
               {asesoresOrdenados.map((a, i) => {
                 const open = aseAbierto === a.asesor;
-                const share = totalAsePresupuesto > 0 ? (a.presupuesto / totalAsePresupuesto) * 100 : 0;
-                const ancho = maxAsePres > 0 ? Math.max(a.presupuesto > 0 ? 2 : 0, (a.presupuesto / maxAsePres) * 100) : 0;
+                const monto = montoAsesor(a);
+                const share = totalAsePresupuesto > 0 ? (monto / totalAsePresupuesto) * 100 : 0;
+                const ancho = maxAsePres > 0 ? Math.max(monto > 0 ? 2 : 0, (monto / maxAsePres) * 100) : 0;
                 return (
                   <div key={a.asesor} className="min-w-0">
                     <button
@@ -612,7 +656,7 @@ export default function PanelProyectosPanel() {
                         <div className="hidden h-1.5 w-[150px] shrink-0 overflow-hidden rounded-full bg-slate-100 md:block lg:w-[200px]">
                           <div
                             className="h-full rounded-full transition-[width] duration-700 ease-out"
-                            style={{ width: barrasMontadas ? `${ancho}%` : "0%", background: "#3F8E91" }}
+                            style={{ width: barrasMontadas ? `${ancho}%` : "0%", background: aseMetricaMeta.color }}
                           />
                         </div>
                         <span className="w-11 shrink-0 text-right text-[11px] tabular-nums text-slate-400">
@@ -622,13 +666,13 @@ export default function PanelProyectosPanel() {
                           {a.cantidad} proy
                         </span>
                         <span className="w-28 shrink-0 text-right text-[13px] font-semibold tabular-nums text-slate-900">
-                          {fmtGs(a.presupuesto)}
+                          {fmtGs(monto)}
                         </span>
                       </div>
                     </button>
                     {open ? (
                       <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        <ProyectosDetalleTabla proyectos={a.proyectos} />
+                        <ProyectosDetalleTabla proyectos={a.proyectos} metrica={aseMetrica} />
                       </div>
                     ) : null}
                   </div>

@@ -55,6 +55,9 @@ export async function GET(
           ...c,
           autor_nombre: c.autor_id ? nombres.get(c.autor_id) || null : null,
         })),
+        // Quién está mirando: la UI lo usa para ofrecer editar/eliminar sólo en
+        // los comentarios propios. El permiso real igual se valida al escribir.
+        usuario_id: auth.usuarioCatalogId ?? null,
       })
     );
   } catch (e) {

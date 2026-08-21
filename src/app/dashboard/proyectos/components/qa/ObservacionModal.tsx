@@ -141,6 +141,8 @@ export default function ObservacionModal({
   const [nuevoComentarioInterno, setNuevoComentarioInterno] = useState("");
   /** Evita disparar dos cambios de estado encima mientras el primero viaja. */
   const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  /** Quién está mirando, para ofrecer editar/eliminar sólo en lo propio. */
+  const [usuarioId, setUsuarioId] = useState<string | null>(null);
 
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [subiendo, setSubiendo] = useState(0);
@@ -203,9 +205,11 @@ export default function ObservacionModal({
     );
     const j = (await res.json().catch(() => null)) as QAApiResp<{
       comentarios: QAComentario[];
+      usuario_id?: string | null;
     }> | null;
     if (res.ok && j?.success && j.data) {
       setComentarios(j.data.comentarios);
+      setUsuarioId(j.data.usuario_id ?? null);
       onComentariosCambio(obsId, j.data.comentarios.length);
     }
     setComentariosCargando(false);
@@ -367,6 +371,33 @@ export default function ObservacionModal({
       onComentariosCambio(obsId, snapshot.length);
       setErr(j?.error ?? "No se pudo eliminar el comentario");
     }
+  }
+
+  /**
+   * Edita un comentario propio. Optimista igual que el borrado: el texto nuevo
+   * se ve en el acto y vuelve atrás si el servidor lo rechaza (por ejemplo si
+   * alguien intenta editar el de otro, que la API corta con 403).
+   */
+  async function editarComentario(c: QAComentario, texto: string) {
+    const limpio = texto.trim();
+    if (!limpio || limpio === c.texto) return;
+    const snapshot = comentarios;
+    setComentarios((prev) => prev.map((x) => (x.id === c.id ? { ...x, texto: limpio } : x)));
+    const res = await fetchWithSupabaseSession(
+      `/api/proyectos/${projectId}/qa/observaciones/${obsId}/comentarios/${c.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto: limpio }),
+      }
+    );
+    const j = (await res.json().catch(() => null)) as QAApiResp<QAComentario> | null;
+    if (!res.ok || !j?.success || !j.data) {
+      setComentarios(snapshot);
+      setErr(j?.error ?? "No se pudo editar el comentario");
+      return;
+    }
+    setComentarios((prev) => prev.map((x) => (x.id === c.id ? j.data! : x)));
   }
 
   /** El dropzone solo entrega los archivos; acá se suben contra la observación. */
@@ -612,6 +643,8 @@ export default function ObservacionModal({
                       : "Escribí una actualización para QA… (Ctrl/Cmd+Enter para enviar)"
                   }
                   onEnviar={() => void publicarComentario(vista === "qa" ? "qa" : "tecnico")}
+                  usuarioId={usuarioId}
+                  onEditar={(c, t) => void editarComentario(c, t)}
                   onEliminar={(c) => void eliminarComentario(c)}
                 />
               </Tarjeta>
@@ -775,7 +808,9 @@ export default function ObservacionModal({
                     onBorrador={setNuevoComentarioInterno}
                     placeholder="Agregar comentario interno… (Ctrl/Cmd+Enter para enviar)"
                     onEnviar={() => void publicarComentario("interno")}
-                    onEliminar={(c) => void eliminarComentario(c)}
+                    usuarioId={usuarioId}
+                  onEditar={(c, t) => void editarComentario(c, t)}
+                  onEliminar={(c) => void eliminarComentario(c)}
                   />
                   <p className="mt-2 text-[11px] text-amber-700">
                     Este contenido no es visible para Desarrollo.
@@ -952,6 +987,8 @@ function HiloComentario({
   onBorrador,
   placeholder,
   onEnviar,
+  usuarioId,
+  onEditar,
   onEliminar,
 }: {
   titulo: string;
@@ -964,6 +1001,9 @@ function HiloComentario({
   onBorrador: (v: string) => void;
   placeholder: string;
   onEnviar: () => void;
+  /** Quién mira: decide sobre qué comentarios se ofrecen editar y eliminar. */
+  usuarioId: string | null;
+  onEditar: (c: QAComentario, texto: string) => void;
   onEliminar: (c: QAComentario) => void;
 }) {
   return (
@@ -976,27 +1016,14 @@ function HiloComentario({
       ) : (
         <ul className="space-y-2">
           {comentarios.map((c) => (
-            <li key={c.id} className="group flex gap-2">
-              <span
-                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${colorAvatar}`}
-              >
-                {iniciales(c.autor_nombre)}
-              </span>
-              <div className="min-w-0 flex-1 rounded-xl bg-slate-50 px-3 py-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-medium text-slate-800">{c.autor_nombre ?? "Usuario"}</span>
-                  <span className="text-[11px] text-slate-400">{fechaRelativa(c.created_at)}</span>
-                  <button
-                    type="button"
-                    onClick={() => onEliminar(c)}
-                    className="ml-auto hidden text-[11px] text-slate-400 transition-colors hover:text-rose-600 group-hover:block"
-                  >
-                    Eliminar
-                  </button>
-                </div>
-                <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{c.texto}</p>
-              </div>
-            </li>
+            <ComentarioItem
+              key={c.id}
+              comentario={c}
+              colorAvatar={colorAvatar}
+              esMio={usuarioId != null && c.autor_id === usuarioId}
+              onEditar={onEditar}
+              onEliminar={onEliminar}
+            />
           ))}
         </ul>
       )}
@@ -1032,6 +1059,127 @@ function HiloComentario({
         </div>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * Un comentario del hilo, con edición en el lugar.
+ *
+ * Editar y eliminar sólo se ofrecen sobre lo propio (`esMio`). Es una comodidad
+ * de la UI, no la barrera: la API vuelve a comprobar la autoría en cada PATCH y
+ * DELETE, así que esconder los botones no es de lo que depende la seguridad.
+ */
+function ComentarioItem({
+  comentario: c,
+  colorAvatar,
+  esMio,
+  onEditar,
+  onEliminar,
+}: {
+  comentario: QAComentario;
+  colorAvatar: string;
+  esMio: boolean;
+  onEditar: (c: QAComentario, texto: string) => void;
+  onEliminar: (c: QAComentario) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [borrador, setBorrador] = useState(c.texto);
+
+  // Si el comentario cambia por fuera (otra pestaña, recarga), el borrador
+  // abierto se descarta: es preferible perder un tipeo a medias que guardar
+  // encima de algo que ya no es lo que se estaba editando.
+  useEffect(() => {
+    if (!editando) setBorrador(c.texto);
+  }, [c.texto, editando]);
+
+  function confirmar() {
+    const limpio = borrador.trim();
+    if (limpio && limpio !== c.texto) onEditar(c, limpio);
+    setEditando(false);
+  }
+
+  return (
+    <li className="group flex gap-2">
+      <span
+        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${colorAvatar}`}
+      >
+        {iniciales(c.autor_nombre)}
+      </span>
+      <div className="min-w-0 flex-1 rounded-xl bg-slate-50 px-3 py-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-xs font-medium text-slate-800">{c.autor_nombre ?? "Usuario"}</span>
+          <span className="text-[11px] text-slate-400">{fechaRelativa(c.created_at)}</span>
+          {/* "editado" evita que un mensaje corregido parezca el original. */}
+          {c.updated_at && c.updated_at !== c.created_at ? (
+            <span className="text-[10px] italic text-slate-400">editado</span>
+          ) : null}
+          {esMio && !editando ? (
+            <span className="ml-auto hidden gap-2 group-hover:flex">
+              <button
+                type="button"
+                onClick={() => setEditando(true)}
+                className="text-[11px] text-slate-400 transition-colors hover:text-[#0B3A3D]"
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                onClick={() => onEliminar(c)}
+                className="text-[11px] text-slate-400 transition-colors hover:text-rose-600"
+              >
+                Eliminar
+              </button>
+            </span>
+          ) : null}
+        </div>
+
+        {editando ? (
+          <div className="mt-1.5">
+            <textarea
+              value={borrador}
+              onChange={(e) => setBorrador(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  confirmar();
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setBorrador(c.texto);
+                  setEditando(false);
+                }
+              }}
+              rows={2}
+              autoFocus
+              className={`${INPUT_CLS} min-h-[54px] resize-y text-sm`}
+            />
+            <div className="mt-1.5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBorrador(c.texto);
+                  setEditando(false);
+                }}
+                className="rounded-lg px-2.5 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmar}
+                disabled={!borrador.trim() || borrador.trim() === c.texto}
+                className="rounded-lg bg-[#0B3A3D] px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#104A4E] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{c.texto}</p>
+        )}
+      </div>
+    </li>
   );
 }
 

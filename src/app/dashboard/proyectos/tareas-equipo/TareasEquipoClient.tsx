@@ -1627,6 +1627,14 @@ function FilaProyecto({
                 {esqueletoTexto}
               </span>
             ) : null}
+            {/*
+              Sólo queda el chip de QA aprobada, que es un BOTÓN: es la única
+              puerta para volver a mandar el proyecto a revisión.
+
+              El chip informativo "QA · <etapa>" se quitó: la fila ya vive
+              dentro de una subsección que dice el estado y al lado tiene el
+              selector con la etapa, así que repetía lo mismo dos veces.
+            */}
             {qaChip ? (
               qaChip.etapa === "finalizado" ? (
                 // Ciclo de QA cerrado: el proyecto ya no está en la tarjeta de
@@ -1640,14 +1648,7 @@ function FilaProyecto({
                 >
                   QA ✓ · reabrir
                 </button>
-              ) : (
-                <span
-                  className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-700"
-                  title={`En QA con ${qaChip.nombre} — ${qaEtapaLabel(qaChip.etapa)}`}
-                >
-                  QA · {qaEtapaLabel(qaChip.etapa)}
-                </span>
-              )
+              ) : null
             ) : null}
           </div>
         </div>

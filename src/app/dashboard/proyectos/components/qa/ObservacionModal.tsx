@@ -44,9 +44,33 @@ type Props = {
   onSeccionCreada: (seccion: QASeccion) => void;
   /** Refresca el contador de comentarios de la card sin recargar todo. */
   onComentariosCambio: (obsId: string, total: number) => void;
+  /**
+   * Vista que le corresponde a quien mira. La resuelve el servidor
+   * (`qa-permisos.ts`), no el cliente.
+   *  - "qa": QA, Project Manager y admin. Ve el Seguimiento interno.
+   *  - "desarrollo": el técnico del proyecto. Misma incidencia y misma
+   *    conversación técnica, sin el hilo interno.
+   */
+  vista: "qa" | "desarrollo";
+  /**
+   * Si puede leer/escribir el Seguimiento interno. Va aparte de `vista` porque
+   * es el servidor quien lo decide: la UI sólo lo obedece. Aunque acá se
+   * forzara en true, la API no devuelve esos comentarios ni acepta escribirlos.
+   */
+  puedeVerInterno: boolean;
 };
 
 const LABEL_CLS = "text-[11px] font-medium uppercase tracking-wide text-slate-500";
+
+/** Candado del chip "Privado": el ícono refuerza el mensaje sin depender del color. */
+function IconCandado() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 1 1 8 0v4" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export default function ObservacionModal({
   projectId,
@@ -58,6 +82,8 @@ export default function ObservacionModal({
   onEliminada,
   onSeccionCreada,
   onComentariosCambio,
+  vista,
+  puedeVerInterno,
 }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [titulo, setTitulo] = useState(obs.titulo);
@@ -70,6 +96,7 @@ export default function ObservacionModal({
   // se mezcla con lo que se está tipeando en "Respuesta del técnico".
   const [nuevoComentarioQa, setNuevoComentarioQa] = useState("");
   const [nuevoComentarioTecnico, setNuevoComentarioTecnico] = useState("");
+  const [nuevoComentarioInterno, setNuevoComentarioInterno] = useState("");
 
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [subiendo, setSubiendo] = useState(0);
@@ -78,7 +105,14 @@ export default function ObservacionModal({
   // El carril lo decide `origen` (en qué caja se escribió), no el autor: los
   // comentarios de antes de esta funcionalidad no tienen `origen` propio y
   // quedaron migrados a "qa" — ver la nota en la migración.
-  const comentariosQa = useMemo(() => comentarios.filter((c) => c.origen !== "tecnico"), [comentarios]);
+  // Comparación explícita por carril. Antes era `origen !== "tecnico"`, que con
+  // sólo dos valores funcionaba; al aparecer 'interno' habría metido el hilo
+  // privado dentro de las notas de QA.
+  const comentariosQa = useMemo(() => comentarios.filter((c) => c.origen === "qa"), [comentarios]);
+  const comentariosInternos = useMemo(
+    () => comentarios.filter((c) => c.origen === "interno"),
+    [comentarios]
+  );
   const comentariosTecnico = useMemo(
     () => comentarios.filter((c) => c.origen === "tecnico"),
     [comentarios]
@@ -210,7 +244,9 @@ export default function ObservacionModal({
    * era un solo hilo.
    */
   async function publicarComentario(origen: QAComentarioOrigen) {
-    const texto = (origen === "qa" ? nuevoComentarioQa : nuevoComentarioTecnico).trim();
+    const texto = (
+      origen === "qa" ? nuevoComentarioQa : origen === "interno" ? nuevoComentarioInterno : nuevoComentarioTecnico
+    ).trim();
     if (!texto || enviandoRef.current) return;
     enviandoRef.current = true;
     try {
@@ -229,6 +265,7 @@ export default function ObservacionModal({
       }
       setErr(null);
       if (origen === "qa") setNuevoComentarioQa("");
+      else if (origen === "interno") setNuevoComentarioInterno("");
       else setNuevoComentarioTecnico("");
       setComentarios((prev) => {
         const next = [...prev, j.data as QAComentario];
@@ -613,6 +650,40 @@ export default function ObservacionModal({
               onEliminar={(c) => void eliminarComentario(c)}
             />
           </div>
+
+          {/*
+            Seguimiento interno: hilo privado entre Project Manager y QA. Sólo
+            se dibuja para quien tiene el permiso, pero lo que de verdad lo
+            protege es la API — a Desarrollo estos comentarios no le llegan
+            siquiera en la respuesta. Ver `qa-permisos.ts`.
+          */}
+          {puedeVerInterno ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <h4 className="text-[13px] font-semibold text-slate-900">Seguimiento interno</h4>
+                <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                  <IconCandado />
+                  Privado · Solo PM y QA
+                </span>
+              </div>
+              <HiloComentario
+                titulo=""
+                colorAvatar="bg-amber-100 text-amber-700"
+                colorAcento="border-l-amber-400"
+                comentarios={comentariosInternos}
+                cargando={comentariosCargando}
+                vacio="Sin comentarios internos."
+                borrador={nuevoComentarioInterno}
+                onBorrador={setNuevoComentarioInterno}
+                placeholder="Agregar comentario interno… (Ctrl/Cmd+Enter para enviar)"
+                onEnviar={() => void publicarComentario("interno")}
+                onEliminar={(c) => void eliminarComentario(c)}
+              />
+              <p className="mt-2 text-[11px] text-amber-700">
+                Este contenido no es visible para Desarrollo.
+              </p>
+            </div>
+          ) : null}
         </div>
       </div>
 

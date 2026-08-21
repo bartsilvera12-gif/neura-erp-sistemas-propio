@@ -17,6 +17,7 @@ import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
 import { isoAInputDatetimeLocal } from "@/lib/format/hora-py";
 import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraSelect";
+import { HistorialLinea } from "@/app/dashboard/proyectos/components/HistorialLinea";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
@@ -3258,92 +3259,7 @@ export default function ProyectoDetalleInner({
         })() : null}
 
         {tab === "historial" ? (
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-100 text-sm">
-                <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2.5">Estado anterior</th>
-                    <th className="px-3 py-2.5">Estado nuevo</th>
-                    <th className="px-3 py-2.5">Tipo SLA</th>
-                    <th className="px-3 py-2.5">Entrada</th>
-                    <th className="px-3 py-2.5">Salida</th>
-                    <th className="px-3 py-2.5">Duración</th>
-                    <th className="px-3 py-2.5">Usuario</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {(data.historial ?? []).map((h) => {
-                    const hr = h as Record<string, unknown>;
-                    const usr = (hr.usuario_cambio_label as string | undefined) ?? "No registrado";
-
-                    // Evento de reasignación de técnico: fila especial ("de → a"), no un cambio de estado.
-                    if (hr.evento_tipo === "reasignacion_tecnico") {
-                      const de = (hr.reasignacion_de_label as string | undefined) ?? "Sin asignar";
-                      const a = (hr.reasignacion_a_label as string | undefined) ?? "Sin asignar";
-                      return (
-                        <tr key={String(h.id)} className="bg-amber-50/40 text-slate-700 hover:bg-amber-50/70">
-                          <td colSpan={3} className="px-3 py-2 text-xs">
-                            <span className="mr-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                              Reasignación de técnico
-                            </span>
-                            <span className="font-medium text-slate-600">{de}</span>
-                            <span className="mx-1.5 text-slate-400">→</span>
-                            <span className="font-semibold text-slate-900">{a}</span>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-600">
-                            {formatFechaPyFull(String(h.entered_at ?? ""))}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-slate-400">—</td>
-                          <td className="px-3 py-2 text-xs text-slate-400">—</td>
-                          <td className="max-w-[140px] truncate px-3 py-2 text-xs text-slate-500" title={usr}>
-                            {usr}
-                          </td>
-                        </tr>
-                      );
-                    }
-
-                    const ant =
-                      (hr.estado_anterior_nombre as string | undefined) ??
-                      (hr.estado_anterior_id ? String(hr.estado_anterior_id) : "—");
-                    const nue =
-                      (hr.estado_nuevo_nombre as string | undefined) ??
-                      String(hr.estado_nuevo_id ?? "—");
-                    const slaL =
-                      (hr.tipo_sla_label as string | undefined) ??
-                      String(hr.tipo_sla_snapshot ?? "—");
-                    const dur =
-                      (hr.duration_label as string | undefined) ??
-                      (hr.duration_seconds != null ? String(hr.duration_seconds) + " s" : "—");
-                    return (
-                      <tr key={String(h.id)} className="text-slate-700 hover:bg-slate-50/60">
-                        <td className="px-3 py-2 text-xs">{ant}</td>
-                        <td className="px-3 py-2 text-xs font-semibold text-slate-900">{nue}</td>
-                        <td className="px-3 py-2 text-xs text-slate-600">{slaL}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-600">
-                          {formatFechaPyFull(String(h.entered_at ?? ""))}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-xs tabular-nums text-slate-600">
-                          {h.exited_at ? formatFechaPyFull(String(h.exited_at)) : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-xs text-slate-600">{dur}</td>
-                        <td className="max-w-[140px] truncate px-3 py-2 text-xs text-slate-500" title={usr}>
-                          {usr}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {(data.historial ?? []).length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-xs text-slate-400">
-                        Sin historial registrado.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <HistorialLinea eventos={(data.historial ?? []) as Record<string, unknown>[]} />
         ) : null}
       </div>
 

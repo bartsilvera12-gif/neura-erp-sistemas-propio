@@ -11,20 +11,34 @@ import type { ReactNode } from "react";
 export const ACCENT = "#4FAEB2";
 export const ACCENT_HOVER = "#3F8E91";
 
+/**
+ * Identidad Zentra. El teal profundo `#0B3A3D` y su acento `#7DCFD2` son los
+ * mismos tokens del lateral de la app (`--zentra-sidebar` y
+ * `--zentra-sidebar-accent` en globals.css), no colores nuevos.
+ *
+ * El botón primario usaba `#4FAEB2`, que sobre blanco da 3.83:1 — apenas pasa
+ * el mínimo para texto grande y se veía lavado. `#0B3A3D` da 12.45:1.
+ */
+export const ZENTRA = {
+  profundo: "#0B3A3D",
+  elevado: "#104A4E",
+  acento: "#7DCFD2",
+} as const;
+
 export const PANEL_CLS =
   "rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 
 export const INPUT_CLS =
-  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#0B3A3D]/40 focus:border-[#0B3A3D] focus:outline-none focus:ring-2 focus:ring-[#7DCFD2]/40";
 
 export const SELECT_CLS =
-  "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
+  "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition-colors hover:border-[#0B3A3D]/40 focus:border-[#0B3A3D] focus:outline-none focus:ring-2 focus:ring-[#7DCFD2]/40";
 
 export const BTN_PRIMARY_CLS =
-  "inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center gap-1.5 rounded-xl bg-[#0B3A3D] px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E] disabled:cursor-not-allowed disabled:opacity-40";
 
 export const BTN_GHOST_CLS =
-  "inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/50 hover:text-[#3F8E91]";
+  "inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#0B3A3D]/40 hover:text-[#0B3A3D]";
 
 // --- Fechas -----------------------------------------------------------------
 

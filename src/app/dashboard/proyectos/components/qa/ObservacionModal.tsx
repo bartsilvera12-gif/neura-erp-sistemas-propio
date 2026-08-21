@@ -78,7 +78,10 @@ function Tarjeta({
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <h3 className="text-[13px] font-semibold text-slate-900">{titulo}</h3>
+      <h3 className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
+        <span aria-hidden="true" className="h-3.5 w-1 rounded-full bg-[#7DCFD2]" />
+        {titulo}
+      </h3>
       {subtitulo ? (
         <p className="mb-2 mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
           <IconPersonas />
@@ -429,24 +432,20 @@ export default function ObservacionModal({
             qué se está mirando (qué vista) y en qué estado está la incidencia.
         ---------------------------------------------------------------- */}
         <SpotlightCard
-          spotlightColor={vista === "qa" ? "rgba(139, 92, 246, 0.10)" : "rgba(14, 165, 233, 0.10)"}
-          className="shrink-0 border-b border-slate-200"
+          spotlightColor="rgba(125, 207, 210, 0.16)"
+          className="shrink-0"
         >
-        <div className="flex items-start gap-3 px-5 py-3.5">
-          <span className="mt-0.5 shrink-0 rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] font-semibold tabular-nums text-slate-600">
+        <div className="flex items-start gap-3 bg-[#0B3A3D] px-5 py-3.5">
+          <span className="mt-0.5 shrink-0 rounded-md bg-white/10 px-2 py-1 font-mono text-[11px] font-semibold tabular-nums text-[#7DCFD2]">
             {qaCodigoObservacion(obs.numero)}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-bold uppercase tracking-tight text-slate-900">
+              <h2 className="truncate text-lg font-bold uppercase tracking-tight text-white">
                 {obs.titulo}
               </h2>
               <span
-                className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                  vista === "qa"
-                    ? "border-violet-200 bg-violet-50 text-violet-700"
-                    : "border-sky-200 bg-sky-50 text-sky-700"
-                }`}
+                className="shrink-0 rounded-full border border-[#7DCFD2]/40 bg-[#7DCFD2]/15 px-2 py-0.5 text-[11px] font-semibold text-[#7DCFD2]"
               >
                 {vista === "qa" ? "Vista de QA" : "Vista de Desarrollo"}
               </span>
@@ -457,7 +456,7 @@ export default function ObservacionModal({
                 {estadoActual?.label ?? obs.estado}
               </span>
             </div>
-            <p className="mt-0.5 truncate text-[12px] text-slate-500">
+            <p className="mt-0.5 truncate text-[12px] text-white/60">
               {seccionActual ? seccionActual.nombre : "Sin sección"}
             </p>
           </div>
@@ -466,7 +465,7 @@ export default function ObservacionModal({
               <button
                 type="button"
                 onClick={() => void eliminarObservacion()}
-                className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                className="rounded-lg p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-rose-300"
                 aria-label="Eliminar observación"
               >
                 <IconTrash />
@@ -475,7 +474,7 @@ export default function ObservacionModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-2.5 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+              className="rounded-lg px-2.5 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             >
               Cerrar
             </button>
@@ -600,8 +599,8 @@ export default function ObservacionModal({
               <Tarjeta titulo="Conversación técnica" subtitulo="Visible para QA y Desarrollo">
                 <HiloComentario
                   titulo=""
-                  colorAvatar="bg-[#4FAEB2]/15 text-[#3F8E91]"
-                  colorAcento="border-l-[#4FAEB2]"
+                  colorAvatar="bg-[#0B3A3D]/10 text-[#0B3A3D]"
+                  colorAcento="border-l-[#7DCFD2]"
                   comentarios={comentariosTecnicos}
                   cargando={comentariosCargando}
                   vacio="Todavía no hay mensajes."
@@ -804,7 +803,7 @@ export default function ObservacionModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-800"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-800"
             >
               Cancelar
             </button>
@@ -812,7 +811,7 @@ export default function ObservacionModal({
               <button
                 type="button"
                 onClick={() => void cambiarEstado("resuelto")}
-                className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
+                className="rounded-lg bg-[#0B3A3D] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E]"
               >
                 Enviar a revisión
               </button>
@@ -821,7 +820,7 @@ export default function ObservacionModal({
               <button
                 type="button"
                 onClick={() => void cambiarEstado("verificado")}
-                className="rounded-lg bg-[#3F8E91] px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2F6E71]"
+                className="rounded-lg bg-[#0B3A3D] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E]"
               >
                 Verificar y cerrar
               </button>
@@ -1002,7 +1001,12 @@ function HiloComentario({
         </ul>
       )}
 
-      <div className="flex items-start gap-2">
+      {/*
+        El botón va DEBAJO y no al lado: en la columna angosta del Seguimiento
+        interno se repartían el ancho y el placeholder quedaba partido en dos
+        líneas contra un botón espachurrado.
+      */}
+      <div>
         <textarea
           value={borrador}
           onChange={(e) => onBorrador(e.target.value)}
@@ -1014,11 +1018,18 @@ function HiloComentario({
           }}
           rows={2}
           placeholder={placeholder}
-          className={`${INPUT_CLS} min-h-[56px] resize-y`}
+          className={`${INPUT_CLS} min-h-[60px] resize-y`}
         />
-        <button type="button" onClick={onEnviar} disabled={!borrador.trim()} className={BTN_PRIMARY_CLS}>
-          Enviar
-        </button>
+        <div className="mt-1.5 flex justify-end">
+          <button
+            type="button"
+            onClick={onEnviar}
+            disabled={!borrador.trim()}
+            className="rounded-lg bg-[#0B3A3D] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+          >
+            Enviar
+          </button>
+        </div>
       </div>
     </div>
   );

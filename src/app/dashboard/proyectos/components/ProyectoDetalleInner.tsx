@@ -15,6 +15,8 @@ import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/Client
 import { PersonaSearchSelect } from "@/app/dashboard/proyectos/components/PersonaSearchSelect";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
+import { isoAInputDatetimeLocal } from "@/lib/format/hora-py";
+import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraSelect";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
@@ -737,8 +739,8 @@ export default function ProyectoDetalleInner({
     const cli = typeof p.cliente_id === "string" ? p.cliente_id : "";
     const rc = typeof p.responsable_comercial_id === "string" ? p.responsable_comercial_id : "";
     const prio = typeof p.prioridad === "string" ? p.prioridad : "normal";
-    // El input `date` necesita YYYY-MM-DD; la API devuelve ISO completo.
-    const fProm = typeof p.fecha_prometida === "string" ? p.fecha_prometida.slice(0, 10) : "";
+    // Fecha Y hora: se recorta a lo que entiende `datetime-local`.
+    const fProm = typeof p.fecha_prometida === "string" ? isoAInputDatetimeLocal(p.fecha_prometida) : "";
     setResponsableTecnicoId(rt);
     setObservaciones(obsCom);
     setClienteId(cli);
@@ -974,9 +976,10 @@ export default function ProyectoDetalleInner({
         cliente_id: clienteId || null,
         responsable_comercial_id: responsableComercialId || null,
         prioridad,
-        // Mediodía y no medianoche: con 00:00 en UTC la fecha se corría al día
-        // anterior en Paraguay.
-        fecha_prometida: fechaPrometida ? new Date(fechaPrometida + "T12:00:00").toISOString() : null,
+        // El input ya trae fecha Y hora local; se pasa a ISO para guardar el
+        // instante exacto. Antes se forzaba el mediodía y la hora que eligiera
+        // el usuario se perdía.
+        fecha_prometida: fechaPrometida ? new Date(fechaPrometida).toISOString() : null,
       }),
     });
     const j = (await res.json()) as { success?: boolean; error?: string };
@@ -2007,15 +2010,16 @@ export default function ProyectoDetalleInner({
                     />
                   </div>
                 </div>
-                <label className="block text-sm">
-                  <span className={labelCls}>Fecha de entrega comprometida</span>
-                  <input
-                    type="date"
-                    className={`${inputCls} mt-1.5`}
-                    value={fechaPrometida}
-                    onChange={(e) => setFechaPrometida(e.target.value)}
-                  />
-                </label>
+                <div className="block text-sm">
+                  <span className={labelCls}>Fecha y hora de entrega comprometida</span>
+                  <div className="mt-1.5">
+                    <FechaHoraSelect
+                      ariaLabel="Fecha y hora de entrega comprometida"
+                      value={fechaPrometida}
+                      onChange={setFechaPrometida}
+                    />
+                  </div>
+                </div>
                 {esWeb ? (
                   <label className="block text-sm sm:col-span-2">
                     <span className={labelCls}>Observaciones comerciales</span>

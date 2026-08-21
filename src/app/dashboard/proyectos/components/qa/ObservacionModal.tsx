@@ -13,6 +13,8 @@ import {
 } from "@/lib/proyectos/qa-observaciones-config";
 import QAImageDropzone from "./QAImageDropzone";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
+import { isoAInputDatetimeLocal } from "@/lib/format/hora-py";
+import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraSelect";
 import { PersonaSearchSelect } from "@/app/dashboard/proyectos/components/PersonaSearchSelect";
 import type {
   QAApiResp,
@@ -105,18 +107,6 @@ function IconPersonas() {
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" strokeLinecap="round" />
     </svg>
   );
-}
-
-/**
- * ISO -> "YYYY-MM-DDTHH:mm" en hora local, que es lo único que acepta
- * `datetime-local`. `toISOString()` daría UTC y el input mostraría otra hora.
- */
-function isoAInputLocal(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 /** Candado del chip "Privado": el ícono refuerza el mensaje sin depender del color. */
@@ -768,18 +758,17 @@ export default function ObservacionModal({
 
                   <div>
                     <span className={LABEL_CLS}>Fecha y hora límite</span>
-                    <input
-                      type="datetime-local"
-                      value={isoAInputLocal(obs.fecha_limite)}
-                      onChange={(e) =>
-                        void guardar({
-                          // El input da hora local sin zona; se convierte a ISO
+                    <div className="mt-1.5">
+                      <FechaHoraSelect
+                        ariaLabel="Fecha y hora límite"
+                        value={isoAInputDatetimeLocal(obs.fecha_limite)}
+                        onChange={(v) =>
+                          // El selector da hora local sin zona; se pasa a ISO
                           // para que el servidor guarde el instante exacto.
-                          fecha_limite: e.target.value ? new Date(e.target.value).toISOString() : null,
-                        })
-                      }
-                      className={`${INPUT_CLS} mt-1.5 py-2`}
-                    />
+                          void guardar({ fecha_limite: v ? new Date(v).toISOString() : null })
+                        }
+                      />
+                    </div>
                     <p className="mt-1 text-[10px] text-slate-400">
                       Se avisa al asignado 2 h y 1 h antes.
                     </p>

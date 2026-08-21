@@ -48,3 +48,18 @@ export function diaMesPY(iso: string): string {
   const mes = partes.find((p) => p.type === "month")?.value ?? "";
   return `${dia.padStart(2, "0")}/${mes.padStart(2, "0")}`;
 }
+
+/**
+ * ISO -> "YYYY-MM-DDTHH:mm" para un `<input type="datetime-local">`.
+ *
+ * El input habla la hora LOCAL del navegador y sin zona, así que no sirve
+ * `toISOString()` (daría UTC y mostraría otra hora). Es el inverso de
+ * `new Date(valorDelInput)`, que es cómo se vuelve a ISO al guardar.
+ */
+export function isoAInputDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}

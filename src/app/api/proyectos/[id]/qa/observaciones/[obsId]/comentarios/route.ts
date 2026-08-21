@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
+import { origenesVisibles, permisoQADe } from "@/lib/proyectos/qa-permisos";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import {
   QA_OBSERVACION_COMENTARIO_SELECT,
@@ -27,12 +28,21 @@ export async function GET(
   try {
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
+    const permiso = await permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid);
+    if (permiso.vista == null) {
+      return NextResponse.json(errorResponse("No tenés acceso a QA en este proyecto."), { status: 403 });
+    }
+
+    // EL filtro que importa: el hilo 'interno' no sale de acá salvo para QA, PM
+    // y admin. Se aplica en la consulta, no al renderizar, para que el
+    // contenido privado no viaje siquiera al cliente de Desarrollo.
     const { data, error } = await sb
       .from("proyecto_qa_observacion_comentarios")
       .select(QA_OBSERVACION_COMENTARIO_SELECT)
       .eq("empresa_id", auth.empresaId)
       .eq("proyecto_id", pid)
       .eq("observacion_id", oid)
+      .in("origen", origenesVisibles(permiso))
       .order("created_at", { ascending: true });
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 
@@ -75,6 +85,21 @@ export async function POST(
     const origen = esQAComentarioOrigen(body?.origen) ? body.origen : "qa";
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+
+    const permiso = await permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid);
+    if (permiso.vista == null) {
+      return NextResponse.json(errorResponse("No tenés acceso a QA en este proyecto."), { status: 403 });
+    }
+    // Escribir en el hilo interno también se valida: si no, alguien de
+    // Desarrollo podría publicar ahí mandando `origen: "interno"` a mano, y
+    // aunque después no lo viera, estaría metiendo ruido en un canal privado.
+    if (origen === "interno" && !permiso.puedeVerInterno) {
+      return NextResponse.json(
+        errorResponse("El seguimiento interno es sólo para QA y Project Manager."),
+        { status: 403 }
+      );
+    }
+
     const observacion = await fetchObservacion(sb, auth.empresaId, pid, oid);
     if (!observacion) {
       return NextResponse.json(errorResponse("Observación no encontrada"), { status: 404 });

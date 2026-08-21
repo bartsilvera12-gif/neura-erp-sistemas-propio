@@ -191,7 +191,7 @@ export const QA_SECCION_SELECT =
   "id, proyecto_id, nombre, color, sort_order, created_by, created_at, updated_at" as const;
 
 export const QA_OBSERVACION_SELECT =
-  "id, proyecto_id, seccion_id, numero, titulo, descripcion, estado, severidad, origen, url_referencia, asignado_a, fecha_limite, resuelto_por, resuelto_at, verificado_por, verificado_at, sort_order, created_by, created_at, updated_at" as const;
+  "id, proyecto_id, seccion_id, numero, titulo, descripcion, estado, severidad, origen, url_referencia, asignado_a, fecha_limite, resuelto_por, resuelto_at, verificado_por, verificado_at, sort_order, ronda, created_by, created_at, updated_at" as const;
 
 export const QA_OBSERVACION_ARCHIVO_SELECT =
   "id, observacion_id, nombre, storage_bucket, storage_path, mime_type, size_bytes, sort_order, uploaded_by, created_at" as const;
@@ -228,6 +228,8 @@ export type QAObservacionRow = {
   verificado_por: string | null;
   verificado_at: string | null;
   sort_order: number;
+  /** Ronda de revisión a la que pertenece (1 = primera revisión). */
+  ronda: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -258,10 +260,17 @@ export type QAObservacionArchivoPublico = Omit<
  * interno, etc.). Son dos campos del mismo nombre en tablas distintas, con
  * significados distintos.
  */
-export type QAComentarioOrigen = "qa" | "tecnico";
+/**
+ * Carril donde vive un comentario de una observación:
+ *  - `qa`      → "Nota de QA", visible para Desarrollo.
+ *  - `tecnico` → "Respuesta del técnico", visible para Desarrollo.
+ *  - `interno` → Seguimiento interno PM ↔ QA. NUNCA se le envía a Desarrollo;
+ *    el filtro se aplica en la API (ver `qa-permisos.ts`).
+ */
+export type QAComentarioOrigen = "qa" | "tecnico" | "interno";
 
 export function esQAComentarioOrigen(value: unknown): value is QAComentarioOrigen {
-  return value === "qa" || value === "tecnico";
+  return value === "qa" || value === "tecnico" || value === "interno";
 }
 
 export type QAObservacionComentarioRow = {

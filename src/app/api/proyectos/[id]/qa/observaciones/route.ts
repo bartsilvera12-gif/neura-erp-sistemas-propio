@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { permisoQADe } from "@/lib/proyectos/qa-permisos";
 import {
   QA_OBSERVACION_SELECT,
   QA_ORIGEN_INICIAL,
@@ -53,6 +54,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
+    // El módulo de QA no es para todos: el comercial del proyecto no lo ve. Se
+    // corta acá, en el servidor, y no escondiendo el tab en el cliente.
+    const permiso = await permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid);
+    if (permiso.vista == null) {
+      return NextResponse.json(
+        errorResponse(
+          permiso.motivo === "comercial_sin_acceso_qa"
+            ? "QA es una vista del equipo técnico; como responsable comercial no tenés acceso."
+            : "No tenés acceso a QA en este proyecto."
+        ),
+        { status: 403 }
+      );
+    }
+
     let query = sb
       .from("proyecto_qa_observaciones")
       .select(QA_OBSERVACION_SELECT)
@@ -83,7 +98,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       (data ?? []) as QAObservacionRow[]
     );
 
-    return NextResponse.json(successResponse({ observaciones }));
+    // La vista viaja con los datos: el cliente la usa para decidir qué panel
+    // dibuja, pero lo que puede LEER ya viene filtrado desde acá.
+    return NextResponse.json(
+      successResponse({
+        observaciones,
+        permiso: { vista: permiso.vista, puede_ver_interno: permiso.puedeVerInterno },
+      })
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

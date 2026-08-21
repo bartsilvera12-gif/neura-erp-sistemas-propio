@@ -81,7 +81,10 @@ export async function enrichProyectoHistorialRows(
 
   const nombreUsuario = new Map<string, string>();
   for (const u of usrRes.data ?? []) {
-    const label = [u.nombre, u.email].filter(Boolean).join(" · ") || u.id.slice(0, 8);
+    // Sólo el nombre: el email no aporta nada en el historial y ensuciaba la
+    // línea ("ALAN AYALA · alanayalapsn@gmail.com"). El email sigue estando en
+    // el módulo de Usuarios, que es donde corresponde buscarlo.
+    const label = String(u.nombre ?? "").trim() || String(u.email ?? "").trim() || u.id.slice(0, 8);
     nombreUsuario.set(u.id, label);
   }
 

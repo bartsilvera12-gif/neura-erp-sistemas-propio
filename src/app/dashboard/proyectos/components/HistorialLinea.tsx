@@ -112,6 +112,11 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
               const usr = nombreCapitular((h.usuario_cambio_label as string | undefined) ?? "");
               const hora = horaPY(String(h.entered_at ?? ""));
               const esReasignacion = h.evento_tipo === "reasignacion_tecnico";
+              // `formatDurationHuman` devuelve "—" cuando todavía no hay salida;
+              // como string es truthy y se colaba en el badge como "— en este
+              // estado". Se normaliza a vacío.
+              const durCruda = String(h.duration_label ?? "").trim();
+              const duracion = durCruda && durCruda !== "—" ? durCruda : "";
 
               return (
                 <li key={String(h.id)}>
@@ -168,9 +173,9 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                               </span>
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                              {h.duration_label ? (
+                              {duracion ? (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">
-                                  {String(h.duration_label)} en este estado
+                                  {duracion} en este estado
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-[#4FAEB2]/10 px-1.5 py-0.5 font-medium text-[#2F6E71]">
@@ -183,16 +188,27 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                         )}
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-2 pl-1">
-                        <span className="text-[11px] tabular-nums text-slate-400">{hora}</span>
+                      {/*
+                        Quién y cuándo, visibles y no escondidos detrás de un
+                        tooltip: es el registro que se usa para seguimiento.
+                      */}
+                      <div className="flex shrink-0 flex-col items-end gap-1 pl-2">
+                        <span className="text-[12px] font-semibold tabular-nums text-slate-700">{hora}</span>
                         {usr !== "—" ? (
-                          <span
-                            title={usr}
-                            className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[9px] font-semibold text-slate-500"
-                          >
-                            {inicialesNombre(usr)}
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              aria-hidden="true"
+                              className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[8px] font-bold text-slate-500"
+                            >
+                              {inicialesNombre(usr)}
+                            </span>
+                            <span className="max-w-[140px] truncate text-[11px] text-slate-500" title={usr}>
+                              {usr}
+                            </span>
                           </span>
-                        ) : null}
+                        ) : (
+                          <span className="text-[11px] italic text-slate-300">sin registrar</span>
+                        )}
                       </div>
                     </div>
                   </SpotlightCard>

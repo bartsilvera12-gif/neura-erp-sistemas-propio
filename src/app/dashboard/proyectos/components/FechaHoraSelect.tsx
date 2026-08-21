@@ -25,6 +25,40 @@ const MESES = [
 const HORAS_RAPIDAS = ["09:00", "12:00", "15:00", "18:00"];
 
 const p2 = (n: number) => String(n).padStart(2, "0");
+
+/** Medidas del panel. `ALTO` es el alto máximo; si no entra, el panel scrollea. */
+const PANEL_ANCHO = 292;
+const PANEL_ALTO = 380;
+
+/**
+ * Dónde plantar el panel para que quede SIEMPRE dentro de la ventana.
+ *
+ * La versión anterior decidía "abajo salvo que entre arriba", y cuando no
+ * entraba en ninguno de los dos —el caso normal de un campo a media altura
+ * dentro de un modal— caía al caso "abajo" y lo dibujaba por debajo del borde
+ * inferior: el panel existía pero no se veía, y parecía que el clic no hacía
+ * nada. Ahora, además de elegir el lado, se recorta contra la ventana.
+ *
+ * Función pura y exportada para poder probar la geometría sin un navegador.
+ */
+export function calcularPos(
+  r: { left: number; top: number; bottom: number },
+  vp: { width: number; height: number }
+): { left: number; top: number; maxHeight: number } {
+  const espacioAbajo = vp.height - r.bottom - 8;
+  const espacioArriba = r.top - 8;
+  const abreArriba = espacioAbajo < PANEL_ALTO && espacioArriba > espacioAbajo;
+
+  const alto = Math.min(PANEL_ALTO, Math.max(200, abreArriba ? espacioArriba : espacioAbajo));
+  const propuesto = abreArriba ? r.top - alto - 4 : r.bottom + 4;
+
+  return {
+    left: Math.max(8, Math.min(r.left, vp.width - PANEL_ANCHO - 8)),
+    // El recorte final es lo que garantiza que se vea, elija el lado que elija.
+    top: Math.max(8, Math.min(propuesto, vp.height - alto - 8)),
+    maxHeight: alto,
+  };
+}
 const aValor = (d: Date, hhmm: string) =>
   `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${hhmm}`;
 
@@ -70,7 +104,7 @@ export function FechaHoraSelect({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [abierto, setAbierto] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
 
   const { fecha, hora } = useMemo(() => parseValor(value), [value]);
   const [mesAncla, setMesAncla] = useState<Date>(() => fecha ?? new Date());
@@ -89,15 +123,7 @@ export function FechaHoraSelect({
     const recalcular = () => {
       const r = wrapRef.current?.getBoundingClientRect();
       if (!r) return;
-      const ANCHO = 292;
-      const ALTO = 380;
-      // Se abre hacia arriba si abajo no entra, y se mantiene dentro del ancho
-      // de la ventana: si no, dentro de un modal quedaba cortado.
-      const arriba = r.bottom + ALTO > window.innerHeight && r.top > ALTO;
-      setPos({
-        left: Math.max(8, Math.min(r.left, window.innerWidth - ANCHO - 8)),
-        top: arriba ? r.top - ALTO - 4 : r.bottom + 4,
-      });
+      setPos(calcularPos(r, { width: window.innerWidth, height: window.innerHeight }));
     };
     recalcular();
     window.addEventListener("scroll", recalcular, true);
@@ -155,8 +181,8 @@ export function FechaHoraSelect({
       ? createPortal(
           <div
             data-fechahora-panel=""
-            className="z-[90] w-[292px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
-            style={{ position: "fixed", left: pos.left, top: pos.top }}
+            className="z-[90] flex w-[292px] flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl"
+            style={{ position: "fixed", left: pos.left, top: pos.top, maxHeight: pos.maxHeight }}
           >
             <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
               <button

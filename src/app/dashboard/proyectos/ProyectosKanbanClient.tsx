@@ -19,7 +19,6 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
-import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import { isErpRolAdministrador, isErpRolSupervisor } from "@/lib/usuarios/erp-rol-normalize";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
@@ -74,8 +73,6 @@ type ProyectoCard = Record<string, unknown> & {
     restante_segundos: number | null;
     excedido_segundos: number | null;
   };
-  /** Se fija una sola vez, la primera vez que el proyecto llega a Entregado. */
-  primera_entrega_at?: string | null;
 };
 
 const ESTADO_ENTREGADO_CODIGO = "publicado";
@@ -123,14 +120,7 @@ type PostentregaInfo = {
 
 function getPostentregaInfo(p: ProyectoCard): PostentregaInfo | null {
   if (!isEntregado(p)) return null;
-  // Ancla fija: la ventana de cambios gratis corre desde la PRIMERA entrega,
-  // no desde "hace cuánto está en el estado actual" — eso se resetea si el
-  // proyecto sale de Entregado (p. ej. a Cambios solicitados) y vuelve a
-  // entrar, regalando 30 días nuevos cada vez. `estado_actual_desde` queda
-  // sólo como respaldo para proyectos ya entregados antes de que existiera
-  // `primera_entrega_at` (se completa solo la próxima vez que cambien de
-  // estado; hasta entonces sigue viéndose, sólo que sin el anclaje fijo).
-  const desde = p.primera_entrega_at ?? p.estado_actual_desde;
+  const desde = p.estado_actual_desde;
   if (!desde) return null;
   const desdeMs = Date.parse(desde);
   if (!Number.isFinite(desdeMs)) return null;
@@ -850,11 +840,8 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     if (alcance === null) return; // esperar a resolver el default por nivel
     setLoading(true);
     setErr(null);
-    // La búsqueda por texto NO viaja al servidor: se resuelve en memoria sobre
-    // lo que ya está cargado (ver `proyectosVisibles`). Antes `q` era una
-    // dependencia de este `load`, así que cada tecla disparaba las cinco
-    // requests de abajo — de ahí que buscar se sintiera lento.
     const sp = new URLSearchParams();
+    if (q.trim()) sp.set("q", q.trim());
     if (filtroEstado) sp.set("estado_id", filtroEstado);
     if (filtroTipo) sp.set("tipo_id", filtroTipo);
     if (filtroRc) sp.set("responsable_comercial_id", filtroRc);
@@ -892,9 +879,13 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       return;
     }
     setEstados(jEst.data ?? []);
-    // Se guarda lo que vino tal cual: qué se muestra lo decide `proyectosVisibles`,
-    // que es lo que permite que la búsqueda reaccione sin volver a pedir nada.
-    setProyectos((jPr.data ?? []) as ProyectoCard[]);
+    // Por defecto el tablero muestra el trabajo activo + lo entregado del MES en curso; los
+    // entregados de meses anteriores se ven en el panel gerencial. PERO si hay una búsqueda o
+    // filtro activo, el usuario está buscando algo puntual: mostramos todo lo que matchea
+    // (incluidos los entregados viejos), si no "desaparecen" al buscarlos.
+    const hayBusquedaOFiltro = Boolean(q.trim() || filtroEstado || filtroTipo || filtroRc || filtroRt);
+    const proyectosApi = (jPr.data ?? []) as ProyectoCard[];
+    setProyectos(hayBusquedaOFiltro ? proyectosApi : proyectosApi.filter((p) => !esEntregadoDeMesAnterior(p)));
 
     if (jTipos.success && jTipos.data) setTipoOpts(jTipos.data);
     if (jUsers.usuarios) setUserOpts(jUsers.usuarios);
@@ -905,7 +896,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     }
 
     setLoading(false);
-  }, [filtroEstado, filtroTipo, filtroRc, filtroRt, alcance]);
+  }, [q, filtroEstado, filtroTipo, filtroRc, filtroRt, alcance]);
 
   useEffect(() => {
     void load();
@@ -941,47 +932,12 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     };
   }, [dataSchema]);
 
-  const tokensBusqueda = useMemo(() => tokenizarBusqueda(q), [q]);
-
-  /**
-   * Lo que efectivamente se muestra. Dos decisiones, las dos en memoria:
-   *
-   *  1. Por defecto el tablero muestra el trabajo activo + lo entregado del MES
-   *     en curso; los entregados viejos viven en el panel gerencial. Si hay una
-   *     búsqueda o un filtro, el usuario busca algo puntual y se muestra todo lo
-   *     que coincida, o el proyecto "desaparecería" justo al buscarlo.
-   *  2. El texto se compara contra todo lo visible de la tarjeta —cliente,
-   *     título, tipo, estado y responsables—, sin acentos y por tokens sueltos.
-   */
-  const proyectosVisibles = useMemo(() => {
-    const hayFiltro =
-      tokensBusqueda.length > 0 || Boolean(filtroEstado || filtroTipo || filtroRc || filtroRt);
-    const base = hayFiltro ? proyectos : proyectos.filter((p) => !esEntregadoDeMesAnterior(p));
-    if (tokensBusqueda.length === 0) return base;
-    return base.filter((p) =>
-      coincideBusqueda(
-        tokensBusqueda,
-        [
-          p.titulo,
-          p.cliente?.empresa,
-          p.cliente?.nombre_contacto,
-          p.proyecto_tipo?.nombre,
-          p.proyecto_estado?.nombre,
-          p.responsable_comercial?.nombre,
-          p.responsable_tecnico?.nombre,
-        ]
-          .filter(Boolean)
-          .join(" ")
-      )
-    );
-  }, [proyectos, tokensBusqueda, filtroEstado, filtroTipo, filtroRc, filtroRt]);
-
   const estadoActivoIds = useMemo(() => new Set(estados.map((e) => e.id)), [estados]);
 
   const kanbanColumns = useMemo(() => {
     const columns = [...estados];
     const missing = new Map<string, EstadoRow>();
-    for (const p of proyectosVisibles) {
+    for (const p of proyectos) {
       if (estadoActivoIds.has(p.estado_id) || missing.has(p.estado_id)) continue;
       missing.set(p.estado_id, {
         id: p.estado_id,
@@ -993,17 +949,17 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       });
     }
     return [...columns, ...missing.values()];
-  }, [estadoActivoIds, estados, proyectosVisibles]);
+  }, [estadoActivoIds, estados, proyectos]);
 
   const byColumn = useMemo(() => {
     const m = new Map<string, ProyectoCard[]>();
     for (const e of kanbanColumns) m.set(e.id, []);
-    for (const p of proyectosVisibles) {
+    for (const p of proyectos) {
       const col = m.get(p.estado_id);
       if (col) col.push(p);
     }
     return m;
-  }, [kanbanColumns, proyectosVisibles]);
+  }, [kanbanColumns, proyectos]);
 
   const prioridadByCodigo = useMemo(() => {
     const m = new Map<string, PrioridadConfig>();
@@ -1107,7 +1063,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   }
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-6 p-4 md:p-6">
+    <div className="mx-auto max-w-[1800px] space-y-5 px-4 pb-4 pt-2 md:px-6 md:pb-6 md:pt-3">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -1122,7 +1078,18 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Proyectos</h1>
           <p className="text-sm text-slate-500">Kanban configurable por empresa — producción, clientes y SLA.</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setNuevoModalOpen(true)}
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Nuevo proyecto
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/dashboard/proyectos/paginas"
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
@@ -1169,29 +1136,6 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
             Tareas del equipo
           </Link>
           <Link
-            href="/dashboard/proyectos/comercial"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
-            title="Proyectos por comercial: en qué estado va lo que vendió cada asesor"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-3.5 w-3.5"
-              aria-hidden="true"
-            >
-              <path d="M20 7h-9" />
-              <path d="M14 17H5" />
-              <circle cx="17" cy="17" r="3" />
-              <circle cx="7" cy="7" r="3" />
-            </svg>
-            Comercial
-          </Link>
-          <Link
             href="/dashboard/proyectos/reportes/entregados-por-tecnico"
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
             title="Reporte: proyectos entregados por técnico"
@@ -1219,7 +1163,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
                 type="button"
                 onClick={() => setAlcance("mios")}
                 aria-pressed={alcance === "mios"}
-                title="Solo los proyectos donde soy responsable, en mi función (comercial, técnico o QA)"
+                title="Solo los proyectos donde soy responsable (comercial, técnico o QA)"
                 className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                   alcance === "mios" ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500 hover:text-slate-700"
                 }`}
@@ -1266,28 +1210,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
               Lista
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setNuevoModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 transition-colors hover:bg-[#3F8E91]"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Nuevo proyecto
-          </button>
         </div>
-      </div>
 
       {err ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{err}</div> : null}
 
@@ -1326,14 +1249,19 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           </span>
           <input
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-            type="search"
-            placeholder="Buscar cliente, tipo, estado o responsable…"
-            aria-label="Buscar proyectos"
+            placeholder="Buscar título o cliente…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && setQ("")}
+            onKeyDown={(e) => e.key === "Enter" && void load()}
           />
         </div>
+        <button
+          type="button"
+          className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+          onClick={() => void load()}
+        >
+          Buscar
+        </button>
         <FancySelect
           className="min-w-[180px] shrink-0"
           ariaLabel="Filtrar por estado"
@@ -1403,7 +1331,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
 
       {vista === "lista" ? (
         <ProyectosLista
-          proyectos={proyectosVisibles}
+          proyectos={proyectos}
           estados={estados}
           estadoActivoIds={estadoActivoIds}
           prioridadByCodigo={prioridadByCodigo}

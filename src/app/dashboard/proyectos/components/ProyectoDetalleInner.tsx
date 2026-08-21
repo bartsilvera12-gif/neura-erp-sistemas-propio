@@ -12,6 +12,7 @@ import {
 } from "@/app/dashboard/proyectos/components/ProyectoModuloSelector";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
+import { PersonaSearchSelect } from "@/app/dashboard/proyectos/components/PersonaSearchSelect";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
@@ -1952,36 +1953,26 @@ export default function ProyectoDetalleInner({
                 <div className="block text-sm">
                   <span className={labelCls}>Asesor comercial</span>
                   <div className="mt-1.5">
-                    <FancySelect
+                    <PersonaSearchSelect
                       ariaLabel="Asesor comercial"
-                      placeholder="—"
+                      personas={usuarios}
                       value={responsableComercialId}
                       onChange={setResponsableComercialId}
-                      options={[
-                        { value: "", label: "—" },
-                        ...usuarios.map((u) => ({
-                          value: u.id,
-                          label: u.nombre || u.email || u.id.slice(0, 8),
-                        })),
-                      ]}
+                      placeholder="—"
+                      vacioLabel="—"
                     />
                   </div>
                 </div>
                 <div className="block text-sm">
                   <span className={labelCls}>Técnico responsable</span>
                   <div className="mt-1.5">
-                    <FancySelect
+                    <PersonaSearchSelect
                       ariaLabel="Técnico responsable"
-                      placeholder="—"
+                      personas={usuarios}
                       value={responsableTecnicoId}
                       onChange={setResponsableTecnicoId}
-                      options={[
-                        { value: "", label: "—" },
-                        ...usuarios.map((u) => ({
-                          value: u.id,
-                          label: u.nombre || u.email || u.id.slice(0, 8),
-                        })),
-                      ]}
+                      placeholder="—"
+                      vacioLabel="—"
                     />
                   </div>
                 </div>

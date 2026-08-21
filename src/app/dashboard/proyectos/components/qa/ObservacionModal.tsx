@@ -13,6 +13,7 @@ import {
 } from "@/lib/proyectos/qa-observaciones-config";
 import QAImageDropzone from "./QAImageDropzone";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
+import { PersonaSearchSelect } from "@/app/dashboard/proyectos/components/PersonaSearchSelect";
 import type {
   QAApiResp,
   QAArchivo,
@@ -701,20 +702,16 @@ export default function ObservacionModal({
                   <div>
                     <span className={LABEL_CLS}>Asignado a</span>
                     <div className="mt-1.5">
-                      <FiltroSelect
-                        etiqueta="Asignada a"
-                        valor={obs.asignado_a ?? ""}
-                        activo={Boolean(obs.asignado_a)}
-                        bloque
+                      {/*
+                        Buscador en vez del <select> nativo: la lista tiene 15
+                        nombres en MAYÚSCULAS y había que recorrerla a ojo.
+                      */}
+                      <PersonaSearchSelect
+                        ariaLabel="Asignado a"
+                        personas={usuarios}
+                        value={obs.asignado_a ?? ""}
                         onChange={(v) => void guardar({ asignado_a: v || null })}
-                      >
-                        <option value="">Sin asignar</option>
-                        {usuarios.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {(u.nombre ?? "").trim() || (u.email ?? "").trim() || "Usuario"}
-                          </option>
-                        ))}
-                      </FiltroSelect>
+                      />
                     </div>
                   </div>
 

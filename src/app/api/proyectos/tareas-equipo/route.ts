@@ -444,7 +444,35 @@ export async function GET(request: Request) {
       }
     }
 
+    /**
+     * Alcance de la vista comercial.
+     *
+     * Un asesor ve SOLO su propia cartera: entrar y ver la de los compañeros no
+     * le sirve para trabajar y expone cuánto vendió cada uno. Quien coordina
+     * —Project Manager y administradores— sí ve a todos, que es para lo que la
+     * pantalla existe.
+     *
+     * El recorte se hace acá y no escondiendo tarjetas en el cliente: si sólo
+     * se ocultaran, los proyectos de los demás viajarían igual en la respuesta.
+     */
+    const yo = auth.usuarioCatalogId ?? "";
+    let veTodosLosComerciales = true;
+    {
+      const catalog = createServiceRoleClient();
+      const { data: u } = await catalog
+        .from("usuarios")
+        .select("rol, es_project_manager")
+        .eq("empresa_id", empresaId)
+        .eq("id", yo)
+        .maybeSingle();
+      const flags = (u ?? {}) as { rol?: string | null; es_project_manager?: boolean | null };
+      const rol = (flags.rol ?? "").trim().toLowerCase();
+      veTodosLosComerciales =
+        rol === "administrador" || rol === "super_admin" || flags.es_project_manager === true;
+    }
+
     const activosPorComercial = Array.from(gruposComercial.values())
+      .filter((g) => veTodosLosComerciales || g.tecnico_id === yo)
       .map((g) => ({
         ...g,
         secciones: g.secciones.map((s) => ({

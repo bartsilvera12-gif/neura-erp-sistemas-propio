@@ -34,7 +34,8 @@ type TipoNotificacion =
   | "esqueleto_vencido"
   | "proyecto_estado_cambio"
   | "proyecto_entregado"
-  | "agenda_recordatorio";
+  | "agenda_recordatorio"
+  | "qa_vence";
 
 type Notificacion = {
   id: string;
@@ -78,6 +79,12 @@ const ESTILO_TIPO: Record<
   TipoNotificacion,
   { icon: typeof Bell; wrap: string; label: string }
 > = {
+  qa_vence: {
+    icon: AlarmClock,
+    // Ámbar: es un plazo que se acerca, no un error todavía.
+    wrap: "bg-amber-50 text-amber-600",
+    label: "QA por vencer",
+  },
   agenda_recordatorio: {
     icon: CalendarClock,
     // Teal de marca: es un aviso de agenda, no una alarma de error. El énfasis

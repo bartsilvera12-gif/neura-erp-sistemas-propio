@@ -21,7 +21,18 @@ import {
   type QAObservacionRow,
 } from "@/lib/proyectos/qa-shared";
 
-const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * Acepta fecha sola (`YYYY-MM-DD`, como se guardaba antes) o fecha con hora en
+ * ISO. La columna es `timestamptz`: una fecha sola entra a las 00:00 y sigue
+ * funcionando igual que antes.
+ */
+function normalizarFechaLimite(valor: string): string | null {
+  const v = valor.trim();
+  if (!v) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
 
 function textoOpcional(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
@@ -132,9 +143,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const origen =
       typeof body?.origen === "string" && esQAOrigen(body.origen) ? body.origen : QA_ORIGEN_INICIAL;
 
-    const fechaLimite = textoOpcional(body?.fecha_limite, 10);
-    if (fechaLimite && !FECHA_RE.test(fechaLimite)) {
-      return NextResponse.json(errorResponse("fecha_limite debe ser YYYY-MM-DD"), { status: 400 });
+    const fechaCruda = textoOpcional(body?.fecha_limite, 40);
+    const fechaLimite = fechaCruda ? normalizarFechaLimite(fechaCruda) : null;
+    if (fechaCruda && !fechaLimite) {
+      return NextResponse.json(errorResponse("fecha_limite inválida"), { status: 400 });
     }
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);

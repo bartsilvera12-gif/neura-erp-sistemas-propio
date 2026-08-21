@@ -70,16 +70,13 @@ export async function GET(
     if (contactId) {
       const { data: ct } = await supabase
         .from("chat_contacts")
-        .select("nombre, telefono, raw_telefono")
+        .select("name, phone_number")
         .eq("id", contactId)
         .eq("empresa_id", empresa_id)
         .maybeSingle();
       if (ct) {
-        contactNombre = (ct as { nombre: string | null }).nombre ?? null;
-        contactTelefono =
-          (ct as { telefono: string | null }).telefono ??
-          (ct as { raw_telefono: string | null }).raw_telefono ??
-          null;
+        contactNombre = ((ct as { name: string | null }).name ?? "").toString().trim() || null;
+        contactTelefono = ((ct as { phone_number: string | null }).phone_number ?? "").toString().trim() || null;
       }
     }
 

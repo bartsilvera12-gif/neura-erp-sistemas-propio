@@ -98,6 +98,21 @@ function fmtSecs(s: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Hora local del mensaje (HH:mm), como WhatsApp. created_at viene en UTC (timestamptz). */
+function fmtTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Teléfono para mostrar en el header (dígitos → +5959...). */
+function fmtPhone(p: string | null): string {
+  if (!p) return "";
+  const digits = p.replace(/[^\d]/g, "");
+  return digits ? `+${digits}` : p;
+}
+
 function MessageBody({ m }: { m: Msg }) {
   if (m.message_type === "text") {
     return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
@@ -178,6 +193,7 @@ export default function MAsesorChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
   const [title, setTitle] = useState("Chat");
+  const [contactPhone, setContactPhone] = useState<string | null>(null);
   const [windowOpen, setWindowOpen] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -232,6 +248,7 @@ export default function MAsesorChatPage() {
           setMessages(nuevos);
         }
         setTitle(data.conversation?.contact_nombre || data.conversation?.contact_telefono || "Chat");
+        setContactPhone(data.conversation?.contact_telefono ?? null);
         setWindowOpen(data.conversation?.window_open ?? null);
         setErr(null);
       } catch (e) {
@@ -554,6 +571,19 @@ export default function MAsesorChatPage() {
       })
     : "";
 
+  // Header estilo WhatsApp: nombre (o número si no hay nombre) arriba, y debajo el número.
+  const phoneDisplay = fmtPhone(contactPhone);
+  const titleIsPhone =
+    Boolean(contactPhone) && title.replace(/[^\d]/g, "") === (contactPhone ?? "").replace(/[^\d]/g, "");
+  const headerTitle = titleIsPhone ? phoneDisplay : title;
+  const headerSub =
+    [
+      !titleIsPhone && phoneDisplay ? phoneDisplay : null,
+      windowOpen === false ? "Ventana 24 h cerrada" : windowOpen === true ? "Ventana 24 h abierta" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "WhatsApp";
+
   return (
     <div className="min-h-svh max-h-svh bg-slate-50 flex flex-col">
       <header
@@ -565,10 +595,8 @@ export default function MAsesorChatPage() {
           ‹
         </button>
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold leading-tight">{title}</h1>
-          <p className="text-[11px] text-white/80 leading-tight">
-            {windowOpen === false ? "Ventana 24 h cerrada" : windowOpen === true ? "Ventana 24 h abierta" : "WhatsApp"}
-          </p>
+          <h1 className="truncate text-sm font-semibold leading-tight">{headerTitle}</h1>
+          <p className="text-[11px] text-white/80 leading-tight truncate">{headerSub}</p>
         </div>
       </header>
 
@@ -603,6 +631,15 @@ export default function MAsesorChatPage() {
                         <span className="font-semibold">No entregado.</span>{" "}
                         {friendlyWhatsappFailureReason(extractWhatsappFailureInfo(m.raw_payload))}
                       </span>
+                    </div>
+                  ) : null}
+                  {m.created_at ? (
+                    <div
+                      className={`mt-0.5 text-right text-[10px] leading-none ${
+                        m.from_me ? "text-white/70" : "text-slate-400"
+                      }`}
+                    >
+                      {fmtTime(m.created_at)}
                     </div>
                   ) : null}
                 </div>

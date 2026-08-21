@@ -2,6 +2,7 @@ import "server-only";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { responsablesPorCita } from "@/lib/agenda/responsables";
 import { ESTADOS_NO_BLOQUEAN } from "@/lib/agenda/types";
+import { horaPY } from "@/lib/format/hora-py";
 
 /**
  * Recordatorios de reunión para la campanita, calculados al leerla.
@@ -54,13 +55,6 @@ type CitaRow = {
   created_by: string | null;
   ubicacion: string | null;
 };
-
-function horaLocal(iso: string): string {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 
 /**
  * Avisos de las reuniones próximas de un usuario.
@@ -127,8 +121,8 @@ export async function avisosAgendaDe(
       // volver a sonar por el mismo aviso en cada refresco.
       id: `agenda:${c.id}:${ventana}`,
       tipo: "agenda_recordatorio",
-      titulo: ventana === 30 ? `En ${restantes} min: ${c.titulo}` : `Hoy ${horaLocal(c.inicio_at)}: ${c.titulo}`,
-      cuerpo: [`Empieza a las ${horaLocal(c.inicio_at)}`, c.ubicacion?.trim() || null]
+      titulo: ventana === 30 ? `En ${restantes} min: ${c.titulo}` : `Hoy ${horaPY(c.inicio_at)}: ${c.titulo}`,
+      cuerpo: [`Empieza a las ${horaPY(c.inicio_at)}`, c.ubicacion?.trim() || null]
         .filter(Boolean)
         .join(" · "),
       proyecto_id: null,

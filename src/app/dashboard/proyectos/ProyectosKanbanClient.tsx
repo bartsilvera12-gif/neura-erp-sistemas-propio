@@ -558,6 +558,7 @@ function ProyectosLista({
   onOpen,
   onMove,
   movingProjectId,
+  pageSize,
 }: {
   proyectos: ProyectoCard[];
   estados: EstadoRow[];
@@ -566,9 +567,8 @@ function ProyectosLista({
   onOpen: (id: string) => void;
   onMove: (proyectoId: string, estadoId: string) => void;
   movingProjectId: string | null;
+  pageSize: ListPageSize;
 }) {
-  const [pageSize, setPageSize] = useState<ListPageSize>(25);
-
   const ordered = proyectos
     .slice()
     .sort((a, b) => {
@@ -583,27 +583,6 @@ function ProyectosLista({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-        <span>
-          Mostrando <strong className="text-slate-700">{rows.length}</strong> de {ordered.length}
-        </span>
-        <label className="flex items-center gap-1.5">
-          <span>Registros:</span>
-          <select
-            value={String(pageSize)}
-            onChange={(e) =>
-              setPageSize(e.target.value === "todos" ? "todos" : (Number(e.target.value) as ListPageSize))
-            }
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
-            aria-label="Cantidad de registros a mostrar"
-          >
-            <option value="25">25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-            <option value="todos">Todos</option>
-          </select>
-        </label>
-      </div>
       <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <table className="w-full border-collapse text-sm">
           <colgroup>
@@ -770,6 +749,8 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   const [userOpts, setUserOpts] = useState<{ id: string; nombre?: string }[]>([]);
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
   const [nuevoModalOpen, setNuevoModalOpen] = useState(false);
+  /** Paginación de la vista Lista (elevado desde ProyectosLista para mostrar el control en la barra). */
+  const [pageSize, setPageSize] = useState<ListPageSize>(25);
 
   /** Vista del tablero: "kanban" (cards por estado) | "lista" (tabla). Persiste por navegador. */
   const [vista, setVista] = useState<"kanban" | "lista">(() => {
@@ -1210,22 +1191,36 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
               Lista
             </button>
           </div>
+          {vista === "lista" ? (
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <span>
+                Mostrando{" "}
+                <strong className="text-slate-700">
+                  {pageSize === "todos" ? proyectos.length : Math.min(pageSize, proyectos.length)}
+                </strong>{" "}
+                de {proyectos.length}
+              </span>
+              <label className="flex items-center gap-1.5">
+                <span>Registros:</span>
+                <select
+                  value={String(pageSize)}
+                  onChange={(e) =>
+                    setPageSize(e.target.value === "todos" ? "todos" : (Number(e.target.value) as ListPageSize))
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+                  aria-label="Cantidad de registros a mostrar"
+                >
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="todos">Todos</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
         </div>
 
       {err ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{err}</div> : null}
-
-      <div className="overflow-x-auto pb-1">
-        <div className="flex min-w-full gap-3">
-          {estados.map((estado) => (
-            <EstadoMetric
-              key={estado.id}
-              label={estado.nombre}
-              value={byColumn.get(estado.id)?.length ?? 0}
-              color={estado.color}
-            />
-          ))}
-        </div>
-      </div>
 
       <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:flex-row xl:flex-wrap xl:items-center">
         <div className="relative min-w-[220px] flex-1">
@@ -1338,6 +1333,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           onOpen={setModalProjectId}
           onMove={(proyectoId, estadoId) => void cambiarEstado(proyectoId, estadoId)}
           movingProjectId={movingProjectId}
+          pageSize={pageSize}
         />
       ) : (
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -1619,26 +1615,6 @@ function MetaItem({ label, value }: { label: string; value: string }) {
     <div className="min-w-0">
       <span className="font-semibold text-slate-500">{label}</span>{" "}
       <span className="break-words text-slate-800">{value}</span>
-    </div>
-  );
-}
-
-function EstadoMetric({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
-  return (
-    <div className="min-w-[190px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
-      <div className="mb-2 h-1 rounded-full" style={{ backgroundColor: color || "#94a3b8" }} />
-      <div className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500" title={label}>
-        {label}
-      </div>
-      <div className="mt-1 text-2xl font-semibold text-slate-900">{value}</div>
     </div>
   );
 }

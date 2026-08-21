@@ -11,6 +11,7 @@ import {
   type ProyectoModuloCatalogo as ModuloCatalogo,
 } from "@/app/dashboard/proyectos/components/ProyectoModuloSelector";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
+import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
@@ -686,6 +687,16 @@ export default function ProyectoDetalleInner({
   });
   const [responsableTecnicoId, setResponsableTecnicoId] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  /**
+   * Campos que "Nuevo proyecto" pide al crear pero que después no se podían ver
+   * ni corregir desde acá: cliente, asesor, prioridad y fecha de entrega. Si el
+   * alta se cargaba con un dato mal, no había forma de arreglarlo.
+   */
+  const [clienteId, setClienteId] = useState("");
+  const [responsableComercialId, setResponsableComercialId] = useState("");
+  const [prioridad, setPrioridad] = useState("normal");
+  const [fechaPrometida, setFechaPrometida] = useState("");
+  const [clientes, setClientes] = useState<{ id: string; empresa?: string | null; nombre_contacto?: string | null }[]>([]);
   const [datosSnapshot, setDatosSnapshot] = useState("");
   const [guardandoDatos, setGuardandoDatos] = useState(false);
 
@@ -727,14 +738,29 @@ export default function ProyectoDetalleInner({
     setBriefForm(merged);
     setBriefLists(lists);
     setSaasForm(saas);
-    setResponsableTecnicoId(typeof p.responsable_tecnico_id === "string" ? p.responsable_tecnico_id : "");
-    setObservaciones(typeof p.observaciones_comerciales === "string" ? p.observaciones_comerciales : "");
+    const rt = typeof p.responsable_tecnico_id === "string" ? p.responsable_tecnico_id : "";
+    const obsCom = typeof p.observaciones_comerciales === "string" ? p.observaciones_comerciales : "";
+    const cli = typeof p.cliente_id === "string" ? p.cliente_id : "";
+    const rc = typeof p.responsable_comercial_id === "string" ? p.responsable_comercial_id : "";
+    const prio = typeof p.prioridad === "string" ? p.prioridad : "normal";
+    // El input `date` necesita YYYY-MM-DD; la API devuelve ISO completo.
+    const fProm = typeof p.fecha_prometida === "string" ? p.fecha_prometida.slice(0, 10) : "";
+    setResponsableTecnicoId(rt);
+    setObservaciones(obsCom);
+    setClienteId(cli);
+    setResponsableComercialId(rc);
+    setPrioridad(prio);
+    setFechaPrometida(fProm);
     setDatosSnapshot(JSON.stringify({
       bf: merged,
       bl: lists,
       saas,
-      responsable_tecnico_id: typeof p.responsable_tecnico_id === "string" ? p.responsable_tecnico_id : "",
-      obs: typeof p.observaciones_comerciales === "string" ? p.observaciones_comerciales : "",
+      responsable_tecnico_id: rt,
+      obs: obsCom,
+      cliente_id: cli,
+      responsable_comercial_id: rc,
+      prioridad: prio,
+      fecha_prometida: fProm,
     }));
     const draft: Record<number, { realizado: boolean; comentario: string }> = {};
     for (const c of j.data.cambios ?? []) {
@@ -876,10 +902,12 @@ export default function ProyectoDetalleInner({
   useEffect(() => {
     let c = false;
     (async () => {
-      const [r, rUsers, rModulos] = await Promise.all([
+      const [r, rUsers, rModulos, rClientes] = await Promise.all([
         fetchWithSupabaseSession("/api/proyectos/estados", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/usuarios/empresa-activos", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/proyectos/modulos-catalogo", { cache: "no-store" }),
+        // Para poder corregir el cliente desde la ficha, no sólo al crear.
+        fetchWithSupabaseSession("/api/clientes", { cache: "no-store" }),
       ]);
       const j = (await r.json()) as { success?: boolean; data?: { id: string; nombre: string }[] };
       const jUsers = (await rUsers.json()) as { usuarios?: UsuarioActivo[] };
@@ -887,6 +915,10 @@ export default function ProyectoDetalleInner({
       if (!c && j.success && j.data) setEstados(j.data);
       if (!c) setUsuarios(jUsers.usuarios ?? []);
       if (!c && jModulos.success && jModulos.data) setModulosCatalogo(jModulos.data);
+      const jCli = (await rClientes.json().catch(() => null)) as
+        | { success?: boolean; data?: { id: string; empresa?: string | null; nombre_contacto?: string | null }[] }
+        | null;
+      if (!c && jCli?.data) setClientes(jCli.data);
     })();
     return () => {
       c = true;
@@ -900,9 +932,24 @@ export default function ProyectoDetalleInner({
       saas: saasForm,
       responsable_tecnico_id: responsableTecnicoId,
       obs: observaciones,
+      cliente_id: clienteId,
+      responsable_comercial_id: responsableComercialId,
+      prioridad,
+      fecha_prometida: fechaPrometida,
     });
     return datosSnapshot !== "" && cur !== datosSnapshot;
-  }, [briefForm, briefLists, saasForm, responsableTecnicoId, observaciones, datosSnapshot]);
+  }, [
+    briefForm,
+    briefLists,
+    saasForm,
+    responsableTecnicoId,
+    observaciones,
+    clienteId,
+    responsableComercialId,
+    prioridad,
+    fechaPrometida,
+    datosSnapshot,
+  ]);
 
   useEffect(() => {
     onDirtyChange?.(datosDirty);
@@ -930,6 +977,12 @@ export default function ProyectoDetalleInner({
         brief_data: briefMerged,
         responsable_tecnico_id: responsableTecnicoId || null,
         observaciones_comerciales: observaciones.trim() === "" ? null : observaciones.trim(),
+        cliente_id: clienteId || null,
+        responsable_comercial_id: responsableComercialId || null,
+        prioridad,
+        // Mediodía y no medianoche: con 00:00 en UTC la fecha se corría al día
+        // anterior en Paraguay.
+        fecha_prometida: fechaPrometida ? new Date(fechaPrometida + "T12:00:00").toISOString() : null,
       }),
     });
     const j = (await res.json()) as { success?: boolean; error?: string };
@@ -1714,7 +1767,9 @@ export default function ProyectoDetalleInner({
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                   <dt className={labelCls}>Cliente</dt>
-                  <dd className="text-right font-medium text-slate-900">{clienteNombre(proyecto)}</dd>
+                  <dd className="max-w-[60%] text-right font-medium text-slate-900">
+                    <CopiarTexto valor={clienteNombre(proyecto)} etiqueta="el nombre del cliente" />
+                  </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                   <dt className={labelCls}>Vendedor / comercial</dt>
@@ -1755,7 +1810,7 @@ export default function ProyectoDetalleInner({
                     <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <dt className={labelCls}>WhatsApp contacto</dt>
                       <dd className="max-w-[55%] text-right font-medium text-slate-900">
-                        {saasForm.whatsapp_contacto.trim() || "—"}
+                        <CopiarTexto valor={saasForm.whatsapp_contacto} etiqueta="el contacto" />
                       </dd>
                     </div>
                   </>
@@ -1878,38 +1933,98 @@ export default function ProyectoDetalleInner({
               </p>
             ) : null}
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/*
+              Datos del alta. Se cargan en "Nuevo proyecto" pero no se veían
+              acá: si el alta salía con el cliente o el asesor equivocado, no
+              había forma de corregirlo desde la ficha.
+            */}
+            <BloqueDatos titulo="Cliente">
               <div className="block text-sm">
-                <span className={labelCls}>Técnico responsable</span>
+                <span className={labelCls}>Cliente asignado</span>
                 <div className="mt-1.5">
-                  <FancySelect
-                    ariaLabel="Técnico responsable"
-                    placeholder="—"
-                    value={responsableTecnicoId}
-                    onChange={setResponsableTecnicoId}
-                    options={[
-                      { value: "", label: "—" },
-                      ...usuarios.map((u) => ({
-                        value: u.id,
-                        label: u.nombre || u.email || u.id.slice(0, 8),
-                      })),
-                    ]}
-                  />
+                  <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={setClienteId} />
                 </div>
               </div>
-              {esWeb ? (
-                <label className="block text-sm sm:col-span-2">
-                  <span className={labelCls}>Observaciones comerciales</span>
-                  <textarea
-                    className={`${inputCls} min-h-[88px]`}
-                    rows={3}
-                    value={observaciones}
-                    onChange={(e) => setObservaciones(e.target.value)}
-                    placeholder="Detalle adicional negociado con el cliente…"
+            </BloqueDatos>
+
+            <BloqueDatos titulo="Asignación y prioridad">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="block text-sm">
+                  <span className={labelCls}>Asesor comercial</span>
+                  <div className="mt-1.5">
+                    <FancySelect
+                      ariaLabel="Asesor comercial"
+                      placeholder="—"
+                      value={responsableComercialId}
+                      onChange={setResponsableComercialId}
+                      options={[
+                        { value: "", label: "—" },
+                        ...usuarios.map((u) => ({
+                          value: u.id,
+                          label: u.nombre || u.email || u.id.slice(0, 8),
+                        })),
+                      ]}
+                    />
+                  </div>
+                </div>
+                <div className="block text-sm">
+                  <span className={labelCls}>Técnico responsable</span>
+                  <div className="mt-1.5">
+                    <FancySelect
+                      ariaLabel="Técnico responsable"
+                      placeholder="—"
+                      value={responsableTecnicoId}
+                      onChange={setResponsableTecnicoId}
+                      options={[
+                        { value: "", label: "—" },
+                        ...usuarios.map((u) => ({
+                          value: u.id,
+                          label: u.nombre || u.email || u.id.slice(0, 8),
+                        })),
+                      ]}
+                    />
+                  </div>
+                </div>
+                <div className="block text-sm">
+                  <span className={labelCls}>Prioridad</span>
+                  <div className="mt-1.5">
+                    <FancySelect
+                      ariaLabel="Prioridad"
+                      value={prioridad}
+                      onChange={setPrioridad}
+                      options={[
+                        { value: "baja", label: "Baja" },
+                        { value: "normal", label: "Normal" },
+                        { value: "alta", label: "Alta" },
+                        { value: "urgente", label: "Urgente" },
+                      ]}
+                    />
+                  </div>
+                </div>
+                <label className="block text-sm">
+                  <span className={labelCls}>Fecha de entrega comprometida</span>
+                  <input
+                    type="date"
+                    className={`${inputCls} mt-1.5`}
+                    value={fechaPrometida}
+                    onChange={(e) => setFechaPrometida(e.target.value)}
                   />
                 </label>
-              ) : null}
-            </div>
+                {esWeb ? (
+                  <label className="block text-sm sm:col-span-2">
+                    <span className={labelCls}>Observaciones comerciales</span>
+                    <textarea
+                      className={`${inputCls} mt-1.5 min-h-[88px]`}
+                      rows={3}
+                      value={observaciones}
+                      onChange={(e) => setObservaciones(e.target.value)}
+                      placeholder="Detalle adicional negociado con el cliente…"
+                    />
+                  </label>
+                ) : null}
+              </div>
+            </BloqueDatos>
+
 
             {esWeb ? (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -3308,5 +3423,70 @@ export default function ProyectoDetalleInner({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Agrupador de campos dentro de "Datos". Antes todos los campos venían en una
+ * sola grilla continua y no se distinguía qué era del cliente, qué de la
+ * asignación y qué del brief.
+ */
+function BloqueDatos({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
+      <h3 className="mb-2.5 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+        <span aria-hidden="true" className="h-3 w-1 rounded-full bg-[#4FAEB2]" />
+        {titulo}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Texto con botón de copiar. Nació para el nombre y el contacto del cliente:
+ * son los datos que se pasan a WhatsApp para escribirle, y seleccionarlos a
+ * mano dentro de una ficha con scroll es incómodo y propenso a cortar de más.
+ */
+function CopiarTexto({ valor, etiqueta }: { valor: string | null | undefined; etiqueta: string }) {
+  const [copiado, setCopiado] = useState(false);
+  const limpio = (valor ?? "").trim();
+  if (!limpio || limpio === "—") return <span className="text-slate-400">—</span>;
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(limpio);
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 1600);
+    } catch {
+      // Sin portapapeles (permiso denegado, contexto inseguro) el texto sigue
+      // a la vista y se puede seleccionar a mano: no se muestra un error.
+    }
+  }
+
+  return (
+    <span className="group inline-flex items-start gap-1.5">
+      <span className="min-w-0">{limpio}</span>
+      <button
+        type="button"
+        onClick={() => void copiar()}
+        aria-label={`Copiar ${etiqueta}`}
+        title={copiado ? "¡Copiado!" : `Copiar ${etiqueta}`}
+        className={`mt-0.5 shrink-0 rounded p-0.5 transition-colors ${
+          copiado ? "text-emerald-600" : "text-slate-300 hover:text-[#3F8E91] group-hover:text-slate-400"
+        }`}
+      >
+        {copiado ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <rect x="9" y="9" width="12" height="12" rx="2" />
+            <path d="M5 15V5a2 2 0 0 1 2-2h10" strokeLinecap="round" />
+          </svg>
+        )}
+      </button>
+    </span>
   );
 }

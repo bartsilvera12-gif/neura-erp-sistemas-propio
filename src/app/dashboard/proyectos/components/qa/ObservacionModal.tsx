@@ -12,6 +12,7 @@ import {
   type QAObservacionSeveridad,
 } from "@/lib/proyectos/qa-observaciones-config";
 import QAImageDropzone from "./QAImageDropzone";
+import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import type {
   QAApiResp,
   QAArchivo,
@@ -135,6 +136,8 @@ export default function ObservacionModal({
   /** Borrador de la conversación técnica: uno solo, lo escriba QA o Desarrollo. */
   const [nuevoComentarioTecnico, setNuevoComentarioTecnico] = useState("");
   const [nuevoComentarioInterno, setNuevoComentarioInterno] = useState("");
+  /** Evita disparar dos cambios de estado encima mientras el primero viaja. */
+  const [cambiandoEstado, setCambiandoEstado] = useState(false);
 
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [subiendo, setSubiendo] = useState(0);
@@ -230,23 +233,46 @@ export default function ObservacionModal({
     onActualizada(j.data);
   }
 
+  /**
+   * Cambia el estado de forma OPTIMISTA: el chip se mueve en el acto y recién
+   * después se confirma contra el servidor. Si falla, vuelve al estado anterior
+   * y se muestra el error.
+   *
+   * Antes se esperaba la respuesta completa para recién ahí pintar el cambio, y
+   * como el endpoint encadena varios viajes a la base, el usuario veía el botón
+   * "colgado" varios segundos. El trabajo del servidor es el mismo; lo que
+   * cambia es que ya no se le hace esperar por algo que casi siempre sale bien.
+   */
   async function cambiarEstado(estado: QAObservacionEstado) {
-    if (estado === obs.estado) return;
-    const res = await fetchWithSupabaseSession(
-      `/api/proyectos/${projectId}/qa/observaciones/${obsId}/estado`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado }),
-      }
-    );
-    const j = (await res.json().catch(() => null)) as QAApiResp<QAObservacion> | null;
-    if (!res.ok || !j?.success || !j.data) {
-      setErr(j?.error ?? "No se pudo cambiar el estado");
-      return;
-    }
+    if (estado === obs.estado || cambiandoEstado) return;
+    const anterior = obs;
+    setCambiandoEstado(true);
     setErr(null);
-    onActualizada(j.data);
+    onActualizada({ ...obs, estado });
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/proyectos/${projectId}/qa/observaciones/${obsId}/estado`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estado }),
+        }
+      );
+      const j = (await res.json().catch(() => null)) as QAApiResp<QAObservacion> | null;
+      if (!res.ok || !j?.success || !j.data) {
+        onActualizada(anterior);
+        setErr(j?.error ?? "No se pudo cambiar el estado");
+        return;
+      }
+      // La respuesta trae los sellos (quién resolvió/verificó y cuándo), que el
+      // optimista no podía saber.
+      onActualizada(j.data);
+    } catch {
+      onActualizada(anterior);
+      setErr("No se pudo cambiar el estado. Revisá la conexión.");
+    } finally {
+      setCambiandoEstado(false);
+    }
   }
 
   /** Crea la sección y la deja aplicada a esta observación en un solo gesto. */
@@ -402,7 +428,11 @@ export default function ObservacionModal({
             Cabecera: código, título, y los dos chips que dicen de un vistazo
             qué se está mirando (qué vista) y en qué estado está la incidencia.
         ---------------------------------------------------------------- */}
-        <div className="flex shrink-0 items-start gap-3 border-b border-slate-200 px-5 py-3.5">
+        <SpotlightCard
+          spotlightColor={vista === "qa" ? "rgba(139, 92, 246, 0.10)" : "rgba(14, 165, 233, 0.10)"}
+          className="shrink-0 border-b border-slate-200"
+        >
+        <div className="flex items-start gap-3 px-5 py-3.5">
           <span className="mt-0.5 shrink-0 rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] font-semibold tabular-nums text-slate-600">
             {qaCodigoObservacion(obs.numero)}
           </span>
@@ -451,6 +481,7 @@ export default function ObservacionModal({
             </button>
           </div>
         </div>
+        </SpotlightCard>
 
         {/* ---------------------------------------------------------------
             Cuerpo en dos columnas: a la izquierda el contenido de la
@@ -593,7 +624,12 @@ export default function ObservacionModal({
                 <div className="space-y-3">
                   <div>
                     <span className={LABEL_CLS}>Estado</span>
-                    <div className="mt-1.5 flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                    {/*
+                      Grilla de 3 y no una fila: con cinco estados en la columna
+                      angosta, "En curso" partía en dos líneas y descuadraba
+                      todo el control.
+                    */}
+                    <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
                       {QA_ESTADOS.filter(
                         (e) => vista === "qa" || (e.codigo !== "verificado" && e.codigo !== "descartado")
                       ).map((e) => {
@@ -603,9 +639,10 @@ export default function ObservacionModal({
                             key={e.codigo}
                             type="button"
                             onClick={() => void cambiarEstado(e.codigo)}
-                            className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
-                              activo ? "text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            className={`truncate rounded-md px-1.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                              activo ? "text-white shadow-sm" : "text-slate-500 hover:bg-white hover:text-slate-700"
                             }`}
+                            title={e.label}
                             style={activo ? { backgroundColor: e.color } : undefined}
                           >
                             {e.corto}

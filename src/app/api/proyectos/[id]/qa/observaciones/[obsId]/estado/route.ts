@@ -61,7 +61,12 @@ export async function POST(
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 
-    const permiso = await permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid);
+    // El permiso y la observación no dependen entre sí: pedirlos en serie
+    // sumaba un viaje completo a la base por cada cambio de estado.
+    const [permiso, prev] = await Promise.all([
+      permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid),
+      fetchObservacion(sb, auth.empresaId, pid, oid),
+    ]);
     if (permiso.vista == null) {
       return NextResponse.json(errorResponse("No tenés acceso a QA en este proyecto."), { status: 403 });
     }
@@ -75,7 +80,6 @@ export async function POST(
       );
     }
 
-    const prev = await fetchObservacion(sb, auth.empresaId, pid, oid);
     if (!prev) return NextResponse.json(errorResponse("Observación no encontrada"), { status: 404 });
 
     if (prev.estado === estado) {
@@ -92,18 +96,24 @@ export async function POST(
       .select(QA_OBSERVACION_SELECT);
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 
-    await registrarEventoQA(sb, {
-      empresaId: auth.empresaId,
-      proyectoId: pid,
-      usuarioId: auth.usuarioCatalogId,
-      accion: "observacion_estado_cambiado",
-      observacionId: oid,
-      payload: { numero: prev.numero, antes: prev.estado, despues: estado },
-    });
-    await bumpProyectoActividad(sb, auth.empresaId, pid, auth.usuarioCatalogId);
-
     const row = (Array.isArray(data) ? data[0] : data) as QAObservacionRow;
-    const [enriquecida] = await enriquecerObservaciones(sb, auth.empresaId, [row]);
+
+    // El evento de auditoría y el sello de actividad no cambian lo que se
+    // devuelve, así que corren junto al enriquecido en vez de antes: eran dos
+    // viajes secuenciales que el usuario esperaba sin recibir nada a cambio.
+    const [, , enriquecidas] = await Promise.all([
+      registrarEventoQA(sb, {
+        empresaId: auth.empresaId,
+        proyectoId: pid,
+        usuarioId: auth.usuarioCatalogId,
+        accion: "observacion_estado_cambiado",
+        observacionId: oid,
+        payload: { numero: prev.numero, antes: prev.estado, despues: estado },
+      }),
+      bumpProyectoActividad(sb, auth.empresaId, pid, auth.usuarioCatalogId),
+      enriquecerObservaciones(sb, auth.empresaId, [row]),
+    ]);
+    const enriquecida = enriquecidas[0];
     return NextResponse.json(successResponse(enriquecida ?? row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";

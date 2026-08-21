@@ -79,7 +79,7 @@ function Tarjeta({
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <h3 className="flex items-center gap-2 text-[13px] font-semibold text-slate-900">
-        <span aria-hidden="true" className="h-3.5 w-1 rounded-full bg-[#7DCFD2]" />
+        <span aria-hidden="true" className="h-3.5 w-1 rounded-full bg-[#4FAEB2]" />
         {titulo}
       </h3>
       {subtitulo ? (
@@ -475,20 +475,22 @@ export default function ObservacionModal({
             qué se está mirando (qué vista) y en qué estado está la incidencia.
         ---------------------------------------------------------------- */}
         <SpotlightCard
-          spotlightColor="rgba(125, 207, 210, 0.16)"
+          spotlightColor="rgba(79, 174, 178, 0.14)"
           className="shrink-0"
         >
-        <div className="flex items-start gap-3 bg-[#0B3A3D] px-5 py-3.5">
-          <span className="mt-0.5 shrink-0 rounded-md bg-white/10 px-2 py-1 font-mono text-[11px] font-semibold tabular-nums text-[#7DCFD2]">
+        {/* Riel turquesa: da identidad sin oscurecer toda la barra. */}
+        <div className="h-1 w-full bg-gradient-to-r from-[#4FAEB2] to-[#2F6E71]" />
+        <div className="flex items-start gap-3 border-b border-slate-200 bg-white px-5 py-3.5">
+          <span className="mt-0.5 shrink-0 rounded-md bg-[#4FAEB2]/12 px-2 py-1 font-mono text-[11px] font-semibold tabular-nums text-[#2F6E71]">
             {qaCodigoObservacion(obs.numero)}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-bold uppercase tracking-tight text-white">
+              <h2 className="truncate text-lg font-bold uppercase tracking-tight text-slate-900">
                 {obs.titulo}
               </h2>
               <span
-                className="shrink-0 rounded-full border border-[#7DCFD2]/40 bg-[#7DCFD2]/15 px-2 py-0.5 text-[11px] font-semibold text-[#7DCFD2]"
+                className="shrink-0 rounded-full border border-[#4FAEB2]/40 bg-[#4FAEB2]/12 px-2 py-0.5 text-[11px] font-semibold text-[#2F6E71]"
               >
                 {vista === "qa" ? "Vista de QA" : "Vista de Desarrollo"}
               </span>
@@ -499,7 +501,7 @@ export default function ObservacionModal({
                 {estadoActual?.label ?? obs.estado}
               </span>
             </div>
-            <p className="mt-0.5 truncate text-[12px] text-white/60">
+            <p className="mt-0.5 truncate text-[12px] text-slate-500">
               {seccionActual ? seccionActual.nombre : "Sin sección"}
             </p>
           </div>
@@ -508,7 +510,7 @@ export default function ObservacionModal({
               <button
                 type="button"
                 onClick={() => void eliminarObservacion()}
-                className="rounded-lg p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-rose-300"
+                className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
                 aria-label="Eliminar observación"
               >
                 <IconTrash />
@@ -517,7 +519,7 @@ export default function ObservacionModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-2.5 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              className="rounded-lg px-2.5 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
             >
               Cerrar
             </button>
@@ -642,8 +644,8 @@ export default function ObservacionModal({
               <Tarjeta titulo="Conversación técnica" subtitulo="Visible para QA y Desarrollo">
                 <HiloComentario
                   titulo=""
-                  colorAvatar="bg-[#0B3A3D]/10 text-[#0B3A3D]"
-                  colorAcento="border-l-[#7DCFD2]"
+                  colorAvatar="bg-[#4FAEB2]/15 text-[#2F6E71]"
+                  colorAcento="border-l-[#4FAEB2]"
                   comentarios={comentariosTecnicos}
                   cargando={comentariosCargando}
                   vacio="Todavía no hay mensajes."
@@ -867,7 +869,7 @@ export default function ObservacionModal({
               <button
                 type="button"
                 onClick={() => void cambiarEstado("resuelto")}
-                className="rounded-lg bg-[#0B3A3D] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E]"
+                className="rounded-lg bg-[#2F6E71] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#25585B]"
               >
                 Enviar a revisión
               </button>
@@ -876,7 +878,7 @@ export default function ObservacionModal({
               <button
                 type="button"
                 onClick={() => void cambiarEstado("verificado")}
-                className="rounded-lg bg-[#0B3A3D] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E]"
+                className="rounded-lg bg-[#2F6E71] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#25585B]"
               >
                 Verificar y cerrar
               </button>
@@ -1073,7 +1075,7 @@ function HiloComentario({
             type="button"
             onClick={onEnviar}
             disabled={!borrador.trim()}
-            className="rounded-lg bg-[#0B3A3D] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+            className="rounded-lg bg-[#2F6E71] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#25585B] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
           >
             Enviar
           </button>
@@ -1140,7 +1142,7 @@ function ComentarioItem({
               <button
                 type="button"
                 onClick={() => setEditando(true)}
-                className="text-[11px] text-slate-400 transition-colors hover:text-[#0B3A3D]"
+                className="text-[11px] text-slate-400 transition-colors hover:text-[#2F6E71]"
               >
                 Editar
               </button>
@@ -1190,7 +1192,7 @@ function ComentarioItem({
                 type="button"
                 onClick={confirmar}
                 disabled={!borrador.trim() || borrador.trim() === c.texto}
-                className="rounded-lg bg-[#0B3A3D] px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#104A4E] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                className="rounded-lg bg-[#2F6E71] px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#25585B] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
               >
                 Guardar
               </button>

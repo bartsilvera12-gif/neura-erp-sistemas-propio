@@ -29,16 +29,16 @@ export const PANEL_CLS =
   "rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 
 export const INPUT_CLS =
-  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#0B3A3D]/40 focus:border-[#0B3A3D] focus:outline-none focus:ring-2 focus:ring-[#7DCFD2]/40";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/25";
 
 export const SELECT_CLS =
-  "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition-colors hover:border-[#0B3A3D]/40 focus:border-[#0B3A3D] focus:outline-none focus:ring-2 focus:ring-[#7DCFD2]/40";
+  "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/25";
 
 export const BTN_PRIMARY_CLS =
-  "inline-flex items-center gap-1.5 rounded-xl bg-[#0B3A3D] px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#104A4E] disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center gap-1.5 rounded-xl bg-[#2F6E71] px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#25585B] disabled:cursor-not-allowed disabled:opacity-40";
 
 export const BTN_GHOST_CLS =
-  "inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#0B3A3D]/40 hover:text-[#0B3A3D]";
+  "inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]";
 
 // --- Fechas -----------------------------------------------------------------
 

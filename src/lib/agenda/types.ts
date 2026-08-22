@@ -53,19 +53,8 @@ export type AgendaCitaRow = {
   updated_at: string;
 };
 
-export type AgendaUsuarioRef = { id: string; nombre?: string | null };
-
 /** Cita enriquecida con datos de cliente y responsable para la UI. */
 export type AgendaCitaEnriquecida = AgendaCitaRow & {
   cliente?: { id: string; nombre?: string | null; telefono?: string | null } | null;
-  /** Responsable PRINCIPAL (`responsable_id`). Se mantiene por compatibilidad. */
-  responsable?: AgendaUsuarioRef | null;
-  /**
-   * Todos los responsables, el principal incluido y siempre primero. Sale de
-   * `agenda_cita_responsables`; si esa tabla todavía no existe en el schema,
-   * cae de vuelta a `[responsable]` y la UI sigue funcionando igual.
-   */
-  responsables?: AgendaUsuarioRef[];
-  /** Quién cargó la cita (`created_by`), para mostrarlo en la ficha. */
-  creado_por?: AgendaUsuarioRef | null;
+  responsable?: { id: string; nombre?: string | null } | null;
 };

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
+import { getAuthWithRol } from "@/lib/middleware/auth";
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import {
   rehostYCloudMessageMedia,
   mergeRehostIntoRaw,
@@ -29,10 +31,25 @@ export const maxDuration = 300;
 const MEDIA_TYPES = ["image", "audio", "video", "document", "sticker"];
 const CONCURRENCY = 5;
 
-function isAuthorized(request: NextRequest): boolean {
+/**
+ * Autoriza por CRON_SECRET (Bearer, para curl/cron) O por sesión de admin logueado (para que el
+ * dueño lo dispare abriendo el link en el navegador, sin manejar secretos). Devuelve la empresa de
+ * la sesión cuando aplica, para acotar el backfill a esa empresa.
+ */
+async function authorize(request: NextRequest): Promise<{ ok: boolean; empresaIdFromSession?: string }> {
   const expected = process.env.CRON_SECRET?.trim();
-  if (!expected) return false;
-  return (request.headers.get("authorization") ?? "") === `Bearer ${expected}`;
+  if (expected && (request.headers.get("authorization") ?? "") === `Bearer ${expected}`) {
+    return { ok: true };
+  }
+  try {
+    const auth = await getAuthWithRol(request);
+    if (auth?.empresa_id && esRolAdminEmpresaOGlobal(auth.rol)) {
+      return { ok: true, empresaIdFromSession: auth.empresa_id };
+    }
+  } catch {
+    /* sin sesión válida */
+  }
+  return { ok: false };
 }
 
 function parseBool(v: string | null): boolean {
@@ -64,16 +81,25 @@ interface Row {
 }
 
 async function handle(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  const url = new URL(request.url);
+
+  // Sonda de salud sin auth (para detectar que esta versión ya está desplegada). No toca datos.
+  if (parseBool(url.searchParams.get("ping"))) {
+    return NextResponse.json({ ok: true, ready: true, feature: "admin-session-auth" });
+  }
+
+  const authz = await authorize(request);
+  if (!authz.ok) {
     return NextResponse.json({ ok: false, error: "no autorizado" }, { status: 401 });
   }
 
-  const url = new URL(request.url);
   const statsOnly = parseBool(url.searchParams.get("stats"));
   const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 1), 200);
   const maxAttempts = Math.min(Math.max(parseInt(url.searchParams.get("maxAttempts") ?? "3", 10) || 3, 1), 10);
 
-  const empresaId = await resolveEmpresaId(url.searchParams.get("empresa_id"));
+  const empresaId = await resolveEmpresaId(
+    url.searchParams.get("empresa_id") ?? authz.empresaIdFromSession ?? null
+  );
   if (!empresaId) {
     return NextResponse.json({ ok: false, error: "Sin empresa objetivo" }, { status: 500 });
   }

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
-import { permisoQADe } from "@/lib/proyectos/qa-permisos";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import {
   QA_OBSERVACION_SELECT,
@@ -60,26 +59,7 @@ export async function POST(
     }
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
-
-    // El permiso y la observación no dependen entre sí: pedirlos en serie
-    // sumaba un viaje completo a la base por cada cambio de estado.
-    const [permiso, prev] = await Promise.all([
-      permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid),
-      fetchObservacion(sb, auth.empresaId, pid, oid),
-    ]);
-    if (permiso.vista == null) {
-      return NextResponse.json(errorResponse("No tenés acceso a QA en este proyecto."), { status: 403 });
-    }
-    // "Verificado" y "Descartado" son el veredicto de QA. Sin este corte, el
-    // técnico podría cerrarse sus propias observaciones mandando el estado a
-    // mano, salteándose la revisión — que es justo lo que QA existe para evitar.
-    if (permiso.vista !== "qa" && (estado === "verificado" || estado === "descartado")) {
-      return NextResponse.json(
-        errorResponse("Verificar o descartar una observación es potestad de QA."),
-        { status: 403 }
-      );
-    }
-
+    const prev = await fetchObservacion(sb, auth.empresaId, pid, oid);
     if (!prev) return NextResponse.json(errorResponse("Observación no encontrada"), { status: 404 });
 
     if (prev.estado === estado) {
@@ -96,24 +76,18 @@ export async function POST(
       .select(QA_OBSERVACION_SELECT);
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 
-    const row = (Array.isArray(data) ? data[0] : data) as QAObservacionRow;
+    await registrarEventoQA(sb, {
+      empresaId: auth.empresaId,
+      proyectoId: pid,
+      usuarioId: auth.usuarioCatalogId,
+      accion: "observacion_estado_cambiado",
+      observacionId: oid,
+      payload: { numero: prev.numero, antes: prev.estado, despues: estado },
+    });
+    await bumpProyectoActividad(sb, auth.empresaId, pid, auth.usuarioCatalogId);
 
-    // El evento de auditoría y el sello de actividad no cambian lo que se
-    // devuelve, así que corren junto al enriquecido en vez de antes: eran dos
-    // viajes secuenciales que el usuario esperaba sin recibir nada a cambio.
-    const [, , enriquecidas] = await Promise.all([
-      registrarEventoQA(sb, {
-        empresaId: auth.empresaId,
-        proyectoId: pid,
-        usuarioId: auth.usuarioCatalogId,
-        accion: "observacion_estado_cambiado",
-        observacionId: oid,
-        payload: { numero: prev.numero, antes: prev.estado, despues: estado },
-      }),
-      bumpProyectoActividad(sb, auth.empresaId, pid, auth.usuarioCatalogId),
-      enriquecerObservaciones(sb, auth.empresaId, [row]),
-    ]);
-    const enriquecida = enriquecidas[0];
+    const row = (Array.isArray(data) ? data[0] : data) as QAObservacionRow;
+    const [enriquecida] = await enriquecerObservaciones(sb, auth.empresaId, [row]);
     return NextResponse.json(successResponse(enriquecida ?? row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";

@@ -2,22 +2,7 @@ import type { AgendaCitaEnriquecida } from "@/lib/agenda/types";
 
 export type AgendaView = "dia" | "semana" | "mes" | "lista";
 
-/**
- * Alto de cada hora en la grilla.
- *
- * Estaba en 48, y con eso una cita de 30 minutos medía 24 px: no entran dos
- * líneas de texto, así que el horario quedaba cortado por la mitad contra el
- * `overflow-hidden` del bloque. Con 64 una media hora mide 32 px y una hora 64,
- * que además hace que la duración se distinga de un vistazo — antes todas las
- * tarjetas parecían del mismo tamaño.
- */
-export const HOUR_PX = 64;
-
-/**
- * Alto a partir del cual el bloque puede apilar título y horario en dos líneas.
- * Por debajo va todo en una sola, que es preferible a mostrar media línea.
- */
-export const ALTO_DOS_LINEAS_PX = 40;
+export const HOUR_PX = 48; // alto de cada hora en la grilla de tiempo
 export const DAY_START_SCROLL_HOUR = 7; // hora a la que se auto-scrollea la grilla
 
 /* ----------------------------- fechas ----------------------------- */
@@ -233,9 +218,7 @@ export function layoutDayEvents(
       out.push({
         cita: ev.cita,
         topPx: ((ev.startMin - winStart) / 60) * HOUR_PX,
-        // Piso de 22 px: alcanza para una línea completa. Con 18 la única
-        // línea también salía recortada en las citas de 15 minutos.
-        heightPx: Math.max(((ev.endMin - ev.startMin) / 60) * HOUR_PX, 22),
+        heightPx: Math.max(((ev.endMin - ev.startMin) / 60) * HOUR_PX, 18),
         leftPct: (col / total) * 100,
         widthPct: (1 / total) * 100,
       });

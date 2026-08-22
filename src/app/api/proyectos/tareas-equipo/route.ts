@@ -38,7 +38,6 @@ type ProyectoRow = {
   tipo_id: string | null;
   estado_id: string | null;
   prioridad: string | null;
-  responsable_comercial_id: string | null;
   responsable_tecnico_id: string | null;
   etapa_desarrollo: ProyectoEtapaDesarrollo | null;
   etapa_desarrollo_at: string | null;
@@ -58,7 +57,7 @@ type ProyectoRow = {
 };
 
 const PROYECTO_COLUMNS =
-  "id, titulo, cliente_id, tipo_id, estado_id, prioridad, responsable_comercial_id, responsable_tecnico_id, etapa_desarrollo, etapa_desarrollo_at, etapa_finalizado_at, tecnico_asignado_at, fecha_ingreso, fecha_prometida, bloqueado, qa_responsable_id, qa_asignado_at, qa_etapa, qa_etapa_at, pausado_at, pausa_motivo, pausa_acumulada_ms, brief_data";
+  "id, titulo, cliente_id, tipo_id, estado_id, prioridad, responsable_tecnico_id, etapa_desarrollo, etapa_desarrollo_at, etapa_finalizado_at, tecnico_asignado_at, fecha_ingreso, fecha_prometida, bloqueado, qa_responsable_id, qa_asignado_at, qa_etapa, qa_etapa_at, pausado_at, pausa_motivo, pausa_acumulada_ms, brief_data";
 
 /**
  * Tiempo de trabajo acumulado de un proyecto, en milisegundos de horario laboral.
@@ -119,9 +118,6 @@ export async function GET(request: Request) {
     const estadosTablero = estadosDeTablero((estadosData ?? []) as EstadoTablero[]);
     const estadosTableroIds = estadosTablero.map((e) => e.id);
     const estadoPorId = new Map(estadosTablero.map((e) => [e.id, e] as const));
-    // Columna "QA" del tablero. Si la empresa no la tiene configurada, el bloque
-    // de QA queda vacío en vez de mostrar proyectos de cualquier estado.
-    const estadoQaId = estadosTablero.find((e) => (e.codigo ?? "") === "qa")?.id ?? null;
 
     const [activosRes, qaRes, finalizadosRes] = await Promise.all([
       // Sin estados configurados no hay tablero que armar: se evita un `.in()`
@@ -138,23 +134,14 @@ export async function GET(request: Request) {
       // Bloque de QA: eje independiente del de desarrollo. Un proyecto puede
       // estar acá y en el bloque del programador a la vez (aparece en las dos
       // tarjetas), o sólo acá si el programador ya lo dio por finalizado.
-      // La tarjeta de QA muestra lo que ESTÁ en QA, no todo lo que alguna vez
-      // pasó por sus manos. Antes filtraba sólo por `qa_etapa` activa, que es un
-      // eje aparte del tablero: un proyecto que QA aprobó y el técnico ya movió
-      // a "Revisión Cliente" seguía colgado en la lista de la QA, inflándola con
-      // trabajo que ya no era suyo. Ahora además tiene que estar parado en la
-      // columna QA del Kanban.
-      estadoQaId == null
-        ? Promise.resolve({ data: [] as Record<string, unknown>[], error: null })
-        : sb
-            .from("proyectos")
-            .select(PROYECTO_COLUMNS)
-            .eq("empresa_id", empresaId)
-            .eq("archivado", false)
-            .eq("estado_id", estadoQaId)
-            .not("qa_responsable_id", "is", null)
-            .in("qa_etapa", QA_ETAPAS_ACTIVAS)
-            .order("qa_asignado_at", { ascending: true, nullsFirst: false }),
+      sb
+        .from("proyectos")
+        .select(PROYECTO_COLUMNS)
+        .eq("empresa_id", empresaId)
+        .eq("archivado", false)
+        .not("qa_responsable_id", "is", null)
+        .in("qa_etapa", QA_ETAPAS_ACTIVAS)
+        .order("qa_asignado_at", { ascending: true, nullsFirst: false }),
       sb
         .from("proyectos")
         .select(PROYECTO_COLUMNS)
@@ -187,8 +174,6 @@ export async function GET(request: Request) {
     const tecnicoIds = uniq([
       ...todos.map((p) => p.responsable_tecnico_id),
       ...todos.map((p) => p.qa_responsable_id),
-      // Los comerciales salen del mismo catálogo de usuarios que los técnicos.
-      ...todos.map((p) => p.responsable_comercial_id),
     ]);
 
     const [clientesRes, tiposRes] = await Promise.all([
@@ -261,8 +246,6 @@ export async function GET(request: Request) {
       qa_responsable_id: string | null;
       qa_responsable_nombre: string | null;
       qa_etapa: ProyectoEtapaQA | null;
-      /** Quién desarrolla. Lo usa la vista comercial, que agrupa por asesor. */
-      tecnico_nombre: string | null;
     };
     type SeccionEstado = {
       estado_id: string;
@@ -283,10 +266,6 @@ export async function GET(request: Request) {
 
     const ahoraIso = new Date().toISOString();
     const gruposActivos = new Map<string, GrupoActivo>();
-
-    // El item de cada proyecto se arma una sola vez y se referencia desde los
-    // dos agrupados (por programador y por comercial).
-    const itemPorProyecto = new Map<string, ActivoItem>();
 
     for (const p of activos) {
       const estado = p.estado_id ? estadoPorId.get(p.estado_id) : undefined;
@@ -361,12 +340,7 @@ export async function GET(request: Request) {
           ? tecnicoNombre.get(p.qa_responsable_id) ?? null
           : null,
         qa_etapa: p.qa_etapa,
-        tecnico_nombre: p.responsable_tecnico_id
-          ? tecnicoNombre.get(p.responsable_tecnico_id) ?? null
-          : null,
       };
-
-      itemPorProyecto.set(p.id, item);
 
       const seccion = g.secciones.find((s) => s.estado_id === estado.id);
       if (seccion) {
@@ -386,93 +360,6 @@ export async function GET(request: Request) {
     };
 
     const activosPorProgramador = Array.from(gruposActivos.values())
-      .map((g) => ({
-        ...g,
-        secciones: g.secciones.map((s) => ({
-          ...s,
-          proyectos: s.proyectos.slice().sort(ordenarActivos),
-        })),
-      }))
-      .sort((a, b) => {
-        if (a.tecnico_id == null && b.tecnico_id != null) return 1;
-        if (a.tecnico_id != null && b.tecnico_id == null) return -1;
-        return a.tecnico_nombre.localeCompare(b.tecnico_nombre);
-      });
-
-    // --- Bloque 1c: los mismos activos, agrupados por COMERCIAL ---------------
-    // Vista para el equipo comercial: en que estado estan los proyectos que cada
-    // asesor vendio. Es el mismo universo y el mismo item que el bloque de
-    // programadores — solo cambia por que campo se agrupa —, asi que el cliente
-    // reusa la tarjeta y la fila sin nada especifico.
-    const gruposComercial = new Map<string, GrupoActivo>();
-    for (const p of activos) {
-      const estado = p.estado_id ? estadoPorId.get(p.estado_id) : undefined;
-      if (!estado) continue;
-      const key = p.responsable_comercial_id ?? SIN_ASIGNAR;
-      let g = gruposComercial.get(key);
-      if (!g) {
-        g = {
-          tecnico_id: p.responsable_comercial_id,
-          tecnico_nombre: p.responsable_comercial_id
-            ? tecnicoNombre.get(p.responsable_comercial_id) ?? "Comercial sin nombre"
-            : "Sin asignar",
-          cantidad: 0,
-          pausados: 0,
-          alertas_esqueleto: 0,
-          secciones: estadosTablero.map((e) => ({
-            estado_id: e.id,
-            codigo: e.codigo ?? "",
-            nombre: (e.nombre ?? "").trim() || e.codigo || "—",
-            color: e.color ?? "#94a3b8",
-            cantidad: 0,
-            proyectos: [],
-          })),
-        };
-        gruposComercial.set(key, g);
-      }
-      // El item ya se construyo en el bloque de programadores; se referencia el
-      // mismo objeto en vez de recalcularlo.
-      const item = itemPorProyecto.get(p.id);
-      if (!item) continue;
-      g.cantidad += 1;
-      if (item.pausado) g.pausados += 1;
-      if (item.esqueleto != null && item.esqueleto !== "ok") g.alertas_esqueleto += 1;
-      const seccion = g.secciones.find((sec) => sec.estado_id === estado.id);
-      if (seccion) {
-        seccion.cantidad += 1;
-        seccion.proyectos.push(item);
-      }
-    }
-
-    /**
-     * Alcance de la vista comercial.
-     *
-     * Un asesor ve SOLO su propia cartera: entrar y ver la de los compañeros no
-     * le sirve para trabajar y expone cuánto vendió cada uno. Quien coordina
-     * —Project Manager y administradores— sí ve a todos, que es para lo que la
-     * pantalla existe.
-     *
-     * El recorte se hace acá y no escondiendo tarjetas en el cliente: si sólo
-     * se ocultaran, los proyectos de los demás viajarían igual en la respuesta.
-     */
-    const yo = auth.usuarioCatalogId ?? "";
-    let veTodosLosComerciales = true;
-    {
-      const catalog = createServiceRoleClient();
-      const { data: u } = await catalog
-        .from("usuarios")
-        .select("rol, es_project_manager")
-        .eq("empresa_id", empresaId)
-        .eq("id", yo)
-        .maybeSingle();
-      const flags = (u ?? {}) as { rol?: string | null; es_project_manager?: boolean | null };
-      const rol = (flags.rol ?? "").trim().toLowerCase();
-      veTodosLosComerciales =
-        rol === "administrador" || rol === "super_admin" || flags.es_project_manager === true;
-    }
-
-    const activosPorComercial = Array.from(gruposComercial.values())
-      .filter((g) => veTodosLosComerciales || g.tecnico_id === yo)
       .map((g) => ({
         ...g,
         secciones: g.secciones.map((s) => ({
@@ -507,10 +394,6 @@ export async function GET(request: Request) {
       qa_id: string;
       qa_nombre: string;
       cantidad: number;
-      /** Pasadas por QA ya cerradas (histórico), para el tiempo de respuesta. */
-      revisiones_cerradas: number;
-      /** Promedio de horario laboral por revisión cerrada, en ms. */
-      ms_promedio_revision: number | null;
       proyectos: QAItem[];
     };
 
@@ -524,8 +407,6 @@ export async function GET(request: Request) {
           qa_id: qaId,
           qa_nombre: tecnicoNombre.get(qaId) ?? "QA sin nombre",
           cantidad: 0,
-          revisiones_cerradas: 0,
-          ms_promedio_revision: null,
           proyectos: [],
         };
         gruposQa.set(qaId, g);
@@ -567,38 +448,8 @@ export async function GET(request: Request) {
           qa_id: u.id,
           qa_nombre: (u.nombre ?? "").trim() || (u.email ?? "").trim() || "QA sin nombre",
           cantidad: 0,
-          revisiones_cerradas: 0,
-          ms_promedio_revision: null,
           proyectos: [],
         });
-      }
-    }
-
-    // Tiempo de respuesta histórico de cada QA: promedio de horario laboral de
-    // sus revisiones ya cerradas. Sale de `proyecto_qa_revisiones`; si la tabla
-    // no está disponible, las tarjetas simplemente no muestran el promedio.
-    {
-      const { data: revs, error: eRev } = await sb
-        .from("proyecto_qa_revisiones")
-        .select("qa_responsable_id, ms_laborables")
-        .eq("empresa_id", empresaId)
-        .not("salida_at", "is", null);
-      if (!eRev) {
-        const acc = new Map<string, { n: number; ms: number }>();
-        for (const row of (revs ?? []) as { qa_responsable_id: string | null; ms_laborables: number | null }[]) {
-          const k = row.qa_responsable_id;
-          if (!k) continue;
-          const a = acc.get(k) ?? { n: 0, ms: 0 };
-          a.n += 1;
-          a.ms += Number(row.ms_laborables) || 0;
-          acc.set(k, a);
-        }
-        for (const [qaId, g] of gruposQa) {
-          const a = acc.get(qaId);
-          if (!a || a.n === 0) continue;
-          g.revisiones_cerradas = a.n;
-          g.ms_promedio_revision = Math.round(a.ms / a.n);
-        }
       }
     }
 
@@ -694,7 +545,6 @@ export async function GET(request: Request) {
         })),
         activos_total: activos.length,
         activos_por_programador: activosPorProgramador,
-        activos_por_comercial: activosPorComercial,
         qa_total: enQa.length,
         qa_por_responsable: qaPorResponsable,
         finalizados_total: finalizados.length,

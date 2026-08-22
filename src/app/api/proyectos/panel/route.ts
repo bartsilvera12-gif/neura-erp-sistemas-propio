@@ -3,7 +3,6 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
-import { tipoEsMixto, tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 
 /**
  * GET /api/proyectos/panel — Panel GERENCIAL de proyectos.
@@ -69,7 +68,7 @@ export async function GET(request: Request) {
         empresaId
       ),
       fetchAll(sb, "proyecto_estados", "id, nombre, codigo, sort_order, es_estado_final, sla_horas_objetivo, cuenta_sla", empresaId),
-      fetchAll(sb, "facturas", "cliente_id, fecha, monto, saldo, tipo, estado, suscripcion_id", empresaId),
+      fetchAll(sb, "facturas", "cliente_id, fecha, monto, tipo, estado, suscripcion_id", empresaId),
       fetchAll(sb, "proyecto_estado_historial", "proyecto_id, estado_nuevo_id, entered_at, exited_at", empresaId),
     ]);
 
@@ -91,29 +90,10 @@ export async function GET(request: Request) {
     // Tipos.
     const tipoIds = [...new Set(proys.map((p) => String(p.tipo_id ?? "")).filter(Boolean))];
     const tipoNombre = new Map<string, string>();
-    const tipoCodigo = new Map<string, string>();
     for (let i = 0; i < tipoIds.length; i += 120) {
       const slice = tipoIds.slice(i, i + 120);
-      const { data } = await sb.from("proyecto_tipos").select("id, nombre, codigo").in("id", slice);
-      for (const t of (data ?? []) as Record<string, unknown>[]) {
-        tipoNombre.set(String(t.id), String(t.nombre ?? ""));
-        tipoCodigo.set(String(t.id), String(t.codigo ?? ""));
-      }
-    }
-
-    /**
-     * Bucket EXCLUSIVO del proyecto para "Entregados por mes": cada proyecto
-     * cuenta en un solo grupo, así la suma de los tres coincide siempre con el
-     * total del mes. El tipo mixto ("Página Web + SaaS/ERP") es su propio
-     * bucket y no se reparte entre los otros dos — contarlo en ambos inflaría
-     * el total del mes por encima de la cantidad real de entregas.
-     */
-    function bucketDeTipo(tipoId: unknown): "web" | "saas" | "mixto" | "otros" {
-      const codigo = tipoCodigo.get(String(tipoId ?? "")) ?? "";
-      if (tipoEsMixto(codigo)) return "mixto";
-      if (tipoIncluyeWeb(codigo)) return "web";
-      if (tipoIncluyeSaas(codigo)) return "saas";
-      return "otros";
+      const { data } = await sb.from("proyecto_tipos").select("id, nombre").in("id", slice);
+      for (const t of (data ?? []) as Record<string, unknown>[]) tipoNombre.set(String(t.id), String(t.nombre ?? ""));
     }
 
     // Nombres de usuarios (comercial + técnico).
@@ -159,20 +139,11 @@ export async function GET(request: Request) {
       if (esSus) continue;
       presupuestoPorCliente.set(cid, Number(f.monto) || 0);
     }
-    /**
-     * Atribuye un valor por CLIENTE a un solo PROYECTO — el más antiguo (por
-     * fecha de ingreso) —, y 0 al resto. Mismo mecanismo para presupuesto y
-     * para deuda: si el cliente tiene varios proyectos, evita que la misma
-     * plata se cuente dos veces al sumar por asesor/técnico/estado/total.
-     *
-     * Atribución confirmada con el dueño del reporte: cuando el proyecto más
-     * viejo del cliente es de OTRO técnico, el técnico del proyecto nuevo
-     * puede ver ₲0 aunque ese cliente le deba a la empresa — es la misma
-     * convención que ya regía "Presupuesto cerrado", elegida a propósito para
-     * que la suma entre técnicos siga coincidiendo con el total real.
-     */
-    function atribuirUnaVezPorCliente(valorPorCliente: Map<string, number>): Map<string, number> {
-      const porProyecto = new Map<string, number>();
+    // Presupuesto por PROYECTO: la venta del cliente (primera factura) se cuenta UNA sola vez, en
+    // su proyecto más antiguo (por fecha de ingreso). Si el cliente tiene varios proyectos, los
+    // demás no vuelven a sumar (evita duplicar la misma venta en asesor/técnico/estado/total).
+    const presupuestoPorProyecto = new Map<string, number>();
+    {
       const porCli = new Map<string, Record<string, unknown>[]>();
       for (const p of proys) {
         const cid = String(p.cliente_id ?? "");
@@ -182,42 +153,16 @@ export async function GET(request: Request) {
         porCli.set(cid, arr);
       }
       for (const [cid, ps] of porCli) {
-        const valor = valorPorCliente.get(cid) ?? 0;
+        const monto = presupuestoPorCliente.get(cid) ?? 0;
         ps.sort(
           (a, b) =>
             String(a.fecha_ingreso ?? "").localeCompare(String(b.fecha_ingreso ?? "")) ||
             String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))
         );
-        ps.forEach((p, i) => porProyecto.set(String(p.id), i === 0 ? valor : 0));
+        ps.forEach((p, i) => presupuestoPorProyecto.set(String(p.id), i === 0 ? monto : 0));
       }
-      return porProyecto;
     }
-
-    // Presupuesto por PROYECTO: la venta del cliente (primera factura) se cuenta UNA sola vez, en
-    // su proyecto más antiguo (por fecha de ingreso). Si el cliente tiene varios proyectos, los
-    // demás no vuelven a sumar (evita duplicar la misma venta en asesor/técnico/estado/total).
-    const presupuestoPorProyecto = atribuirUnaVezPorCliente(presupuestoPorCliente);
     const presupuestoDe = (p: Record<string, unknown>) => presupuestoPorProyecto.get(String(p.id)) ?? 0;
-
-    // Deuda por CLIENTE = suma de saldo pendiente en TODAS sus facturas de
-    // venta (no suscripción, no anuladas ni corregidas por NC) — a diferencia
-    // del presupuesto, que sólo mira la primera. La deuda es "cuánto debe hoy",
-    // así que entran todas las facturas de venta impagas, no sólo la inicial.
-    const deudaPorCliente = new Map<string, number>();
-    for (const f of facturas) {
-      const cid = String(f.cliente_id ?? "");
-      if (!cid) continue;
-      if (ANULADAS.has(String(f.estado ?? "").trim().toLowerCase())) continue;
-      const esSus =
-        String(f.tipo ?? "").trim().toLowerCase() === "suscripcion" ||
-        (f.suscripcion_id != null && String(f.suscripcion_id).trim() !== "");
-      if (esSus) continue;
-      const saldo = Number(f.saldo) || 0;
-      if (saldo <= 0) continue;
-      deudaPorCliente.set(cid, (deudaPorCliente.get(cid) ?? 0) + saldo);
-    }
-    const deudaPorProyecto = atribuirUnaVezPorCliente(deudaPorCliente);
-    const deudaDe = (p: Record<string, unknown>) => deudaPorProyecto.get(String(p.id)) ?? 0;
 
     // Estados: nombre, orden, final, sla objetivo.
     type EstMeta = { nombre: string; orden: number; final: boolean; cancel: boolean; slaHoras: number | null; cuentaSla: boolean };
@@ -308,7 +253,6 @@ export async function GET(request: Request) {
           return k ? comNombre.get(k) || "—" : "Sin asignar";
         })(),
         presupuesto: Math.round(presupuestoDe(p)),
-        deuda: Math.round(deudaDe(p)),
         dias_en_estado: diasEnEstado,
         sla_vencido: slaVencido,
         sla_texto: slaTexto,
@@ -354,17 +298,13 @@ export async function GET(request: Request) {
 
     // Por asesor. Solo carga vigente: activos + entregados este mes (los entregados de meses
     // anteriores no aparecen ni suman presupuesto).
-    const porAseMap = new Map<
-      string,
-      { cantidad: number; presupuesto: number; deuda: number; proyectos: DetalleProy[] }
-    >();
+    const porAseMap = new Map<string, { cantidad: number; presupuesto: number; proyectos: DetalleProy[] }>();
     for (const p of cohort) {
       if (entregadoMesAnterior(p)) continue;
       const k = String(p.responsable_comercial_id ?? "");
-      const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0, deuda: 0, proyectos: [] };
+      const agg = porAseMap.get(k) ?? { cantidad: 0, presupuesto: 0, proyectos: [] };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);
-      agg.deuda += deudaDe(p);
       agg.proyectos.push(proyectoDetalle(p));
       porAseMap.set(k, agg);
     }
@@ -373,23 +313,18 @@ export async function GET(request: Request) {
         asesor: k ? comNombre.get(k) || k.slice(0, 8) : "Sin asignar",
         cantidad: v.cantidad,
         presupuesto: Math.round(v.presupuesto),
-        deuda: Math.round(v.deuda),
         proyectos: ordenarProys(v.proyectos),
       }))
       .sort((a, b) => b.presupuesto - a.presupuesto || b.cantidad - a.cantidad);
 
     // Por técnico (responsable técnico) — carga vigente: activos + entregados este mes.
-    const porTecMap = new Map<
-      string,
-      { cantidad: number; presupuesto: number; deuda: number; proyectos: DetalleProy[] }
-    >();
+    const porTecMap = new Map<string, { cantidad: number; presupuesto: number; proyectos: DetalleProy[] }>();
     for (const p of cohort) {
       if (entregadoMesAnterior(p)) continue;
       const k = String(p.responsable_tecnico_id ?? "");
-      const agg = porTecMap.get(k) ?? { cantidad: 0, presupuesto: 0, deuda: 0, proyectos: [] };
+      const agg = porTecMap.get(k) ?? { cantidad: 0, presupuesto: 0, proyectos: [] };
       agg.cantidad += 1;
       agg.presupuesto += presupuestoDe(p);
-      agg.deuda += deudaDe(p);
       agg.proyectos.push(proyectoDetalle(p));
       porTecMap.set(k, agg);
     }
@@ -398,7 +333,6 @@ export async function GET(request: Request) {
         tecnico: k ? comNombre.get(k) || k.slice(0, 8) : "Sin asignar",
         cantidad: v.cantidad,
         presupuesto: Math.round(v.presupuesto),
-        deuda: Math.round(v.deuda),
         proyectos: ordenarProys(v.proyectos),
       }))
       .sort((a, b) => b.cantidad - a.cantidad || b.presupuesto - a.presupuesto);
@@ -443,22 +377,12 @@ export async function GET(request: Request) {
       d.setMonth(d.getMonth() - i);
       meses6.push(ymEnAsuncion(d));
     }
-    const BUCKET_LABEL: Record<ReturnType<typeof bucketDeTipo>, string> = {
-      web: "Proyecto Web",
-      saas: "SaaS / ERP",
-      mixto: "Página Web + SaaS/ERP",
-      otros: "Sin tipo",
-    };
-
-    /** `filtroBucket` opcional: sólo entra al detalle el proyecto de ese bucket. */
-    const detalleMes = (ym: string, filtroBucket?: ReturnType<typeof bucketDeTipo>) => {
+    const detalleMes = (ym: string) => {
       const set = entregadoMesProy.get(ym) ?? new Set<string>();
       return [...set]
         .map((pid) => {
           const p = proyById.get(pid);
           if (!p) return null;
-          const bucket = bucketDeTipo(p.tipo_id);
-          if (filtroBucket && bucket !== filtroBucket) return null;
           const ms = entregaMs.get(pid);
           return {
             id: pid,
@@ -466,27 +390,15 @@ export async function GET(request: Request) {
             cliente: cliLabel.get(String(p.cliente_id ?? "")) ?? "—",
             monto: Math.round(presupuestoDe(p)),
             fecha: ms != null ? new Date(ms).toISOString().slice(0, 10) : null,
-            tipo: BUCKET_LABEL[bucket],
           };
         })
         .filter((x): x is NonNullable<typeof x> => x != null)
         .sort((a, b) => b.monto - a.monto || (b.fecha ?? "").localeCompare(a.fecha ?? ""));
     };
-    const resumenMes = (proyectos: ReturnType<typeof detalleMes>) => ({
-      cantidad: proyectos.length,
-      monto: proyectos.reduce((a, x) => a + x.monto, 0),
-      proyectos,
+    const entregados_por_mes = meses6.map((ym) => {
+      const proyectos = detalleMes(ym);
+      return { ym, cantidad: proyectos.length, monto: proyectos.reduce((a, x) => a + x.monto, 0), proyectos };
     });
-    // "Web" y "SaaS/ERP" son EXCLUSIVOS entre sí (el mixto va aparte, ver
-    // `bucketDeTipo`), así que `web.cantidad + saas.cantidad + mixto.cantidad`
-    // da siempre el total del mes — no hay entregas contadas dos veces.
-    const entregados_por_mes = meses6.map((ym) => ({
-      ym,
-      ...resumenMes(detalleMes(ym)),
-      web: resumenMes(detalleMes(ym, "web")),
-      saas: resumenMes(detalleMes(ym, "saas")),
-      mixto: resumenMes(detalleMes(ym, "mixto")),
-    }));
     // Entregados DEL PERÍODO (por fecha de entrega). Sin período → mes en curso.
     const [yyE, mmE] = ymActual.split("-").map((x) => parseInt(x, 10));
     const lastDayE = new Date(yyE, mmE, 0).getDate();

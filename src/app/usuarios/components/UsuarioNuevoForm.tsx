@@ -104,7 +104,6 @@ export default function UsuarioNuevoForm({
           area: form.area,
           rol: rolFromNivelForm(form.nivel),
           es_qa: form.es_qa,
-          notificar_entregas: form.notificar_entregas,
         }),
       });
       const json = await res.json();

@@ -76,56 +76,19 @@ export async function GET(request: Request) {
       });
     }
 
-    // "Mi vista": solo los proyectos donde el usuario actual es responsable —
-    // pero en SU función, no en cualquiera.
-    //
-    // No hay ningún campo en `usuarios` que diga "sos comercial" o "sos
-    // técnico" (`rol` es el permiso del ERP, no el puesto; `area`/`nivel` no
-    // se usan de forma consistente para esto — hay técnicos con area="ventas").
-    // La única fuente confiable es en qué campo aparece asignado de verdad: si
-    // tiene proyectos activos como `responsable_tecnico_id`, funciona como
-    // técnico acá, y "Mías" filtra sólo por ese campo — no también por si
-    // alguna vez apareció como comercial en otro proyecto.
-    //
-    // Si la persona tiene asignaciones en más de una función (raro — hoy sólo
-    // pasa con un administrador) o en ninguna todavía, se cae al criterio
-    // anterior (cualquiera de los tres campos), para no dejarla con la vista
-    // vacía mientras no se sepa cuál es "su" función.
+    // "Mi vista": solo los proyectos donde el usuario actual es responsable, en
+    // cualquier función — comercial, técnico o QA. Para la persona de QA sus
+    // proyectos son los que se le auto-asignaron al entrar a QA (qa_responsable_id).
     if (sp.get("mios") === "1") {
       const yo = auth.usuarioCatalogId ?? "";
-      if (!yo) {
-        rows = [];
-      } else {
-        const contarPor = (campo: "responsable_tecnico_id" | "responsable_comercial_id" | "qa_responsable_id") =>
-          sb
-            .from("proyectos")
-            .select("id", { count: "exact", head: true })
-            .eq("empresa_id", empresaId)
-            .eq("archivado", false)
-            .eq(campo, yo);
-
-        const [cTecnico, cComercial, cQa] = await Promise.all([
-          contarPor("responsable_tecnico_id"),
-          contarPor("responsable_comercial_id"),
-          contarPor("qa_responsable_id"),
-        ]);
-        const esTecnico = (cTecnico.count ?? 0) > 0;
-        const esComercial = (cComercial.count ?? 0) > 0;
-        const esQa = (cQa.count ?? 0) > 0;
-        const funcionUnica = [esTecnico, esComercial, esQa].filter(Boolean).length === 1;
-
-        rows = rows.filter((r) => {
-          const rcid = typeof r.responsable_comercial_id === "string" ? r.responsable_comercial_id : "";
-          const rtid = typeof r.responsable_tecnico_id === "string" ? r.responsable_tecnico_id : "";
-          const qaid = typeof r.qa_responsable_id === "string" ? r.qa_responsable_id : "";
-          if (funcionUnica) {
-            if (esTecnico) return rtid === yo;
-            if (esComercial) return rcid === yo;
-            return qaid === yo;
-          }
-          return rcid === yo || rtid === yo || qaid === yo;
-        });
-      }
+      rows = yo
+        ? rows.filter((r) => {
+            const rcid = typeof r.responsable_comercial_id === "string" ? r.responsable_comercial_id : "";
+            const rtid = typeof r.responsable_tecnico_id === "string" ? r.responsable_tecnico_id : "";
+            const qaid = typeof r.qa_responsable_id === "string" ? r.qa_responsable_id : "";
+            return rcid === yo || rtid === yo || qaid === yo;
+          })
+        : [];
     }
 
     const enriched = await enrichProyectosRows(sb, empresaId, rows);

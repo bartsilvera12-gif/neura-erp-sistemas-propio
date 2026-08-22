@@ -166,7 +166,7 @@ export async function GET(
     const { data: usuario, error } = await supabase
       .from("usuarios")
       .select(
-        "id, nombre, email, telefono, fecha_nacimiento, fecha_ingreso, tipo_contrato, salario_base, porcentaje_comision, ips, area, rol, estado, es_qa, notificar_entregas, created_at, empresa_id"
+        "id, nombre, email, telefono, fecha_nacimiento, fecha_ingreso, tipo_contrato, salario_base, porcentaje_comision, ips, area, rol, estado, es_qa, created_at, empresa_id"
       )
       .eq("id", id)
       .single();
@@ -334,7 +334,6 @@ export async function PATCH(
       default_dashboard_view_id,
       rol: rolBody,
       es_qa,
-      notificar_entregas,
     } = body;
 
     const { data: usuario, error: errGet } = await supabase
@@ -412,10 +411,6 @@ export async function PATCH(
 
     // `es_qa` es una función (no un rol): se puede cambiar con el mismo permiso que el nivel de acceso.
     if (es_qa !== undefined && puede_editar_rol) updates.es_qa = Boolean(es_qa);
-    // Mismo criterio que `es_qa`: es una función del puesto, no un permiso.
-    if (notificar_entregas !== undefined && puede_editar_rol) {
-      updates.notificar_entregas = Boolean(notificar_entregas);
-    }
 
     if (estado !== undefined && authUserId) {
       const banDuration = estado === "inactivo" ? "876000h" : "none";

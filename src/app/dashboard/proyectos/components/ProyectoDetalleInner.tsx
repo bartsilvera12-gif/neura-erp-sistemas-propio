@@ -81,8 +81,6 @@ type QAResumen = {
   cerradas: number;
   por_estado: Record<string, number>;
   porcentaje: number;
-  /** Lo decide el servidor. `false` para el comercial del proyecto. */
-  puede_ver_qa?: boolean;
 };
 
 const TAB_IDS = [
@@ -114,19 +112,6 @@ const TAB_LABELS: Record<TabId, string> = {
 // pero no se muestran en la barra ni son accesibles por URL.
 const HIDDEN_TABS: readonly TabId[] = ["tareas", "cambios"];
 const VISIBLE_TAB_IDS = TAB_IDS.filter((t) => !HIDDEN_TABS.includes(t));
-
-/**
- * QA es una vista del equipo técnico. Al comercial del proyecto se le esconde
- * la pestaña — igual la API le respondería 403 si entrara a mano, pero mostrar
- * una pestaña que sólo da error es peor que no mostrarla.
- *
- * Mientras el resumen no llegó (`null`) la pestaña se muestra: ocultarla y
- * volverla a aparecer haría un salto en la barra en cada apertura.
- */
-function tabsPara(resumen: QAResumen | null): readonly TabId[] {
-  if (resumen && resumen.puede_ver_qa === false) return VISIBLE_TAB_IDS.filter((t) => t !== "qa");
-  return VISIBLE_TAB_IDS;
-}
 
 function normalizeTab(raw: string | null | undefined): TabId {
   if (!raw) return "resumen";
@@ -496,24 +481,6 @@ const IconCheckSquare = () => (
   </svg>
 );
 
-/** Confirmación de solicitud del cliente: burbuja de mensaje con un check. */
-const IconConfirmacionCliente = ({ className }: { className?: string }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    className={className ?? "h-4 w-4"}
-  >
-    <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-4-1L3 20l1.3-3.9a8.5 8.5 0 1 1 16.7-4.6z" />
-    <path d="m8.5 12 2.2 2.2L15.5 9" />
-  </svg>
-);
-
 // Ícono por tipo de archivo (categoría). Líneas finas, estilo coherente con el resto del set.
 function ArchivoTipoIcon({ cat }: { cat: ArchivoCategoria }) {
   const common = {
@@ -662,13 +629,6 @@ export default function ProyectoDetalleInner({
   const [archivoFiltro, setArchivoFiltro] = useState<ArchivoCategoria | "todos">("todos");
   const [archivosSel, setArchivosSel] = useState<Set<string>>(() => new Set());
   const [archivoBulkBusy, setArchivoBulkBusy] = useState(false);
-  /**
-   * Tildado antes de subir, marca las imágenes de esa tanda como confirmación
-   * de solicitud del cliente. Se resetea después de cada subida para no
-   * arrastrar el tilde a la próxima tanda por accidente.
-   */
-  const [subirComoConfirmacion, setSubirComoConfirmacion] = useState(false);
-  const [confirmacionActionId, setConfirmacionActionId] = useState<string | null>(null);
   // Miniaturas (signed URL inline) para archivos de imagen. id → url.
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
   const thumbFetchingRef = useRef<Set<string>>(new Set());
@@ -695,34 +655,19 @@ export default function ProyectoDetalleInner({
   const [fechaPrometida, setFechaPrometida] = useState("");
   const [clientes, setClientes] = useState<{ id: string; empresa?: string | null; nombre_contacto?: string | null }[]>([]);
   const [datosSnapshot, setDatosSnapshot] = useState("");
-  const [guardandoDatos, setGuardandoDatos] = useState(false);
 
-  /**
-   * `silencioso` refresca sin encender el spinner: se usa después de guardar,
-   * cuando el dato ya está confirmado y la recarga es sólo para reconciliar.
-   * Con el spinner, ese refresco de fondo tapaba la pantalla y hacía sentir el
-   * guardado mucho más lento de lo que era.
-   */
-  const load = useCallback(async (silencioso = false) => {
+  const load = useCallback(async () => {
     if (!projectId) return;
-    if (!silencioso) setLoading(true);
+    setLoading(true);
     setErr(null);
     const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, { cache: "no-store" });
     const j = (await res.json()) as { success?: boolean; data?: DetalleResp; error?: string };
     if (!res.ok || !j.success || !j.data) {
       setErr(j.error ?? "Error al cargar");
-      if (!silencioso) setLoading(false);
+      setLoading(false);
       return;
     }
     setData(j.data);
-
-    // En modo silencioso no se re-hidratan los campos editables. Es un refresco
-    // posterior a guardar, así que el formulario ya tiene lo que el usuario
-    // escribió; pisarlo con la respuesta del servidor borraría lo que haya
-    // empezado a tipear mientras la recarga volvía. Historial, SLA, archivos y
-    // comentarios sí se actualizan, porque salen de `data` y no se editan acá.
-    if (silencioso) return;
-
     const p = j.data.proyecto;
     const merged = coalesceBriefData(p.brief_data);
     const saas = readSaasBriefData(p.brief_data);
@@ -767,7 +712,7 @@ export default function ProyectoDetalleInner({
       if (!draft[nro]) draft[nro] = { realizado: false, comentario: "" };
     }
     setCambiosDraft(draft);
-    if (!silencioso) setLoading(false);
+    setLoading(false);
   }, [projectId]);
 
   useEffect(() => {
@@ -954,9 +899,7 @@ export default function ProyectoDetalleInner({
 
   async function guardarDatos() {
     const proyecto = data?.proyecto;
-    if (!proyecto || guardandoDatos) return;
-    setGuardandoDatos(true);
-    setErr(null);
+    if (!proyecto) return;
     const tipoCodigo = proyecto.proyecto_tipo?.codigo ?? "";
     // En cadena y no en if/else: el tipo mixto guarda los dos briefs, y sus
     // claves son disjuntas (`saas_*` vs. marca/dominio/…).
@@ -986,29 +929,9 @@ export default function ProyectoDetalleInner({
     const j = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !j.success) {
       setErr(j.error ?? "No se pudo guardar");
-      setGuardandoDatos(false);
       return;
     }
-
-    // Guardado confirmado por el servidor. El formulario se marca limpio acá,
-    // con lo que el usuario acaba de escribir, y NO se espera la recarga: el
-    // botón se apaga apenas responde el PATCH.
-    setDatosSnapshot(
-      JSON.stringify({
-        bf: briefForm,
-        bl: briefLists,
-        saas: saasForm,
-        responsable_tecnico_id: responsableTecnicoId,
-        obs: observaciones,
-      })
-    );
-    setGuardandoDatos(false);
-
-    // Reconciliación en segundo plano: trae historial, SLA y lo que el servidor
-    // haya derivado del cambio. Antes esto se esperaba, y entre la recarga del
-    // detalle y la del tablero el guardado tardaba varios segundos en devolver
-    // el control aunque el dato ya estuviera escrito.
-    void load(true);
+    await load();
     onProjectUpdated?.();
   }
 
@@ -1337,70 +1260,25 @@ export default function ProyectoDetalleInner({
       validos.push(f);
     }
     if (validos.length === 0) return;
-    const comoConfirmacion = subirComoConfirmacion;
     setArchivoUploading(true);
     try {
       for (const file of validos) {
         const fd = new FormData();
         fd.append("file", file);
-        // El servidor lo ignora en archivos que no son imagen: no hace falta
-        // filtrar acá cuáles son imágenes antes de mandarlo.
-        if (comoConfirmacion) fd.append("confirmacion_cliente", "1");
-        // Sin este timeout, si algo entre el navegador y el servidor (proxy,
-        // firewall) corta la conexión en silencio en vez de responder con un
-        // error, el fetch nunca resuelve y el botón queda en "Subiendo…" para
-        // siempre. Con el timeout, al menos se ve un error accionable.
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90_000);
-        try {
-          const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos`, {
-            method: "POST",
-            body: fd,
-            signal: controller.signal,
-          });
-          const j = (await res.json()) as { success?: boolean; error?: string };
-          if (!res.ok || !j.success) {
-            setErr(j.error ?? `No se pudo subir "${file.name}"`);
-            break;
-          }
-        } catch (e) {
-          const abortado = e instanceof DOMException && e.name === "AbortError";
-          setErr(
-            abortado
-              ? `"${file.name}" tardó demasiado y se canceló. Puede ser un bloqueo de red para ese tipo de archivo — probá con otro formato o avisá a soporte.`
-              : `No se pudo subir "${file.name}": ${e instanceof Error ? e.message : "error de red"}`
-          );
+        const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos`, {
+          method: "POST",
+          body: fd,
+        });
+        const j = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || !j.success) {
+          setErr(j.error ?? `No se pudo subir "${file.name}"`);
           break;
-        } finally {
-          clearTimeout(timeoutId);
         }
       }
-      setSubirComoConfirmacion(false);
       await load();
       onProjectUpdated?.();
     } finally {
       setArchivoUploading(false);
-    }
-  }
-
-  /** Alterna el marcador de confirmación de cliente en una imagen ya subida. */
-  async function alternarConfirmacionCliente(aid: string, valor: boolean) {
-    setConfirmacionActionId(aid);
-    setErr(null);
-    try {
-      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/archivos/${aid}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmacion_cliente: valor }),
-      });
-      const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
-      if (!res.ok || !j?.success) {
-        setErr(j?.error ?? "No se pudo actualizar el archivo");
-        return;
-      }
-      await load();
-    } finally {
-      setConfirmacionActionId(null);
     }
   }
 
@@ -1734,7 +1612,7 @@ export default function ProyectoDetalleInner({
             : "flex flex-wrap gap-1.5 border-b border-slate-200 pb-2"
         }
       >
-        {tabsPara(qaResumen).map((t) => {
+        {VISIBLE_TAB_IDS.map((t) => {
           const active = tab === t;
           return (
             <button
@@ -1935,10 +1813,10 @@ export default function ProyectoDetalleInner({
               <button
                 type="button"
                 className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
-                disabled={!datosDirty || guardandoDatos}
+                disabled={!datosDirty}
                 onClick={() => void guardarDatos()}
               >
-                {guardandoDatos ? "Guardando…" : "Guardar datos"}
+                Guardar datos
               </button>
             </div>
 
@@ -2554,7 +2432,7 @@ export default function ProyectoDetalleInner({
           </div>
         ) : null}
 
-        {tab === "qa" && qaResumen?.puede_ver_qa !== false ? (
+        {tab === "qa" ? (
           <ProyectoQATab
             projectId={projectId}
             dataSchema={dataSchema}
@@ -2676,23 +2554,17 @@ export default function ProyectoDetalleInner({
 
         {tab === "archivos" ? (() => {
           const archivosAll = data.archivos ?? [];
-          const esConfirmacionCliente = (a: Record<string, unknown>) => a.confirmacion_cliente === true;
-          // Las marcadas como confirmación del cliente se discriminan del resto:
-          // tienen su propia sección más abajo y no aparecen también dentro de
-          // "Imágenes", que sería mostrarlas dos veces.
-          const archivosConfirmacion = archivosAll.filter(esConfirmacionCliente);
-          const archivosCategorizables = archivosAll.filter((a) => !esConfirmacionCliente(a));
-          // Conteo por categoría sobre lo categorizable (sin las confirmaciones).
+          // Conteo por categoría sobre el total.
           const conteo = new Map<ArchivoCategoria, number>();
-          for (const a of archivosCategorizables) {
+          for (const a of archivosAll) {
             const cat = categoriaArchivo(a.nombre, a.mime_type);
             conteo.set(cat, (conteo.get(cat) ?? 0) + 1);
           }
           const categoriasPresentes = ARCHIVO_CATEGORIAS_ORDEN.filter((c) => (conteo.get(c.key) ?? 0) > 0);
           const filtrados =
             archivoFiltro === "todos"
-              ? archivosCategorizables
-              : archivosCategorizables.filter((a) => categoriaArchivo(a.nombre, a.mime_type) === archivoFiltro);
+              ? archivosAll
+              : archivosAll.filter((a) => categoriaArchivo(a.nombre, a.mime_type) === archivoFiltro);
           const filtradosIds = filtrados.map((a) => String(a.id ?? ""));
           const selEnFiltro = filtradosIds.filter((id) => archivosSel.has(id));
           const todosFiltradosSel = filtradosIds.length > 0 && selEnFiltro.length === filtradosIds.length;
@@ -2728,8 +2600,6 @@ export default function ProyectoDetalleInner({
             const seleccionado = archivosSel.has(aid);
             const fijarCheck = seleccionado || selectionMode;
             const thumb = cat === "imagen" ? thumbUrls[aid] : undefined;
-            const esConfirmacion = esConfirmacionCliente(a);
-            const enAccionConfirmacion = confirmacionActionId === aid;
             return (
               <li
                 key={aid}
@@ -2807,30 +2677,6 @@ export default function ProyectoDetalleInner({
                     selectionMode ? "opacity-40" : "opacity-100"
                   }`}
                 >
-                  {cat === "imagen" ? (
-                    <button
-                      type="button"
-                      onClick={() => void alternarConfirmacionCliente(aid, !esConfirmacion)}
-                      disabled={enAccionConfirmacion || archivoBulkBusy}
-                      title={
-                        esConfirmacion
-                          ? "Quitar de Confirmación de Solicitudes del cliente"
-                          : "Marcar como Confirmación de Solicitud del cliente"
-                      }
-                      aria-label={
-                        esConfirmacion
-                          ? `Quitar confirmación de cliente de ${nombre}`
-                          : `Marcar ${nombre} como confirmación de cliente`
-                      }
-                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                        esConfirmacion
-                          ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                          : "text-slate-400 hover:bg-white hover:text-emerald-600"
-                      }`}
-                    >
-                      {enAccionConfirmacion ? <IconSpinner /> : <IconConfirmacionCliente />}
-                    </button>
-                  ) : null}
                   {isPreviewableMime(mime) ? (
                     <button
                       type="button"
@@ -2881,7 +2727,7 @@ export default function ProyectoDetalleInner({
               </span>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Subí documentos, imágenes, PDFs, audios o comprimidos .zip (hasta {Math.round(ARCHIVO_MAX_BYTES / (1024 * 1024))} MB cada uno).
+              Subí documentos, imágenes o PDFs (hasta {Math.round(ARCHIVO_MAX_BYTES / (1024 * 1024))} MB cada uno).
               Podés previsualizarlos y descargarlos cuando quieras.
             </p>
 
@@ -2925,34 +2771,6 @@ export default function ProyectoDetalleInner({
               </span>
               <span className="text-xs text-slate-400">Se aceptan varios archivos a la vez</span>
             </div>
-
-            <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={subirComoConfirmacion}
-                onChange={(e) => setSubirComoConfirmacion(e.target.checked)}
-                disabled={archivoUploading}
-                className="h-4 w-4 rounded border-slate-300 accent-emerald-600"
-              />
-              Estas imágenes son <strong className="font-semibold text-slate-800">Confirmación de Solicitud del cliente</strong>
-            </label>
-
-            {archivosConfirmacion.length > 0 ? (
-              <div className="mt-5">
-                <div className="mb-2.5 flex items-center gap-2.5">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                    <IconConfirmacionCliente className="h-3.5 w-3.5" />
-                  </span>
-                  <h3 className="text-sm font-semibold text-slate-800">Confirmación de Solicitudes del cliente</h3>
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                    {archivosConfirmacion.length}
-                  </span>
-                </div>
-                <ul className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/30 p-1.5">
-                  {archivosConfirmacion.map((a) => renderArchivoLi(a))}
-                </ul>
-              </div>
-            ) : null}
 
             {/* Filtros por tipo + entrada a modo selección */}
             {archivosAll.length > 0 ? (
@@ -3120,15 +2938,7 @@ export default function ProyectoDetalleInner({
             (proyecto as { proyecto_estado?: { codigo?: string } }).proyecto_estado?.codigo ?? ""
           ).toLowerCase();
           const estaEntregado = estadoCodigo === ESTADO_ENTREGADO_CODIGO;
-          // Ancla fija: la ventana corre desde la PRIMERA entrega, no desde
-          // "hace cuánto está en el estado actual" — eso se resetea si el
-          // proyecto sale de Entregado y vuelve a entrar. Ver el mismo
-          // razonamiento en `getPostentregaInfo` de ProyectosKanbanClient.
-          const proyectoConEntrega = proyecto as {
-            estado_actual_desde?: string | null;
-            primera_entrega_at?: string | null;
-          };
-          const desde = proyectoConEntrega.primera_entrega_at ?? proyectoConEntrega.estado_actual_desde;
+          const desde = (proyecto as { estado_actual_desde?: string | null }).estado_actual_desde;
           const desdeMs = typeof desde === "string" ? Date.parse(desde) : Number.NaN;
           const diaActual = Number.isFinite(desdeMs)
             ? Math.max(1, Math.floor((Date.now() - desdeMs) / (1000 * 60 * 60 * 24)) + 1)

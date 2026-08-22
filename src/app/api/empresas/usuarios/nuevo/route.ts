@@ -77,7 +77,6 @@ export async function POST(req: Request) {
     const area = areaRaw && areasOk.includes(areaRaw) ? areaRaw : null;
     const rol = String(body.rol ?? "usuario");
     const es_qa = Boolean(body.es_qa);
-    const notificar_entregas = Boolean(body.notificar_entregas);
 
     if (!email || !password || password.length < 6) {
       return NextResponse.json({ error: "Email y contraseña (mín. 6 caracteres) son obligatorios." }, { status: 400 });
@@ -145,7 +144,6 @@ export async function POST(req: Request) {
       area,
       rol,
       es_qa,
-      notificar_entregas,
       auth_user_id: authUserId,
       estado: "activo" as const,
     };

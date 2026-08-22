@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import type { AgendaCitaEnriquecida } from "@/lib/agenda/types";
 import {
-  ALTO_DOS_LINEAS_PX,
   DAY_START_SCROLL_HOUR,
   HOUR_PX,
   addDays,
@@ -126,11 +125,6 @@ export default function TimeGridView({
                   const ini = new Date(p.cita.inicio_at);
                   const fin = new Date(p.cita.fin_at);
                   const persona = p.cita.cliente?.nombre ?? p.cita.contacto_nombre;
-                  // Con poco alto, título y horario van en UNA línea. Apilarlos
-                  // igual dejaba la segunda cortada al medio contra el
-                  // overflow-hidden, que es lo que se veía en las de 30 min.
-                  const dosLineas = p.heightPx >= ALTO_DOS_LINEAS_PX;
-                  const rango = `${hhmm(ini)}–${hhmm(fin)}`;
                   return (
                     <button
                       key={p.cita.id}
@@ -144,25 +138,13 @@ export default function TimeGridView({
                         left: `calc(${p.leftPct}% + 2px)`,
                         width: `calc(${p.widthPct}% - 4px)`,
                       }}
-                      title={`${rango} · ${p.cita.titulo}${persona ? ` · ${persona}` : ""}`}
-                      className={`absolute z-10 flex flex-col justify-center overflow-hidden rounded-lg border border-l-[3px] px-2 text-left text-[11px] leading-tight shadow-sm transition-all hover:z-20 hover:shadow-md hover:ring-1 hover:ring-black/5 ${
-                        dosLineas ? "py-1" : "py-0.5"
-                      } ${st.block}`}
+                      className={`absolute z-10 overflow-hidden rounded-md border border-l-[3px] px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md hover:ring-1 hover:ring-black/5 ${st.block}`}
                     >
-                      {dosLineas ? (
-                        <>
-                          <span className="truncate font-semibold">{p.cita.titulo}</span>
-                          <span className="truncate tabular-nums opacity-75">
-                            {rango}
-                            {persona ? ` · ${persona}` : ""}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="flex items-baseline gap-1.5 truncate">
-                          <span className="shrink-0 text-[10px] tabular-nums opacity-70">{hhmm(ini)}</span>
-                          <span className="truncate font-semibold">{p.cita.titulo}</span>
-                        </span>
-                      )}
+                      <div className="truncate font-semibold">{p.cita.titulo}</div>
+                      <div className="truncate opacity-80">
+                        {hhmm(ini)}–{hhmm(fin)}
+                        {persona ? ` · ${persona}` : ""}
+                      </div>
                     </button>
                   );
                 })}

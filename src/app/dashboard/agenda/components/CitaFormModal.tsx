@@ -41,9 +41,6 @@ function diffMin(hi: string, hf: string): number | null {
   return h2 * 60 + m2 - (h1 * 60 + m1);
 }
 
-import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import { ResponsablesSelect } from "@/app/dashboard/agenda/components/ResponsablesSelect";
-
 const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
 const labelCls = "block text-xs font-medium text-slate-600 mb-1";
@@ -78,8 +75,6 @@ export default function CitaFormModal({
 }) {
   const [titulo, setTitulo] = useState("");
   const [responsableId, setResponsableId] = useState("");
-  /** Lista completa; `responsableId` (el principal) va siempre primero. */
-  const [responsableIds, setResponsableIds] = useState<string[]>([]);
   const [tipo, setTipo] = useState("");
   const [estado, setEstado] = useState("pendiente");
 
@@ -111,11 +106,7 @@ export default function CitaFormModal({
       const ini = prefill?.inicio ?? (() => { const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1); return d; })();
       const fin = prefill?.fin ?? (() => { const d = new Date(ini); d.setMinutes(d.getMinutes() + 30); return d; })();
       setTitulo("");
-      // Sin preselección: elegir al primero de la lista metía a alguien que
-      // muy probablemente no participa de la reunión, y encima quedaba como
-      // principal. Se arranca vacío y lo elige quien carga.
-      setResponsableId("");
-      setResponsableIds([]);
+      setResponsableId(options.responsables[0]?.id ?? "");
       setTipo("");
       setEstado("pendiente");
       setFecha(ymd(ini));
@@ -135,9 +126,6 @@ export default function CitaFormModal({
       const meta = (cita.metadata ?? {}) as Record<string, unknown>;
       setTitulo(cita.titulo);
       setResponsableId(cita.responsable_id);
-      setResponsableIds(
-        cita.responsables?.length ? cita.responsables.map((r) => r.id) : [cita.responsable_id]
-      );
       setTipo(cita.tipo ?? "");
       setEstado(cita.estado);
       setFecha(ymd(ini));
@@ -205,7 +193,7 @@ export default function CitaFormModal({
     const inicioIso = combinar(fecha, horaInicio);
     const finIso = combinar(fecha, horaFin);
     if (mode !== "reprogramar" && !titulo.trim()) return setError("El título es obligatorio.");
-    if (!responsableId) return setError("Elegí al menos un responsable.");
+    if (!responsableId) return setError("Elegí un responsable.");
     if (!inicioIso || !finIso) return setError("Indicá fecha, hora de inicio y fin.");
     if (Date.parse(finIso) <= Date.parse(inicioIso)) return setError("El fin debe ser posterior al inicio.");
 
@@ -225,13 +213,12 @@ export default function CitaFormModal({
         res = await fetchWithSupabaseSession(`/api/agenda/${cita.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accion: "reprogramar", responsable_id: responsableId, responsable_ids: responsableIds, inicio_at: inicioIso, fin_at: finIso, observaciones: observaciones || null }),
+          body: JSON.stringify({ accion: "reprogramar", responsable_id: responsableId, inicio_at: inicioIso, fin_at: finIso, observaciones: observaciones || null }),
         });
       } else {
         const payload = {
           titulo: titulo.trim(),
           responsable_id: responsableId,
-          responsable_ids: responsableIds,
           tipo: tipo || null,
           estado,
           inicio_at: inicioIso,
@@ -298,45 +285,27 @@ export default function CitaFormModal({
                 <input className={inputCls} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej: Demo con cliente" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div className="col-span-1 sm:col-span-2 lg:col-span-3">
-                  <label className={labelCls}>Responsables *</label>
-                  <ResponsablesSelect
-                    opciones={options.responsables}
-                    valor={responsableIds}
-                    principalId={responsableId || null}
-                    onChange={(ids) => {
-                      setResponsableIds(ids);
-                      // El principal es SIEMPRE el primero de la lista. Si se
-                      // lo saca, hereda el siguiente; si no queda ninguno, se
-                      // vacía y el formulario lo pide al guardar.
-                      setResponsableId(ids[0] ?? "");
-                    }}
-                  />
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    El primero es el responsable principal; el horario se valida contra su agenda.
-                    Todos reciben el recordatorio.
-                  </p>
+                <div className="col-span-1">
+                  <label className={labelCls}>Responsable *</label>
+                  <select className={inputCls} value={responsableId} onChange={(e) => setResponsableId(e.target.value)}>
+                    <option value="">—</option>
+                    {options.responsables.map((r) => (
+                      <option key={r.id} value={r.id}>{r.nombre ?? r.id}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className={labelCls}>Tipo</label>
-                  <FancySelect
-                    className="w-full"
-                    ariaLabel="Tipo de cita"
-                    placeholder="Sin tipo"
-                    value={tipo}
-                    onChange={setTipo}
-                    options={[{ value: "", label: "Sin tipo" }, ...options.tipos.map((t) => ({ value: t, label: t }))]}
-                  />
+                  <select className={inputCls} value={tipo} onChange={(e) => setTipo(e.target.value)}>
+                    <option value="">Sin tipo</option>
+                    {options.tipos.map((t) => (<option key={t} value={t}>{t}</option>))}
+                  </select>
                 </div>
                 <div>
                   <label className={labelCls}>Estado</label>
-                  <FancySelect
-                    className="w-full"
-                    ariaLabel="Estado de la cita"
-                    value={estado}
-                    onChange={(v) => setEstado(v)}
-                    options={AGENDA_ESTADOS.map((s2) => ({ value: s2, label: estadoStyle(s2).label }))}
-                  />
+                  <select className={inputCls} value={estado} onChange={(e) => setEstado(e.target.value)}>
+                    {AGENDA_ESTADOS.map((s) => (<option key={s} value={s}>{estadoStyle(s).label}</option>))}
+                  </select>
                 </div>
               </div>
             </section>
@@ -416,17 +385,10 @@ export default function CitaFormModal({
               </div>
 
               {clienteMode === "existente" ? (
-                <FancySelect
-                  className="w-full"
-                  ariaLabel="Cliente"
-                  placeholder="— Sin cliente —"
-                  value={clienteId}
-                  onChange={setClienteId}
-                  options={[
-                    { value: "", label: "— Sin cliente —" },
-                    ...options.clientes.map((c) => ({ value: c.id, label: c.nombre ?? c.id })),
-                  ]}
-                />
+                <select className={inputCls} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+                  <option value="">— Sin cliente —</option>
+                  {options.clientes.map((c) => (<option key={c.id} value={c.id}>{c.nombre ?? c.id}</option>))}
+                </select>
               ) : (
                 <div className="space-y-3 rounded-2xl border border-[#4FAEB2]/20 bg-[#4FAEB2]/5 p-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

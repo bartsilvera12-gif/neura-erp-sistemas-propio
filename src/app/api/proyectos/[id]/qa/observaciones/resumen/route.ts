@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
-import { permisoQADe } from "@/lib/proyectos/qa-permisos";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { QA_ESTADOS_CERRADOS, type QAObservacionEstado } from "@/lib/proyectos/qa-shared";
 
@@ -20,25 +19,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   try {
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
-
-    // A quien no ve QA se le devuelve el resumen en cero y `puede_ver_qa:false`,
-    // en vez de un 403: la ficha del proyecto usa esta misma llamada para
-    // decidir si dibuja la pestaña, y un error acá le rompería la carga. Los
-    // conteos van en cero a propósito — ni siquiera cuántas observaciones hay
-    // es asunto del comercial.
-    const permiso = await permisoQADe(sb, auth.empresaId, auth.usuarioCatalogId ?? "", pid);
-    if (permiso.vista == null) {
-      return NextResponse.json(
-        successResponse({
-          total: 0,
-          abiertas: 0,
-          cerradas: 0,
-          por_estado: {},
-          porcentaje: 0,
-          puede_ver_qa: false,
-        })
-      );
-    }
 
     const { data, error } = await sb
       .from("proyecto_qa_observaciones")
@@ -64,7 +44,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         // Avance sobre lo que efectivamente se cerró (resueltas + verificadas +
         // descartadas): sin observaciones cargadas no hay nada que avanzar.
         porcentaje: total === 0 ? 0 : Math.round((cerradas / total) * 100),
-        puede_ver_qa: true,
       })
     );
   } catch (e) {

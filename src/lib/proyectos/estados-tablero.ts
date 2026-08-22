@@ -8,8 +8,8 @@
  * comercial seguía figurando "En Desarrollo" en la tarjeta del programador.
  *
  * Un proyecto aparece en la tarjeta de su técnico sólo si está en uno de estos
- * estados. Fuera de ellos (Nuevo, En cola, Entregado) el técnico no tiene nada
- * que hacer y el proyecto no le ocupa lugar.
+ * estados. Fuera de ellos (Nuevo, En cola, Revisión Comercial, Entregado) el
+ * técnico no tiene nada que hacer y el proyecto no le ocupa lugar.
  */
 
 /**
@@ -26,11 +26,6 @@ export const CODIGOS_TABLERO_TECNICO = [
   "desarrollo",
   "cambios_solicitados",
   "qa",
-  // Revisión con el cliente: nada que el técnico tenga que hacer, pero sigue
-  // siendo SU proyecto hasta que se aprueba o se devuelve — se queda visible
-  // para que no lo pierda de vista mientras espera. El nombre de la columna
-  // lo define cada empresa (hoy "Revisión Cliente"); el código no cambia.
-  "enviado_cliente",
   "brief_cargado",
   "pausado",
 ] as const;
@@ -61,16 +56,13 @@ export function ordenTablero(codigo: string | null | undefined): number {
  *
  * `null` = el estado no dice nada sobre el avance técnico y la etapa se deja
  * como está: pausar un proyecto no lo hace retroceder, y las columnas
- * puramente comerciales (Nuevo, En cola) no son trabajo del técnico.
+ * comerciales (Nuevo, En cola, Revisión Comercial) no son trabajo del técnico.
  */
 const ETAPA_POR_ESTADO: Record<string, string | null> = {
   desarrollo: "en_desarrollo",
   // Sigue siendo trabajo del programador: está corrigiendo lo observado.
   cambios_solicitados: "en_desarrollo",
   qa: "qa",
-  // En revisión con el cliente el técnico ya entregó su parte; si piden
-  // cambios vuelve a "en_desarrollo" recién cuando el estado cambie de verdad.
-  enviado_cliente: null,
   // "Publicado / Pendiente de Capacitación": para el técnico ya está entregado.
   brief_cargado: "finalizado",
   publicado: "finalizado",

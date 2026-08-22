@@ -4,7 +4,6 @@ import { ChevronDown, RefreshCw, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { leerRespuestaApi } from "@/lib/api/leer-respuesta";
 import { RegistrarPagoModal, type RegistrarPagoFacturaRef } from "@/components/pagos/RegistrarPagoModal";
 
 const BASE_LABEL: Record<string, string> = {
@@ -1622,10 +1621,11 @@ export default function ComisionesPage() {
     try {
       const qs = opts?.mes ? `?mes=${encodeURIComponent(opts.mes)}` : "";
       const res = await fetchWithSupabaseSession(`/api/comisiones/preview${qs}`, { cache: "no-store" });
-      const r = await leerRespuestaApi<PreviewPayload>(res);
-      if (!r.ok) throw new Error(r.mensaje);
-      const json = { data: r.data };
-      setData(r.data);
+      const json = (await res.json()) as { success?: boolean; data?: PreviewPayload; error?: string };
+      if (!res.ok || json.success !== true || !json.data) {
+        throw new Error(json.error ?? `Error ${res.status}`);
+      }
+      setData(json.data);
       // Sincroniza el selector de mes con el período efectivamente cargado
       // (aplica tanto a la vista de vendedor como a la de administración).
       if (!opts?.mes) {
@@ -1659,8 +1659,8 @@ export default function ComisionesPage() {
             motivo,
           }),
         });
-        const r = await leerRespuestaApi(res);
-        if (!r.ok) throw new Error(r.mensaje);
+        const json = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
         setOverrideModal(null);
         await load({ mes: overrideModal.periodoYm });
       } catch (e) {
@@ -1681,8 +1681,8 @@ export default function ComisionesPage() {
           `/api/comisiones/override?periodo_ym=${encodeURIComponent(periodoYm)}&pago_id=${encodeURIComponent(pagoId)}`,
           { method: "DELETE" }
         );
-        const r = await leerRespuestaApi(res);
-        if (!r.ok) throw new Error(r.mensaje);
+        const json = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
         await load({ mes: periodoYm });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error al quitar el override");

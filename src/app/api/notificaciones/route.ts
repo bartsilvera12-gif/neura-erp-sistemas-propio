@@ -3,8 +3,6 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireNotificacionesAccess } from "@/lib/notificaciones/notificaciones-auth";
 import { avisosEsqueletoDe } from "@/lib/proyectos/esqueleto-avisos";
-import { avisosAgendaDe } from "@/lib/agenda/agenda-avisos";
-import { avisosVencimientoQADe } from "@/lib/proyectos/qa-vencimiento-avisos";
 
 /**
  * GET /api/notificaciones?limit=20&solo_no_leidas=1
@@ -42,7 +40,7 @@ export async function GET(request: Request) {
       .eq("usuario_id", auth.usuarioId);
     if (soloNoLeidas) listado = listado.is("leida_at", null);
 
-    const [itemsRes, countRes, avisos, avisosCitas, avisosVence] = await Promise.all([
+    const [itemsRes, countRes, avisos] = await Promise.all([
       listado.order("created_at", { ascending: false }).limit(limit),
       sb
         .from("usuario_notificaciones")
@@ -53,11 +51,6 @@ export async function GET(request: Request) {
       // Avisos de esqueleto: se calculan en vivo, no salen de la tabla.
       // Ver `esqueleto-avisos.ts` para por qué no se persisten.
       avisosEsqueletoDe(sb, auth.empresaId, auth.usuarioId),
-      // Recordatorios de reunión (1 h y 30 min antes). También en vivo: ver
-      // `agenda-avisos.ts`.
-      avisosAgendaDe(sb, auth.empresaId, auth.usuarioId),
-      // Observaciones de QA por vencer (2 h y 1 h antes). También en vivo.
-      avisosVencimientoQADe(sb, auth.empresaId, auth.usuarioId),
     ]);
 
     if (itemsRes.error) {
@@ -69,11 +62,8 @@ export async function GET(request: Request) {
     // campanita se encienda sin que nadie tenga que abrir el tablero.
     return NextResponse.json(
       successResponse({
-        // Las reuniones van primero de todo: son lo único con una hora encima
-        // que no se puede posponer.
-        notificaciones: [...avisosCitas, ...avisosVence, ...avisos, ...(itemsRes.data ?? [])],
-        no_leidas:
-          (countRes.count ?? 0) + avisos.length + avisosCitas.length + avisosVence.length,
+        notificaciones: [...avisos, ...(itemsRes.data ?? [])],
+        no_leidas: (countRes.count ?? 0) + avisos.length,
       })
     );
   } catch (e) {

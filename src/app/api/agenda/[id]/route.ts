@@ -4,7 +4,6 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireAgendaApiAccess } from "@/lib/agenda/agenda-auth";
 import { enrichAgendaRows } from "@/lib/agenda/enrich";
 import { buscarConflictoHorario, mensajeConflicto } from "@/lib/agenda/solapes";
-import { guardarResponsables } from "@/lib/agenda/responsables";
 import { ESTADOS_NO_BLOQUEAN, isAgendaEstado, type AgendaCitaRow } from "@/lib/agenda/types";
 
 function parseIso(v: unknown): string | null {
@@ -92,9 +91,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         });
       }
       const responsableId = optStr(body.responsable_id) ?? prev.responsable_id;
-      const responsablesReprog = Array.isArray(body.responsable_ids)
-        ? body.responsable_ids.filter((v): v is string => typeof v === "string" && v.trim() !== "")
-        : [];
 
       const conflicto = await buscarConflictoHorario({
         sb,
@@ -145,9 +141,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         .eq("id", prev.id);
 
       const row = (Array.isArray(created) ? created[0] : created) as AgendaCitaRow;
-      // La cita reprogramada arrastra a los mismos responsables: se está
-      // moviendo la misma reunión, no creando otra distinta.
-      await guardarResponsables(sb, empresaId, row.id, responsableId, responsablesReprog);
       const enriched = await enrichAgendaRows(sb, empresaId, [row]);
       return NextResponse.json(successResponse(enriched[0] ?? row));
     }
@@ -238,15 +231,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const row = (Array.isArray(updated) ? updated[0] : updated) as AgendaCitaRow;
-    // `responsable_ids` reemplaza la lista completa. Si el body no lo trae pero
-    // sí cambió el principal, se sincroniza igual para que las dos
-    // representaciones no queden contradiciéndose.
-    if (hasKey(body, "responsable_ids") || hasKey(body, "responsable_id")) {
-      const lista = Array.isArray(body.responsable_ids)
-        ? body.responsable_ids.filter((v): v is string => typeof v === "string" && v.trim() !== "")
-        : [];
-      await guardarResponsables(sb, empresaId, row.id, row.responsable_id, lista);
-    }
     const enriched = await enrichAgendaRows(sb, empresaId, [row]);
     return NextResponse.json(successResponse(enriched[0] ?? row));
   } catch (e) {

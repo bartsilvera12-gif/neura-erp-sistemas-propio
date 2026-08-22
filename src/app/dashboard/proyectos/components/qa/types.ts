@@ -37,18 +37,10 @@ export type QAArchivo = {
   url: string | null;
 };
 
-/** Carril del comentario — no quién lo escribió, sino en qué caja lo tipeó. */
-/**
- * Carril de un comentario. `interno` es el Seguimiento interno PM ↔ QA: al
- * cliente de Desarrollo ni siquiera le llega (lo filtra la API).
- */
-export type QAComentarioOrigen = "qa" | "tecnico" | "interno";
-
 export type QAComentario = {
   id: string;
   observacion_id: string;
   texto: string;
-  origen: QAComentarioOrigen;
   autor_id: string | null;
   created_at: string;
   updated_at: string;
@@ -73,8 +65,6 @@ export type QAObservacion = {
   verificado_por: string | null;
   verificado_at: string | null;
   sort_order: number;
-  /** Ronda de revisión: 1 = primera revisión, 2 = segunda, etc. */
-  ronda: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;

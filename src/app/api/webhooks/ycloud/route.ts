@@ -38,6 +38,7 @@ import {
 import { persistYCloudInboundMessagePg } from "@/lib/chat/webhooks/ycloud-inbound-persist-pg";
 import { resolveYCloudChannelForWebhook } from "@/lib/chat/webhooks/ycloud-resolve-channel";
 import { enrichYCloudStoredRawPayloadWithResolvableMediaUrl } from "@/lib/chat/ycloud-inbound-media-enrich";
+import { rehostYCloudMessageMedia, mergeRehostIntoRaw } from "@/lib/chat/ycloud-media-rehost";
 import { ensureWhatsappInboundCrmLeadPg } from "@/lib/crm/whatsapp-inbound-lead-pg";
 import { captureFirstMetaAttribution } from "@/lib/chat/meta-attribution-storage";
 import { createServiceRoleClientForEmpresa as createSrForAttribution } from "@/lib/supabase/empresa-data-schema";
@@ -410,6 +411,60 @@ export async function POST(request: NextRequest) {
         conversation_id: conversationId,
         error: e instanceof Error ? e.message : "unknown",
       });
+    }
+  }
+
+  // RE-HOSPEDAJE de media entrante/echo (imagen/audio/video/doc): descarga los bytes de YCloud y
+  // los sube a NUESTRO bucket, dejando la URL permanente en raw_payload.erp.public_url. Necesario
+  // porque el link de YCloud caduca (~7 días) → la media se ve rota. Se dispara en SEGUNDO PLANO
+  // (sin await): NO agrega latencia al webhook ni afecta el ack; si falla, no rompe nada. El
+  // servidor de Coolify es persistente, así que el promise se completa tras responder 200.
+  {
+    const mediaKinds = new Set(["image", "audio", "video", "document", "sticker"]);
+    if (externalId && mediaKinds.has(message_type)) {
+      const capturedConversationId = conversationId;
+      const capturedMessageId = messageId;
+      const doRehost = async () => {
+        try {
+          const sbMedia = await getChatServiceClientForEmpresa(resolved.empresa_id);
+          const { data: chMeta } = await sbMedia
+            .from("chat_channels")
+            .select("config")
+            .eq("id", resolved.channel_id)
+            .eq("empresa_id", resolved.empresa_id)
+            .maybeSingle();
+          const cfgRaw = (chMeta as { config?: unknown } | null)?.config;
+          const cfg =
+            cfgRaw && typeof cfgRaw === "object" && !Array.isArray(cfgRaw)
+              ? (cfgRaw as Record<string, unknown>)
+              : {};
+          const apiKey = typeof cfg.ycloud_api_key === "string" ? cfg.ycloud_api_key.trim() : "";
+          if (!apiKey) return;
+          const storedRaw = env as unknown as Record<string, unknown>;
+          const r = await rehostYCloudMessageMedia({
+            supabase: sbMedia as unknown as Parameters<typeof rehostYCloudMessageMedia>[0]["supabase"],
+            apiKey,
+            waMessageId: externalId,
+            empresaId: resolved.empresa_id,
+            conversationId: capturedConversationId,
+            messageId: capturedMessageId,
+            messageType: message_type,
+            storedRaw,
+            timeoutMs: 15000,
+          });
+          if (r.ok && !r.skipped && r.public_url) {
+            const merged = mergeRehostIntoRaw(storedRaw, r);
+            await sbMedia
+              .from("chat_messages")
+              .update({ raw_payload: merged })
+              .eq("id", capturedMessageId)
+              .eq("empresa_id", resolved.empresa_id);
+          }
+        } catch (e) {
+          console.warn(LOG, LOG_IN, "rehost_media_bg_falló", e instanceof Error ? e.message : String(e));
+        }
+      };
+      void doRehost();
     }
   }
 

@@ -46,6 +46,7 @@ export type UsuarioFormValues = {
   estado: "activo" | "inactivo";
   /** Función QA: recibe los proyectos que entran a control de calidad. No es un nivel de permisos. */
   es_qa: boolean;
+  notificar_entregas: boolean;
   password: string;
   password2: string;
   /** Solo edición: módulos asignados (ids). */
@@ -71,6 +72,7 @@ export function emptyUsuarioForm(): UsuarioFormValues {
     area: "ventas",
     estado: "activo",
     es_qa: false,
+    notificar_entregas: false,
     password: "",
     password2: "",
     modulo_ids: [],
@@ -337,6 +339,26 @@ export function UsuarioFormFields({
                 <span className="mt-0.5 block text-xs font-normal text-slate-400">
                   Cuando un proyecto entra a QA, se le asigna automáticamente a esta persona. Es una función,
                   no cambia el nivel de permisos.
+                </span>
+              </label>
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
+              <input
+                type="checkbox"
+                id="notificar_entregas"
+                name="notificar_entregas"
+                checked={form.notificar_entregas}
+                onChange={onChange}
+                disabled={nivelAccesoDisabled}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <label htmlFor="notificar_entregas" className="cursor-pointer text-sm font-medium text-slate-700">
+                Avisarle de todas las entregas
+                <span className="mt-0.5 block text-xs font-normal text-slate-400">
+                  Recibe una notificación cada vez que cualquier proyecto llega a un estado final,
+                  no sólo los suyos. Para quien coordina las entregas.
                 </span>
               </label>
             </div>

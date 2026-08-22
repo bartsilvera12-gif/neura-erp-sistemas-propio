@@ -25,6 +25,12 @@ type Props = {
   usuarios: QAUsuario[];
   /** Sección preseleccionada cuando se carga desde el encabezado de un grupo. */
   seccionInicial?: string | null;
+  /**
+   * Ronda a la que entran las observaciones nuevas. La decide el board (la
+   * revisión abierta, o la siguiente si QA arrancó una nueva). Si no viene, el
+   * servidor la resuelve solo.
+   */
+  ronda?: number;
   onCreada: (obs: QAObservacion) => void;
   onSeccionCreada: (seccion: QASeccion) => void;
   onCerrar: () => void;
@@ -52,6 +58,7 @@ export default function QAComposer({
   secciones,
   usuarios,
   seccionInicial,
+  ronda,
   onCreada,
   onSeccionCreada,
   onCerrar,
@@ -145,6 +152,7 @@ export default function QAComposer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ronda,
           titulo: t,
           descripcion: descripcion.trim() || null,
           seccion_id: seccionFinal || null,

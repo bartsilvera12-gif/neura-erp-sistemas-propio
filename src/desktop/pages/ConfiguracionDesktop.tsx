@@ -2,7 +2,6 @@
 
 import {
   BarChart3,
-  BookOpen,
   CalendarClock,
   FileText,
   GitBranch,
@@ -146,16 +145,6 @@ export default function ConfiguracionPage() {
               icon={Percent}
               badge={editorBadge}
               href="/configuracion/comisiones"
-            />
-          </li>
-          <li>
-            <SettingsModuleCard
-              title="Ayuda en línea"
-              subtitle="GLOBAL · EQUIPO"
-              description="Procesos, políticas e información de la empresa que el equipo consulta desde Ayuda."
-              icon={BookOpen}
-              badge={editorBadge}
-              href="/configuracion/ayuda"
             />
           </li>
           <li>

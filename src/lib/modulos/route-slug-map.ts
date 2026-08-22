@@ -98,8 +98,6 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/admin")) return null;
   if (p.startsWith("/api")) return null;
   if (p.startsWith("/usuarios")) return "usuarios";
-  // Ayuda en línea: sin gate de módulo a propósito — la consulta cualquiera con sesión.
-  if (p.startsWith("/ayuda")) return null;
 
   if (p.startsWith("/dashboard")) {
     if (p.startsWith("/dashboard/marketing-ops")) return "marketing_ops";

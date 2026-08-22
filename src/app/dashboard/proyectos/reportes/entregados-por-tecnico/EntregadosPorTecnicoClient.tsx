@@ -3,12 +3,17 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { enJornadas, formatearDuracion } from "@/lib/proyectos/reloj-laboral";
+
+type GrupoTipo = "web" | "saas" | "mixto" | "otro";
 
 type ReporteProyecto = {
   id: string;
   titulo: string;
   cliente: string;
   entregado_at: string;
+  tipo_grupo: GrupoTipo;
+  ms_entrega: number | null;
 };
 
 type ReporteTecnico = {
@@ -16,7 +21,33 @@ type ReporteTecnico = {
   tecnico_nombre: string;
   cantidad: number;
   proyectos: ReporteProyecto[];
+  promedio_ms: number | null;
+  promedio_ms_web: number | null;
+  promedio_ms_saas: number | null;
+  cantidad_web: number;
+  cantidad_saas: number;
 };
+
+const TIPO_GRUPO_LABEL: Record<GrupoTipo, string> = {
+  web: "Proyecto Web",
+  saas: "SaaS / ERP",
+  mixto: "Web + SaaS/ERP",
+  otro: "Otro",
+};
+
+const TIPO_GRUPO_CLASE: Record<GrupoTipo, string> = {
+  web: "bg-[#4FAEB2]/10 text-[#3F8E91]",
+  saas: "bg-violet-50 text-violet-700",
+  mixto: "bg-slate-100 text-slate-600",
+  otro: "bg-slate-100 text-slate-500",
+};
+
+/** Tiempo de entrega en jornadas de 9h, la unidad que ya usa "Tareas del equipo". */
+function formatTiempoEntrega(ms: number | null): string {
+  if (ms == null) return "—";
+  const jornadas = enJornadas(ms);
+  return jornadas != null ? `${jornadas} jornadas` : formatearDuracion(ms);
+}
 
 type ReporteResponse = {
   success: boolean;
@@ -300,8 +331,38 @@ export default function EntregadosPorTecnicoClient() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>{t.cantidad === 1 ? "1 proyecto entregado" : `${t.cantidad} proyectos entregados`}</span>
+                    <div className="mt-1.5 text-[11px] text-slate-500">
+                      {t.cantidad === 1 ? "1 proyecto entregado" : `${t.cantidad} proyectos entregados`}
+                    </div>
+                    {/* Tiempo promedio de entrega: general y por tipo. Sólo se
+                        muestran los tipos que este técnico realmente entregó
+                        este mes — si no tuvo ningún SaaS/ERP, ese chip no
+                        aparece en vez de mostrar "—" sin sentido. */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600"
+                        title="Tiempo promedio de entrega (horario laboral, sin contar pausas)"
+                      >
+                        Prom. {formatTiempoEntrega(t.promedio_ms)}
+                      </span>
+                      {t.cantidad_web > 0 ? (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${TIPO_GRUPO_CLASE.web}`}
+                          title={`${t.cantidad_web} Proyecto Web`}
+                        >
+                          Web {formatTiempoEntrega(t.promedio_ms_web)}
+                        </span>
+                      ) : null}
+                      {t.cantidad_saas > 0 ? (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${TIPO_GRUPO_CLASE.saas}`}
+                          title={`${t.cantidad_saas} SaaS / ERP`}
+                        >
+                          SaaS/ERP {formatTiempoEntrega(t.promedio_ms_saas)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-end text-[11px]">
                       <span className="inline-flex items-center gap-1 text-[#4FAEB2]">
                         {open ? "Ocultar" : "Ver detalle"}
                         <svg
@@ -333,11 +394,26 @@ export default function EntregadosPorTecnicoClient() {
                             <div className="truncate text-[12.5px] font-semibold text-slate-800">
                               {p.titulo}
                             </div>
-                            <div className="truncate text-[11px] text-slate-500">{p.cliente}</div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                              <span className="truncate text-[11px] text-slate-500">{p.cliente}</span>
+                              <span
+                                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${TIPO_GRUPO_CLASE[p.tipo_grupo]}`}
+                              >
+                                {TIPO_GRUPO_LABEL[p.tipo_grupo]}
+                              </span>
+                            </div>
                           </div>
-                          <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-500">
-                            {formatFecha(p.entregado_at)}
-                          </span>
+                          <div className="flex shrink-0 flex-col items-end gap-0.5">
+                            <span className="font-mono text-[11px] tabular-nums text-slate-500">
+                              {formatFecha(p.entregado_at)}
+                            </span>
+                            <span
+                              className="text-[10px] font-medium text-slate-400"
+                              title="Tiempo de entrega: horario laboral desde que se asignó el técnico, sin contar pausas"
+                            >
+                              {formatTiempoEntrega(p.ms_entrega)}
+                            </span>
+                          </div>
                         </Link>
                       </li>
                     ))}

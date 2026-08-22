@@ -42,7 +42,18 @@ import {
 /** Clave de agrupación de las observaciones sin sección asignada. */
 const SIN_SECCION = "sin_seccion";
 
-type Agrupacion = "seccion" | "lista";
+type Agrupacion = "seccion" | "ronda" | "lista";
+
+/**
+ * Ronda = pasada de revisión. QA revisa y carga sus observaciones (ronda 1); el
+ * técnico corrige; QA vuelve a revisar y lo que encuentre va a la ronda 2. Es lo
+ * que permite leer "primera revisión: 5 cambios, segunda: 3" en vez de una
+ * lista plana donde todo parece del mismo momento.
+ */
+function nombreRonda(n: number): string {
+  const ordinales = ["", "Primera", "Segunda", "Tercera", "Cuarta", "Quinta", "Sexta"];
+  return ordinales[n] ? `${ordinales[n]} revisión` : `Revisión ${n}`;
+}
 
 type Filtros = {
   q: string;
@@ -79,6 +90,22 @@ export default function ObservacionesBoard({
   projectTitle,
 }: QATabProps) {
   const [observaciones, setObservaciones] = useState<QAObservacion[]>([]);
+  /**
+   * Vista que le toca a quien mira, resuelta por el servidor. Arranca en
+   * "desarrollo" —la más restringida— para que un render antes de que llegue la
+   * respuesta nunca muestre de más.
+   */
+  const [permiso, setPermiso] = useState<{ vista: "qa" | "desarrollo"; puedeVerInterno: boolean }>({
+    vista: "desarrollo",
+    puedeVerInterno: false,
+  });
+  /**
+   * Ronda destino de lo que se cargue ahora. `null` = la que ya está abierta.
+   * Al tocar "Iniciar nueva revisión" pasa a ser la siguiente, y en cuanto se
+   * carga la primera observación deja de hacer falta: el máximo del proyecto ya
+   * es esa ronda. Por eso no se persiste nada — se deriva del propio dato.
+   */
+  const [rondaNueva, setRondaNueva] = useState<number | null>(null);
   const [secciones, setSecciones] = useState<QASeccion[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -114,6 +141,7 @@ export default function ObservacionesBoard({
     ]);
     const jObs = (await resObs.json().catch(() => null)) as QAApiResp<{
       observaciones: QAObservacion[];
+      permiso?: { vista: "qa" | "desarrollo"; puede_ver_interno: boolean };
     }> | null;
     const jSec = (await resSec.json().catch(() => null)) as QAApiResp<{
       secciones: QASeccion[];
@@ -125,6 +153,12 @@ export default function ObservacionesBoard({
       return;
     }
     setObservaciones(jObs.data.observaciones);
+    if (jObs.data.permiso) {
+      setPermiso({
+        vista: jObs.data.permiso.vista,
+        puedeVerInterno: jObs.data.permiso.puede_ver_interno === true,
+      });
+    }
     setSecciones(jSec?.success && jSec.data ? jSec.data.secciones : []);
     setErr(null);
     setLoading(false);
@@ -211,6 +245,24 @@ export default function ObservacionesBoard({
     if (agrupacion === "lista") {
       return [{ key: "todas", nombre: "Todas", seccion: null, items: [...filtradas].sort(ordenPlano) }];
     }
+    if (agrupacion === "ronda") {
+      const porRonda = new Map<number, QAObservacion[]>();
+      for (const o of filtradas) {
+        const k = o.ronda ?? 1;
+        const lista = porRonda.get(k) ?? [];
+        lista.push(o);
+        porRonda.set(k, lista);
+      }
+      // La más reciente arriba: es la que se está trabajando.
+      return [...porRonda.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([n, items]) => ({
+          key: `ronda:${n}`,
+          nombre: nombreRonda(n),
+          seccion: null,
+          items: items.sort(ordenPlano),
+        }));
+    }
     const porSeccion = new Map<string, QAObservacion[]>();
     for (const o of filtradas) {
       const k = o.seccion_id ?? SIN_SECCION;
@@ -238,6 +290,13 @@ export default function ObservacionesBoard({
     }
     return ordenadas;
   }, [agrupacion, filtradas, secciones, ordenPlano]);
+
+  /** Revisión abierta = la más alta que ya tiene observaciones. */
+  const rondaAbierta = useMemo(
+    () => observaciones.reduce((max, o) => Math.max(max, o.ronda ?? 1), 1),
+    [observaciones]
+  );
+  const rondaDestino = rondaNueva ?? rondaAbierta;
 
   function toggleColapsada(key: string) {
     setColapsadas((prev) => {
@@ -375,6 +434,7 @@ export default function ObservacionesBoard({
         {altaOpen ? (
           <div className="w-full pt-2 text-left">
             <QAComposer
+              ronda={rondaDestino}
               projectId={projectId}
               secciones={secciones}
               usuarios={usuarios}
@@ -429,9 +489,26 @@ export default function ObservacionesBoard({
           onChange={setAgrupacion}
           opciones={[
             { id: "seccion", label: "Secciones", icono: <IconGrupos />, title: "Agrupar por sección" },
+            { id: "ronda", label: "Revisiones", icono: <IconGrupos />, title: "Agrupar por ronda de revisión" },
             { id: "lista", label: "Lista", icono: <IconList />, title: "Lista plana por severidad" },
           ]}
         />
+
+        {permiso.vista === "qa" ? (
+          <button
+            type="button"
+            onClick={() => setRondaNueva(rondaAbierta + 1)}
+            disabled={rondaNueva != null}
+            title={
+              rondaNueva != null
+                ? `Lo que cargues entra en la ${nombreRonda(rondaDestino).toLowerCase()}`
+                : "Las próximas observaciones entran en una revisión nueva"
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-default disabled:border-[#4FAEB2]/40 disabled:bg-[#4FAEB2]/10 disabled:text-[#3F8E91]"
+          >
+            {rondaNueva != null ? `Cargando en ${nombreRonda(rondaDestino)}` : "Iniciar nueva revisión"}
+          </button>
+        ) : null}
 
         <div className="ml-auto">
           <GrupoAcciones>
@@ -579,6 +656,7 @@ export default function ObservacionesBoard({
 
       {altaOpen ? (
         <QAComposer
+          ronda={rondaDestino}
           projectId={projectId}
           secciones={secciones}
           usuarios={usuarios}
@@ -645,6 +723,8 @@ export default function ObservacionesBoard({
           obs={abierta}
           secciones={secciones}
           usuarios={usuarios}
+          vista={permiso.vista}
+          puedeVerInterno={permiso.puedeVerInterno}
           onClose={() => setAbiertaId(null)}
           onActualizada={reemplazar}
           onEliminada={(id) => {

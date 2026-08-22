@@ -18,6 +18,7 @@ import {
   esEtapaQA,
   type ProyectoEtapaQA,
 } from "@/lib/proyectos/etapas-qa";
+import { esEstadoPausado } from "@/lib/proyectos/estados-tablero";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
 import { puedeEliminarProyectos, requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
@@ -276,6 +277,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const pideQaResponsable = "qa_responsable_id" in body;
     const pideQaEtapa = "qa_etapa" in body;
     const pidePausa = "pausado" in body;
+    // Editar sólo el texto del motivo también entra al bloque de abajo: si no,
+    // un body con únicamente `pausa_motivo` no encontraba dónde aplicarse y la
+    // request terminaba en "Nada para actualizar".
+    const pideMotivo = "pausa_motivo" in body;
 
     if (pideEtapa && !esEtapaDesarrollo(body.etapa_desarrollo)) {
       return NextResponse.json(errorResponse("Etapa de desarrollo inválida"), { status: 400 });
@@ -287,11 +292,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json(errorResponse("`pausado` debe ser booleano"), { status: 400 });
     }
 
-    if (pideEtapa || pideTecnico || pideQaResponsable || pideQaEtapa || pidePausa) {
+    if (pideEtapa || pideTecnico || pideQaResponsable || pideQaEtapa || pidePausa || pideMotivo) {
       const { data: actual, error: eActual } = await sb
         .from("proyectos")
         .select(
-          "etapa_desarrollo, responsable_tecnico_id, qa_responsable_id, qa_etapa, pausado_at, pausa_acumulada_ms"
+          "etapa_desarrollo, responsable_tecnico_id, qa_responsable_id, qa_etapa, pausado_at, pausa_acumulada_ms, estado_id, ultimo_movimiento_at"
         )
         .eq("empresa_id", auth.empresaId)
         .eq("id", pid)
@@ -304,6 +309,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         responsable_tecnico_id?: string | null;
         qa_responsable_id?: string | null;
         qa_etapa?: string | null;
+        estado_id?: string | null;
+        ultimo_movimiento_at?: string | null;
         pausado_at?: string | null;
         pausa_acumulada_ms?: number | null;
       };
@@ -406,13 +413,35 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           patch.pausado_at = null;
           patch.pausa_motivo = null;
         }
-      } else if (
-        typeof body.pausa_motivo === "string" &&
-        typeof cur.pausado_at === "string" &&
-        cur.pausado_at
-      ) {
-        // Editar sólo el texto del motivo, sin tocar el reloj de la pausa.
-        patch.pausa_motivo = body.pausa_motivo.trim() || null;
+      } else if (typeof body.pausa_motivo === "string") {
+        // Editar sólo el texto del motivo, sin tocar el reloj de una pausa ya abierta.
+        if (typeof cur.pausado_at === "string" && cur.pausado_at) {
+          patch.pausa_motivo = body.pausa_motivo.trim() || null;
+        } else {
+          // Puede estar en la columna "Pausado" del Kanban sin pausa abierta:
+          // pasa con los proyectos que se movieron antes de que el cambio de
+          // estado gobernara la pausa. Sin esto el motivo se perdía en silencio.
+          // Se abre la pausa retroactivamente desde que entró a la columna, que
+          // es el instante correcto y no "ahora".
+          const { data: est } = cur.estado_id
+            ? await sb
+                .from("proyecto_estados")
+                .select("tipo_sla")
+                .eq("empresa_id", auth.empresaId)
+                .eq("id", cur.estado_id)
+                .maybeSingle()
+            : { data: null };
+
+          if (esEstadoPausado(est as { tipo_sla: string | null } | null)) {
+            patch.pausa_motivo = body.pausa_motivo.trim() || null;
+            patch.pausado_at = cur.ultimo_movimiento_at ?? ahora;
+          } else {
+            return NextResponse.json(
+              errorResponse("El proyecto no está pausado: movelo a la columna Pausado primero"),
+              { status: 400 }
+            );
+          }
+        }
       }
     }
 
@@ -464,8 +493,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    const enriched = await enrichProyectosRows(sb, auth.empresaId, [row as Record<string, unknown>]);
-    return NextResponse.json(successResponse(enriched[0] ?? row));
+    // Se devuelve la fila cruda, sin enriquecer. El enriquecido son cinco
+    // consultas más (tipos, estados, clientes, usuarios, historial) y ningún
+    // cliente usaba el resultado del PATCH: todos miran sólo `success` y
+    // después recargan. Era latencia pura en el camino de guardar.
+    return NextResponse.json(successResponse(row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

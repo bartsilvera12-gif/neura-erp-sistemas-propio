@@ -17,7 +17,18 @@ import {
   type QAObservacionRow,
 } from "@/lib/proyectos/qa-shared";
 
-const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * Acepta fecha sola (`YYYY-MM-DD`, como se guardaba antes) o fecha con hora en
+ * ISO. La columna es `timestamptz`: una fecha sola entra a las 00:00 y sigue
+ * funcionando igual que antes.
+ */
+function normalizarFechaLimite(valor: string): string | null {
+  const v = valor.trim();
+  if (!v) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
 
 /** Campos de texto que se limpian igual en todos los casos: vacío → null. */
 function textoNullable(value: unknown, max: number): string | null {
@@ -111,9 +122,10 @@ export async function PATCH(
     }
 
     if (tiene(body, "fecha_limite")) {
-      const f = textoNullable(body.fecha_limite, 10);
-      if (f && !FECHA_RE.test(f)) {
-        return NextResponse.json(errorResponse("fecha_limite debe ser YYYY-MM-DD"), { status: 400 });
+      const crudo = textoNullable(body.fecha_limite, 40);
+      const f = crudo ? normalizarFechaLimite(crudo) : null;
+      if (crudo && !f) {
+        return NextResponse.json(errorResponse("fecha_limite inválida"), { status: 400 });
       }
       if (f !== prev.fecha_limite) {
         patch.fecha_limite = f;

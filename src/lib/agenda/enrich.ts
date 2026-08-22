@@ -1,7 +1,8 @@
 import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
-import type { AgendaCitaEnriquecida, AgendaCitaRow } from "@/lib/agenda/types";
+import type { AgendaCitaEnriquecida, AgendaCitaRow, AgendaUsuarioRef } from "@/lib/agenda/types";
+import { responsablesPorCita } from "@/lib/agenda/responsables";
 
 function uniq(ids: (string | null | undefined)[]): string[] {
   return [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))];
@@ -20,7 +21,21 @@ export async function enrichAgendaRows(
   if (rows.length === 0) return [];
 
   const clienteIds = uniq(rows.map((r) => r.cliente_id));
-  const userIds = uniq(rows.map((r) => r.responsable_id));
+
+  // Responsables extra + quién cargó cada cita. `null` = la tabla de
+  // responsables todavía no existe en este schema (migración sin correr): se
+  // cae de vuelta al responsable principal.
+  const extras = await responsablesPorCita(
+    sb,
+    empresaId,
+    rows.map((r) => r.id)
+  );
+
+  const userIds = uniq([
+    ...rows.map((r) => r.responsable_id),
+    ...rows.map((r) => r.created_by),
+    ...(extras ? [...extras.values()].flat() : []),
+  ]);
 
   const catalog = createServiceRoleClient();
 
@@ -66,8 +81,19 @@ export async function enrichAgendaRows(
     } else {
       out.cliente = null;
     }
-    const u = usersMap.get(r.responsable_id) as { id: string; nombre?: string } | undefined;
-    out.responsable = u ? { id: u.id, nombre: u.nombre ?? null } : { id: r.responsable_id, nombre: null };
+    const ref = (id: string): AgendaUsuarioRef => {
+      const u = usersMap.get(id) as { id: string; nombre?: string } | undefined;
+      return { id, nombre: u?.nombre ?? null };
+    };
+
+    out.responsable = ref(r.responsable_id);
+    // El principal va SIEMPRE primero, esté o no en la tabla de responsables.
+    const idsExtra = extras?.get(r.id) ?? [];
+    out.responsables = [
+      r.responsable_id,
+      ...idsExtra.filter((id) => id !== r.responsable_id),
+    ].map(ref);
+    out.creado_por = r.created_by ? ref(r.created_by) : null;
     return out;
   });
 }

@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Banknote,
-  BookOpen,
   Building2,
   CalendarDays,
   FileText,
@@ -129,10 +128,6 @@ const SECTIONS: Section[] = [
       { href: "/usuarios", label: "Usuarios", icon: UserCog },
       { href: "/configuracion", label: "Configuración", icon: Settings },
     ],
-  },
-  {
-    title: "Soporte",
-    items: [{ href: "/ayuda", label: "Ayuda en línea", icon: BookOpen }],
   },
 ];
 

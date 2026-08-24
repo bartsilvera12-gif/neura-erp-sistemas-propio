@@ -817,8 +817,16 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     useSensor(KeyboardSensor)
   );
 
+  /** Generación de la carga en vuelo: solo la más nueva aplica su resultado (anti-carrera). */
+  const loadGenRef = useRef(0);
+
   const load = useCallback(async () => {
     if (alcance === null) return; // esperar a resolver el default por nivel
+    // Guardián de generación: si mientras esta carga está en vuelo se dispara otra (ej. al escribir
+    // una búsqueda), la respuesta que llegue TARDE NO debe pisar a la más nueva. Sin esto, una carga
+    // inicial (búsqueda vacía, lenta) podía resolver DESPUÉS de la búsqueda y borrar el resultado
+    // buscado (peor aún si era un entregado viejo, que sin búsqueda se oculta).
+    const ticket = ++loadGenRef.current;
     setLoading(true);
     setErr(null);
     const sp = new URLSearchParams();
@@ -848,6 +856,10 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       success?: boolean;
       data?: { prioridades?: PrioridadConfig[] };
     };
+
+    // Si mientras se resolvían las consultas se lanzó otra carga (búsqueda/filtro/realtime), esta
+    // quedó vieja: no aplicamos su resultado ni su estado de error para no pisar a la más nueva.
+    if (ticket !== loadGenRef.current) return;
 
     if (!rEst.ok || !jEst.success) {
       setErr(jEst.error ?? "No se pudieron cargar estados");

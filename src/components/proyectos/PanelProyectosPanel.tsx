@@ -194,6 +194,13 @@ const METRICA_META: Record<MetricaMonto, { label: string; color: string; totalLa
   },
 };
 
+type OrdenDetalle = "monto" | "etapa";
+
+const ORDEN_DETALLE_META: Record<OrdenDetalle, { label: string; ayuda: string }> = {
+  monto: { label: "Monto", ayuda: "Primero lo que tiene plata pendiente, de mayor a menor." },
+  etapa: { label: "Etapa", ayuda: "Agrupado por etapa del pipeline; lo entregado va al final." },
+};
+
 /** Tabla de proyectos de un responsable (etapa, vendedor, presupuesto o deuda, SLA). */
 function ProyectosDetalleTabla({
   proyectos,
@@ -205,21 +212,25 @@ function ProyectosDetalleTabla({
   metrica?: MetricaMonto;
 }) {
   /**
-   * Primero lo que tiene plata pendiente, de mayor a menor.
+   * Dos maneras de leer la misma lista, porque se usan para cosas distintas:
    *
-   * El orden que viene del servidor es por etapa del pipeline, que sirve para
-   * organizar el trabajo pero no para cobrar: con la vista en "Deuda", los
-   * proyectos que deben quedaban salpicados entre los que no, y había que
-   * recorrer toda la lista para encontrarlos. Los que no tienen nada pendiente
-   * conservan el orden original abajo.
+   * - "Monto": primero lo que tiene plata pendiente, de mayor a menor. Es la
+   *   vista de cobranza — el orden del pipeline dejaba los que deben salpicados
+   *   entre los que no y había que recorrer todo para encontrarlos.
+   * - "Etapa": agrupado por etapa del pipeline, que es cómo se lee la carga de
+   *   trabajo. Lo ENTREGADO se manda al final aunque su `sort_order` diga otra
+   *   cosa: ya no es trabajo por hacer, y arriba solo estorba a lo que sí lo es.
    */
+  const [orden, setOrden] = useState<OrdenDetalle>("monto");
+
+  const montoDe = (p: DetalleProy) => (metrica === "deuda" ? p.deuda : p.presupuesto);
+
   const ordenados = useMemo(() => {
-    const monto = (p: DetalleProy) => (metrica === "deuda" ? p.deuda : p.presupuesto);
     return [...proyectos]
       .map((p, i) => ({ p, i }))
       .sort((a, b) => {
-        const ma = monto(a.p);
-        const mb = monto(b.p);
+        const ma = montoDe(a.p);
+        const mb = montoDe(b.p);
         // Con monto vs sin monto es lo que separa los dos bloques; dentro del
         // primero manda el importe, y el resto mantiene el orden del servidor.
         if (ma > 0 !== mb > 0) return ma > 0 ? -1 : 1;
@@ -227,6 +238,25 @@ function ProyectosDetalleTabla({
         return a.i - b.i;
       })
       .map((x) => x.p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proyectos, metrica]);
+
+  /** Grupos por etapa, con los estados finales (Entregado) empujados al final. */
+  const grupos = useMemo(() => {
+    const m = new Map<string, { estado: string; final: boolean; orden: number; filas: DetalleProy[] }>();
+    for (const p of proyectos) {
+      const g = m.get(p.estado) ?? { estado: p.estado, final: p.es_final, orden: p.estado_orden, filas: [] };
+      g.filas.push(p);
+      m.set(p.estado, g);
+    }
+    return [...m.values()]
+      .map((g) => ({
+        ...g,
+        total: g.filas.reduce((a, p) => a + montoDe(p), 0),
+        filas: [...g.filas].sort((a, b) => montoDe(b) - montoDe(a)),
+      }))
+      .sort((a, b) => Number(a.final) - Number(b.final) || a.orden - b.orden || a.estado.localeCompare(b.estado));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proyectos, metrica]);
 
   if (!proyectos.length) return <p className="px-3 py-3 text-xs text-slate-400">Sin proyectos.</p>;
@@ -238,47 +268,120 @@ function ProyectosDetalleTabla({
     ? ["Cliente / Proyecto", "Etapa", "Vendedor", etiquetaMonto, "SLA"]
     : ["Cliente / Proyecto", "Etapa", etiquetaMonto, "SLA"];
   const rightFrom = mostrarVendedor ? 3 : 2;
+
+  const Fila = ({ p }: { p: DetalleProy }) => {
+    const monto = montoDe(p);
+    return (
+      <tr className="hover:bg-slate-50/60">
+        <td className="px-3 py-2">
+          <span className="block font-medium text-slate-800">{p.cliente}</span>
+          {p.titulo && p.titulo !== p.cliente ? <span className="block text-[11px] text-slate-400">{p.titulo}</span> : null}
+        </td>
+        <td className="px-3 py-2">
+          <span className="inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+            {p.estado}
+          </span>
+        </td>
+        {mostrarVendedor ? (
+          <td className="whitespace-nowrap px-3 py-2 text-[12px] text-slate-600">{p.vendedor}</td>
+        ) : null}
+        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums" style={{ color: tonoMonto }}>
+          {monto > 0 ? fmtGs(monto) : <span className="text-slate-300">—</span>}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-right text-[11px]">
+          <span className={p.sla_vencido ? "font-semibold text-rose-600" : "text-slate-400"}>{p.sla_texto}</span>
+        </td>
+      </tr>
+    );
+  };
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] text-sm">
-        <thead className="border-b border-slate-100 bg-slate-50/60">
-          <tr>
-            {cols.map((h, i) => (
-              <th key={i} className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ${i >= rightFrom ? "text-right" : "text-left"}`}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {ordenados.map((p) => {
-            const monto = metrica === "deuda" ? p.deuda : p.presupuesto;
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-2 pt-1">
+        <p className="text-[10px] text-slate-400">{ORDEN_DETALLE_META[orden].ayuda}</p>
+        <div
+          role="tablist"
+          aria-label="Ordenar el listado"
+          className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-100/70 p-0.5"
+        >
+          <span className="pl-1.5 pr-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            Agrupar por
+          </span>
+          {(["monto", "etapa"] as OrdenDetalle[]).map((o) => {
+            const activo = orden === o;
             return (
-              <tr key={p.id} className="hover:bg-slate-50/60">
-                <td className="px-3 py-2">
-                  <span className="block font-medium text-slate-800">{p.cliente}</span>
-                  {p.titulo && p.titulo !== p.cliente ? <span className="block text-[11px] text-slate-400">{p.titulo}</span> : null}
-                </td>
-                <td className="px-3 py-2">
-                  <span className="inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
-                    {p.estado}
-                  </span>
-                </td>
-                {mostrarVendedor ? (
-                  <td className="whitespace-nowrap px-3 py-2 text-[12px] text-slate-600">{p.vendedor}</td>
-                ) : null}
-                <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums" style={{ color: tonoMonto }}>
-                  {monto > 0 ? fmtGs(monto) : <span className="text-slate-300">—</span>}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right text-[11px]">
-                  <span className={p.sla_vencido ? "font-semibold text-rose-600" : "text-slate-400"}>{p.sla_texto}</span>
-                </td>
-              </tr>
+              <button
+                key={o}
+                type="button"
+                role="tab"
+                aria-selected={activo}
+                onClick={() => setOrden(o)}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                  activo
+                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-900/5"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {ORDEN_DETALLE_META[o].label}
+              </button>
             );
           })}
-        </tbody>
-      </table>
-      {proyectos.some((p) => (metrica === "deuda" ? p.deuda : p.presupuesto) <= 0) ? (
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead className="border-b border-slate-100 bg-slate-50/60">
+            <tr>
+              {cols.map((h, i) => (
+                <th key={i} className={`px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 ${i >= rightFrom ? "text-right" : "text-left"}`}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          {orden === "monto" ? (
+            <tbody className="divide-y divide-slate-100">
+              {ordenados.map((p) => (
+                <Fila key={p.id} p={p} />
+              ))}
+            </tbody>
+          ) : (
+            grupos.map((g) => (
+              <tbody key={g.estado} className="divide-y divide-slate-100">
+                <tr className="bg-slate-50/80">
+                  <th
+                    colSpan={cols.length - 1}
+                    scope="colgroup"
+                    className="px-3 py-1.5 text-left text-[11px] font-semibold text-slate-600"
+                  >
+                    {/*
+                      El punto marca las etapas cerradas (entregado): es lo único
+                      que distingue al bloque del final del resto sin repetir
+                      texto en cada fila.
+                    */}
+                    <span
+                      aria-hidden="true"
+                      className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${g.final ? "bg-slate-300" : "bg-[#4FAEB2]"}`}
+                    />
+                    {g.estado}
+                    <span className="ml-1.5 font-normal text-slate-400">
+                      {g.filas.length} {g.filas.length === 1 ? "proyecto" : "proyectos"}
+                    </span>
+                  </th>
+                  <th className="px-3 py-1.5 text-right text-[11px] font-semibold tabular-nums" style={{ color: tonoMonto }}>
+                    {g.total > 0 ? fmtGs(g.total) : <span className="text-slate-300">—</span>}
+                  </th>
+                </tr>
+                {g.filas.map((p) => (
+                  <Fila key={p.id} p={p} />
+                ))}
+              </tbody>
+            ))
+          )}
+        </table>
+      </div>
+      {proyectos.some((p) => montoDe(p) <= 0) ? (
         <p className="px-3 py-1.5 text-[10px] text-slate-400">
           {metrica === "deuda"
             ? "“—” = sin saldo pendiente atribuido (cliente sin deuda, o ya contada en otro proyecto del mismo cliente)."

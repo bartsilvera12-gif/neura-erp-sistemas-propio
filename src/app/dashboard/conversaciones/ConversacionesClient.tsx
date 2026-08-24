@@ -841,6 +841,8 @@ export function ConversacionesClient({
   const discardRecordingRef = useRef(false);
   const emojiPanelRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  /** Wrapper del contenido de mensajes; lo observamos para re-anclar al fondo ante cualquier cambio de alto. */
+  const messagesContentRef = useRef<HTMLDivElement>(null);
   /** Si el usuario está cerca del final, los mensajes nuevos hacen scroll; si subió a leer historial, no. */
   const stickBottomRef = useRef(true);
   const lastMessageIdRef = useRef<string | null>(null);
@@ -1850,6 +1852,23 @@ export function ConversacionesClient({
       }
     }
   }, [messages, selectedId]);
+
+  const hasMessages = messages.length > 0;
+  // Ancla-al-fondo A PRUEBA DE BALAS: observamos el ALTO del contenido de mensajes con un
+  // ResizeObserver. Cada vez que crece (imágenes async que decodifican, fase cache→fresco, audio,
+  // citas, fuentes) re-anclamos al fondo SI el usuario sigue pegado abajo. Esto cubre el caso en
+  // que el scroll-al-fondo inicial se hacía antes de que la media empujara el hilo y te dejaba
+  // viendo mensajes viejos. Si subís a leer historial (stickBottom=false), no te tironea.
+  useLayoutEffect(() => {
+    const content = messagesContentRef.current;
+    const scroller = messagesScrollRef.current;
+    if (!content || !scroller || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (stickBottomRef.current) scroller.scrollTop = scroller.scrollHeight;
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [selectedId, hasMessages]);
 
   // Auto-alto del composer (tipo WhatsApp): crece con el texto hasta ~6 líneas y luego hace
   // scroll interno, manteniendo el contexto de lo que se escribe. Se recalcula en cada cambio
@@ -3835,7 +3854,8 @@ export function ConversacionesClient({
                       : "No hay mensajes para esta conversación."}
                   </div>
                 ) : (
-                  messages.map((m, idx) => {
+                  <div ref={messagesContentRef}>
+                  {messages.map((m, idx) => {
                     const attachUrl = resolveAttachmentUrl(m);
                     const metaDocName = getMetaInboundDocumentFilename(m.raw_payload);
                     const erpName = getErpAttachmentFilename(m.raw_payload);
@@ -4107,7 +4127,8 @@ export function ConversacionesClient({
                         </div>
                       </div>
                     );
-                  })
+                  })}
+                  </div>
                 )}
                 {pendingSends
                   .filter((p) => p.convId === selectedId)

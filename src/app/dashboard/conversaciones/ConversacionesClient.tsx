@@ -630,6 +630,10 @@ export function ConversacionesClient({
   const [tplError, setTplError] = useState<string | null>(null);
   const tplPanelRef = useRef<HTMLDivElement | null>(null);
   const [loadingList, setLoadingList] = useState(true);
+  // "Actualizando": true mientras corre el refresco en 2º plano al ENTRAR (la lista se pinta al
+  // instante desde cache local, que puede estar viejo, y el fetch fresco tarda ~3-4s). Sirve para
+  // avisar al operador que el estado que ve todavía no es el definitivo (evita actuar sobre data vieja).
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadHint, setUploadHint] = useState<string | null>(null);
@@ -1236,7 +1240,9 @@ export function ConversacionesClient({
     if (cached && cached.length > 0) {
       setConversations(cached);
       setLoadingList(false);
-      void loadConversations({ silent: true });
+      // Pintamos el cache (viejo) al instante pero avisamos que estamos trayendo lo último.
+      setListRefreshing(true);
+      void loadConversations({ silent: true }).finally(() => setListRefreshing(false));
     } else {
       setLoadingList(true);
       void loadConversations();
@@ -1832,6 +1838,17 @@ export function ConversacionesClient({
       const el2 = messagesScrollRef.current;
       if (el2 && (abrirChat || stickBottomRef.current)) el2.scrollTop = el2.scrollHeight;
     });
+    // Al ABRIR un hilo, insistimos con un par de re-scrolls diferidos: media/citas/fuentes pueden
+    // cambiar el alto unos ms después del primer frame y dejarte viendo mensajes viejos. Solo
+    // mientras sigas pegado al fondo (si scrolleás hacia arriba, no te tironea).
+    if (abrirChat) {
+      for (const delay of [80, 250, 500]) {
+        setTimeout(() => {
+          const el3 = messagesScrollRef.current;
+          if (el3 && stickBottomRef.current) el3.scrollTop = el3.scrollHeight;
+        }, delay);
+      }
+    }
   }, [messages, selectedId]);
 
   // Auto-alto del composer (tipo WhatsApp): crece con el texto hasta ~6 líneas y luego hace
@@ -3205,7 +3222,18 @@ export function ConversacionesClient({
           }`}
         >
           <div className="px-2 py-1.5 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Chats</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Chats</span>
+              {listRefreshing ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600" title="Trayendo el estado más reciente…">
+                  <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Actualizando…
+                </span>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={() => setListColumnHidden(true)}
@@ -3916,7 +3944,16 @@ export function ConversacionesClient({
                                 <img
                                   src={attachUrl}
                                   alt="Imagen del chat"
-                                  className="max-h-52 rounded-lg border border-white/30 bg-white object-contain"
+                                  // La imagen carga async y crece (hasta max-h-52) DESPUÉS del scroll-al-fondo
+                                  // inicial → empujaba el hilo y te dejaba viendo mensajes viejos. Al terminar
+                                  // de cargar, si seguimos "pegados al fondo", re-scrolleamos al final.
+                                  onLoad={() => {
+                                    if (stickBottomRef.current) {
+                                      const el = messagesScrollRef.current;
+                                      if (el) el.scrollTop = el.scrollHeight;
+                                    }
+                                  }}
+                                  className="max-h-52 min-h-[3rem] rounded-lg border border-white/30 bg-white object-contain"
                                 />
                               </button>
                               {(() => {

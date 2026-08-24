@@ -112,8 +112,19 @@ export function PersonaSearchSelect({
       ? createPortal(
           <div
             data-persona-panel=""
-            className="z-[80] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
-            style={{ position: "fixed", left: pos.left, top: pos.top, width: pos.width }}
+            className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+            /*
+              El panel cuelga de `body` (portal), asi que compite en el stacking
+              context RAIZ contra los modales, que llegan a z-[110]. Con un
+              z-index menor el panel se abre pero queda DETRAS del modal: se ve
+              girar el chevron y nada mas, o sea "el selector no despliega".
+              Mismo valor que FancySelect, que ya habia pasado por esto.
+            */
+            style={{ position: "fixed", left: pos.left, top: pos.top, width: pos.width, zIndex: 1000 }}
+            // Sin frenar la propagacion, el "click afuera" del modal que lo
+            // contiene se dispara al elegir y cierra todo.
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-slate-100 p-2">
               <input

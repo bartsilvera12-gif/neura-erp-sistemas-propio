@@ -841,8 +841,10 @@ export function ConversacionesClient({
   const discardRecordingRef = useRef(false);
   const emojiPanelRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
-  /** Wrapper del contenido de mensajes; lo observamos para re-anclar al fondo ante cualquier cambio de alto. */
-  const messagesContentRef = useRef<HTMLDivElement>(null);
+  /** ResizeObserver del alto del contenido de mensajes (re-ancla al fondo). Se ata por callback-ref. */
+  const contentRoRef = useRef<ResizeObserver | null>(null);
+  /** Ventana "recién abrí este chat": fuerza anclar al fondo aunque stickBottom aún no esté fijado. */
+  const openUntilRef = useRef(0);
   /** Si el usuario está cerca del final, los mensajes nuevos hacen scroll; si subió a leer historial, no. */
   const stickBottomRef = useRef(true);
   const lastMessageIdRef = useRef<string | null>(null);
@@ -1853,22 +1855,26 @@ export function ConversacionesClient({
     }
   }, [messages, selectedId]);
 
-  const hasMessages = messages.length > 0;
-  // Ancla-al-fondo A PRUEBA DE BALAS: observamos el ALTO del contenido de mensajes con un
-  // ResizeObserver. Cada vez que crece (imágenes async que decodifican, fase cache→fresco, audio,
-  // citas, fuentes) re-anclamos al fondo SI el usuario sigue pegado abajo. Esto cubre el caso en
-  // que el scroll-al-fondo inicial se hacía antes de que la media empujara el hilo y te dejaba
-  // viendo mensajes viejos. Si subís a leer historial (stickBottom=false), no te tironea.
-  useLayoutEffect(() => {
-    const content = messagesContentRef.current;
-    const scroller = messagesScrollRef.current;
-    if (!content || !scroller || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => {
-      if (stickBottomRef.current) scroller.scrollTop = scroller.scrollHeight;
-    });
-    ro.observe(content);
-    return () => ro.disconnect();
-  }, [selectedId, hasMessages]);
+  // Ancla-al-fondo A PRUEBA DE BALAS: callback-ref que ata un ResizeObserver al wrapper del
+  // contenido EN EL MOMENTO en que monta (no depende del timing de effects, que se enganchaban
+  // tarde en el primer chat sin cache). Ante cualquier cambio de alto (imágenes async, fase
+  // cache→fresco, audio, citas) re-ancla al fondo si el usuario sigue pegado abajo, O si acabás de
+  // abrir el chat (ventana openUntilRef), aunque stickBottom todavía no esté fijado. Si subís a
+  // leer historial, no te tironea (pasada la ventana y con stickBottom=false).
+  const setMessagesContentNode = useCallback((node: HTMLDivElement | null) => {
+    contentRoRef.current?.disconnect();
+    contentRoRef.current = null;
+    if (node && typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => {
+        if (stickBottomRef.current || Date.now() < openUntilRef.current) {
+          const s = messagesScrollRef.current;
+          if (s) s.scrollTop = s.scrollHeight;
+        }
+      });
+      ro.observe(node);
+      contentRoRef.current = ro;
+    }
+  }, []);
 
   // Auto-alto del composer (tipo WhatsApp): crece con el texto hasta ~6 líneas y luego hace
   // scroll interno, manteniendo el contexto de lo que se escribe. Se recalcula en cada cambio
@@ -1920,6 +1926,9 @@ export function ConversacionesClient({
   const handleSelect = useCallback(
     async (id: string) => {
       stickBottomRef.current = true;
+      // Ventana de gracia: durante ~1s tras abrir, el observer fuerza el fondo aunque las imágenes
+      // carguen tarde o stickBottom aún no esté fijado (arregla que el primer chat abría arriba).
+      openUntilRef.current = Date.now() + 1000;
       lastMessageIdRef.current = null;
       setMessagesError(null);
       setSelectedId(id);
@@ -3854,7 +3863,7 @@ export function ConversacionesClient({
                       : "No hay mensajes para esta conversación."}
                   </div>
                 ) : (
-                  <div ref={messagesContentRef}>
+                  <div ref={setMessagesContentNode}>
                   {messages.map((m, idx) => {
                     const attachUrl = resolveAttachmentUrl(m);
                     const metaDocName = getMetaInboundDocumentFilename(m.raw_payload);

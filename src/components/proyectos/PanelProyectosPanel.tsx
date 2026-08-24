@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Activity,
@@ -204,6 +204,31 @@ function ProyectosDetalleTabla({
   mostrarVendedor?: boolean;
   metrica?: MetricaMonto;
 }) {
+  /**
+   * Primero lo que tiene plata pendiente, de mayor a menor.
+   *
+   * El orden que viene del servidor es por etapa del pipeline, que sirve para
+   * organizar el trabajo pero no para cobrar: con la vista en "Deuda", los
+   * proyectos que deben quedaban salpicados entre los que no, y había que
+   * recorrer toda la lista para encontrarlos. Los que no tienen nada pendiente
+   * conservan el orden original abajo.
+   */
+  const ordenados = useMemo(() => {
+    const monto = (p: DetalleProy) => (metrica === "deuda" ? p.deuda : p.presupuesto);
+    return [...proyectos]
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => {
+        const ma = monto(a.p);
+        const mb = monto(b.p);
+        // Con monto vs sin monto es lo que separa los dos bloques; dentro del
+        // primero manda el importe, y el resto mantiene el orden del servidor.
+        if (ma > 0 !== mb > 0) return ma > 0 ? -1 : 1;
+        if (ma !== mb) return mb - ma;
+        return a.i - b.i;
+      })
+      .map((x) => x.p);
+  }, [proyectos, metrica]);
+
   if (!proyectos.length) return <p className="px-3 py-3 text-xs text-slate-400">Sin proyectos.</p>;
   const etiquetaMonto = metrica === "deuda" ? "Deuda" : "Presupuesto";
   // Mismo hue que la barra de la fila que abrió esta tabla, para que el detalle
@@ -226,7 +251,7 @@ function ProyectosDetalleTabla({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {proyectos.map((p) => {
+          {ordenados.map((p) => {
             const monto = metrica === "deuda" ? p.deuda : p.presupuesto;
             return (
               <tr key={p.id} className="hover:bg-slate-50/60">

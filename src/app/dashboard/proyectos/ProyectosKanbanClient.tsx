@@ -19,7 +19,6 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
-import { isErpRolAdministrador, isErpRolSupervisor } from "@/lib/usuarios/erp-rol-normalize";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
@@ -781,19 +780,23 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     let cancel = false;
     (async () => {
       try {
-        const r = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
+        // El servidor decide el arranque: gerencia (admin/supervisor/PM) O quien NO es responsable
+        // de ningún proyecto → "todos" (su vista "Mías" estaría vacía y no encontraría nada al
+        // buscar; caso Sol/MKT). El resto → "mios".
+        const r = await fetchWithSupabaseSession("/api/proyectos/mi-vista", { cache: "no-store" });
         const j = (await r.json().catch(() => ({}))) as {
-          usuario?: { rol?: string | null; es_project_manager?: boolean | null };
+          success?: boolean;
+          data?: { alcance_default?: "todos" | "mios"; es_responsable?: boolean };
         };
-        const rol = j.usuario?.rol ?? null;
-        const esPm = j.usuario?.es_project_manager === true;
+        const def: "todos" | "mios" = j.data?.alcance_default === "mios" ? "mios" : "todos";
+        const esResponsable = j.data?.es_responsable === true;
         if (cancel) return;
         setAlcance((prev) => {
-          if (prev !== null) return prev; // ya venía de una elección guardada
-          // Gerencia (admin/supervisor) y project managers ven todo por defecto: no
-          // trabajan sobre proyectos propios sino que supervisan a todo el equipo.
-          const esGerencia = isErpRolAdministrador(rol) || isErpRolSupervisor(rol) || esPm;
-          return esGerencia ? "todos" : "mios";
+          // Un "Mías" guardado para alguien que NO es responsable de ningún proyecto está SIEMPRE
+          // vacío (no encontraría nada al buscar): lo corregimos a "Todas". El resto respeta lo
+          // guardado; sin nada guardado usa el default del servidor.
+          if (prev === "mios" && !esResponsable) return "todos";
+          return prev !== null ? prev : def;
         });
       } catch {
         if (!cancel) setAlcance((prev) => prev ?? "todos");

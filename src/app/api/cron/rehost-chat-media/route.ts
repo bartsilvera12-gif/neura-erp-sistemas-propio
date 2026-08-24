@@ -96,6 +96,13 @@ async function handle(request: NextRequest) {
   const statsOnly = parseBool(url.searchParams.get("stats"));
   const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 1), 200);
   const maxAttempts = Math.min(Math.max(parseInt(url.searchParams.get("maxAttempts") ?? "3", 10) || 3, 1), 10);
+  // Modo BARREDOR (safety net): al pasar maxAgeDays, procesa SOLO media dentro de la ventana de
+  // retención de YCloud (recuperable) y la reintenta indefinidamente hasta lograrlo o hasta que
+  // envejezca fuera de la ventana. Así nada dentro de la ventana se pierde por un fallo transitorio.
+  const maxAgeDaysRaw = url.searchParams.get("maxAgeDays");
+  const maxAgeDays = maxAgeDaysRaw
+    ? Math.min(Math.max(parseInt(maxAgeDaysRaw, 10) || 0, 1), 30)
+    : null;
 
   const empresaId = await resolveEmpresaId(
     url.searchParams.get("empresa_id") ?? authz.empresaIdFromSession ?? null
@@ -136,6 +143,10 @@ async function handle(request: NextRequest) {
     return NextResponse.json({ ok: true, empresa_id: empresaId, schema, pendientes, agotados });
   }
 
+  // En modo barredor (por edad) ignoramos el tope de intentos: se reintenta mientras la media siga
+  // dentro de la ventana recuperable. Fuera de ese modo, respetamos el tope (backfill puntual).
+  const effAttemptsCap = maxAgeDays ? 100000 : maxAttempts;
+  const ageFilter = maxAgeDays ? `AND m.created_at > now() - interval '${maxAgeDays} days'` : "";
   const batch = await pool.query(
     `SELECT m.id::text AS id, m.wa_message_id, m.message_type,
             m.conversation_id::text AS conversation_id, m.raw_payload,
@@ -145,9 +156,10 @@ async function handle(request: NextRequest) {
      JOIN "${schema}".chat_channels ch ON ch.id = c.channel_id
      WHERE ${pendWhere}
        AND coalesce((m.raw_payload#>>'{erp,rehost_attempts}')::int,0) < $1
+       ${ageFilter}
      ORDER BY m.created_at DESC
      LIMIT $2`,
-    [maxAttempts, limit]
+    [effAttemptsCap, limit]
   );
   const rows = batch.rows as Row[];
 

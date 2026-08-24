@@ -317,10 +317,12 @@ async function fetchChatConversationsUnsafe(
 
   const poolInbox = getChatPostgresPool();
   const useTenantPg = Boolean(poolInbox && isLikelyUnexposedTenantChatSchema(dataSchema));
-  const scopeLog = await getOmnicanalScope(supabase, empresa_id, usuario_id, {
+  // Scope + bypass se calculan UNA sola vez acá y se reusan dentro de buildFilteredConversationQuery
+  // (antes se recomputaban duplicados: 2× getOmnicanalScope + 2× shouldBypass por request).
+  const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id, {
     tenantDataSchema: dataSchema,
   });
-  const bypassLog = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scopeLog);
+  const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
   const ts = new Date().toISOString();
   console.info("[chat-list][fetch-start]", {
     vista,
@@ -332,11 +334,11 @@ async function fetchChatConversationsUnsafe(
   console.info("[chat-list][scope]", {
     schema: dataSchema,
     empresa_id,
-    bypass: bypassLog,
-    role: scopeLog.role,
-    queue_ids_len: scopeLog.queueIds.length,
-    agent_usuario_ids_len: scopeLog.agentUsuarioIds.length,
-    is_admin_scope: isOmnicanalAdminScope(scopeLog),
+    bypass,
+    role: scope.role,
+    queue_ids_len: scope.queueIds.length,
+    agent_usuario_ids_len: scope.agentUsuarioIds.length,
+    is_admin_scope: isOmnicanalAdminScope(scope),
     timestamp: ts,
   });
   console.info("[chat-list][filters]", {
@@ -457,10 +459,7 @@ async function fetchChatConversationsUnsafe(
       qb = qb.eq("status", "closed");
     }
 
-    const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id, {
-      tenantDataSchema: dataSchema,
-    });
-    const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
+    // scope/bypass ya calculados una vez arriba (reuso vía closure; sin recomputar por request).
     try {
       if (!bypass) {
         const { builder } = await appendOmnicanalConversationScopeToQuery(
@@ -920,46 +919,6 @@ async function fetchChatConversationsUnsafe(
       quick_replies_inbox_enabled: boolean;
     }
   > = {};
-  if (channelIds.length > 0) {
-    const { data: chrows, error: chErr } = await supabase
-      .from("chat_channels")
-      .select("id, type, nombre, config")
-      .eq("empresa_id", empresa_id)
-      .in("id", channelIds);
-    if (chErr) {
-      console.warn("[fetchChatConversations] chat_channels:", chErr.message);
-    } else {
-      channelById = Object.fromEntries(
-        (chrows ?? []).map((r) => {
-          const rec = r as {
-            id: string;
-            type?: string | null;
-            nombre?: string | null;
-            config?: unknown;
-          };
-          const cfg = rec.config;
-          const compOn =
-            cfg && typeof cfg === "object" && !Array.isArray(cfg)
-              ? parseComprobanteValidationConfig(cfg as Record<string, unknown>).enabled
-              : false;
-          const qrOn =
-            cfg && typeof cfg === "object" && !Array.isArray(cfg)
-              ? (cfg as Record<string, unknown>).quick_replies_inbox_enabled !== false
-              : true;
-          return [
-            rec.id,
-            {
-              type: (rec.type as string) ?? "whatsapp",
-              nombre: rec.nombre ?? null,
-              comprobante_validation_enabled: compOn,
-              quick_replies_inbox_enabled: qrOn,
-            },
-          ];
-        })
-      );
-    }
-  }
-
   const queueIds = [
     ...new Set(
       list
@@ -974,39 +933,6 @@ async function fetchChatConversationsUnsafe(
         .filter((x): x is string => Boolean(x && x.length > 0))
     ),
   ];
-
-  let queueNombreById: Record<string, string | null> = {};
-  if (queueIds.length > 0) {
-    const { data: qrows, error: qErr } = await supabase
-      .from("chat_queues")
-      .select("id, nombre")
-      .eq("empresa_id", empresa_id)
-      .in("id", queueIds);
-    if (qErr) {
-      console.warn("[fetchChatConversations] chat_queues:", qErr.message);
-    } else {
-      queueNombreById = Object.fromEntries(
-        (qrows ?? []).map((r) => [r.id as string, (r as { nombre?: string | null }).nombre ?? null])
-      );
-    }
-  }
-
-  let agentUsuarioById: Record<string, string> = {};
-  if (assignedAgentIds.length > 0) {
-    const { data: arows, error: aErr } = await supabase
-      .from("chat_agents")
-      .select("id, usuario_id")
-      .eq("empresa_id", empresa_id)
-      .in("id", assignedAgentIds);
-    if (aErr) {
-      console.warn("[fetchChatConversations] chat_agents (enriquecido):", aErr.message);
-    } else {
-      agentUsuarioById = Object.fromEntries(
-        (arows ?? []).map((r) => [r.id as string, (r as { usuario_id: string }).usuario_id])
-      );
-    }
-  }
-
   const contactIds = [
     ...new Set(
       list
@@ -1014,28 +940,104 @@ async function fetchChatConversationsUnsafe(
         .filter((x): x is string => Boolean(x && x.length > 0))
     ),
   ];
+
+  let queueNombreById: Record<string, string | null> = {};
+  let agentUsuarioById: Record<string, string> = {};
   let byId: Record<string, Record<string, unknown>> = {};
-  if (contactIds.length > 0) {
-    const cchunk = 80;
-    for (let i = 0; i < contactIds.length; i += cchunk) {
-      const part = contactIds.slice(i, i + cchunk);
-      const { data: contacts, error: e2 } = await supabase
-        .from("chat_contacts")
-        .select("id, name, phone_number, cliente_id, crm_prospecto_id")
+
+  // Enriquecimientos INDEPENDIENTES en paralelo (canales, colas, agentes, contactos). Antes iban en
+  // cadena de await (5 round-trips secuenciales, ~3-4s); ahora corren juntos y esperamos una sola
+  // vez. `usuarios` (más abajo) queda después porque depende de agentUsuarioById.
+  const [channelByIdR, queueNombreByIdR, agentUsuarioByIdR, byIdR] = await Promise.all([
+    (async () => {
+      const map: typeof channelById = {};
+      if (channelIds.length === 0) return map;
+      const { data: chrows, error: chErr } = await supabase
+        .from("chat_channels")
+        .select("id, type, nombre, config")
         .eq("empresa_id", empresa_id)
-        .in("id", part);
-      if (e2) {
-        console.warn("[fetchChatConversations] chat_contacts:", e2.message, {
-          chunk_index: i,
-          chunk_size: part.length,
-        });
-        continue;
+        .in("id", channelIds);
+      if (chErr) {
+        console.warn("[fetchChatConversations] chat_channels:", chErr.message);
+        return map;
       }
-      for (const c of contacts ?? []) {
-        byId[c.id as string] = c as Record<string, unknown>;
+      for (const r of chrows ?? []) {
+        const rec = r as { id: string; type?: string | null; nombre?: string | null; config?: unknown };
+        const cfg = rec.config;
+        const compOn =
+          cfg && typeof cfg === "object" && !Array.isArray(cfg)
+            ? parseComprobanteValidationConfig(cfg as Record<string, unknown>).enabled
+            : false;
+        const qrOn =
+          cfg && typeof cfg === "object" && !Array.isArray(cfg)
+            ? (cfg as Record<string, unknown>).quick_replies_inbox_enabled !== false
+            : true;
+        map[rec.id] = {
+          type: (rec.type as string) ?? "whatsapp",
+          nombre: rec.nombre ?? null,
+          comprobante_validation_enabled: compOn,
+          quick_replies_inbox_enabled: qrOn,
+        };
       }
-    }
-  }
+      return map;
+    })(),
+    (async () => {
+      const map: Record<string, string | null> = {};
+      if (queueIds.length === 0) return map;
+      const { data: qrows, error: qErr } = await supabase
+        .from("chat_queues")
+        .select("id, nombre")
+        .eq("empresa_id", empresa_id)
+        .in("id", queueIds);
+      if (qErr) {
+        console.warn("[fetchChatConversations] chat_queues:", qErr.message);
+        return map;
+      }
+      for (const r of qrows ?? []) map[r.id as string] = (r as { nombre?: string | null }).nombre ?? null;
+      return map;
+    })(),
+    (async () => {
+      const map: Record<string, string> = {};
+      if (assignedAgentIds.length === 0) return map;
+      const { data: arows, error: aErr } = await supabase
+        .from("chat_agents")
+        .select("id, usuario_id")
+        .eq("empresa_id", empresa_id)
+        .in("id", assignedAgentIds);
+      if (aErr) {
+        console.warn("[fetchChatConversations] chat_agents (enriquecido):", aErr.message);
+        return map;
+      }
+      for (const r of arows ?? []) map[r.id as string] = (r as { usuario_id: string }).usuario_id;
+      return map;
+    })(),
+    (async () => {
+      const map: Record<string, Record<string, unknown>> = {};
+      if (contactIds.length === 0) return map;
+      const cchunk = 80;
+      for (let i = 0; i < contactIds.length; i += cchunk) {
+        const part = contactIds.slice(i, i + cchunk);
+        const { data: contacts, error: e2 } = await supabase
+          .from("chat_contacts")
+          .select("id, name, phone_number, cliente_id, crm_prospecto_id")
+          .eq("empresa_id", empresa_id)
+          .in("id", part);
+        if (e2) {
+          console.warn("[fetchChatConversations] chat_contacts:", e2.message, {
+            chunk_index: i,
+            chunk_size: part.length,
+          });
+          continue;
+        }
+        for (const c of contacts ?? []) map[c.id as string] = c as Record<string, unknown>;
+      }
+      return map;
+    })(),
+  ]);
+  channelById = channelByIdR;
+  queueNombreById = queueNombreByIdR;
+  agentUsuarioById = agentUsuarioByIdR;
+  byId = byIdR;
 
   const agentUserIds = [
     ...new Set(

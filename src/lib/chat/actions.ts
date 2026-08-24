@@ -892,13 +892,18 @@ async function fetchChatConversationsUnsafe(
     } catch (e) {
       console.warn("[fetchChatConversations] awaiting_reply RPC:", e instanceof Error ? e.message : e);
     }
-    const lastByConv = await mapLastMessageByConversation(supabase, empresa_id, convIdList);
-    for (const id of convIdList) {
-      if (awaitingById[id] != null || clientTurnById[id] != null) continue;
-      const last = lastByConv[id];
-      if (!last?.created_at) continue;
-      if (!last.from_me) awaitingById[id] = last.created_at;
-      else clientTurnById[id] = last.created_at;
+    // N+1: el "último mensaje" solo hace falta para los chats que el RPC batch NO resolvió (los
+    // demás ya tienen awaiting/client_turn). Antes se consultaban TODOS (una ida-y-vuelta por chat,
+    // ~50+ viajes por red = el mayor costo). Ahora solo los pendientes → normalmente casi ninguno.
+    const unresolvedIds = convIdList.filter((id) => awaitingById[id] == null && clientTurnById[id] == null);
+    if (unresolvedIds.length > 0) {
+      const lastByConv = await mapLastMessageByConversation(supabase, empresa_id, unresolvedIds);
+      for (const id of unresolvedIds) {
+        const last = lastByConv[id];
+        if (!last?.created_at) continue;
+        if (!last.from_me) awaitingById[id] = last.created_at;
+        else clientTurnById[id] = last.created_at;
+      }
     }
   }
 

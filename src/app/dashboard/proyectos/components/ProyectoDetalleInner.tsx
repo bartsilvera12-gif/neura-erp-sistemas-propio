@@ -631,6 +631,7 @@ export default function ProyectoDetalleInner({
 
   const [data, setData] = useState<DetalleResp | null>(null);
   const [estados, setEstados] = useState<{ id: string; nombre: string }[]>([]);
+  const [tipos, setTipos] = useState<{ id: string; nombre: string }[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioActivo[]>([]);
   const [modulosCatalogo, setModulosCatalogo] = useState<ModuloCatalogo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -899,16 +900,22 @@ export default function ProyectoDetalleInner({
   useEffect(() => {
     let c = false;
     (async () => {
-      const [r, rUsers, rModulos, rClientes] = await Promise.all([
+      const [r, rUsers, rModulos, rClientes, rTipos] = await Promise.all([
         fetchWithSupabaseSession("/api/proyectos/estados", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/usuarios/empresa-activos", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/proyectos/modulos-catalogo", { cache: "no-store" }),
         // Para poder corregir el cliente desde la ficha, no sólo al crear.
         fetchWithSupabaseSession("/api/clientes", { cache: "no-store" }),
+        // Para poder cambiar el tipo de proyecto desde la ficha.
+        fetchWithSupabaseSession("/api/proyectos/tipos", { cache: "no-store" }),
       ]);
       const j = (await r.json()) as { success?: boolean; data?: { id: string; nombre: string }[] };
       const jUsers = (await rUsers.json()) as { usuarios?: UsuarioActivo[] };
       const jModulos = (await rModulos.json()) as { success?: boolean; data?: ModuloCatalogo[] };
+      const jTipos = (await rTipos.json().catch(() => null)) as
+        | { success?: boolean; data?: { id: string; nombre: string }[] }
+        | null;
+      if (!c && jTipos?.success && jTipos.data) setTipos(jTipos.data);
       if (!c && j.success && j.data) setEstados(j.data);
       if (!c) setUsuarios(jUsers.usuarios ?? []);
       if (!c && jModulos.success && jModulos.data) setModulosCatalogo(jModulos.data);
@@ -1570,6 +1577,22 @@ export default function ProyectoDetalleInner({
     }
   }
 
+  async function cambiarTipo(tipoId: string) {
+    const actual = String((proyecto as { tipo_id?: string } | undefined)?.tipo_id ?? "");
+    if (!tipoId || tipoId === actual) return;
+    const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo_id: tipoId }),
+    });
+    const j = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !j.success) setErr(j.error ?? "No se pudo cambiar el tipo");
+    else {
+      await load();
+      onProjectUpdated?.();
+    }
+  }
+
   const slaFmt = useMemo(() => {
     const s = data?.sla as { segundos_interno?: number; segundos_cliente?: number; segundos_pausado?: number } | undefined;
     if (!s) return null;
@@ -1674,6 +1697,15 @@ export default function ProyectoDetalleInner({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {tipos.length > 0 ? (
+            <FancySelect
+              className="min-w-[170px]"
+              ariaLabel="Cambiar tipo de proyecto"
+              value={String((proyecto as { tipo_id?: string }).tipo_id ?? "")}
+              onChange={(v) => void cambiarTipo(v)}
+              options={tipos.map((t) => ({ value: t.id, label: t.nombre }))}
+            />
+          ) : null}
           <FancySelect
             className="min-w-[180px]"
             ariaLabel="Cambiar estado del proyecto"

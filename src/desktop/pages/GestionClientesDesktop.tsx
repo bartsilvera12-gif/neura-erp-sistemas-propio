@@ -693,6 +693,8 @@ function GestionClientesPageInner() {
   const searchParams = useSearchParams();
   const [clientes,  setClientes]  = useState<Cliente[]>([]);
   const [selected,  setSelected]  = useState<Cliente | null>(null);
+  /** Si el cliente seleccionado tiene una suscripción activa (para reflejarlo en "Condición"). */
+  const [selectedTieneSuscripcion, setSelectedTieneSuscripcion] = useState<boolean>(false);
   const [facturas,  setFacturas]  = useState<Factura[]>([]);
   const [modalFacturacion, setModalFacturacion] = useState(false);
   const [modalCambioPlan, setModalCambioPlan] = useState(false);
@@ -704,6 +706,30 @@ function GestionClientesPageInner() {
   /** Evita carrera: al limpiar, `?cliente=` aún no se quitó y el efecto URL→estado reabría la ficha. */
   const omitirUrlASeleccion = useRef(false);
   const mapNombreTipoCatalogo = useMapNombreTipoServicioCatalogo(clientes);
+
+  // Al seleccionar un cliente, consultamos si tiene suscripción activa (endpoint de facturación ya
+  // existente) para reflejarlo en "Condición" del encabezado. Best-effort: no bloquea la ficha.
+  useEffect(() => {
+    const id = selected?.id;
+    if (!id) {
+      setSelectedTieneSuscripcion(false);
+      return;
+    }
+    let cancel = false;
+    setSelectedTieneSuscripcion(false);
+    (async () => {
+      try {
+        const res = await fetchWithSupabaseSession(`/api/clientes/${id}/facturacion`);
+        const json = (await res.json().catch(() => null)) as { data?: { suscripcion?: unknown } } | null;
+        if (!cancel && res.ok) setSelectedTieneSuscripcion(Boolean(json?.data?.suscripcion));
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [selected?.id]);
 
   const [filters, setFilters] = useState({
     fecha_desde:             "",
@@ -1033,9 +1059,13 @@ function GestionClientesPageInner() {
                     { label: "Teléfono", value: selected.telefono ?? "—" },
                     { label: "Dirección", value: selected.direccion ?? "—" },
                     { label: "Tipo de cliente", value: textoTipoClienteGestion(selected, mapNombreTipoCatalogo) },
-                    { label: "Ciudad", value: selected.ciudad ?? "—" },
-                    { label: "Condición", value: selected.condicion_pago ?? "—" },
-                    { label: "Moneda", value: selected.moneda_preferida ?? "GS" },
+                    // Datos que el sistema usa para la factura legal (más útiles a la vista que
+                    // ciudad/moneda): razón social fiscal y el RUC con el que se emite (fallback al RUC).
+                    { label: "Razón social", value: selected.razon_social ?? "—" },
+                    { label: "RUC factura", value: selected.ruc_factura ?? selected.ruc ?? "—" },
+                    // Condición: si el cliente tiene una suscripción activa, ya no es "contado" puntual
+                    // sino un cliente recurrente → lo reflejamos (antes quedaba el valor del alta).
+                    { label: "Condición", value: selectedTieneSuscripcion ? "Suscripción activa" : (selected.condicion_pago ?? "—") },
                     { label: "Fecha alta", value: formatFechaIso(selected.created_at) },
                   ].map((item) => (
                     <div key={item.label} className="min-w-0">

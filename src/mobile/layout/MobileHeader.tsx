@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, Menu } from "lucide-react";
+import Link from "next/link";
+import { Bell, HelpCircle, Menu } from "lucide-react";
 import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 
 /**
@@ -31,6 +32,13 @@ export default function MobileHeader({ onOpenMenu }: { onOpenMenu: () => void })
       <h1 className="text-sm font-semibold tracking-tight text-[#0F172A]">ZENTRA</h1>
 
       <div className="flex items-center gap-1">
+        <Link
+          href="/ayuda"
+          aria-label="Ayuda en línea"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
+        >
+          <HelpCircle className="h-5 w-5" />
+        </Link>
         <button
           type="button"
           aria-label="Notificaciones"

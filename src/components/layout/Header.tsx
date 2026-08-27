@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Menu } from "lucide-react";
+import { ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
@@ -103,6 +104,16 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
 
       <div className="flex items-center gap-2">
         {/* Asistente de ayuda (Neurita) — desactivado temporalmente. */}
+
+        {/* Ayuda en línea — acceso transversal, disponible en cualquier pantalla. */}
+        <Link
+          href="/ayuda"
+          title="Ayuda en línea"
+          aria-label="Ayuda en línea"
+          className="rounded-lg p-2 text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
+        >
+          <HelpCircle className="h-5 w-5" />
+        </Link>
 
         {/* Notificaciones */}
         <NotificacionesBell />

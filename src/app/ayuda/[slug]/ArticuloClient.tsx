@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, FileText, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
 import ArticuloMarkdown from "@/components/ayuda/ArticuloMarkdown";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
-import type { AyudaArticulo } from "@/app/configuracion/ayuda/types";
+import { formatBytes, type AyudaAdjunto, type AyudaArticulo } from "@/app/configuracion/ayuda/types";
 
 type Relacionado = { id: string; slug: string; titulo: string };
 
 export default function ArticuloClient({ slug }: { slug: string }) {
   const [articulo, setArticulo] = useState<AyudaArticulo | null>(null);
   const [relacionados, setRelacionados] = useState<Relacionado[]>([]);
+  const [adjuntos, setAdjuntos] = useState<AyudaAdjunto[]>([]);
+  const [descargando, setDescargando] = useState<string | null>(null);
   const [miFeedback, setMiFeedback] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ export default function ArticuloClient({ slug }: { slug: string }) {
         }
         setArticulo(j.data.articulo as AyudaArticulo);
         setRelacionados((j.data.relacionados ?? []) as Relacionado[]);
+        setAdjuntos((j.data.adjuntos ?? []) as AyudaAdjunto[]);
         setMiFeedback(j.data.mi_feedback ?? null);
       } catch (e) {
         if (!cancelado) setError(e instanceof Error ? e.message : "Error de red");
@@ -59,6 +62,26 @@ export default function ArticuloClient({ slug }: { slug: string }) {
       }
     },
     [slug, miFeedback]
+  );
+
+  const abrirAdjunto = useCallback(
+    async (adj: AyudaAdjunto) => {
+      setDescargando(adj.id);
+      try {
+        const r = await apiFetch(
+          `/api/ayuda/${encodeURIComponent(slug)}/adjuntos/${adj.id}?download=1`
+        );
+        const j = await r.json();
+        if (r.ok && j?.success && j.data?.url) {
+          window.open(j.data.url as string, "_blank", "noopener,noreferrer");
+        }
+      } catch {
+        /* silencioso: si falla, el usuario reintenta */
+      } finally {
+        setDescargando(null);
+      }
+    },
+    [slug]
   );
 
   if (loading) {
@@ -118,6 +141,41 @@ export default function ArticuloClient({ slug }: { slug: string }) {
           <p className="text-sm text-slate-400">Este artículo todavía no tiene contenido.</p>
         )}
       </article>
+
+      {/* Documentos descargables */}
+      {adjuntos.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Documentos</h2>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {adjuntos.map((adj, i) => (
+              <button
+                key={adj.id}
+                type="button"
+                onClick={() => abrirAdjunto(adj)}
+                disabled={descargando === adj.id}
+                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 disabled:opacity-60 ${
+                  i > 0 ? "border-t border-slate-100" : ""
+                }`}
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/10 text-[#3F8E91]">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">{adj.nombre}</p>
+                  {adj.size_bytes ? (
+                    <p className="text-xs text-slate-400">{formatBytes(adj.size_bytes)}</p>
+                  ) : null}
+                </div>
+                {descargando === adj.id ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+                ) : (
+                  <Download className="h-4 w-4 shrink-0 text-slate-400" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ¿Te sirvió? */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">

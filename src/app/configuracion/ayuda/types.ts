@@ -82,3 +82,25 @@ export function rolLabel(rol: string): string {
   const limpio = rol.replace(/_/g, " ").trim();
   return limpio.charAt(0).toUpperCase() + limpio.slice(1);
 }
+
+export interface AyudaAdjunto {
+  id: string;
+  nombre: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  orden: number;
+  created_at: string;
+}
+
+/** Tamaño legible: 1.2 MB, 340 KB… */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return "";
+  const u = ["B", "KB", "MB", "GB"];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${u[i]}`;
+}

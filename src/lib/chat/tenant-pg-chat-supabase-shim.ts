@@ -68,6 +68,7 @@ const ALLOWED_TABLES = new Set([
   "ayuda_articulos",
   "ayuda_articulo_versiones",
   "ayuda_articulo_feedback",
+  "ayuda_articulo_adjuntos",
 ]);
 
 function pgErr(message: string, code?: string): { message: string; code?: string } {

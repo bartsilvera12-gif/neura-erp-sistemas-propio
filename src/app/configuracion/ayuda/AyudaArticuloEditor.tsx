@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, History, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import EditorTexto from "@/components/ayuda/EditorTexto";
+import AdjuntosEditor from "@/components/ayuda/AdjuntosEditor";
 import { F_INPUT, F_LABEL, F_SELECT } from "@/components/config/global-config-primitives";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import {
@@ -394,6 +395,15 @@ export default function AyudaArticuloEditor({
         <label className={F_LABEL}>Contenido</label>
         <EditorTexto value={form.contenido_md} onChange={(v) => set("contenido_md", v)} />
       </div>
+
+      {/* Documentos adjuntos — requieren un artículo ya guardado */}
+      {articulo ? (
+        <AdjuntosEditor articuloId={articulo.id} />
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
+          Guardá el artículo primero y vas a poder adjuntar documentos (contrato en PDF, planillas, etc.).
+        </div>
+      )}
 
       {/* Historial */}
       {versiones && (

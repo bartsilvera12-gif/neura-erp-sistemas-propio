@@ -47,6 +47,15 @@ export async function GET(request: Request, context: RouteContext) {
       miFeedback = row ? row.util : null;
     }
 
+    /** Documentos descargables del artículo (contrato modelo, planillas, instructivos…). */
+    const { data: adjData } = await supabase
+      .from("ayuda_articulo_adjuntos")
+      .select("id, nombre, mime_type, size_bytes, orden, created_at")
+      .eq("empresa_id", auth.empresaId)
+      .eq("articulo_id", articulo.id)
+      .order("orden", { ascending: true });
+    const adjuntos = adjData ?? [];
+
     /** Relacionados: misma categoría, para que el asesor siga leyendo lo que corresponde. */
     const relacionados = articulos
       .filter(
@@ -62,6 +71,7 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json(
       successResponse({
         articulo,
+        adjuntos,
         relacionados,
         mi_feedback: miFeedback,
         meta: { can_edit: auth.esAdmin },

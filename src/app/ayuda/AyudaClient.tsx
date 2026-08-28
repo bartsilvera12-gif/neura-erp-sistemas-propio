@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BookOpen, ChevronRight, Loader2, Search, Settings2, X } from "lucide-react";
+import { BookOpen, ChevronRight, Loader2, Search, X } from "lucide-react";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import type { AyudaArticuloResumen, AyudaCategoria } from "@/app/configuracion/ayuda/types";
 
@@ -15,7 +15,6 @@ type CategoriaConteo = AyudaCategoria & { articulos: number };
 export default function AyudaClient() {
   const [articulos, setArticulos] = useState<AyudaArticuloResumen[]>([]);
   const [categorias, setCategorias] = useState<CategoriaConteo[]>([]);
-  const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +34,6 @@ export default function AyudaClient() {
       }
       setArticulos(j.data.articulos as AyudaArticuloResumen[]);
       setCategorias(j.data.categorias as CategoriaConteo[]);
-      setCanEdit(Boolean(j.data.meta?.can_edit));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error de red");
     } finally {
@@ -76,7 +74,7 @@ export default function AyudaClient() {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 pb-10">
       {/* Encabezado */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
         <div>
           <div className="flex items-center gap-2">
             <span
@@ -94,15 +92,6 @@ export default function AyudaClient() {
             Todo lo que necesitás saber para trabajar sin depender de preguntar.
           </p>
         </div>
-        {canEdit && (
-          <Link
-            href="/configuracion/ayuda"
-            className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:bg-[#4FAEB2]/5"
-          >
-            <Settings2 className="h-4 w-4" />
-            Administrar contenido
-          </Link>
-        )}
       </div>
 
       {/* Buscador */}

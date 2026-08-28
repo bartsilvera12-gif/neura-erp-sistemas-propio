@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, Loader2, Pencil, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ArrowLeft, ChevronRight, Loader2, ThumbsDown, ThumbsUp } from "lucide-react";
 import ArticuloMarkdown from "@/components/ayuda/ArticuloMarkdown";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import type { AyudaArticulo } from "@/app/configuracion/ayuda/types";
@@ -13,7 +13,6 @@ export default function ArticuloClient({ slug }: { slug: string }) {
   const [articulo, setArticulo] = useState<AyudaArticulo | null>(null);
   const [relacionados, setRelacionados] = useState<Relacionado[]>([]);
   const [miFeedback, setMiFeedback] = useState<boolean | null>(null);
-  const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +32,6 @@ export default function ArticuloClient({ slug }: { slug: string }) {
         setArticulo(j.data.articulo as AyudaArticulo);
         setRelacionados((j.data.relacionados ?? []) as Relacionado[]);
         setMiFeedback(j.data.mi_feedback ?? null);
-        setCanEdit(Boolean(j.data.meta?.can_edit));
       } catch (e) {
         if (!cancelado) setError(e instanceof Error ? e.message : "Error de red");
       } finally {
@@ -104,23 +102,12 @@ export default function ArticuloClient({ slug }: { slug: string }) {
         )}
       </nav>
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{articulo.titulo}</h1>
           {articulo.resumen && <p className="mt-1 text-sm text-slate-500">{articulo.resumen}</p>}
           <p className="mt-2 text-xs text-slate-400">
             Actualizado el {new Date(articulo.updated_at).toLocaleDateString("es-PY")}
           </p>
-        </div>
-        {canEdit && (
-          <Link
-            href="/configuracion/ayuda"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
-          >
-            <Pencil className="h-4 w-4" />
-            Editar
-          </Link>
-        )}
       </div>
 
       {/* Cuerpo */}

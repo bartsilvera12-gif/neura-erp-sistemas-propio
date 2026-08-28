@@ -110,9 +110,10 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
           href="/ayuda"
           title="Ayuda en línea"
           aria-label="Ayuda en línea"
-          className="rounded-lg p-2 text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
         >
-          <HelpCircle className="h-5 w-5" />
+          <HelpCircle className="h-5 w-5 shrink-0" />
+          <span className="hidden lg:inline">Ayuda en línea</span>
         </Link>
 
         {/* Notificaciones */}

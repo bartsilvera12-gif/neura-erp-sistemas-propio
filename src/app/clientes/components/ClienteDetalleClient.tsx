@@ -20,7 +20,6 @@ import {
   apiPutClientePerfilTributario,
   apiCreateFactura,
   apiCreateFacturaWithError,
-  apiCreatePago,
   apiCreateSuscripcion,
   apiDeleteSuscripcion,
   apiGetClienteHistorial,
@@ -421,6 +420,21 @@ export default function ClienteDetalleClient({
   const [facturaPago, setFacturaPago] = useState<Factura | null>(null);
   const [formPago, setFormPago] = useState({ factura_id: "" as string, monto: "", fecha_pago: "", metodo_pago: "efectivo" as const, referencia: "" });
   const [guardandoPago, setGuardandoPago] = useState(false);
+  // Cobro por transferencia → pendiente de aprobación (Conciliación bancaria).
+  const [pagoBanco, setPagoBanco] = useState("");
+  const [pagoTitular, setPagoTitular] = useState("");
+  const [pagoNumeroOp, setPagoNumeroOp] = useState("");
+  const [pagoFile, setPagoFile] = useState<File | null>(null);
+  const [errorPago, setErrorPago] = useState<string | null>(null);
+  useEffect(() => {
+    if (modalPago) {
+      setPagoBanco("");
+      setPagoTitular("");
+      setPagoNumeroOp("");
+      setPagoFile(null);
+      setErrorPago(null);
+    }
+  }, [modalPago]);
   const [modalFacturaContado, setModalFacturaContado] = useState(false);
   const [formFacturaContado, setFormFacturaContado] = useState<{
     monto: string;
@@ -2966,28 +2980,42 @@ export default function ClienteDetalleClient({
       {modalPago && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setModalPago(false)}>
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Registrar pago</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">Registrar cobro</h3>
+            <p className="text-xs text-slate-500 mb-3">Cobro por transferencia. Queda <b>pendiente de aprobación</b> en Conciliación bancaria.</p>
             {facturaPago && <p className="text-sm text-slate-600 mb-4">Factura {facturaPago.numero_factura} — Saldo: Gs. {facturaPago.saldo.toLocaleString("es-PY")}</p>}
             <form onSubmit={async (e) => {
               e.preventDefault();
               const fid = facturaPago?.id ?? formPago.factura_id;
-              if (!fid) return;
-              setGuardandoPago(true);
-              const resPago = await apiCreatePago({
-                factura_id: fid,
-                monto: parseFloat(formPago.monto) || 0,
-                fecha_pago: formPago.fecha_pago,
-                metodo_pago: formPago.metodo_pago,
-                referencia: formPago.referencia || undefined,
-              });
-              setGuardandoPago(false);
-              if (!resPago.ok) {
-                // Incluye PAY_OLDEST_FIRST (debe pagar primero la factura más antigua).
-                window.alert(resPago.error || "No se pudo registrar el pago.");
+              if (!fid) { setErrorPago("Seleccioná una factura."); return; }
+              const montoNum = parseFloat(formPago.monto) || 0;
+              if (montoNum <= 0) { setErrorPago("Ingresá un monto mayor a cero."); return; }
+              if (!pagoBanco.trim() || !pagoTitular.trim() || !pagoNumeroOp.trim()) {
+                setErrorPago("Completá banco de origen, titular y N° de comprobante.");
                 return;
               }
-              setModalPago(false);
-              getFacturas(id).then(setFacturas);
+              setErrorPago(null);
+              setGuardandoPago(true);
+              try {
+                const idem = globalThis.crypto?.randomUUID?.() ?? "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
+                const fd = new FormData();
+                fd.set("factura_id", fid);
+                fd.set("monto", String(montoNum));
+                fd.set("fecha", formPago.fecha_pago);
+                fd.set("banco_origen", pagoBanco.trim());
+                fd.set("titular", pagoTitular.trim());
+                fd.set("numero_operacion", pagoNumeroOp.trim());
+                fd.set("idempotency_key", idem);
+                if (pagoFile) fd.set("file", pagoFile, pagoFile.name);
+                const res = await fetchWithSupabaseSession("/api/cobranzas/conciliacion", { method: "POST", body: fd });
+                const j = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; data?: { warning?: string } };
+                if (!res.ok || j?.success !== true) { setErrorPago(j?.error || "No se pudo registrar el cobro."); return; }
+                setModalPago(false);
+                getFacturas(id).then(setFacturas);
+              } catch (err) {
+                setErrorPago(err instanceof Error ? err.message : "Error de red. Volvé a intentar.");
+              } finally {
+                setGuardandoPago(false);
+              }
             }} className="space-y-4">
               {!facturaPago && facturas.filter((f) => f.saldo > 0).length > 0 && (
                 <div>
@@ -3013,26 +3041,34 @@ export default function ClienteDetalleClient({
                 <MontoInput value={formPago.monto} onChange={(n) => setFormPago((p) => ({ ...p, monto: String(n) }))} className={inputClass} required />
               </div>
               <div>
-                <label className={labelClass}>Fecha pago</label>
+                <label className={labelClass}>Fecha de la transferencia</label>
                 <input type="date" value={formPago.fecha_pago} onChange={(e) => setFormPago((p) => ({ ...p, fecha_pago: e.target.value }))} className={inputClass} required />
               </div>
               <div>
-                <label className={labelClass}>Método de pago</label>
-                <select value={formPago.metodo_pago} onChange={(e) => setFormPago((p) => ({ ...p, metodo_pago: e.target.value as "efectivo" }))} className={inputClass}>
-                  <option value="efectivo">Efectivo</option>
-                  <option value="transferencia">Transferencia</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="tarjeta">Tarjeta</option>
-                  <option value="otro">Otro</option>
-                </select>
+                <label className={labelClass}>Banco de origen</label>
+                <input type="text" value={pagoBanco} onChange={(e) => setPagoBanco(e.target.value)} className={inputClass} placeholder="Banco desde el que se envió" required />
               </div>
               <div>
-                <label className={labelClass}>Referencia</label>
-                <input type="text" value={formPago.referencia} onChange={(e) => setFormPago((p) => ({ ...p, referencia: e.target.value }))} className={inputClass} placeholder="Nº de comprobante" />
+                <label className={labelClass}>Titular (quién envía)</label>
+                <input type="text" value={pagoTitular} onChange={(e) => setPagoTitular(e.target.value)} className={inputClass} placeholder="Titular de la cuenta que envía" required />
               </div>
+              <div>
+                <label className={labelClass}>N° de comprobante / operación</label>
+                <input type="text" value={pagoNumeroOp} onChange={(e) => setPagoNumeroOp(e.target.value)} className={inputClass} placeholder="Nº de operación de la transferencia" required />
+              </div>
+              <div>
+                <label className={labelClass}>Comprobante <span className="text-slate-400">(recomendado — JPG, PNG, WebP o PDF)</span></label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={(e) => setPagoFile(e.target.files?.[0] ?? null)}
+                  className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+                />
+              </div>
+              {errorPago && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{errorPago}</p>}
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={guardandoPago} className="bg-[#4FAEB2] hover:bg-[#3F8E91] text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
-                  Guardar
+                  {guardandoPago ? "Enviando…" : "Enviar a aprobación"}
                 </button>
                 <button type="button" onClick={() => setModalPago(false)} className="border border-slate-200 px-4 py-2 rounded-lg text-sm hover:bg-slate-50">
                   Cancelar

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
 import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 interface Mov { fecha_contable: string; numero_asiento: string; origen_tipo: string; descripcion: string | null; proveedor_nombre: string | null; debe: number; haber: number; saldo_acumulado: number }
 interface Cuenta { cuenta_codigo: string; denominacion: string; naturaleza: string; saldo_inicial: number; movimientos: Mov[]; total_debe: number; total_haber: number; saldo_final: number }
@@ -71,8 +72,8 @@ export default function LibroMayorPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3 lg:grid-cols-6">
-        <label className="text-xs font-semibold text-slate-500">Desde<input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></label>
-        <label className="text-xs font-semibold text-slate-500">Hasta<input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></label>
+        <label className="text-xs font-semibold text-slate-500">Desde<FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></label>
+        <label className="text-xs font-semibold text-slate-500">Hasta<FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" /></label>
         <div className="text-xs font-semibold text-slate-500">Cuenta<div className="mt-1"><CuentaCombobox cuentas={cuentas} value={cuentaId || null} onChange={(id) => setCuentaId(id ?? "")} placeholder="Todas" /></div></div>
         <label className="text-xs font-semibold text-slate-500">Naturaleza<select value={naturaleza} onChange={(e) => setNaturaleza(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"><option value="">Todas</option><option value="D">Deudora</option><option value="A">Acreedora</option></select></label>
         <label className="text-xs font-semibold text-slate-500">Origen<select value={origen} onChange={(e) => setOrigen(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"><option value="">Todos</option><option value="gasto_servicio">Gasto y Servicio</option><option value="compra">Compra</option><option value="reversion">Reversión</option></select></label>

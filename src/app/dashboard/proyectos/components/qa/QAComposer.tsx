@@ -18,6 +18,7 @@ import {
   IconPlus,
   IconTrash,
 } from "./ui";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type Props = {
   projectId: string;
@@ -374,12 +375,11 @@ export default function QAComposer({
 
         <div>
           <span className={LABEL_CLS}>Fecha límite</span>
-          <input
-            type="date"
+          <FechaSelect
             value={fechaLimite}
             onChange={(e) => setFechaLimite(e.target.value)}
             className={`${INPUT_CLS} mt-1 py-2`}
-          />
+/>
         </div>
 
         <div>

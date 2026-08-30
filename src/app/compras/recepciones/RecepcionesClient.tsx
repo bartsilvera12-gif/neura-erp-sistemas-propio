@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { getCuentasContablesOpciones, type CuentaContableOpcion } from "@/lib/compras/storage";
 import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
 import { Overlay } from "@/app/compras/ordenes/OrdenesClient";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 interface Recepcion {
   id: string; numero: string; orden_id: string; orden_numero?: string | null;
@@ -102,9 +103,9 @@ export default function RecepcionesClient() {
 
       <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3 lg:grid-cols-5">
         <label className="text-xs font-semibold text-slate-500">Desde
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
+          <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
         <label className="text-xs font-semibold text-slate-500">Hasta
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
+          <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
         <label className="text-xs font-semibold text-slate-500">Facturación
           <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className={`mt-1 ${INPUT}`}>
             <option value="">Todas</option>

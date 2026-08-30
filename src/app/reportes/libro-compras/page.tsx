@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { getProveedores } from "@/lib/proveedores/storage";
 import type { Proveedor } from "@/lib/proveedores/types";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 interface Row {
   origen_tipo: "compra" | "gasto";
@@ -126,10 +127,10 @@ export default function LibroComprasPage() {
 
       <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3 lg:grid-cols-6">
         <label className="text-xs font-semibold text-slate-500">Desde
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+          <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
         </label>
         <label className="text-xs font-semibold text-slate-500">Hasta
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+          <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
         </label>
         <label className="text-xs font-semibold text-slate-500">Proveedor
           <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm">

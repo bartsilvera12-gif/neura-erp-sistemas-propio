@@ -9,6 +9,7 @@ import type {
   PhysicalCouponPrintRow,
 } from "@/lib/sorteos/physical-coupons-print";
 import type { SorteoEntradaEstadoPago } from "@/lib/sorteos/types";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type PrintFormat = "thermal_58" | "thermal_80" | "a4" | "oficio";
 
@@ -610,21 +611,19 @@ export default function PhysicalCouponsPrintClient({
             </label>
             <label className="flex flex-col gap-1 text-xs text-slate-600">
               Desde
-              <input
+              <FechaSelect
                 name="fecha_desde"
-                type="date"
                 defaultValue={fechaDesde}
                 className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-              />
+/>
             </label>
             <label className="flex flex-col gap-1 text-xs text-slate-600">
               Hasta
-              <input
+              <FechaSelect
                 name="fecha_hasta"
-                type="date"
                 defaultValue={fechaHasta}
                 className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-              />
+/>
             </label>
             <button
               type="submit"

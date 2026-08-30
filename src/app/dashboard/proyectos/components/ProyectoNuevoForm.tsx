@@ -16,6 +16,7 @@ import {
   type ProyectoModuloSnapshot,
 } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type Tipo = { id: string; nombre: string; codigo: string };
 type Estado = { id: string; nombre: string };
@@ -327,22 +328,20 @@ export default function ProyectoNuevoForm({
             </div>
             <label className="block text-sm">
               <span className={LABEL_CLS}>Fecha ingreso</span>
-              <input
-                type="date"
+              <FechaSelect
                 required
                 className={INPUT_CLS}
                 value={fechaIngreso}
                 onChange={(e) => setFechaIngreso(e.target.value)}
-              />
+/>
             </label>
             <label className="block text-sm">
               <span className={LABEL_CLS}>Fecha prometida</span>
-              <input
-                type="date"
+              <FechaSelect
                 className={INPUT_CLS}
                 value={fechaProm}
                 onChange={(e) => setFechaProm(e.target.value)}
-              />
+/>
             </label>
             <label className="block text-sm">
               <span className={LABEL_CLS}>WhatsApp / contacto</span>

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { ymdInicioFinMesLocal, toCalendarDateStr } from "@/lib/fechas/calendario";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const INPUT_CLS =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
@@ -141,11 +142,11 @@ export default function ReporteEstadoCuentaPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[10rem]">
             <label className={LABEL_CLS}>Desde</label>
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={INPUT_CLS} />
+            <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className={INPUT_CLS} />
           </div>
           <div className="min-w-[10rem]">
             <label className={LABEL_CLS}>Hasta</label>
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={INPUT_CLS} />
+            <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className={INPUT_CLS} />
           </div>
           <button
             type="button"

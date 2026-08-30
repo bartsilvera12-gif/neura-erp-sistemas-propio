@@ -18,6 +18,7 @@ import {
   getErpAttachmentPublicUrl,
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type MonitorChatMsg = {
   id: string;
@@ -694,15 +695,14 @@ export default function MonitoreoPage() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] font-medium text-slate-500 hidden sm:inline">Leads del día</span>
-              <input
-                type="date"
+              <FechaSelect
                 value={leadDate}
                 max={todayPY}
                 onChange={(e) => setLeadDate(e.target.value || todayPY)}
                 aria-label="Fecha para la métrica de leads por agente"
                 title="La columna Leads es por esta fecha; el resto de columnas es estado en vivo."
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs tabular-nums text-slate-700 outline-none transition-colors focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
-              />
+/>
               {!esLeadHoy ? (
                 <button
                   type="button"

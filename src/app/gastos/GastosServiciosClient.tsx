@@ -10,6 +10,7 @@ import {
   confirmarNuevo, confirmarExistente, eliminarBorrador, anularGasto, getGastoDetalle,
   type GastoHeaderForm, type GastoItemForm, type IvaTipo, type GastoEstado,
 } from "@/lib/gastos/servicios-client";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 // IVA INCLUIDO: el monto ingresado es el total (con IVA); el IVA se deduce.
 const IVA_FACTOR: Record<IvaTipo, number> = { exenta: 0, "5": 5 / 105, "10": 10 / 110 };
@@ -161,10 +162,10 @@ export default function GastosServiciosClient() {
         <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por número, proveedor, comprobante…"
           className="min-w-[16rem] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40" />
         <label className="flex items-center gap-1 text-xs text-slate-500">Desde
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+          <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
         </label>
         <label className="flex items-center gap-1 text-xs text-slate-500">Hasta
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
+          <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm" />
         </label>
         {(desde || hasta) && (
           <button onClick={() => { setDesde(""); setHasta(""); }} className="text-xs font-semibold text-[#3F8E91] underline-offset-2 hover:underline">Todas las fechas</button>
@@ -412,8 +413,8 @@ function GastoFormModal({
                     </Field>
                     <Field label="Número de comprobante *"><input className={INPUT} inputMode="numeric" value={form.numero_comprobante ?? ""} onChange={(e) => setField("numero_comprobante", formatComprobante(e.target.value) || null)} placeholder="001-001-0000001" /></Field>
                     <Field label={`Timbrado${requiereTimbrado(form.tipo_comprobante) ? " *" : ""}`}><input className={INPUT} value={form.timbrado ?? ""} onChange={(e) => setField("timbrado", e.target.value || null)} /></Field>
-                    <Field label="Fecha de comprobante *"><input type="date" className={INPUT} value={form.fecha_comprobante ?? ""} onChange={(e) => setField("fecha_comprobante", e.target.value || null)} /></Field>
-                    <Field label="Fecha contable *"><input type="date" className={INPUT} value={form.fecha_contable ?? ""} onChange={(e) => setField("fecha_contable", e.target.value || null)} /></Field>
+                    <Field label="Fecha de comprobante *"><FechaSelect className={INPUT} value={form.fecha_comprobante ?? ""} onChange={(e) => setField("fecha_comprobante", e.target.value || null)} /></Field>
+                    <Field label="Fecha contable *"><FechaSelect className={INPUT} value={form.fecha_contable ?? ""} onChange={(e) => setField("fecha_contable", e.target.value || null)} /></Field>
                     <Field label="Condición *">
                       <select className={INPUT} value={form.tipo_pago ?? "contado"} onChange={(e) => setField("tipo_pago", e.target.value as "contado" | "credito")}>
                         <option value="contado">Contado</option>
@@ -428,7 +429,7 @@ function GastoFormModal({
                     {form.tipo_pago === "credito" && (
                       <div className="grid grid-cols-2 gap-2">
                         <Field label="Plazo (días)"><input type="number" className={INPUT} value={form.plazo_dias ?? ""} onChange={(e) => setField("plazo_dias", e.target.value ? parseInt(e.target.value) : null)} /></Field>
-                        <Field label="Vencimiento"><input type="date" className={INPUT} value={form.fecha_vencimiento ?? ""} onChange={(e) => setField("fecha_vencimiento", e.target.value || null)} /></Field>
+                        <Field label="Vencimiento"><FechaSelect className={INPUT} value={form.fecha_vencimiento ?? ""} onChange={(e) => setField("fecha_vencimiento", e.target.value || null)} /></Field>
                       </div>
                     )}
                   </div>

@@ -10,6 +10,7 @@ import {
   type FinalizedClosuresFilters,
   type FinalizedFilterOptions,
 } from "@/lib/chat/finalized-closures-actions";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 /** Valor de "Todos" (tope del server para page_size). */
@@ -275,21 +276,19 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Desde
-            <input
-              type="date"
+            <FechaSelect
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
-            />
+/>
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Hasta
-            <input
-              type="date"
+            <FechaSelect
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
-            />
+/>
           </label>
           {!esAsesor && (
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { ContactHistoryDetail, HistorySearchItem } from "@/lib/chat/history-service";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { getErpAttachmentPublicUrl } from "@/lib/chat/message-erp-display";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -174,18 +175,16 @@ export default function HistorialPage() {
           value={channel}
           onChange={(e) => setChannel(e.target.value)}
         />
-        <input
-          type="date"
+        <FechaSelect
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           value={from}
           onChange={(e) => setFrom(e.target.value)}
-        />
-        <input
-          type="date"
+/>
+        <FechaSelect
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
           value={to}
           onChange={(e) => setTo(e.target.value)}
-        />
+/>
         <button
           type="button"
           onClick={() => void runSearch()}

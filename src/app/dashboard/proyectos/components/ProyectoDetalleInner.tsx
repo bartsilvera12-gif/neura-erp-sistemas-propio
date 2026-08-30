@@ -34,6 +34,7 @@ import {
   type ProyectoSaasBriefForm,
 } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 export type ProyectoCambioCliente = {
   id: string;
@@ -2308,12 +2309,11 @@ export default function ProyectoDetalleInner({
                   </div>
                   <label className="block">
                     <span className={labelCls}>Fecha límite (opcional)</span>
-                    <input
-                      type="date"
+                    <FechaSelect
                       className={inputCls}
                       value={tareaFechaLimite}
                       onChange={(e) => setTareaFechaLimite(e.target.value)}
-                    />
+/>
                   </label>
                 </div>
                 <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
@@ -2425,12 +2425,11 @@ export default function ProyectoDetalleInner({
                             </div>
                             <label className="block">
                               <span className={labelCls}>Fecha límite</span>
-                              <input
-                                type="date"
+                              <FechaSelect
                                 className={inputCls}
                                 value={tareaEditFechaLimite}
                                 onChange={(e) => setTareaEditFechaLimite(e.target.value)}
-                              />
+/>
                             </label>
                           </div>
                           <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 interface Cobro {
   id: string; factura_id: string; monto: string | number; fecha: string; banco_origen: string;
@@ -226,7 +227,7 @@ function ModalRegistrar({ facturas, onClose, onSaved }: { facturas: Factura[]; o
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Monto *</label>
               <input inputMode="numeric" value={monto} onChange={(e) => setMonto(e.target.value.replace(/\D/g, ""))} placeholder="Ej: 500000" className={`${INPUT} text-right`} /></div>
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Fecha *</label>
-              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={INPUT} /></div>
+              <FechaSelect value={fecha} onChange={(e) => setFecha(e.target.value)} className={INPUT} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Banco de origen *</label>

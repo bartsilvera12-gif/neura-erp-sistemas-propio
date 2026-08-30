@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import type { AmbienteSifen, EmpresaSifenConfigDTO } from "@/lib/sifen/types";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const fLabel = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
 const fInput =
@@ -645,13 +646,12 @@ export default function FacturacionElectronicaSifenPage() {
             </div>
             <div>
               <label className={fLabel}>Inicio vigencia del timbrado</label>
-              <input
-                type="date"
+              <FechaSelect
                 className={fInput}
                 value={timbradoFechaIni}
                 onChange={(e) => setTimbradoFechaIni(e.target.value)}
                 required
-              />
+/>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                 Misma fecha que <span className="font-medium">«Fecha Inicio Vigencia»</span> en la resolución DNIT del timbrado. Va al XML como{" "}
                 <span className="font-mono">dFeIniT</span>. Si no coincide, SET devuelve error 1107.
@@ -721,7 +721,7 @@ export default function FacturacionElectronicaSifenPage() {
             </div>
             <div>
               <label className={fLabel}>Vencimiento del certificado</label>
-              <input type="date" className={fInput} value={certVenc} onChange={(e) => setCertVenc(e.target.value)} />
+              <FechaSelect className={fInput} value={certVenc} onChange={(e) => setCertVenc(e.target.value)} />
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                 {tieneCertificadoCargado ? (
                   <>

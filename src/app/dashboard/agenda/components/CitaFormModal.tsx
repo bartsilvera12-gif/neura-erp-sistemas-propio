@@ -43,6 +43,7 @@ function diffMin(hi: string, hf: string): number | null {
 
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { ResponsablesSelect } from "@/app/dashboard/agenda/components/ResponsablesSelect";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
@@ -354,7 +355,7 @@ export default function CitaFormModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>Fecha *</label>
-                <input type="date" className={inputCls} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+                <FechaSelect className={inputCls} value={fecha} onChange={(e) => setFecha(e.target.value)} />
               </div>
               <div>
                 <label className={labelCls}>Inicio *</label>

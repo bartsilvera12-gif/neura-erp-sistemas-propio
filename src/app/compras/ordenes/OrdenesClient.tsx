@@ -8,6 +8,7 @@ import { getProveedores } from "@/lib/proveedores/storage";
 import { getProductos } from "@/lib/inventario/storage";
 import CuentaCombobox from "@/components/contabilidad/CuentaCombobox";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 /* ── tipos ─────────────────────────────────────────────────────────────── */
 interface Orden {
@@ -127,9 +128,9 @@ export default function OrdenesClient() {
 
       <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3 lg:grid-cols-5">
         <label className="text-xs font-semibold text-slate-500">Desde
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
+          <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
         <label className="text-xs font-semibold text-slate-500">Hasta
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
+          <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
         <label className="text-xs font-semibold text-slate-500">Estado
           <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className={`mt-1 ${INPUT}`}>
             <option value="">Todos</option>
@@ -257,9 +258,9 @@ function ModalOrden({ proveedores, productos, cuentas, onClose, onSaved }: {
         <div><label className="text-xs font-semibold text-slate-500">Proveedor *</label>
           <div className="mt-1"><SmartCombobox options={proveedores} value={proveedorId} onChange={setProveedorId} placeholder="(Elegir proveedor)" /></div></div>
         <label className="text-xs font-semibold text-slate-500">Fecha
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
+          <FechaSelect value={fecha} onChange={(e) => setFecha(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
         <label className="text-xs font-semibold text-slate-500">Fecha estimada de entrega
-          <input type="date" value={fechaEstimada} onChange={(e) => setFechaEstimada(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
+          <FechaSelect value={fechaEstimada} onChange={(e) => setFechaEstimada(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
       </div>
 
       <div className="mt-4 space-y-3">
@@ -503,7 +504,7 @@ function FormRecepcion({ orden, items, onCancel, onSaved }: {
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="text-xs font-semibold text-slate-500">Fecha
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
+          <FechaSelect value={fecha} onChange={(e) => setFecha(e.target.value)} className={`mt-1 ${INPUT}`} /></label>
         <div><label className="text-xs font-semibold text-slate-500">Depósito / Ubicación</label>
           <div className="mt-1"><SmartCombobox options={ubicaciones} value={ubicacionId} onChange={setUbicacionId} placeholder="(Sin ubicación)" /></div></div>
         <label className="text-xs font-semibold text-slate-500">Documento (URL, opcional)

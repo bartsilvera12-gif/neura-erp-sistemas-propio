@@ -3,6 +3,7 @@
 import MontoInput from "@/components/ui/MontoInput";
 import { FancySelect, type FancySelectOption } from "@/app/dashboard/proyectos/components/FancySelect";
 import type { AreaUsuario, NivelUsuario, TipoContrato } from "@/lib/usuarios/types";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 export const usuarioFormLabel =
   "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
@@ -215,7 +216,7 @@ export function UsuarioFormFields({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={fLabel}>Fecha de nacimiento</label>
-              <input type="date" name="fecha_nacimiento" value={form.fecha_nacimiento} onChange={onChange} className={fInput} />
+              <FechaSelect name="fecha_nacimiento" value={form.fecha_nacimiento} onChange={onChange} className={fInput} />
             </div>
           </div>
         </div>
@@ -226,7 +227,7 @@ export function UsuarioFormFields({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={fLabel}>Fecha de ingreso</label>
-              <input type="date" name="fecha_ingreso" value={form.fecha_ingreso} onChange={onChange} className={fInput} />
+              <FechaSelect name="fecha_ingreso" value={form.fecha_ingreso} onChange={onChange} className={fInput} />
             </div>
             <div>
               <label className={fLabel}>Tipo de contrato</label>

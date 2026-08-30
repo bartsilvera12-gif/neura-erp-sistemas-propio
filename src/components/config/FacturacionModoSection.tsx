@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type Modo = "sin_factura_fiscal" | "sifen" | "autoimpresor";
 type Impresion = "pdf_a4" | "pdf_media_hoja" | "ticket_80mm" | "ticket_58mm";
@@ -257,8 +258,8 @@ function AutoimpresorForm({
 
       <div className="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
         <Field label="Timbrado N°"><input className={inputClass} value={f.timbrado_numero ?? ""} onChange={(e) => set("timbrado_numero", e.target.value || null)} /></Field>
-        <Field label="Inicio vigencia"><input type="date" className={inputClass} value={f.timbrado_inicio_vigencia ?? ""} onChange={(e) => set("timbrado_inicio_vigencia", e.target.value || null)} /></Field>
-        <Field label="Fin vigencia"><input type="date" className={inputClass} value={f.timbrado_fin_vigencia ?? ""} onChange={(e) => set("timbrado_fin_vigencia", e.target.value || null)} /></Field>
+        <Field label="Inicio vigencia"><FechaSelect className={inputClass} value={f.timbrado_inicio_vigencia ?? ""} onChange={(e) => set("timbrado_inicio_vigencia", e.target.value || null)} /></Field>
+        <Field label="Fin vigencia"><FechaSelect className={inputClass} value={f.timbrado_fin_vigencia ?? ""} onChange={(e) => set("timbrado_fin_vigencia", e.target.value || null)} /></Field>
         <Field label="Establecimiento"><input className={inputClass} placeholder="001" value={f.establecimiento_codigo ?? ""} onChange={(e) => set("establecimiento_codigo", e.target.value || null)} /></Field>
         <Field label="Punto de expedición"><input className={inputClass} placeholder="001" value={f.punto_expedicion_codigo ?? ""} onChange={(e) => set("punto_expedicion_codigo", e.target.value || null)} /></Field>
         <div />

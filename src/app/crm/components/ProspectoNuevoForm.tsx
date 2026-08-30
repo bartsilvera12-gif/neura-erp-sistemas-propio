@@ -11,6 +11,7 @@ import PlanSelector from "@/components/crm/PlanSelector";
 import { cleanTelefono, formatTelefonoDisplay, isValidTelefono } from "@/lib/telefono";
 import type { EtapaCrm } from "@/lib/crm/etapas";
 import type { Plan } from "@/lib/planes/types";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 export type ProspectoNuevoFormProps = {
   variant?: "page" | "modal";
@@ -402,13 +403,12 @@ export default function ProspectoNuevoForm({
               </div>
               <div>
                 <label className={LABEL_CLS}>Fecha próxima acción</label>
-                <input
-                  type="date"
+                <FechaSelect
                   name="fecha_proxima_accion"
                   value={form.fecha_proxima_accion}
                   onChange={handleChange}
                   className={INPUT_CLS}
-                />
+/>
               </div>
             </div>
 

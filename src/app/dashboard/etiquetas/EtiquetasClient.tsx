@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, X, RefreshCw, Filter, Copy, Tag as TagIcon, Send, ChevronRight, ChevronLeft, AlertTriangle } from "lucide-react";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 /**
  * Etiquetas Automáticas - Pantalla productiva.
@@ -739,21 +740,19 @@ export default function EtiquetasClient() {
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Último mensaje desde</label>
-            <input
-              type="date"
+            <FechaSelect
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className={INPUT_CN}
-            />
+/>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Último mensaje hasta</label>
-            <input
-              type="date"
+            <FechaSelect
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className={INPUT_CN}
-            />
+/>
           </div>
         </div>
       </section>

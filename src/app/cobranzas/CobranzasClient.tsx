@@ -5,6 +5,7 @@ import Link from "next/link";
 import { RefreshCw, Search, X, ChevronRight, ExternalLink } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
@@ -896,12 +897,11 @@ function PromesaModal({
         <p className="mt-1 text-xs text-slate-500">Fecha en que el cliente se comprometió a pagar.</p>
         <label className="mt-4 block">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Fecha de promesa</span>
-          <input
-            type="date"
+          <FechaSelect
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
             className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-          />
+/>
         </label>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={onCancel} disabled={busy} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
@@ -1047,7 +1047,7 @@ function RegistrarPagoModal({
           </label>
           <label className="block">
             <span className={labelCls}>Fecha de la transferencia</span>
-            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={fieldCls} />
+            <FechaSelect value={fecha} onChange={(e) => setFecha(e.target.value)} className={fieldCls} />
           </label>
           <label className="block">
             <span className={labelCls}>Banco de origen</span>

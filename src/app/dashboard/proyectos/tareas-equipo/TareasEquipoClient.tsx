@@ -17,6 +17,7 @@ import {
 import { formatearDuracion, enJornadas, msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { textoEsqueleto } from "@/lib/proyectos/esqueleto";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type EstadoTableroDTO = { id: string; codigo: string; nombre: string; color: string };
 
@@ -1823,8 +1824,7 @@ function FilaProyecto({
       {editandoFecha ? (
         <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
           <span className="text-[11px] font-medium text-slate-600">Asignado el</span>
-          <input
-            type="date"
+          <FechaSelect
             defaultValue={isoADateInput(desde)}
             max={isoADateInput(new Date().toISOString())}
             onChange={(e) => {
@@ -1835,7 +1835,7 @@ function FilaProyecto({
               setEditandoFecha(false);
             }}
             className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
-          />
+/>
           <span className="text-[11px] text-slate-400">
             Corregí la fecha si el contador arrancó desde la creación del proyecto.
           </span>

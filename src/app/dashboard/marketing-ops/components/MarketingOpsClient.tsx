@@ -17,6 +17,7 @@ import {
   prioridadDotClass,
 } from "./marketingOpsUi";
 import MarketingOpsPiezaDetalleModal from "./MarketingOpsPiezaDetalleModal";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type ClienteOption = { id: string; empresa?: string | null; nombre_contacto?: string | null; nombre?: string | null };
 type UsuarioOption = { id: string; nombre?: string | null; email?: string | null };
@@ -806,10 +807,10 @@ function PiezaModal({
               </select>
             </Field>
             <Field label="Fecha límite">
-              <input type="date" className={INPUT_CLS} value={draft.fecha_limite} onChange={(e) => set({ fecha_limite: e.target.value })} />
+              <FechaSelect className={INPUT_CLS} value={draft.fecha_limite} onChange={(e) => set({ fecha_limite: e.target.value })} />
             </Field>
             <Field label="Fecha publicación">
-              <input type="date" className={INPUT_CLS} value={draft.fecha_publicacion} onChange={(e) => set({ fecha_publicacion: e.target.value })} />
+              <FechaSelect className={INPUT_CLS} value={draft.fecha_publicacion} onChange={(e) => set({ fecha_publicacion: e.target.value })} />
             </Field>
             <Field label="Link archivo" className="sm:col-span-2">
               <input className={INPUT_CLS} value={draft.link_archivo} onChange={(e) => set({ link_archivo: e.target.value })} placeholder="https://…" />

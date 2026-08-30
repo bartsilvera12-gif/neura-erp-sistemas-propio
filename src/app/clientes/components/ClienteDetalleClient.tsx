@@ -63,6 +63,7 @@ import {
   type TributarioFormState,
 } from "@/components/clientes/ClientePerfilTributarioForm";
 import { ClienteDatosSifenReceptorForm } from "@/components/clientes/ClienteDatosSifenReceptorForm";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
 const inputClass =
@@ -2781,7 +2782,7 @@ export default function ClienteDetalleClient({
               </div>
               <div>
                 <label className={labelClass}>Fecha inicio</label>
-                <input type="date" value={formSusc.fecha_inicio} onChange={(e) => setFormSusc((p) => ({ ...p, fecha_inicio: e.target.value }))} className={inputClass} required />
+                <FechaSelect value={formSusc.fecha_inicio} onChange={(e) => setFormSusc((p) => ({ ...p, fecha_inicio: e.target.value }))} className={inputClass} required />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -2863,12 +2864,11 @@ export default function ClienteDetalleClient({
                           <span className="text-sm text-slate-700 w-full">
                             Fecha de vencimiento personalizada
                             {override && (
-                              <input
-                                type="date"
+                              <FechaSelect
                                 value={override}
                                 onChange={(e) => setFormSusc((p) => ({ ...p, fecha_vencimiento_override: e.target.value }))}
                                 className={`${inputClass} mt-1`}
-                              />
+/>
                             )}
                           </span>
                         </label>
@@ -2931,13 +2931,12 @@ export default function ClienteDetalleClient({
               </div>
               <div>
                 <label className={labelClass}>Fecha de entrega *</label>
-                <input
-                  type="date"
+                <FechaSelect
                   value={formTarea.fecha_entrega}
                   onChange={(e) => setFormTarea((p) => ({ ...p, fecha_entrega: e.target.value }))}
                   className={inputClass}
                   required
-                />
+/>
               </div>
               <div>
                 <label className={labelClass}>Responsable</label>
@@ -3048,7 +3047,7 @@ export default function ClienteDetalleClient({
               </div>
               <div>
                 <label className={labelClass}>Fecha de la transferencia</label>
-                <input type="date" value={formPago.fecha_pago} onChange={(e) => setFormPago((p) => ({ ...p, fecha_pago: e.target.value }))} className={inputClass} required />
+                <FechaSelect value={formPago.fecha_pago} onChange={(e) => setFormPago((p) => ({ ...p, fecha_pago: e.target.value }))} className={inputClass} required />
               </div>
               <div>
                 <label className={labelClass}>Banco de origen</label>

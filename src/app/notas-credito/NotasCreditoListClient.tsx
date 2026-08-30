@@ -7,6 +7,7 @@ import { getClientes } from "@/lib/clientes/storage";
 import type { NotaCreditoGlobalListItemDTO } from "@/lib/nota-credito/types";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import NotaCreditoDetalleModal from "./components/NotaCreditoDetalleModal";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const INPUT_CLS =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
@@ -234,21 +235,19 @@ export default function NotasCreditoListClient() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
           <label className="block">
             <span className={LABEL_CLS}>Desde</span>
-            <input
-              type="date"
+            <FechaSelect
               className={INPUT_CLS}
               value={desde}
               onChange={(e) => setDesde(e.target.value)}
-            />
+/>
           </label>
           <label className="block">
             <span className={LABEL_CLS}>Hasta</span>
-            <input
-              type="date"
+            <FechaSelect
               className={INPUT_CLS}
               value={hasta}
               onChange={(e) => setHasta(e.target.value)}
-            />
+/>
           </label>
           <div className="block">
             <span className={LABEL_CLS}>Cliente</span>

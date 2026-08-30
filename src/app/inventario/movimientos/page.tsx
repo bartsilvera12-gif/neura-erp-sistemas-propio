@@ -5,6 +5,7 @@ import Link from "next/link";
 import * as XLSX from "xlsx";
 import { getMovimientos } from "@/lib/inventario/storage";
 import type { MovimientoInventario, TipoMovimiento, OrigenMovimiento } from "@/lib/inventario/types";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const tipoBadge: Record<TipoMovimiento, string> = {
   ENTRADA: "bg-green-100 text-green-700",
@@ -213,25 +214,23 @@ export default function MovimientosPage() {
             <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
               Desde
             </label>
-            <input
-              type="date"
+            <FechaSelect
               value={fechaDesde}
               onChange={(e) => setFechaDesde(e.target.value)}
               max={fechaHasta || undefined}
               className={inputFilterClass}
-            />
+/>
           </div>
           <div className="flex items-center gap-1.5">
             <label className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
               Hasta
             </label>
-            <input
-              type="date"
+            <FechaSelect
               value={fechaHasta}
               onChange={(e) => setFechaHasta(e.target.value)}
               min={fechaDesde || undefined}
               className={inputFilterClass}
-            />
+/>
           </div>
 
           {/* Paginado */}

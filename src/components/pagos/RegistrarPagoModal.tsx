@@ -5,6 +5,7 @@ import MontoInput, { parseMontoInput } from "@/components/ui/MontoInput";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { hoyYmdLocal } from "@/lib/fechas/calendario";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
@@ -206,14 +207,13 @@ export function RegistrarPagoModal({
                 <label className={labelClass} htmlFor="reg-pago-fecha">
                   Fecha de la transferencia
                 </label>
-                <input
+                <FechaSelect
                   id="reg-pago-fecha"
-                  type="date"
                   value={fechaPago}
                   onChange={(e) => setFechaPago(e.target.value)}
                   className={inputClass}
                   required
-                />
+/>
               </div>
               <div>
                 <label className={labelClass} htmlFor="reg-pago-banco">

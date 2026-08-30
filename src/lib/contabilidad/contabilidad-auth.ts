@@ -70,3 +70,24 @@ export function requireContabilidadApiAccess(request: Request): Promise<Contabil
 export function requireCobranzasApiAccess(request: Request): Promise<ContabilidadApiAuth> {
   return requireModulosApiAccess(request, ["contabilidad", "cobranzas", "pagos"], "Cobranzas");
 }
+
+/**
+ * Acceso para CREAR un cobro pendiente (maker): cualquier usuario autenticado con
+ * empresa. Tan amplio como el registro de pagos anterior (que no exigía módulo) y
+ * más seguro, porque un pendiente no mueve plata: el control real es la APROBACIÓN,
+ * que sigue restringida a admin/cobranzas (requireCobranzasApiAccess).
+ */
+export async function requireTenantUserApiAccess(request: Request): Promise<ContabilidadApiAuth> {
+  const user = await getAuthUserForApiRoute(request);
+  if (!user?.id) return { ok: false, status: 401, message: "No autenticado" };
+  const catalog = createServiceRoleClient();
+  const usuario = await resolveUsuarioErpFromAuthUser(catalog, user);
+  if (!usuario?.empresa_id) return { ok: false, status: 403, message: "Usuario sin empresa" };
+  return {
+    ok: true,
+    empresaId: usuario.empresa_id,
+    usuarioCatalogId: usuario.id,
+    usuarioEmail: user.email ?? null,
+    rol: usuario.rol,
+  };
+}

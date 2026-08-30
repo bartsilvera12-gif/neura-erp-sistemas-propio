@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchDataSchemaForEmpresaId, createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
-import { requireCobranzasApiAccess } from "@/lib/contabilidad/contabilidad-auth";
+import { requireCobranzasApiAccess, requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
 import { listCobrosPendientes, registrarTransferencia, updateComprobantePath, ConciliacionError } from "@/lib/cobranzas/conciliacion-pg";
 import {
   ALLOWED_COMPROBANTE_MIME, MAX_COMPROBANTE_BYTES, COBROS_COMPROBANTES_BUCKET,
@@ -28,9 +28,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** POST (multipart) — registra una transferencia pendiente + comprobante opcional. */
+/**
+ * POST (multipart) — registra una transferencia PENDIENTE + comprobante opcional.
+ * Maker: cualquier usuario autenticado con empresa puede proponer un cobro (lo
+ * disparan los botones de cobro del ERP). La aprobación sigue siendo admin/cobranzas.
+ */
 export async function POST(request: NextRequest) {
-  const auth = await requireCobranzasApiAccess(request);
+  const auth = await requireTenantUserApiAccess(request);
   if (!auth.ok) return NextResponse.json(errorResponse(auth.message), { status: auth.status });
   try {
     const schema = await fetchDataSchemaForEmpresaId(auth.empresaId);

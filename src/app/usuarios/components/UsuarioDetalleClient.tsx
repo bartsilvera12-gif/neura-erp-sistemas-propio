@@ -34,6 +34,7 @@ type Usuario = {
   rol: string | null;
   estado: string | null;
   es_qa?: boolean | null;
+  es_project_manager?: boolean | null;
   notificar_entregas?: boolean | null;
   created_at: string;
   modulo_ids?: string[];
@@ -146,6 +147,7 @@ function usuarioToForm(u: Usuario): UsuarioFormValues {
     area,
     estado: (u.estado as "activo" | "inactivo") ?? "activo",
     es_qa: Boolean(u.es_qa),
+    es_project_manager: Boolean(u.es_project_manager),
     notificar_entregas: Boolean(u.notificar_entregas),
     password: "",
     password2: "",
@@ -290,6 +292,7 @@ export default function UsuarioDetalleClient({
       if (usuario.puede_editar_rol) {
         body.rol = rolFromNivelForm(form.nivel);
         body.es_qa = form.es_qa;
+        body.es_project_manager = form.es_project_manager;
         body.notificar_entregas = form.notificar_entregas;
       }
       if (usuario.puede_editar_modulos && !usuario.es_admin_empresa) {

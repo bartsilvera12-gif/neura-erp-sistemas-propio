@@ -39,6 +39,7 @@ import {
   CalendarDays,
   BarChart3,
   HandCoins,
+  ClipboardList,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -194,6 +195,15 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: Factory,
   },
   {
+    // Cartera de clientes por project manager. Reusa el permiso del módulo
+    // Proyectos (mismo slug), con key propia; el gate fino lo aplica la API.
+    key: "gestion-pm",
+    slug: "proyectos",
+    label: "Gestión Project Manager",
+    href: "/dashboard/project-managers",
+    icon: ClipboardList,
+  },
+  {
     key: "agenda",
     slug: "agenda",
     label: "Agenda",
@@ -228,7 +238,14 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   {
     id: "comercial",
     title: "Comercial",
-    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos"],
+    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda"],
+  },
+  {
+    // Proyectos sale de "Comercial": el tablero y la gestión de PM son la
+    // misma cadena de trabajo (se vende, se desarrolla, se entrega).
+    id: "desarrollo",
+    title: "Desarrollo",
+    itemKeys: ["proyectos", "gestion-pm"],
   },
   {
     id: "finanzas",

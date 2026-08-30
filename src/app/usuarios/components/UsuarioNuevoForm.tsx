@@ -104,6 +104,7 @@ export default function UsuarioNuevoForm({
           area: form.area,
           rol: rolFromNivelForm(form.nivel),
           es_qa: form.es_qa,
+          es_project_manager: form.es_project_manager,
           notificar_entregas: form.notificar_entregas,
         }),
       });

@@ -77,6 +77,7 @@ export async function POST(req: Request) {
     const area = areaRaw && areasOk.includes(areaRaw) ? areaRaw : null;
     const rol = String(body.rol ?? "usuario");
     const es_qa = Boolean(body.es_qa);
+    const es_project_manager = Boolean(body.es_project_manager);
     const notificar_entregas = Boolean(body.notificar_entregas);
 
     if (!email || !password || password.length < 6) {
@@ -145,6 +146,7 @@ export async function POST(req: Request) {
       area,
       rol,
       es_qa,
+      es_project_manager,
       notificar_entregas,
       auth_user_id: authUserId,
       estado: "activo" as const,

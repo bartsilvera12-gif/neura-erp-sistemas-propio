@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlarmClock,
+  Banknote,
   Bell,
   CalendarClock,
   Check,
@@ -34,6 +35,7 @@ type TipoNotificacion =
   | "esqueleto_vencido"
   | "proyecto_estado_cambio"
   | "proyecto_entregado"
+  | "cobro_pendiente"
   | "agenda_recordatorio"
   | "qa_vence";
 
@@ -126,6 +128,12 @@ const ESTILO_TIPO: Record<
     icon: PackageCheck,
     wrap: "bg-emerald-50 text-emerald-600",
     label: "Proyecto entregado",
+  },
+  cobro_pendiente: {
+    icon: Banknote,
+    // Ámbar: requiere una acción (aprobar/rechazar en Conciliación).
+    wrap: "bg-amber-50 text-amber-600",
+    label: "Cobro por aprobar",
   },
 };
 
@@ -405,11 +413,19 @@ export default function NotificacionesBell() {
                   </div>
                 );
 
+                const destino = n.cita_id
+                  ? "/dashboard/agenda"
+                  : n.tipo === "cobro_pendiente"
+                  ? "/cobranzas/conciliacion"
+                  : n.proyecto_id
+                  ? `/dashboard/proyectos/${n.proyecto_id}`
+                  : null;
+
                 return (
                   <li key={n.id} className="relative">
-                    {n.proyecto_id || n.cita_id ? (
+                    {destino ? (
                       <Link
-                        href={n.cita_id ? "/dashboard/agenda" : `/dashboard/proyectos/${n.proyecto_id}`}
+                        href={destino}
                         onClick={() => {
                           setAbierto(false);
                           if (marcable) void marcarLeidas({ ids: [n.id] });

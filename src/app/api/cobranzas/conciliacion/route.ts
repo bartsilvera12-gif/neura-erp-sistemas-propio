@@ -3,6 +3,7 @@ import { fetchDataSchemaForEmpresaId, createServiceRoleClientForEmpresa } from "
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { requireCobranzasApiAccess, requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
 import { listCobrosPendientes, registrarTransferencia, updateComprobantePath, ConciliacionError } from "@/lib/cobranzas/conciliacion-pg";
+import { notificarCobroPendiente } from "@/lib/cobranzas/cobro-pendiente-notificar";
 import {
   ALLOWED_COMPROBANTE_MIME, MAX_COMPROBANTE_BYTES, COBROS_COMPROBANTES_BUCKET,
   buildCobroComprobantePath, ensureCobrosComprobantesBucket, signCobroComprobante,
@@ -54,6 +55,15 @@ export async function POST(request: NextRequest) {
       numero_operacion: s(form.get("numero_operacion")),
       idempotency_key: UUID_RE.test(idem) ? idem : null,
       created_by: auth.usuarioCatalogId ?? null,
+    });
+
+    // Aviso in-app a los administradores (aprueban en Conciliación). Best-effort.
+    await notificarCobroPendiente(auth.empresaId, {
+      cobroId: cobro.id,
+      facturaId: cobro.factura_id ?? null,
+      clienteId: cobro.cliente_id ?? null,
+      monto: Number(cobro.monto) || 0,
+      actorId: auth.usuarioCatalogId ?? null,
     });
 
     // Comprobante opcional (se sube al registrar).

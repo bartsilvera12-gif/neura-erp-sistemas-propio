@@ -32,6 +32,7 @@ import { AnularFacturaButton } from "@/components/facturas/AnularFacturaButton";
 import { getMarketingTasks, createMarketingTask, updateTaskStatus } from "@/lib/marketing/storage";
 import { getUsuariosActivosEmpresa, type UsuarioEmpresa } from "@/lib/usuarios/empresa";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import MontoInput from "@/components/ui/MontoInput";
@@ -426,6 +427,7 @@ export default function ClienteDetalleClient({
   const [pagoNumeroOp, setPagoNumeroOp] = useState("");
   const [pagoFile, setPagoFile] = useState<File | null>(null);
   const [errorPago, setErrorPago] = useState<string | null>(null);
+  const { bancos: bancosActivos } = useBancosActivos(modalPago);
   useEffect(() => {
     if (modalPago) {
       setPagoBanco("");
@@ -2993,6 +2995,10 @@ export default function ClienteDetalleClient({
                 setErrorPago("Completá banco de origen, titular y N° de comprobante.");
                 return;
               }
+              if (!pagoFile) {
+                setErrorPago("Adjuntá el comprobante de la transferencia.");
+                return;
+              }
               setErrorPago(null);
               setGuardandoPago(true);
               try {
@@ -3046,18 +3052,23 @@ export default function ClienteDetalleClient({
               </div>
               <div>
                 <label className={labelClass}>Banco de origen</label>
-                <input type="text" value={pagoBanco} onChange={(e) => setPagoBanco(e.target.value)} className={inputClass} placeholder="Banco desde el que se envió" required />
+                <select value={pagoBanco} onChange={(e) => setPagoBanco(e.target.value)} className={inputClass} required>
+                  <option value="">— Seleccioná el banco —</option>
+                  {bancosActivos.map((b) => (
+                    <option key={b.id} value={b.nombre}>{b.nombre}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className={labelClass}>Titular (quién envía)</label>
-                <input type="text" value={pagoTitular} onChange={(e) => setPagoTitular(e.target.value)} className={inputClass} placeholder="Titular de la cuenta que envía" required />
+                <input type="text" value={pagoTitular} onChange={(e) => setPagoTitular(e.target.value.toUpperCase())} className={`${inputClass} uppercase placeholder:normal-case`} placeholder="Titular de la cuenta que envía" required />
               </div>
               <div>
                 <label className={labelClass}>N° de comprobante / operación</label>
                 <input type="text" value={pagoNumeroOp} onChange={(e) => setPagoNumeroOp(e.target.value)} className={inputClass} placeholder="Nº de operación de la transferencia" required />
               </div>
               <div>
-                <label className={labelClass}>Comprobante <span className="text-slate-400">(recomendado — JPG, PNG, WebP o PDF)</span></label>
+                <label className={labelClass}>Comprobante <span className="text-slate-400">(obligatorio — JPG, PNG, WebP o PDF)</span></label>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,application/pdf"

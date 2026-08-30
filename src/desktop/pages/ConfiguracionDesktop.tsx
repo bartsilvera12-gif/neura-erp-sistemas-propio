@@ -8,6 +8,7 @@ import {
   GitBranch,
   Calculator,
   Inbox,
+  Landmark,
   LayoutGrid,
   Library,
   MessageCircle,
@@ -166,6 +167,16 @@ export default function ConfiguracionPage() {
               icon={Library}
               badge={editorBadge}
               href="/configuracion/plan-de-cuentas"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
+              title="Bancos"
+              subtitle="GLOBAL · FINANZAS"
+              description="Catálogo de bancos de origen para los cobros por transferencia. Alimenta el desplegable de los botones de cobro."
+              icon={Landmark}
+              badge={editorBadge}
+              href="/configuracion/bancos"
             />
           </li>
           <li>

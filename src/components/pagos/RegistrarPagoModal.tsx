@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import MontoInput, { parseMontoInput } from "@/components/ui/MontoInput";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { hoyYmdLocal } from "@/lib/fechas/calendario";
+import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 
 const inputClass =
-  "w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:outline-none bg-white text-sm";
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
 const labelClass = "block text-xs font-medium text-slate-500 mb-1";
 
 export type RegistrarPagoFacturaRef = {
@@ -61,6 +62,7 @@ export function RegistrarPagoModal({
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
+  const { bancos } = useBancosActivos(open && !!factura);
 
   useEffect(() => {
     if (!open || !factura) return;
@@ -103,7 +105,11 @@ export function RegistrarPagoModal({
       setErrorMsg("Indicá el número de comprobante / operación.");
       return;
     }
-    if (file && file.size > COMPROBANTE_MAX_MB * 1024 * 1024) {
+    if (!file) {
+      setErrorMsg("Adjuntá el comprobante de la transferencia.");
+      return;
+    }
+    if (file.size > COMPROBANTE_MAX_MB * 1024 * 1024) {
       setErrorMsg(`El comprobante supera ${COMPROBANTE_MAX_MB} MB.`);
       return;
     }
@@ -158,6 +164,7 @@ export function RegistrarPagoModal({
         </h3>
         <p className="mb-3 text-xs text-slate-500">
           Cobro por transferencia. Queda <b>pendiente de aprobación</b> en Conciliación bancaria.
+          Todos los campos son obligatorios.
         </p>
         <p className="mb-4 text-sm text-slate-600">{saldoDescripcion(f)}</p>
 
@@ -169,7 +176,7 @@ export function RegistrarPagoModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0284C7]"
+              className="rounded-lg bg-[#3F8E91] px-4 py-2 text-sm font-medium text-white hover:bg-[#357a7d]"
             >
               Listo
             </button>
@@ -212,15 +219,18 @@ export function RegistrarPagoModal({
                 <label className={labelClass} htmlFor="reg-pago-banco">
                   Banco de origen
                 </label>
-                <input
+                <select
                   id="reg-pago-banco"
-                  type="text"
                   value={bancoOrigen}
                   onChange={(e) => setBancoOrigen(e.target.value)}
                   className={inputClass}
-                  placeholder="Banco desde el que se envió"
                   required
-                />
+                >
+                  <option value="">— Seleccioná el banco —</option>
+                  {bancos.map((b) => (
+                    <option key={b.id} value={b.nombre}>{b.nombre}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className={labelClass} htmlFor="reg-pago-titular">
@@ -230,8 +240,8 @@ export function RegistrarPagoModal({
                   id="reg-pago-titular"
                   type="text"
                   value={titular}
-                  onChange={(e) => setTitular(e.target.value)}
-                  className={inputClass}
+                  onChange={(e) => setTitular(e.target.value.toUpperCase())}
+                  className={`${inputClass} uppercase placeholder:normal-case`}
                   placeholder="Nombre del titular de la cuenta que envía"
                   required
                 />
@@ -252,7 +262,7 @@ export function RegistrarPagoModal({
               </div>
               <div>
                 <label className={labelClass} htmlFor="reg-pago-file">
-                  Comprobante <span className="text-slate-400">(recomendado — JPG, PNG, WebP o PDF)</span>
+                  Comprobante <span className="text-slate-400">(obligatorio — JPG, PNG, WebP o PDF)</span>
                 </label>
                 <input
                   id="reg-pago-file"
@@ -266,7 +276,7 @@ export function RegistrarPagoModal({
                 <button
                   type="submit"
                   disabled={guardando}
-                  className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0284C7] disabled:opacity-50"
+                  className="rounded-lg bg-[#3F8E91] px-4 py-2 text-sm font-medium text-white hover:bg-[#357a7d] disabled:opacity-50"
                 >
                   {guardando ? "Enviando…" : "Enviar a aprobación"}
                 </button>

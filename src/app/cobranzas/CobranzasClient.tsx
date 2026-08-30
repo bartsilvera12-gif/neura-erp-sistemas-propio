@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, Search, X, ChevronRight, ExternalLink } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 
 type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
@@ -1002,6 +1003,7 @@ function RegistrarPagoModal({
   const [numeroOperacion, setNumeroOperacion] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const { bancos } = useBancosActivos(true);
 
   const montoNum = Number(monto);
   const invalido =
@@ -1011,7 +1013,8 @@ function RegistrarPagoModal({
     !fecha ||
     !bancoOrigen.trim() ||
     !titular.trim() ||
-    !numeroOperacion.trim();
+    !numeroOperacion.trim() ||
+    !file;
   const fieldCls =
     "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
   const labelCls = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
@@ -1048,18 +1051,23 @@ function RegistrarPagoModal({
           </label>
           <label className="block">
             <span className={labelCls}>Banco de origen</span>
-            <input type="text" value={bancoOrigen} onChange={(e) => setBancoOrigen(e.target.value)} placeholder="Banco desde el que se envió" className={fieldCls} />
+            <select value={bancoOrigen} onChange={(e) => setBancoOrigen(e.target.value)} className={fieldCls}>
+              <option value="">— Seleccioná el banco —</option>
+              {bancos.map((b) => (
+                <option key={b.id} value={b.nombre}>{b.nombre}</option>
+              ))}
+            </select>
           </label>
           <label className="block">
             <span className={labelCls}>Titular (quién envía)</span>
-            <input type="text" value={titular} onChange={(e) => setTitular(e.target.value)} placeholder="Titular de la cuenta que envía" className={fieldCls} />
+            <input type="text" value={titular} onChange={(e) => setTitular(e.target.value.toUpperCase())} placeholder="Titular de la cuenta que envía" className={`${fieldCls} uppercase placeholder:normal-case`} />
           </label>
           <label className="block">
             <span className={labelCls}>N° de comprobante / operación</span>
             <input type="text" value={numeroOperacion} onChange={(e) => setNumeroOperacion(e.target.value)} placeholder="Nº de operación de la transferencia" className={fieldCls} />
           </label>
           <label className="block">
-            <span className={labelCls}>Comprobante <span className="normal-case text-slate-400">(recomendado — JPG, PNG, WebP o PDF)</span></span>
+            <span className={labelCls}>Comprobante <span className="normal-case text-slate-400">(obligatorio — JPG, PNG, WebP o PDF)</span></span>
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp,application/pdf"

@@ -11,10 +11,19 @@
 -- (después de recibir uno deja de ser el que menos tiene, así que el siguiente
 -- va al otro) y no necesita guardar ningún contador ni turno.
 --
+-- A QUIÉNES: sólo clientes de SaaS/ERP o Web (`tipo_servicio_cliente` en
+-- 'saas' / 'web'). Los CONTABLES (slug 'otro') no llevan project manager, ni
+-- tampoco marketing ni los que todavía no tienen tipo cargado.
+--
 -- NO TOCA: un alta que ya viene con `project_manager_id` (respeta la decisión
 -- de quien la cargó), ni los clientes que nacen borrados, con baja operativa o
 -- inactivos — repartir esos ensuciaría las carteras con fichas muertas, que es
 -- el mismo criterio con el que se repartió la cartera inicial.
+--
+-- TAMBIÉN EN UPDATE: es habitual dar de alta el cliente y recién después
+-- elegirle el tipo de servicio. Si sólo mirara el INSERT, esos clientes
+-- quedarían sin PM para siempre; por eso también corre cuando cambia
+-- `tipo_servicio_cliente` y el cliente todavía no tiene PM.
 --
 -- Si la empresa no tiene ningún PM marcado, queda en NULL y no falla el alta.
 
@@ -34,6 +43,10 @@ BEGIN
   IF NEW.deleted_at IS NOT NULL
      OR NEW.baja_operativa_at IS NOT NULL
      OR lower(coalesce(NEW.estado, 'activo')) <> 'activo' THEN
+    RETURN NEW;
+  END IF;
+
+  IF lower(coalesce(NEW.tipo_servicio_cliente, '')) NOT IN ('saas', 'web') THEN
     RETURN NEW;
   END IF;
 
@@ -97,7 +110,7 @@ BEGIN
     EXECUTE format('DROP TRIGGER IF EXISTS clientes_asignar_project_manager ON %I.clientes', s);
     EXECUTE format(
       'CREATE TRIGGER clientes_asignar_project_manager
-         BEFORE INSERT ON %I.clientes
+         BEFORE INSERT OR UPDATE OF tipo_servicio_cliente ON %I.clientes
          FOR EACH ROW
          EXECUTE FUNCTION public.trg_clientes_asignar_project_manager()',
       s

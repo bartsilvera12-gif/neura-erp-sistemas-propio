@@ -19,6 +19,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
+import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
@@ -833,7 +834,11 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     setLoading(true);
     setErr(null);
     const sp = new URLSearchParams();
-    if (q.trim()) sp.set("q", q.trim());
+    // El texto NO viaja al servidor: se filtra en memoria (ver
+    // `proyectosVisibles`). Mandarlo obligaba a un fetch por tecla y, peor,
+    // el `ilike` de Postgres distingue acentos: "marilia" no encontraba
+    // "MARÍLIA". Los filtros de abajo sí son del servidor porque son
+    // igualdades exactas sobre columnas indexadas.
     if (filtroEstado) sp.set("estado_id", filtroEstado);
     if (filtroTipo) sp.set("tipo_id", filtroTipo);
     if (filtroRc) sp.set("responsable_comercial_id", filtroRc);
@@ -875,13 +880,8 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       return;
     }
     setEstados(jEst.data ?? []);
-    // Por defecto el tablero muestra el trabajo activo + lo entregado del MES en curso; los
-    // entregados de meses anteriores se ven en el panel gerencial. PERO si hay una búsqueda o
-    // filtro activo, el usuario está buscando algo puntual: mostramos todo lo que matchea
-    // (incluidos los entregados viejos), si no "desaparecen" al buscarlos.
-    const hayBusquedaOFiltro = Boolean(q.trim() || filtroEstado || filtroTipo || filtroRc || filtroRt);
-    const proyectosApi = (jPr.data ?? []) as ProyectoCard[];
-    setProyectos(hayBusquedaOFiltro ? proyectosApi : proyectosApi.filter((p) => !esEntregadoDeMesAnterior(p)));
+    // Se guarda lo que vino tal cual: qué se muestra lo decide `proyectosVisibles`.
+    setProyectos((jPr.data ?? []) as ProyectoCard[]);
 
     if (jTipos.success && jTipos.data) setTipoOpts(jTipos.data);
     if (jUsers.usuarios) setUserOpts(jUsers.usuarios);
@@ -892,7 +892,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     }
 
     setLoading(false);
-  }, [q, filtroEstado, filtroTipo, filtroRc, filtroRt, alcance]);
+  }, [filtroEstado, filtroTipo, filtroRc, filtroRt, alcance]);
 
   useEffect(() => {
     void load();
@@ -928,12 +928,47 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     };
   }, [dataSchema]);
 
+  const tokensBusqueda = useMemo(() => tokenizarBusqueda(q), [q]);
+
+  /**
+   * Lo que efectivamente se muestra. Dos decisiones, las dos en memoria:
+   *
+   *  1. Por defecto el tablero muestra el trabajo activo + lo entregado del MES
+   *     en curso; los entregados viejos viven en el panel gerencial. Si hay una
+   *     búsqueda o un filtro, el usuario busca algo puntual y se muestra todo lo
+   *     que coincida, o el proyecto "desaparecería" justo al buscarlo.
+   *  2. El texto se compara contra todo lo visible de la tarjeta —cliente,
+   *     título, tipo, estado y responsables—, sin acentos y por tokens sueltos.
+   */
+  const proyectosVisibles = useMemo(() => {
+    const hayFiltro =
+      tokensBusqueda.length > 0 || Boolean(filtroEstado || filtroTipo || filtroRc || filtroRt);
+    const base = hayFiltro ? proyectos : proyectos.filter((p) => !esEntregadoDeMesAnterior(p));
+    if (tokensBusqueda.length === 0) return base;
+    return base.filter((p) =>
+      coincideBusqueda(
+        tokensBusqueda,
+        [
+          p.titulo,
+          p.cliente?.empresa,
+          p.cliente?.nombre_contacto,
+          p.proyecto_tipo?.nombre,
+          p.proyecto_estado?.nombre,
+          p.responsable_comercial?.nombre,
+          p.responsable_tecnico?.nombre,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      )
+    );
+  }, [proyectos, tokensBusqueda, filtroEstado, filtroTipo, filtroRc, filtroRt]);
+
   const estadoActivoIds = useMemo(() => new Set(estados.map((e) => e.id)), [estados]);
 
   const kanbanColumns = useMemo(() => {
     const columns = [...estados];
     const missing = new Map<string, EstadoRow>();
-    for (const p of proyectos) {
+    for (const p of proyectosVisibles) {
       if (estadoActivoIds.has(p.estado_id) || missing.has(p.estado_id)) continue;
       missing.set(p.estado_id, {
         id: p.estado_id,
@@ -945,17 +980,17 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       });
     }
     return [...columns, ...missing.values()];
-  }, [estadoActivoIds, estados, proyectos]);
+  }, [estadoActivoIds, estados, proyectosVisibles]);
 
   const byColumn = useMemo(() => {
     const m = new Map<string, ProyectoCard[]>();
     for (const e of kanbanColumns) m.set(e.id, []);
-    for (const p of proyectos) {
+    for (const p of proyectosVisibles) {
       const col = m.get(p.estado_id);
       if (col) col.push(p);
     }
     return m;
-  }, [kanbanColumns, proyectos]);
+  }, [kanbanColumns, proyectosVisibles]);
 
   const prioridadByCodigo = useMemo(() => {
     const m = new Map<string, PrioridadConfig>();
@@ -1210,9 +1245,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
               <span>
                 Mostrando{" "}
                 <strong className="text-slate-700">
-                  {pageSize === "todos" ? proyectos.length : Math.min(pageSize, proyectos.length)}
+                  {pageSize === "todos" ? proyectosVisibles.length : Math.min(pageSize, proyectosVisibles.length)}
                 </strong>{" "}
-                de {proyectos.length}
+                de {proyectosVisibles.length}
               </span>
               <label className="flex items-center gap-1.5">
                 <span>Registros:</span>
@@ -1258,19 +1293,13 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           </span>
           <input
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-            placeholder="Buscar título o cliente…"
+            placeholder="Buscar cliente, tipo, estado o responsable…"
+            aria-label="Buscar proyectos"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void load()}
+            onKeyDown={(e) => e.key === "Escape" && setQ("")}
           />
         </div>
-        <button
-          type="button"
-          className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
-          onClick={() => void load()}
-        >
-          Buscar
-        </button>
         <FancySelect
           className="min-w-[180px] shrink-0"
           ariaLabel="Filtrar por estado"
@@ -1340,7 +1369,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
 
       {vista === "lista" ? (
         <ProyectosLista
-          proyectos={proyectos}
+          proyectos={proyectosVisibles}
           estados={estados}
           estadoActivoIds={estadoActivoIds}
           prioridadByCodigo={prioridadByCodigo}

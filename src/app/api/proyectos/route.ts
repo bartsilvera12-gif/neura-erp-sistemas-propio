@@ -4,6 +4,7 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { insertHistorialCambioEstado } from "@/lib/proyectos/historial-actions";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
@@ -47,16 +48,18 @@ export async function GET(request: Request) {
       rows = (data ?? []) as Record<string, unknown>[];
     } else {
       // Búsqueda: proyectos cuyo título matchea, o cuyo cliente (empresa /
-      // contacto) matchea. Traemos los proyectos con los filtros base en UNA
-      // sola query y filtramos en memoria. Evita armar `.in(id/cliente_id, [...])`
+      // contacto) matchea. Traemos proyectos y clientes con los filtros base en
+      // DOS queries y cruzamos en memoria. Evita armar `.in(id/cliente_id, [...])`
       // con cientos de UUIDs, que genera una URL enorme que el gateway rechaza
       // (URI too long → página HTML de error). Los proyectos por empresa son
       // acotados, así que filtrar en memoria es barato y seguro.
-      const term = `%${q}%`;
-      const qLower = q.toLowerCase();
-      const [cEmp, cNom, todos] = await Promise.all([
-        sb.from("clientes").select("id").eq("empresa_id", empresaId).ilike("empresa", term),
-        sb.from("clientes").select("id").eq("empresa_id", empresaId).ilike("nombre_contacto", term),
+      //
+      // El match usa el mismo normalizador que los tableros y NO `ilike`: en
+      // Postgres `ilike` distingue acentos, así que "marilia" no encontraba a
+      // "MARÍLIA", y al ser un substring único "karen web" no encontraba nada.
+      const tokens = tokenizarBusqueda(q);
+      const [cli, todos] = await Promise.all([
+        sb.from("clientes").select("id, empresa, nombre_contacto").eq("empresa_id", empresaId),
         proyectosFiltrados().order("last_activity_at", { ascending: false }),
       ]);
 
@@ -64,15 +67,16 @@ export async function GET(request: Request) {
         return NextResponse.json(errorResponse(todos.error.message), { status: 400 });
       }
 
-      const clienteMatch = new Set<string>([
-        ...((cEmp.data ?? []) as { id: string }[]).map((x) => x.id),
-        ...((cNom.data ?? []) as { id: string }[]).map((x) => x.id),
-      ]);
+      // Texto del cliente por id, para no re-armarlo en cada proyecto.
+      const textoCliente = new Map<string, string>();
+      for (const c of (cli.data ?? []) as { id: string; empresa?: string; nombre_contacto?: string }[]) {
+        textoCliente.set(c.id, [c.empresa, c.nombre_contacto].filter(Boolean).join(" "));
+      }
 
       rows = ((todos.data ?? []) as Record<string, unknown>[]).filter((r) => {
-        const titulo = typeof r.titulo === "string" ? r.titulo.toLowerCase() : "";
+        const titulo = typeof r.titulo === "string" ? r.titulo : "";
         const cid = typeof r.cliente_id === "string" ? r.cliente_id : "";
-        return titulo.includes(qLower) || (cid !== "" && clienteMatch.has(cid));
+        return coincideBusqueda(tokens, `${titulo} ${textoCliente.get(cid) ?? ""}`);
       });
     }
 

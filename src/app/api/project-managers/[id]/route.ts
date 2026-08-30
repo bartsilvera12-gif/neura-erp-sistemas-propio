@@ -9,9 +9,9 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
  * GET   /api/project-managers/[id] — cartera del PM + clientes disponibles.
  * PATCH /api/project-managers/[id] — asigna o quita clientes de esa cartera.
  *
- * Quién puede ESCRIBIR: admin de empresa, super admin, o el propio PM sobre su
- * cartera. Un usuario cualquiera con acceso a Proyectos puede mirar, no tocar:
- * mover un cliente de cartera cambia de quién es la responsabilidad.
+ * Módulo de ADMINISTRACIÓN: las dos operaciones exigen admin de empresa o
+ * super admin. Muestra la cartera completa y mover un cliente cambia de quién
+ * es la responsabilidad, así que no alcanza con tener acceso a Proyectos.
  */
 
 type ClienteRow = {
@@ -33,6 +33,12 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const auth = await requireProyectosApiAccess(request);
   if (!auth.ok) {
     return NextResponse.json(errorResponse(auth.message), { status: auth.status });
+  }
+  if (!esAdmin(auth)) {
+    return NextResponse.json(
+      errorResponse("Solo un administrador puede ver la gestión de project managers"),
+      { status: 403 }
+    );
   }
   const { id } = await ctx.params;
 
@@ -101,7 +107,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
           ...c,
           ocupado_por_nombre: c.ocupado_por ? nombrePm.get(c.ocupado_por) ?? null : null,
         })),
-        puede_editar: puedeEditarCartera(auth.rol, auth.bootstrapSuperAdmin, auth.usuarioCatalogId, id),
+        puede_editar: true,
       })
     );
   } catch (e) {
@@ -109,13 +115,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   }
 }
 
-function puedeEditarCartera(
-  rol: string | null,
-  bootstrapSuperAdmin: boolean,
-  usuarioId: string,
-  pmId: string
-): boolean {
-  return bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(rol) || usuarioId === pmId;
+function esAdmin(auth: { rol: string | null; bootstrapSuperAdmin: boolean }): boolean {
+  return auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol);
 }
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -125,9 +126,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
   const { id } = await ctx.params;
 
-  if (!puedeEditarCartera(auth.rol, auth.bootstrapSuperAdmin, auth.usuarioCatalogId, id)) {
+  if (!esAdmin(auth)) {
     return NextResponse.json(
-      errorResponse("Solo un administrador o el propio project manager puede cambiar esta cartera"),
+      errorResponse("Solo un administrador puede cambiar esta cartera"),
       { status: 403 }
     );
   }

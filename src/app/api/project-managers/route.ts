@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 
 /**
  * GET /api/project-managers — Project managers de la empresa y su cartera.
@@ -14,6 +15,15 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
  * en el schema del tenant (`getChatServiceClientForEmpresa`): son dos clientes
  * distintos a propósito, no es duplicación.
  */
+
+/**
+ * Gestión Project Manager es un módulo de administración: muestra la cartera
+ * completa de la empresa y permite mover clientes de un responsable a otro.
+ * Ocultar el ítem del menú no es un permiso — la puerta real está acá.
+ */
+function soloAdmin(auth: { rol: string | null; bootstrapSuperAdmin: boolean }): boolean {
+  return auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol);
+}
 
 export type ProjectManagerRow = {
   id: string;
@@ -27,6 +37,9 @@ export async function GET(request: Request) {
   const auth = await requireProyectosApiAccess(request);
   if (!auth.ok) {
     return NextResponse.json(errorResponse(auth.message), { status: auth.status });
+  }
+  if (!soloAdmin(auth)) {
+    return NextResponse.json(errorResponse("Solo un administrador puede ver la gestión de project managers"), { status: 403 });
   }
 
   try {

@@ -54,6 +54,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       superAdmin,
+      // El menu necesita distinguir "admin de empresa" de "super admin" para
+      // los items reservados a administracion; sin esto tendria que pedir el
+      // usuario por separado.
+      rol: usuario.rol ?? null,
       slugs: modulos.map((m) => m.slug).filter(Boolean),
       modulos: modulos.map((m) => ({ id: m.id, nombre: m.nombre, slug: m.slug })),
     });

@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/core";
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
@@ -1072,6 +1072,20 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     }
   }
 
+  /**
+   * `cambiarEstado` se recrea en cada render, asi que una lambda inline en la
+   * tarjeta cambiaria de identidad siempre y anularia el `memo` de abajo. El
+   * ref deja pasar la ultima version con un callback que nunca cambia; mismo
+   * patron que `loadRef`.
+   */
+  const cambiarEstadoRef = useRef(cambiarEstado);
+  useEffect(() => {
+    cambiarEstadoRef.current = cambiarEstado;
+  });
+  const handleMove = useCallback((proyectoId: string, estadoId: string) => {
+    void cambiarEstadoRef.current(proyectoId, estadoId);
+  }, []);
+
   function handleDragStart(event: DragStartEvent) {
     setActiveDragProjectId(readProjectIdFromDragId(event.active.id));
   }
@@ -1374,7 +1388,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           estadoActivoIds={estadoActivoIds}
           prioridadByCodigo={prioridadByCodigo}
           onOpen={setModalProjectId}
-          onMove={(proyectoId, estadoId) => void cambiarEstado(proyectoId, estadoId)}
+          onMove={handleMove}
           movingProjectId={movingProjectId}
           pageSize={pageSize}
         />
@@ -1407,7 +1421,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
                         estadoActivoIds={estadoActivoIds}
                         prioridadConfig={prioridadByCodigo.get(p.prioridad)}
                         onOpen={setModalProjectId}
-                        onMove={(proyectoId, estadoId) => void cambiarEstado(proyectoId, estadoId)}
+                        onMove={handleMove}
                         moving={movingProjectId === p.id}
                       />
                     ))}
@@ -1490,7 +1504,21 @@ function KanbanColumnView({ col, children }: KanbanColumnViewProps) {
   );
 }
 
-function ProjectCardView({
+/**
+ * Tarjeta del Kanban. Se exporta MEMOIZADA (`ProjectCardView`, al final del
+ * archivo) y no cruda.
+ *
+ * Por que: cada tarjeta llama a `useDraggable`, que la suscribe al DndContext,
+ * y ademas parsea el brief del proyecto para calcular los badges. Sin memo,
+ * escribir una letra en el buscador re-renderizaba las ~100 tarjetas del
+ * tablero enteras — por eso en Lista (que pinta 25 filas simples) se sentia
+ * instantaneo y en Kanban no. Con memo solo se montan/desmontan las que
+ * entran o salen del resultado; las que siguen ahi no hacen nada.
+ *
+ * Requisito: todas las props tienen que ser estables entre renders. `estados`
+ * y `estadoActivoIds` ya vienen memoizados, y `onMove` es `handleMove`.
+ */
+function ProjectCardViewBase({
   p,
   estados,
   estadoActivoIds,
@@ -1652,6 +1680,8 @@ function ProjectCardView({
     </div>
   );
 }
+
+const ProjectCardView = memo(ProjectCardViewBase);
 
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (

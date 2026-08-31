@@ -26,7 +26,6 @@ import { getFacturas } from "@/lib/gestion-clientes/storage";
 import { estadoFacturaParaUi } from "@/lib/gestion-clientes/estado-factura-ui";
 import type { Cliente } from "@/lib/clientes/types";
 import type { EstadoFactura, Factura } from "@/lib/gestion-clientes/types";
-import { FechaSelect } from "@/components/ui/FechaSelect";
 
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
@@ -980,19 +979,19 @@ function GestionClientesPageInner() {
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <label className={fLabelClass}>Fecha emisión desde</label>
-                      <FechaSelect name="fecha_desde" value={filters.fecha_desde} onChange={handleChange} className={fInputClass} />
+                      <input type="date" name="fecha_desde" value={filters.fecha_desde} onChange={handleChange} className={fInputClass} />
                     </div>
                     <div>
                       <label className={fLabelClass}>Fecha emisión hasta</label>
-                      <FechaSelect name="fecha_hasta" value={filters.fecha_hasta} onChange={handleChange} className={fInputClass} />
+                      <input type="date" name="fecha_hasta" value={filters.fecha_hasta} onChange={handleChange} className={fInputClass} />
                     </div>
                     <div>
                       <label className={fLabelClass}>Vencimiento desde</label>
-                      <FechaSelect name="vencimiento_desde" value={filters.vencimiento_desde} onChange={handleChange} className={fInputClass} />
+                      <input type="date" name="vencimiento_desde" value={filters.vencimiento_desde} onChange={handleChange} className={fInputClass} />
                     </div>
                     <div>
                       <label className={fLabelClass}>Vencimiento hasta</label>
-                      <FechaSelect name="vencimiento_hasta" value={filters.vencimiento_hasta} onChange={handleChange} className={fInputClass} />
+                      <input type="date" name="vencimiento_hasta" value={filters.vencimiento_hasta} onChange={handleChange} className={fInputClass} />
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 pt-3">
@@ -1369,6 +1368,8 @@ function GestionClientesPageInner() {
                 numero_factura: facturaCobroModal.numero_factura,
                 saldo: facturaCobroModal.saldo,
                 moneda: facturaCobroModal.moneda,
+                cliente_id: selected?.id ?? "",
+                cliente_label: selected ? clienteNombre(selected) : undefined,
               }
             : null
         }

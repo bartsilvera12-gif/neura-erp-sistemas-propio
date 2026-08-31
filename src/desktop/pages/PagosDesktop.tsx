@@ -11,7 +11,6 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import type { Cliente } from "@/lib/clientes/types";
 import type { Factura } from "@/lib/gestion-clientes/types";
-import { FechaSelect } from "@/components/ui/FechaSelect";
 
 // ── Estilos base ──────────────────────────────────────────────────────────────
 
@@ -420,21 +419,23 @@ export default function PagosPage() {
             <label className={LABEL_CLS}>
               Desde {tab === "pendientes" ? "(vencimiento)" : "(fecha de pago)"}
             </label>
-            <FechaSelect
+            <input
+              type="date"
               value={filtroDesde}
               onChange={(e) => setFiltroDesde(e.target.value)}
               className={INPUT_CLS}
-/>
+            />
           </div>
           <div className="min-w-[10rem]">
             <label className={LABEL_CLS}>
               Hasta {tab === "pendientes" ? "(vencimiento)" : "(fecha de pago)"}
             </label>
-            <FechaSelect
+            <input
+              type="date"
               value={filtroHasta}
               onChange={(e) => setFiltroHasta(e.target.value)}
               className={INPUT_CLS}
-/>
+            />
           </div>
           <div className="min-w-[14rem] flex-1">
             <label className={LABEL_CLS}>Tipo de cliente</label>
@@ -831,6 +832,7 @@ export default function PagosPage() {
                 numero_factura: facturaSeleccionada.numero_factura,
                 saldo: facturaSeleccionada.saldo,
                 moneda: facturaSeleccionada.moneda,
+                cliente_id: facturaSeleccionada.cliente_id ?? "",
               }
             : null
         }

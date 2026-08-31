@@ -1800,6 +1800,8 @@ export default function ComisionesPage() {
       numero_factura: f.numero_factura ?? "",
       saldo: f.saldo_pendiente,
       moneda: f.moneda,
+      cliente_id: f.cliente_id ?? "",
+      cliente_label: f.cliente_label,
     });
   };
   const cobrarModal = (

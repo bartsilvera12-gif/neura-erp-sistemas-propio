@@ -84,11 +84,9 @@ export async function POST(request: NextRequest) {
 
     // Aviso in-app a los administradores (aprueban en Conciliación). Best-effort.
     await notificarCobroPendiente(auth.empresaId, {
-      cobroId: cobro.id,
-      facturaId: cobro.factura_id ?? null,
-      clienteId: cobro.cliente_id ?? null,
-      monto: Number(cobro.monto) || 0,
       actorId: auth.usuarioCatalogId ?? null,
+      clienteId: cobro.cliente_id ?? null,
+      cobros: [{ cobroId: cobro.id, facturaId: cobro.factura_id ?? null, monto: Number(cobro.monto) || 0 }],
     });
 
     // Comprobante opcional (se sube al registrar).

@@ -143,6 +143,7 @@ export default function PagosMobile() {
                 numero_factura: facturaSel.numero_factura,
                 saldo: Number(facturaSel.saldo ?? 0),
                 moneda: facturaSel.moneda,
+                cliente_id: String(facturaSel.cliente_id ?? ""),
               }
             : null
         }

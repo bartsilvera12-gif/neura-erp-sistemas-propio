@@ -104,6 +104,85 @@ export async function registrarTransferencia(schemaRaw: string, empresaId: strin
   }
 }
 
+export interface RegistrarTransferenciaMultipleInput {
+  banco_origen: string;
+  titular: string;
+  numero_operacion: string;
+  fecha: string;
+  created_by: string | null;
+  items: { factura_id: string; monto: number; idempotency_key: string | null }[];
+}
+
+/**
+ * Cobro múltiple: UNA transferencia (mismo banco + N° de operación) aplicada a
+ * VARIAS facturas del cliente. Crea un `cobros_pendientes` por factura en UNA
+ * transacción atómica (o todas o ninguna). El comprobante se sube aparte y se
+ * comparte (updateComprobantePath por cada fila). NO reduce saldo ni contabiliza:
+ * cada fila se aprueba en Conciliación como cualquier transferencia.
+ */
+export async function registrarTransferenciaMultiple(
+  schemaRaw: string,
+  empresaId: string,
+  d: RegistrarTransferenciaMultipleInput
+): Promise<CobroPendienteRow[]> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const tC = quoteSchemaTable(schema, "cobros_pendientes");
+  const tF = quoteSchemaTable(schema, "facturas");
+
+  if (!String(d.banco_origen ?? "").trim()) throw new ConciliacionError("Falta el banco de origen.");
+  if (!String(d.titular ?? "").trim()) throw new ConciliacionError("Falta el titular.");
+  if (!String(d.numero_operacion ?? "").trim()) throw new ConciliacionError("Falta el número de operación.");
+  const items = (d.items ?? []).filter((it) => it && it.factura_id && Number(it.monto) > 0);
+  if (items.length === 0) throw new ConciliacionError("Seleccioná al menos una factura con monto.");
+
+  const bancoNorm = normBanco(d.banco_origen);
+  const opNorm = normNumeroOp(d.numero_operacion);
+  if (!opNorm) throw new ConciliacionError("El número de operación no es válido.");
+
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const out: CobroPendienteRow[] = [];
+    for (const it of items) {
+      const { rows: fr } = await client.query<{ estado: string; saldo: string; cliente_id: string | null; numero_factura: string }>(
+        `SELECT estado, saldo, cliente_id, numero_factura FROM ${tF} WHERE id=$1::uuid AND empresa_id=$2::uuid`,
+        [it.factura_id, empresaId]
+      );
+      const f = fr[0];
+      if (!f) throw new ConciliacionError("Factura no encontrada.", 404);
+      if (["Anulado", "Corregida NC"].includes(f.estado)) {
+        throw new ConciliacionError(`La factura ${f.numero_factura} está anulada o corregida por NC.`);
+      }
+      if (Number(it.monto) > Number(f.saldo)) {
+        throw new ConciliacionError(`El monto (${it.monto}) supera el saldo de la factura ${f.numero_factura} (${f.saldo}).`);
+      }
+      try {
+        const { rows } = await client.query<CobroPendienteRow>(
+          `INSERT INTO ${tC} (empresa_id, factura_id, cliente_id, monto, fecha, banco_origen, banco_origen_norm,
+             titular, numero_operacion, numero_operacion_norm, estado, idempotency_key, created_by)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::numeric,$5::date,$6,$7,$8,$9,$10,'pendiente',$11::uuid,$12::uuid)
+           RETURNING ${COLS}`,
+          [empresaId, it.factura_id, f.cliente_id, it.monto, d.fecha, d.banco_origen.trim(), bancoNorm,
+           d.titular.trim(), d.numero_operacion.trim(), opNorm, it.idempotency_key, d.created_by]
+        );
+        out.push(rows[0]);
+      } catch (e) {
+        if ((e as { code?: string })?.code === "23505") {
+          throw new ConciliacionError(`Ya existe una carga para la factura ${f.numero_factura} con ese banco y N° de operación.`, 409);
+        }
+        throw e;
+      }
+    }
+    await client.query("COMMIT");
+    return out;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 export async function updateComprobantePath(schemaRaw: string, empresaId: string, cobroId: string, path: string | null, mime: string | null): Promise<void> {
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const tC = quoteSchemaTable(schema, "cobros_pendientes");

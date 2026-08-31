@@ -20,6 +20,9 @@ import { formatBytes, type AyudaAdjunto, type AyudaArticulo } from "@/app/config
 
 type Relacionado = { id: string; slug: string; titulo: string; categoria_nombre: string | null };
 
+/** Item del índice para el buscador: incluye el extracto del cuerpo. */
+type ItemBuscable = Relacionado & { resumen: string | null; texto?: string };
+
 /**
  * Artículo de la Ayuda en línea.
  *
@@ -42,7 +45,9 @@ export default function ArticuloClient({ slug }: { slug: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
-  const [sugeridos, setSugeridos] = useState<Relacionado[]>([]);
+  /** Índice completo, cargado una sola vez para buscar sin consultar. */
+  const [indice, setIndice] = useState<ItemBuscable[]>([]);
+  const [cerrado, setCerrado] = useState(false);
   const cajaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,40 +79,54 @@ export default function ArticuloClient({ slug }: { slug: string }) {
     };
   }, [slug]);
 
-  /** El buscador de arriba pega contra el listado, para poder saltar sin volver. */
+  /**
+   * El índice se trae UNA vez, en segundo plano, mientras se lee el artículo.
+   *
+   * Antes cada tecla disparaba una consulta con 280 ms de espera y sólo miraba
+   * lo que el servidor devolvía para esa palabra exacta. Ahora el filtrado es
+   * local: instantáneo, sin acentos, por tokens en cualquier orden y contra el
+   * extracto del cuerpo que ya viaja en el listado.
+   */
   useEffect(() => {
-    const q = busqueda.trim();
-    if (!q) {
-      setSugeridos([]);
-      return;
-    }
-    const t = setTimeout(async () => {
+    let cancelado = false;
+    (async () => {
       try {
-        const r = await apiFetch(`/api/ayuda?q=${encodeURIComponent(q)}`);
+        const r = await apiFetch("/api/ayuda");
         const j = await r.json();
-        if (r.ok && j?.success) {
-          const tokens = tokenizarBusqueda(q);
-          const items = (j.data.articulos as Relacionado[])
-            .filter((a) => a.slug !== slug)
-            .sort((a, b) => {
-              // Los que matchean por título arriba: el servidor también trae los
-              // que sólo coinciden dentro del texto.
-              const ta = coincideBusqueda(tokens, a.titulo) ? 0 : 1;
-              const tb = coincideBusqueda(tokens, b.titulo) ? 0 : 1;
-              return ta - tb;
-            });
-          setSugeridos(items.slice(0, 6));
-        }
+        if (!cancelado && r.ok && j?.success) setIndice(j.data.articulos as ItemBuscable[]);
       } catch {
         /* silencioso: el buscador es un extra, no la razón de esta pantalla */
       }
-    }, 280);
-    return () => clearTimeout(t);
-  }, [busqueda, slug]);
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const sugeridos = useMemo(() => {
+    if (cerrado) return [];
+    const tokens = tokenizarBusqueda(busqueda);
+    if (tokens.length === 0) return [];
+    return indice
+      .filter((a) => a.slug !== slug)
+      .filter((a) =>
+        coincideBusqueda(
+          tokens,
+          `${a.titulo} ${a.resumen ?? ""} ${a.categoria_nombre ?? ""} ${a.texto ?? ""}`
+        )
+      )
+      // Lo que coincide en el TÍTULO primero: es lo que se estaba buscando.
+      .sort((a, b) => Number(!coincideBusqueda(tokens, a.titulo)) - Number(!coincideBusqueda(tokens, b.titulo)))
+      .slice(0, 8);
+  }, [indice, busqueda, slug, cerrado]);
+
+  useEffect(() => {
+    setCerrado(false);
+  }, [busqueda]);
 
   useEffect(() => {
     const alClickear = (e: MouseEvent) => {
-      if (!cajaRef.current?.contains(e.target as Node)) setSugeridos([]);
+      if (!cajaRef.current?.contains(e.target as Node)) setCerrado(true);
     };
     document.addEventListener("mousedown", alClickear);
     return () => document.removeEventListener("mousedown", alClickear);
@@ -167,27 +186,36 @@ export default function ArticuloClient({ slug }: { slug: string }) {
           if (e.key === "Escape") setBusqueda("");
           if (e.key === "Enter" && sugeridos[0]) router.push(`/ayuda/${encodeURIComponent(sugeridos[0].slug)}`);
         }}
+        autoComplete="off"
         placeholder="Ingresá acá tu consulta"
         aria-label="Buscar en la ayuda"
         className="w-full rounded-xl border border-white/20 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/30"
       />
-      {sugeridos.length > 0 ? (
-        <ul className="absolute inset-x-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-          {sugeridos.map((a) => (
-            <li key={a.id}>
-              <Link
-                href={`/ayuda/${encodeURIComponent(a.slug)}`}
-                onClick={() => setBusqueda("")}
-                className="block px-4 py-2.5 transition-colors hover:bg-[#4FAEB2]/10"
-              >
-                <span className="block truncate text-sm font-medium text-slate-800">{a.titulo}</span>
-                <span className="block truncate text-[11px] text-slate-400">
-                  {a.categoria_nombre ?? "Sin categoría"}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+      {busqueda.trim() && !cerrado ? (
+        <div className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+          {sugeridos.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-slate-400">
+              Nada para “{busqueda.trim()}”. Probá con otra palabra.
+            </p>
+          ) : (
+            <ul className="max-h-80 overflow-y-auto py-1">
+              {sugeridos.map((a) => (
+                <li key={a.id}>
+                  <Link
+                    href={`/ayuda/${encodeURIComponent(a.slug)}`}
+                    onClick={() => setBusqueda("")}
+                    className="block px-4 py-2.5 transition-colors hover:bg-[#4FAEB2]/10"
+                  >
+                    <span className="block truncate text-sm font-medium text-slate-800">{a.titulo}</span>
+                    <span className="block truncate text-[11px] text-slate-400">
+                      {a.categoria_nombre ?? "Sin categoría"}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ) : null}
     </div>
   );
@@ -217,7 +245,9 @@ export default function ArticuloClient({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="-mx-4 -mt-4 md:-mx-6 md:-mt-6">
+    // `overflow-x-hidden`: nada de esta pantalla justifica scroll horizontal, y
+    // sin el candado un solo bloque ancho corre TODO el layout hacia la izquierda.
+    <div className="-mx-4 -mt-4 overflow-x-hidden md:-mx-6 md:-mt-6">
       {/* Banda superior con el buscador */}
       <div
         className="px-4 py-4 md:px-6"

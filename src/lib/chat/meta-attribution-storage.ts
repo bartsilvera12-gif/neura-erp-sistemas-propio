@@ -18,6 +18,7 @@ import {
   summarizeAttributionForLog,
   type MetaAttributionExtracted,
 } from "@/lib/chat/meta-attribution-extractor";
+import { resolveMetaAdCampaign } from "@/lib/chat/meta-ad-campaign-resolver";
 
 const LOG = "[meta-attribution]";
 
@@ -104,6 +105,11 @@ export async function captureFirstMetaAttribution(
 
   const firstMessageAt = parseTimestamp(input.messageTimestampIso);
 
+  // Resolver ad_id → nombre de anuncio + campaña (Meta Graph API, best-effort).
+  // El referral trae el ad_id pero no el nombre de campaña; esto lo completa para
+  // poder separar campañas (ERP vs web) en Reportes. Si no hay token o falla, null.
+  const adCamp = extracted.meta_ad_id ? await resolveMetaAdCampaign(extracted.meta_ad_id) : null;
+
   const row: Record<string, unknown> = {
     empresa_id: empresaId,
     conversation_id: conversationId,
@@ -111,6 +117,9 @@ export async function captureFirstMetaAttribution(
     channel_id: input.channelId ?? null,
     provider: input.provider ?? "meta",
     meta_ad_id: extracted.meta_ad_id,
+    meta_ad_name: adCamp?.ad_name ?? null,
+    meta_campaign_id: adCamp?.campaign_id ?? null,
+    meta_campaign_name: adCamp?.campaign_name ?? null,
     meta_source_type: extracted.meta_source_type,
     meta_source_url: extracted.meta_source_url,
     meta_ctwa_clid: extracted.meta_ctwa_clid,

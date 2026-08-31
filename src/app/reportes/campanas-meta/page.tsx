@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { ymdInicioFinMesLocal, toCalendarDateStr } from "@/lib/fechas/calendario";
-import { FechaSelect } from "@/components/ui/FechaSelect";
 
 const INPUT_CLS =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition-colors placeholder:text-slate-400 hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
@@ -320,11 +319,11 @@ export default function ReporteCampanasMetaPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[10rem]">
             <label className={LABEL_CLS}>Desde</label>
-            <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} className={INPUT_CLS} />
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={INPUT_CLS} />
           </div>
           <div className="min-w-[10rem]">
             <label className={LABEL_CLS}>Hasta</label>
-            <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} className={INPUT_CLS} />
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={INPUT_CLS} />
           </div>
           <div className="min-w-[10rem]">
             <label className={LABEL_CLS}>Outcome</label>
@@ -504,10 +503,13 @@ export default function ReporteCampanasMetaPage() {
                           <AdImage meta_ad_id={c.meta_ad_id} size={40} />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-900">
-                              {c.headline ?? c.meta_ad_name ?? truncId(c.meta_ad_id, 10) ?? "Anuncio sin id"}
+                              {c.meta_ad_name ?? c.headline ?? truncId(c.meta_ad_id, 10) ?? "Anuncio sin id"}
                             </p>
-                            <p className="mt-0.5 truncate text-[11px] text-slate-500">
-                              {c.source_type ?? "ad"} · {truncId(c.meta_ad_id, 14)}
+                            <p className="mt-0.5 truncate text-[11px] font-medium text-[#3F8E91]">
+                              {c.meta_campaign_name ?? "Campaña sin identificar"}
+                            </p>
+                            <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                              {c.headline ? `“${c.headline}” · ` : ""}{truncId(c.meta_ad_id, 14)}
                             </p>
                           </div>
                         </div>
@@ -711,9 +713,11 @@ function Drawer({
             <div className="flex min-w-0 items-start gap-3">
               <AdImage meta_ad_id={c.meta_ad_id} size={56} />
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4FAEB2]">Anuncio Meta</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4FAEB2]">
+                  {c.meta_campaign_name ?? "Anuncio Meta"}
+                </p>
                 <h3 className="mt-0.5 truncate text-base font-semibold text-slate-900">
-                  {c.headline ?? c.meta_ad_name ?? truncId(c.meta_ad_id, 16) ?? "Anuncio sin id"}
+                  {c.meta_ad_name ?? c.headline ?? truncId(c.meta_ad_id, 16) ?? "Anuncio sin id"}
                 </h3>
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                   <RedSocialBadge red={c.red_social} />

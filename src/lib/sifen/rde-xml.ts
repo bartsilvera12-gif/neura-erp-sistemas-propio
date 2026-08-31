@@ -344,7 +344,29 @@ export function buildOfficialRdeFacturaElectronicaXml(
   const dEst = normalizarCodigoTres(emisor.establecimiento);
   const dPunExp = normalizarCodigoTres(emisor.punto_expedicion);
   const dNumDoc = normalizarNumeroDocumentoSifen(documento.numero_factura);
-  const fechaCdc = fechaEmisionCdc(documento.fecha);
+
+  // Fecha/hora de emisión ELECTRÓNICA = el momento real en que se emite a SET
+  // (hora civil de Paraguay), NO la fecha comercial de la factura. Si el DE se
+  // firma/envía días después de esa fecha comercial, usar la fecha vieja hace que
+  // SET rechace por "retraso". El CDC y dFeEmiDE deben usar la MISMA fecha
+  // calendario entre sí: por eso ambos salen de `emiYmd` (hoy), no de documento.fecha.
+  const ahora = opts.fechaHoraEmision ?? new Date();
+  const refFirma = new Date(ahora.getTime() - SIFEN_FIRMA_SKEW_MS);
+  const { ymd: emiYmd, hms: emiHms } = wallYmdAndHmsInSifenTz(refFirma);
+
+  // Guardarraíl de período fiscal: solo se emite dentro del MISMO mes que la fecha
+  // comercial de la factura. Cruzar de mes movería el DE a otro período de IVA.
+  {
+    const fYm = /^(\d{4})-(\d{2})/.exec(String(documento.fecha).trim());
+    const eYm = /^(\d{4})-(\d{2})/.exec(emiYmd);
+    if (fYm && eYm && (fYm[1] !== eYm[1] || fYm[2] !== eYm[2])) {
+      throw new Error(
+        `No se puede emitir a SET: la factura es del período ${fYm[1]}-${fYm[2]} y hoy es ${eYm[1]}-${eYm[2]}. La emisión electrónica debe caer en el mismo mes que la factura. Anulá y re-facturá en el mes actual.`
+      );
+    }
+  }
+
+  const fechaCdc = fechaEmisionCdc(emiYmd);
   /** Debe coincidir con `gEmis.iTipCont` y entrar en el CDC antes de la fecha (SET / TIPS). */
   const iTipContEmi = iTipContCodigo(emisor.razon_social);
 
@@ -372,8 +394,7 @@ export function buildOfficialRdeFacturaElectronicaXml(
     dCodSeg,
   });
 
-  const ahora = opts.fechaHoraEmision ?? new Date();
-  const dFeEmiDE = dFeEmiDeYFecFirma(documento.fecha, ahora);
+  const dFeEmiDE = `${emiYmd}T${emiHms}`;
   const dFecFirma = dFeEmiDE;
 
   const dFeIniT = vigenciaIso(opts.timbradoFechaInicio);

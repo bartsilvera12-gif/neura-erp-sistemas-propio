@@ -8,6 +8,14 @@ type Sb = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
 const PAGE = 800;
 const ESTADOS_NO_DEUDA = new Set(["pagado", "anulado", "corregida nc"]);
 
+/**
+ * SOLO neura: en Seguimiento Cobranzas se cuentan únicamente cuotas de suscripción
+ * (facturas con suscripcion_id), dejando afuera implementación/contado. NO afecta a
+ * ninguna otra empresa/schema. Pedido explícito del negocio.
+ */
+const NEURA_EMPRESA_ID = "9fd29108-4b0f-4faf-9eee-c509f6227d47";
+const soloCuotasSuscripcion = (empresaId: string) => empresaId === NEURA_EMPRESA_ID;
+
 export type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
 /** Un servicio = una suscripción (o el bucket "General" para facturas sin suscripcion_id). */
@@ -227,13 +235,18 @@ function agruparPorServicio(
   suscInfo: Map<string, SuscInfo>,
   catalogo: Record<string, string>,
   clienteTipoSlug: string | null | undefined,
-  hoyYmd: string
+  hoyYmd: string,
+  /** Solo cuotas de suscripción: descarta el bucket "General" (implementación/contado/huérfanas). */
+  soloSuscripciones = false
 ): GrupoServicio[] {
   const grupos = new Map<string, GrupoServicio>();
   for (const f of facturasCliente) {
     const saldo = Number(f.saldo) || 0;
     if (saldo <= 0 || !esDeuda(f.estado as string)) continue;
     const sid = f.suscripcion_id != null ? String(f.suscripcion_id) : "";
+    // Solo neura: en Seguimiento Cobranzas contamos únicamente cuotas de suscripción
+    // (con suscripcion_id). Deja afuera la implementación (contado) y las mal marcadas.
+    if (soloSuscripciones && !sid) continue;
     const key = sid || "general";
     let g = grupos.get(key);
     if (!g) {
@@ -480,7 +493,7 @@ export async function cargarCobranzas(
   for (const [cid, facts] of facturasPorCliente) {
     const c = clienteInfo.get(cid);
     if (!esClienteActivo(c)) continue; // Cobranzas: solo clientes activos (no inactivos/eliminados)
-    const grupos = agruparPorServicio(facts, suscInfo, catalogoTipos, c?.tipo_servicio_cliente as string, hoyYmd);
+    const grupos = agruparPorServicio(facts, suscInfo, catalogoTipos, c?.tipo_servicio_cliente as string, hoyYmd, soloCuotasSuscripcion(empresaId));
     const servicios = grupos.map(aggServicio).filter((s) => s.total_adeudado > 0);
     if (servicios.length === 0) continue;
     const label =
@@ -589,7 +602,7 @@ export async function cargarDetalleCliente(
     (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? "");
 
   // Deuda por servicio (suscripción) + bucket "General".
-  const grupos = agruparPorServicio(facturas, suscInfo, catalogoTipos, c.tipo_servicio_cliente as string, hoyYmd);
+  const grupos = agruparPorServicio(facturas, suscInfo, catalogoTipos, c.tipo_servicio_cliente as string, hoyYmd, soloCuotasSuscripcion(empresaId));
   const servicios: ServicioDetalle[] = grupos
     .map((g) => {
       const agg = aggServicio(g);

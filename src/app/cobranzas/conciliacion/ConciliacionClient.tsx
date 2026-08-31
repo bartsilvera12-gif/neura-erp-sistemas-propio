@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
-import { FechaSelect } from "@/components/ui/FechaSelect";
 
 interface Cobro {
   id: string; factura_id: string; monto: string | number; fecha: string; banco_origen: string;
   titular: string; numero_operacion: string; comprobante_path: string | null; estado: string;
   motivo_rechazo: string | null; numero_factura?: string | null; cliente_nombre?: string | null;
   saldo_factura?: string | number | null;
+  aprobado_por_nombre?: string | null; aprobado_at?: string | null;
+  rechazado_por_nombre?: string | null; rechazado_at?: string | null;
 }
 interface Factura { id: string; numero_factura: string; saldo: number; estado: string; cliente_id?: string | null }
 
@@ -110,7 +111,7 @@ export default function ConciliacionClient() {
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2.5 text-left">Fecha</th>
@@ -121,14 +122,15 @@ export default function ConciliacionClient() {
               <th className="px-3 py-2.5 text-left">N° operación</th>
               <th className="px-3 py-2.5 text-right">Monto</th>
               <th className="px-3 py-2.5 text-center">Estado</th>
+              <th className="px-3 py-2.5 text-left">Aprobó / Rechazó</th>
               <th className="px-3 py-2.5 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">Cargando…</td></tr>
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Cargando…</td></tr>
             ) : cobros.length === 0 ? (
-              <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">Sin transferencias.</td></tr>
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Sin transferencias.</td></tr>
             ) : cobros.map((c) => {
               const e = ESTADO[c.estado] ?? { label: c.estado, cls: "bg-slate-100 text-slate-600" };
               return (
@@ -143,6 +145,21 @@ export default function ConciliacionClient() {
                   <td className="px-3 py-2 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${e.cls}`}>{e.label}</span>
                     {c.estado === "rechazado" && c.motivo_rechazo && <span className="mt-0.5 block text-[10px] italic text-slate-400">{c.motivo_rechazo}</span>}
+                  </td>
+                  <td className="px-3 py-2">
+                    {c.estado === "aprobado" && c.aprobado_por_nombre ? (
+                      <div>
+                        <span className="text-slate-700">{c.aprobado_por_nombre}</span>
+                        {c.aprobado_at && <span className="block text-[10px] text-slate-400">{new Date(c.aprobado_at).toLocaleString("es-PY", { dateStyle: "short", timeStyle: "short" })}</span>}
+                      </div>
+                    ) : c.estado === "rechazado" && c.rechazado_por_nombre ? (
+                      <div>
+                        <span className="text-slate-700">{c.rechazado_por_nombre}</span>
+                        {c.rechazado_at && <span className="block text-[10px] text-slate-400">{new Date(c.rechazado_at).toLocaleString("es-PY", { dateStyle: "short", timeStyle: "short" })}</span>}
+                      </div>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1.5 text-xs">
@@ -227,7 +244,7 @@ function ModalRegistrar({ facturas, onClose, onSaved }: { facturas: Factura[]; o
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Monto *</label>
               <input inputMode="numeric" value={monto} onChange={(e) => setMonto(e.target.value.replace(/\D/g, ""))} placeholder="Ej: 500000" className={`${INPUT} text-right`} /></div>
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Fecha *</label>
-              <FechaSelect value={fecha} onChange={(e) => setFecha(e.target.value)} className={INPUT} /></div>
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={INPUT} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Banco de origen *</label>

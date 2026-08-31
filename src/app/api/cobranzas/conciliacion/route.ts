@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchDataSchemaForEmpresaId, createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { requireCobranzasApiAccess, requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
 import { listCobrosPendientes, registrarTransferencia, updateComprobantePath, ConciliacionError } from "@/lib/cobranzas/conciliacion-pg";
@@ -22,6 +23,30 @@ export async function GET(request: NextRequest) {
     const schema = await fetchDataSchemaForEmpresaId(auth.empresaId);
     const estado = request.nextUrl.searchParams.get("estado");
     const rows = await listCobrosPendientes(schema, auth.empresaId, { estado });
+
+    // Resolver quién aprobó/rechazó (los ids son de catálogo; los nombres viven ahí).
+    const ids = [
+      ...new Set(
+        rows
+          .flatMap((r) => [r.aprobado_by, r.rechazado_by])
+          .filter((x): x is string => typeof x === "string" && x.length > 0)
+      ),
+    ];
+    if (ids.length > 0) {
+      const catalog = createServiceRoleClient();
+      const { data: us } = await catalog.from("usuarios").select("id, nombre, email").in("id", ids);
+      const map = new Map(
+        (us ?? []).map((u) => {
+          const uu = u as { id: string; nombre?: string | null; email?: string | null };
+          return [uu.id, (uu.nombre?.trim() || uu.email || "").trim() || null] as const;
+        })
+      );
+      for (const r of rows) {
+        if (r.aprobado_by) r.aprobado_por_nombre = map.get(r.aprobado_by) ?? null;
+        if (r.rechazado_by) r.rechazado_por_nombre = map.get(r.rechazado_by) ?? null;
+      }
+    }
+
     return NextResponse.json(successResponse({ cobros: rows }));
   } catch (err) {
     console.error("[/api/cobranzas/conciliacion GET]", err instanceof Error ? err.message : err);

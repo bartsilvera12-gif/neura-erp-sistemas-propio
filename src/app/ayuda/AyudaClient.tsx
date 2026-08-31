@@ -106,10 +106,19 @@ export default function AyudaClient() {
     setResaltada(0);
   }, [search]);
 
-  const visibles = useMemo(
-    () => (categoriaSel ? articulos.filter((a) => a.categoria_id === categoriaSel) : articulos),
-    [articulos, categoriaSel]
-  );
+  /**
+   * Filtrar por una categoría MADRE tiene que traer también lo de sus hijas:
+   * "Desarrollo" no tiene artículos propios, todos cuelgan de "Páginas Web".
+   * Comparando sólo la categoría exacta, el filtro daba vacío.
+   */
+  const visibles = useMemo(() => {
+    if (!categoriaSel) return articulos;
+    const alcance = new Set([
+      categoriaSel,
+      ...categorias.filter((c) => c.parent_id === categoriaSel).map((c) => c.id),
+    ]);
+    return articulos.filter((a) => a.categoria_id && alcance.has(a.categoria_id));
+  }, [articulos, categorias, categoriaSel]);
 
   /**
    * Agrupado por categoría, respetando la jerarquía: una categoría madre
@@ -171,11 +180,24 @@ export default function AyudaClient() {
     );
   }, [visibles, categorias, categoriaSel]);
 
-  /** Atajos: las categorías con más material, que es por donde suele empezar la duda. */
-  const atajos = useMemo(
-    () => categorias.filter((c) => c.articulos > 0).sort((a, b) => b.articulos - a.articulos).slice(0, 5),
-    [categorias]
-  );
+  /**
+   * Atajos: las categorías con más material, que es por donde suele empezar la
+   * duda. El conteo de una madre SUMA el de sus hijas — si no, "Desarrollo",
+   * que no tiene artículos propios, no aparecería como atajo aunque toda su
+   * subcategoría esté llena.
+   */
+  const atajos = useMemo(() => {
+    const conHijas = categorias.map((c) => ({
+      ...c,
+      total:
+        c.articulos +
+        categorias.filter((h) => h.parent_id === c.id).reduce((n, h) => n + h.articulos, 0),
+    }));
+    return conHijas
+      .filter((c) => c.total > 0)
+      .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, "es"))
+      .slice(0, 6);
+  }, [categorias]);
 
   const irA = (slug: string) => router.push(`/ayuda/${encodeURIComponent(slug)}`);
 
@@ -336,7 +358,7 @@ export default function AyudaClient() {
                   }`}
                 >
                   {c.nombre}
-                  <span className="ml-1.5 text-[11px] text-slate-400">{c.articulos}</span>
+                  <span className="ml-1.5 text-[11px] text-slate-400">{c.total}</span>
                 </button>
               ))}
               {categoriaSel ? (

@@ -29,8 +29,13 @@ export interface AyudaArticulo {
   updated_at: string;
 }
 
-/** Item de listado del lector: igual pero sin el cuerpo. */
-export type AyudaArticuloResumen = Omit<AyudaArticulo, "contenido_md">;
+/**
+ * Item de listado del lector: sin el cuerpo, pero con un extracto normalizado
+ * para que el buscador de la portada filtre en el momento, sin consultar.
+ */
+export type AyudaArticuloResumen = Omit<AyudaArticulo, "contenido_md"> & {
+  texto?: string;
+};
 
 export interface AyudaSummary {
   total: number;

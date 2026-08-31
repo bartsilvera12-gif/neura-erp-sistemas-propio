@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import BlurText from "@/components/reactbits/BlurText";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
+import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import type { AyudaArticuloResumen, AyudaCategoria } from "@/app/configuracion/ayuda/types";
 
 type CategoriaConteo = AyudaCategoria & { articulos: number };
@@ -34,21 +35,15 @@ export default function AyudaClient() {
    * página scrolleada eso se veía como un temblor.
    */
   const [articulos, setArticulos] = useState<AyudaArticuloResumen[]>([]);
-  /**
-   * Ids que el servidor encontró para `busquedaActiva`. Sólo SUMAN: son los
-   * artículos que coinciden dentro del texto, que es lo único que el cliente no
-   * tiene cargado. Nunca quitan nada, así el listado no da saltos.
-   */
-  const [idsServidor, setIdsServidor] = useState<Set<string> | null>(null);
+
   const [categorias, setCategorias] = useState<CategoriaConteo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [buscandoServidor, setBuscandoServidor] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [busquedaActiva, setBusquedaActiva] = useState("");
   const [categoriaSel, setCategoriaSel] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultadosRef = useRef<HTMLDivElement>(null);
 
   /** Carga inicial: todo el material visible para el rol, sin filtrar. */
   const cargarBase = useCallback(async () => {
@@ -69,56 +64,11 @@ export default function AyudaClient() {
     }
   }, []);
 
-  /**
-   * Resuelve una consulta y la publica ENTERA: el texto activo y los ids que el
-   * servidor encontró en el cuerpo se aplican en la misma tanda.
-   *
-   * Publicarlos por separado era justamente el temblor: al teclear, el filtro
-   * en memoria angostaba la lista y 300 ms después el servidor volvía a
-   * agregarle los que coinciden dentro del texto. Con cada letra, la lista se
-   * achicaba y crecía. Ahora cambia una sola vez, cuando está todo resuelto.
-   */
-  const buscarEnTexto = useCallback(async (q: string) => {
-    if (!q) {
-      setIdsServidor(null);
-      setBusquedaActiva("");
-      return;
-    }
-    setBuscandoServidor(true);
-    try {
-      const r = await apiFetch(`/api/ayuda?q=${encodeURIComponent(q)}`);
-      const j = await r.json();
-      if (r.ok && j?.success) {
-        setIdsServidor(new Set((j.data.articulos as AyudaArticuloResumen[]).map((a) => a.id)));
-      } else {
-        setIdsServidor(null);
-      }
-    } catch {
-      // Si el servidor no contesta igual se aplica el filtro en memoria: es
-      // preferible un resultado acotado a una pantalla que no reacciona.
-      setIdsServidor(null);
-    } finally {
-      setBusquedaActiva(q);
-      setBuscandoServidor(false);
-    }
-  }, []);
-
   useEffect(() => {
     void cargarBase();
   }, [cargarBase]);
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      void buscarEnTexto(search.trim());
-    }, 250);
-    return () => clearTimeout(t);
-  }, [search, buscarEnTexto]);
-
-  /**
-   * Los tokens salen de la consulta RESUELTA, no de lo que se está tecleando:
-   * así el listado cambia una vez por búsqueda y no en cada pulsación.
-   */
-  const tokens = useMemo(() => tokenizarBusqueda(busquedaActiva), [busquedaActiva]);
+  const tokens = useMemo(() => tokenizarBusqueda(search), [search]);
 
   /**
    * Filtrar por una categoría MADRE tiene que traer también lo de sus hijas:
@@ -127,18 +77,20 @@ export default function AyudaClient() {
    */
   const visibles = useMemo(() => {
     /*
-      El texto se filtra en memoria (sin acentos y por tokens) y los ids del
-      servidor SUMAN los que coinciden dentro del cuerpo. Los dos vienen de la
-      misma consulta resuelta, así que el listado cambia de una sola vez.
+      Todo el filtrado ocurre acá, en memoria: título, resumen, categoría y el
+      extracto del cuerpo que ya vino en la carga inicial. Sin ida y vuelta por
+      tecla, la lista responde en el mismo momento en que se escribe — y de
+      paso desaparece el rebote, porque ya no hay una segunda actualización
+      llegando 300 ms después.
     */
-    const extras = idsServidor;
     const base =
       tokens.length === 0
         ? articulos
-        : articulos.filter(
-            (a) =>
-              coincideBusqueda(tokens, `${a.titulo} ${a.resumen ?? ""} ${a.categoria_nombre ?? ""}`) ||
-              extras?.has(a.id) === true
+        : articulos.filter((a) =>
+            coincideBusqueda(
+              tokens,
+              `${a.titulo} ${a.resumen ?? ""} ${a.categoria_nombre ?? ""} ${a.texto ?? ""}`
+            )
           );
     if (!categoriaSel) return base;
     const alcance = new Set([
@@ -146,7 +98,7 @@ export default function AyudaClient() {
       ...categorias.filter((c) => c.parent_id === categoriaSel).map((c) => c.id),
     ]);
     return base.filter((a) => a.categoria_id && alcance.has(a.categoria_id));
-  }, [articulos, categorias, categoriaSel, tokens, idsServidor]);
+  }, [articulos, categorias, categoriaSel, tokens]);
 
   /**
    * Agrupado por categoría, respetando la jerarquía: una categoría madre
@@ -250,9 +202,30 @@ export default function AyudaClient() {
     [categorias, madreActiva]
   );
 
-  /** Enter y el botón se saltean el respiro entre teclas y buscan ya. */
-  const buscarYa = () => {
-    void buscarEnTexto(search.trim());
+  const opcionesCategoria = useMemo(
+    () => [
+      { value: "", label: "Todas las categorías", description: `${articulos.length} artículos` },
+      ...madres.map((c) => ({ value: c.id, label: c.nombre, description: `${c.total} artículos` })),
+    ],
+    [madres, articulos.length]
+  );
+
+  const opcionesSubcategoria = useMemo(() => {
+    const propios = categorias.find((c) => c.id === madreActiva)?.articulos ?? 0;
+    const total = propios + subcategorias.reduce((n, h) => n + h.total, 0);
+    return [
+      { value: madreActiva, label: "Toda la categoría", description: `${total} artículos` },
+      ...subcategorias.map((h) => ({ value: h.id, label: h.nombre, description: `${h.total} artículos` })),
+    ];
+  }, [subcategorias, categorias, madreActiva]);
+
+  /**
+   * La búsqueda ya es instantánea, así que el botón no dispara nada nuevo: baja
+   * el foco (cierra el teclado en el celular) y lleva la vista al resultado.
+   */
+  const irAResultados = () => {
+    inputRef.current?.blur();
+    resultadosRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -304,7 +277,7 @@ export default function AyudaClient() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      buscarYa();
+                      irAResultados();
                     } else if (e.key === "Escape") {
                       setSearch("");
                     }
@@ -329,68 +302,46 @@ export default function AyudaClient() {
               </div>
               <button
                 type="button"
-                onClick={buscarYa}
+                onClick={irAResultados}
                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2F6E71] px-6 py-3 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-[#255A5C]"
               >
                 <Search className="h-4 w-4" />
                 Buscar
               </button>
             </div>
-            {/*
-              El aviso de "buscando" va como barra fina y absoluta: un spinner
-              dentro del botón le cambiaba el ancho en cada consulta.
-            */}
-            <span
-              aria-live="polite"
-              className={`mt-1 block h-0.5 overflow-hidden rounded-full transition-opacity ${
-                buscandoServidor ? "opacity-100" : "opacity-0"
-              }`}
-            >
-              <span className="block h-full w-1/3 animate-pulse rounded-full bg-[#4FAEB2]" />
-            </span>
           </div>
 
           {/* Filtros: categoría y, si la tiene, subcategoría */}
           {madres.length > 0 ? (
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  Categoría
-                </span>
-                <Chip activo={!categoriaSel} onClick={() => setCategoriaSel("")}>
-                  Todas
-                </Chip>
-                {madres.map((c) => (
-                  <Chip
-                    key={c.id}
-                    activo={madreActiva === c.id}
-                    total={c.total}
-                    onClick={() => setCategoriaSel(madreActiva === c.id ? "" : c.id)}
-                  >
-                    {c.nombre}
-                  </Chip>
-                ))}
-              </div>
-
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              <FancySelect
+                className="min-w-[200px] flex-1 sm:max-w-[250px]"
+                ariaLabel="Filtrar por categoría"
+                options={opcionesCategoria}
+                value={madreActiva}
+                onChange={setCategoriaSel}
+              />
+              {/*
+                La segunda sólo aparece si la categoría elegida tiene hijas: un
+                desplegable con una única opción no ayuda, sólo ocupa lugar.
+              */}
               {subcategorias.length > 0 ? (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Subcategoría
-                  </span>
-                  <Chip activo={categoriaSel === madreActiva} onClick={() => setCategoriaSel(madreActiva)}>
-                    Todas
-                  </Chip>
-                  {subcategorias.map((h) => (
-                    <Chip
-                      key={h.id}
-                      activo={categoriaSel === h.id}
-                      total={h.total}
-                      onClick={() => setCategoriaSel(categoriaSel === h.id ? madreActiva : h.id)}
-                    >
-                      {h.nombre}
-                    </Chip>
-                  ))}
-                </div>
+                <FancySelect
+                  className="min-w-[200px] flex-1 sm:max-w-[250px]"
+                  ariaLabel="Filtrar por subcategoría"
+                  options={opcionesSubcategoria}
+                  value={categoriaSel || madreActiva}
+                  onChange={setCategoriaSel}
+                />
+              ) : null}
+              {categoriaSel ? (
+                <button
+                  type="button"
+                  onClick={() => setCategoriaSel("")}
+                  className="rounded-lg px-2.5 py-2 text-[13px] font-medium text-slate-400 transition-colors hover:text-rose-600"
+                >
+                  Limpiar
+                </button>
               ) : null}
             </div>
           ) : null}
@@ -418,10 +369,10 @@ export default function AyudaClient() {
         ) : visibles.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
             <p className="text-sm font-semibold text-slate-800">
-              {busquedaActiva ? `Sin resultados para “${busquedaActiva}”` : "Todavía no hay artículos"}
+              {search.trim() ? `Sin resultados para “${search.trim()}”` : "Todavía no hay artículos"}
             </p>
             <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500">
-              {busquedaActiva
+              {search.trim()
                 ? "Probá con menos palabras o buscá por el nombre del proceso."
                 : "Los artículos se cargan desde Configuración → Ayuda en línea."}
             </p>
@@ -430,10 +381,10 @@ export default function AyudaClient() {
           <div className="space-y-10">
             {/* Renglón fijo: si apareciera y desapareciera, correría todo lo de abajo. */}
             <p className="h-4 text-xs text-slate-500">
-              {busquedaActiva ? (
+              {search.trim() ? (
                 <>
                   {visibles.length} {visibles.length === 1 ? "resultado" : "resultados"} para{" "}
-                  <strong className="font-semibold text-slate-700">“{busquedaActiva}”</strong>
+                  <strong className="font-semibold text-slate-700">“{search.trim()}”</strong>
                 </>
               ) : null}
             </p>
@@ -484,35 +435,6 @@ export default function AyudaClient() {
         )}
       </div>
     </div>
-  );
-}
-
-/** Chip de filtro. Mismo control para categoría y subcategoría. */
-function Chip({
-  activo,
-  total,
-  onClick,
-  children,
-}: {
-  activo: boolean;
-  total?: number;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={activo}
-      onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-[13px] transition-colors ${
-        activo
-          ? "border-[#4FAEB2] bg-[#4FAEB2]/12 font-semibold text-[#2F6E71]"
-          : "border-slate-200 text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
-      }`}
-    >
-      {children}
-      {total != null ? <span className="ml-1.5 text-[11px] text-slate-400">{total}</span> : null}
-    </button>
   );
 }
 

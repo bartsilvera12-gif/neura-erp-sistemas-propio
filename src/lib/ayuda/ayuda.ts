@@ -43,7 +43,10 @@ export interface AyudaArticuloItem extends AyudaArticuloRow {
 }
 
 /** Item de listado del lector: sin `contenido_md` para no inflar la respuesta. */
-export type AyudaArticuloResumen = Omit<AyudaArticuloItem, "contenido_md">;
+export type AyudaArticuloResumen = Omit<AyudaArticuloItem, "contenido_md"> & {
+  /** Extracto normalizado del cuerpo, para buscar en el cliente sin consultar. */
+  texto: string;
+};
 
 export interface AyudaSummary {
   total: number;
@@ -260,10 +263,25 @@ export function puedeVerArticulo(
 }
 
 /** Quita el cuerpo del artículo para los listados. */
+/**
+ * Tope del extracto de búsqueda, en caracteres.
+ *
+ * El listado del lector viaja entero al cliente para que el buscador funcione
+ * en el momento, sin ida y vuelta por cada tecla. Mandar el cuerpo COMPLETO
+ * haría crecer esa carga sin techo a medida que se sumen artículos; con este
+ * tope, cada uno aporta a lo sumo ~4 KB. En la práctica alcanza: lo que la
+ * gente busca vive en el título, el resumen y los primeros párrafos.
+ */
+const TOPE_TEXTO_BUSQUEDA = 4000;
+
 export function stripContenido(a: AyudaArticuloItem): AyudaArticuloResumen {
-  const { contenido_md: _contenido, ...rest } = a;
-  void _contenido;
-  return rest;
+  const { contenido_md: contenido, ...rest } = a;
+  return {
+    ...rest,
+    // Normalizado acá y no en el cliente: se hace una vez por artículo en vez
+    // de una vez por tecla, y viaja más liviano (sin acentos ni puntuación).
+    texto: normalizeBusqueda(contenido ?? "").slice(0, TOPE_TEXTO_BUSQUEDA),
+  };
 }
 
 /** Coincidencia del buscador: título, resumen, categoría y cuerpo. */

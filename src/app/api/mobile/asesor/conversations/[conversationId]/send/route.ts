@@ -28,9 +28,19 @@ export async function POST(
   }
   const { supabase, empresa_id, usuario_id } = ctx;
 
-  const body = (await request.json().catch(() => null)) as { message?: string } | null;
+  const body = (await request.json().catch(() => null)) as
+    | { message?: string; reply_to_wamid?: string; reply_context?: Record<string, unknown> }
+    | null;
   const message = typeof body?.message === "string" ? body.message.trim() : "";
   if (!message) return NextResponse.json({ ok: false, error: "message requerido" }, { status: 400 });
+  // Cita opcional: wamid del mensaje al que se responde. /api/chat/send lo valida y,
+  // si no es válido, envía igual sin cita — mejor eso que perder el mensaje.
+  const replyToWamid =
+    typeof body?.reply_to_wamid === "string" ? body.reply_to_wamid.trim() : "";
+  // Snapshot del mensaje citado. Va al raw_payload para poder renderizar la cita en
+  // nuestra propia UI; el desktop hace exactamente lo mismo.
+  const replyContext =
+    body?.reply_context && typeof body.reply_context === "object" ? body.reply_context : null;
 
   // 1) Ownership en backend (PostgREST, camino soportado para neura).
   try {
@@ -71,7 +81,12 @@ export async function POST(
     const res = await fetch(new URL("/api/chat/send", request.url), {
       method: "POST",
       headers,
-      body: JSON.stringify({ conversation_id: conversationId, message }),
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        message,
+        ...(replyToWamid ? { reply_to_wamid: replyToWamid } : {}),
+        ...(replyContext ? { reply_context: replyContext } : {}),
+      }),
     });
     const data = await res.json().catch(() => ({ ok: false, error: "send_failed" }));
     return NextResponse.json(data, { status: res.status });

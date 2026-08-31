@@ -17,6 +17,8 @@ import {
 
 type Msg = {
   id: string;
+  /** ID del mensaje en WhatsApp; se usa para citarlo al responder. */
+  wa_message_id?: string | null;
   from_me: boolean;
   sender_type: string | null;
   content: string;
@@ -199,6 +201,11 @@ export default function MAsesorChatPage() {
   const [err, setErr] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sendErr, setSendErr] = useState<string | null>(null);
+  /** Mensaje que se está citando (deslizá una burbuja hacia la derecha para elegirlo). */
+  const [replyTo, setReplyTo] = useState<Msg | null>(null);
+  /** Arrastre en curso: qué burbuja y cuántos px lleva. Sólo visual. */
+  const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
+  const swipeStart = useRef<{ x: number; y: number; locked: boolean } | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -318,7 +325,7 @@ export default function MAsesorChatPage() {
 
   // ── Envío de texto (optimista, no bloqueante) ──────────────────────────────
   const deliverText = useCallback(
-    (tempId: string, msg: string) => {
+    (tempId: string, msg: string, reply?: Msg | null) => {
       void (async () => {
         try {
           const res = await fetchWithSupabaseSession(
@@ -326,7 +333,21 @@ export default function MAsesorChatPage() {
             {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ message: msg }),
+              body: JSON.stringify({
+                message: msg,
+                // wamid → cita real en WhatsApp; contexto → snapshot para nuestra UI.
+                ...(reply?.wa_message_id ? { reply_to_wamid: reply.wa_message_id } : {}),
+                ...(reply
+                  ? {
+                      reply_context: {
+                        wa_message_id: reply.wa_message_id ?? null,
+                        from_me: reply.from_me,
+                        preview: previewOf(reply),
+                        message_type: reply.message_type,
+                      },
+                    }
+                  : {}),
+              }),
             }
           );
           const data = await res.json().catch(() => ({}));
@@ -384,16 +405,66 @@ export default function MAsesorChatPage() {
     [conversationId, load]
   );
 
+  const previewOf = (m: Msg) => (m.content?.trim() || `[${m.message_type}]`).slice(0, 160);
+
+  // ── Deslizar una burbuja para citarla ──────────────────────────────────────
+  // Umbral de 56 px, igual que WhatsApp. El eje se decide en el primer movimiento
+  // (`locked`) para no pelear con el scroll vertical de la lista.
+  const SWIPE_THRESHOLD = 56;
+
+  const onBubbleTouchStart = useCallback((e: React.TouchEvent, m: Msg) => {
+    if (!m.wa_message_id) return; // sin wamid no hay nada que citar
+    const t = e.touches[0];
+    swipeStart.current = { x: t.clientX, y: t.clientY, locked: false };
+    setSwipe({ id: m.id, dx: 0 });
+  }, []);
+
+  const onBubbleTouchMove = useCallback((e: React.TouchEvent, m: Msg) => {
+    const st = swipeStart.current;
+    if (!st) return;
+    const t = e.touches[0];
+    const dx = t.clientX - st.x;
+    const dy = t.clientY - st.y;
+    if (!st.locked) {
+      // Primer movimiento: si es más vertical que horizontal, es scroll → soltar.
+      if (Math.abs(dy) > Math.abs(dx)) {
+        swipeStart.current = null;
+        setSwipe(null);
+        return;
+      }
+      st.locked = true;
+    }
+    // Sólo hacia la derecha, con tope para que no se despegue de la pantalla.
+    setSwipe({ id: m.id, dx: Math.max(0, Math.min(dx, SWIPE_THRESHOLD + 16)) });
+  }, []);
+
+  const onBubbleTouchEnd = useCallback(
+    (m: Msg) => {
+      const dx = swipe?.id === m.id ? swipe.dx : 0;
+      swipeStart.current = null;
+      setSwipe(null);
+      if (dx >= SWIPE_THRESHOLD && m.wa_message_id) {
+        setReplyTo(m);
+        taRef.current?.focus();
+      }
+    },
+    [swipe]
+  );
+
   const send = useCallback(() => {
     const msg = text.trim();
     if (!msg) return;
     const tempId = `tmp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    // Se captura antes de limpiar el estado: el envío es asíncrono y para entonces
+    // replyTo ya volvió a null.
+    const reply = replyTo;
     setText("");
     setShowEmoji(false);
     setSendErr(null);
+    setReplyTo(null);
     setPending((p) => [...p, { tempId, kind: "text", content: msg, status: "sending" }]);
-    deliverText(tempId, msg);
-  }, [text, deliverText]);
+    deliverText(tempId, msg, reply);
+  }, [text, replyTo, deliverText]);
 
   const sendAudio = useCallback(
     (file: File) => {
@@ -617,12 +688,53 @@ export default function MAsesorChatPage() {
         ) : (
           <>
             {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.from_me ? "justify-end" : "justify-start"}`}>
+              <div
+                key={m.id}
+                className={`relative flex ${m.from_me ? "justify-end" : "justify-start"}`}
+                onTouchStart={(e) => onBubbleTouchStart(e, m)}
+                onTouchMove={(e) => onBubbleTouchMove(e, m)}
+                onTouchEnd={() => onBubbleTouchEnd(m)}
+                onTouchCancel={() => onBubbleTouchEnd(m)}
+              >
+                {swipe?.id === m.id && swipe.dx > 8 ? (
+                  <span
+                    aria-hidden
+                    className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none"
+                    style={{ opacity: Math.min(1, swipe.dx / SWIPE_THRESHOLD) }}
+                  >
+                    ↩
+                  </span>
+                ) : null}
                 <div
+                  style={
+                    swipe?.id === m.id
+                      ? { transform: `translateX(${swipe.dx}px)` }
+                      : { transform: "translateX(0)", transition: "transform 140ms ease-out" }
+                  }
                   className={`max-w-[78%] rounded-2xl px-3 py-2 text-[14px] leading-snug shadow-sm ${
                     m.from_me ? "bg-[#4FAEB2] text-white rounded-br-md" : "bg-white text-slate-800 border border-slate-100 rounded-bl-md"
                   }`}
                 >
+                  {(() => {
+                    const rc = m.raw_payload?.reply_context as
+                      | { preview?: string; from_me?: boolean }
+                      | undefined;
+                    if (!rc || typeof rc !== "object") return null;
+                    return (
+                      <div
+                        className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 text-[12px] ${
+                          m.from_me
+                            ? "border-white/60 bg-white/15 text-white/90"
+                            : "border-[#4FAEB2] bg-slate-50 text-slate-600"
+                        }`}
+                      >
+                        <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                          {rc.from_me ? "Vos" : "Cliente"}
+                        </span>
+                        <span className="line-clamp-2 break-words">{rc.preview ?? "Mensaje"}</span>
+                      </div>
+                    );
+                  })()}
                   <MessageBody m={m} />
                   {m.from_me && m.whatsapp_delivery_status === "failed" ? (
                     <div className="mt-1 rounded-md bg-red-50 border border-red-200 px-2 py-1 text-[11px] text-red-700 flex items-start gap-1">
@@ -715,6 +827,26 @@ export default function MAsesorChatPage() {
                     {e}
                   </button>
                 ))}
+              </div>
+            ) : null}
+            {replyTo ? (
+              <div className="mb-2 flex items-start gap-2 rounded-xl border-l-4 border-[#4FAEB2] bg-slate-50 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-semibold text-[#3F8E91]">
+                    {replyTo.from_me ? "Vos" : title}
+                  </div>
+                  <div className="truncate text-[12px] text-slate-600">
+                    {replyTo.content?.trim() || `[${replyTo.message_type}]`}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyTo(null)}
+                  aria-label="Cancelar respuesta"
+                  className="shrink-0 h-6 w-6 grid place-items-center rounded-full text-slate-400 active:bg-slate-200"
+                >
+                  ✕
+                </button>
               </div>
             ) : null}
             <div className="flex items-end gap-2">

@@ -82,7 +82,7 @@ export async function GET(
 
     const { data: msgRows } = await supabase
       .from("chat_messages")
-      .select("id, from_me, sender_type, content, message_type, created_at, raw_payload, whatsapp_delivery_status")
+      .select("id, wa_message_id, from_me, sender_type, content, message_type, created_at, raw_payload, whatsapp_delivery_status")
       .eq("conversation_id", conversationId)
       .eq("empresa_id", empresa_id)
       .order("created_at", { ascending: false })
@@ -91,6 +91,9 @@ export async function GET(
     const messages = ((msgRows ?? []) as Array<Record<string, unknown>>)
       .map((m) => ({
         id: m.id as string,
+        // ID del mensaje en WhatsApp. Necesario para citarlo al responder
+        // (`reply_to_wamid` en /api/chat/send). Null en mensajes que nunca salieron.
+        wa_message_id: (m.wa_message_id as string | null) ?? null,
         from_me: Boolean(m.from_me),
         sender_type: (m.sender_type as string | null) ?? null,
         content: (m.content as string | null) ?? "",

@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { BookOpen, ChevronRight, CornerDownLeft, Loader2, Search, X } from "lucide-react";
+import { BookOpen, ChevronRight, Loader2, Search, X } from "lucide-react";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import BlurText from "@/components/reactbits/BlurText";
@@ -29,7 +28,6 @@ type CategoriaConteo = AyudaCategoria & { articulos: number };
 const TEAL_OSCURO = "#0B3A3D";
 
 export default function AyudaClient() {
-  const router = useRouter();
   const [articulos, setArticulos] = useState<AyudaArticuloResumen[]>([]);
   const [categorias, setCategorias] = useState<CategoriaConteo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,9 +37,6 @@ export default function AyudaClient() {
   const [search, setSearch] = useState("");
   const [busquedaActiva, setBusquedaActiva] = useState("");
   const [categoriaSel, setCategoriaSel] = useState<string>("");
-  const [sugerenciasAbiertas, setSugerenciasAbiertas] = useState(false);
-  const [resaltada, setResaltada] = useState(0);
-  const cajaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (q: string) => {
@@ -77,34 +72,7 @@ export default function AyudaClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  useEffect(() => {
-    const alClickear = (e: MouseEvent) => {
-      if (!cajaRef.current?.contains(e.target as Node)) setSugerenciasAbiertas(false);
-    };
-    document.addEventListener("mousedown", alClickear);
-    return () => document.removeEventListener("mousedown", alClickear);
-  }, []);
-
-  /** Capa instantánea: filtra lo ya cargado mientras el servidor todavía viene en camino. */
   const tokens = useMemo(() => tokenizarBusqueda(search), [search]);
-  const coincidencias = useMemo(() => {
-    if (tokens.length === 0) return [];
-    return articulos.filter((a) =>
-      coincideBusqueda(tokens, `${a.titulo} ${a.resumen ?? ""} ${a.categoria_nombre ?? ""}`)
-    );
-  }, [articulos, tokens]);
-
-  const sugerencias = useMemo(() => {
-    if (tokens.length === 0) return [];
-    // Lo que matchea por título/resumen primero; después lo que sólo matchea en
-    // el cuerpo, que es lo que agrega el servidor y el usuario no ve venir.
-    const ids = new Set(coincidencias.map((a) => a.id));
-    return [...coincidencias, ...articulos.filter((a) => !ids.has(a.id))].slice(0, 6);
-  }, [coincidencias, articulos, tokens]);
-
-  useEffect(() => {
-    setResaltada(0);
-  }, [search]);
 
   /**
    * Filtrar por una categoría MADRE tiene que traer también lo de sus hijas:
@@ -112,13 +80,27 @@ export default function AyudaClient() {
    * Comparando sólo la categoría exacta, el filtro daba vacío.
    */
   const visibles = useMemo(() => {
-    if (!categoriaSel) return articulos;
+    /*
+      Mientras se escribe, el servidor todavía está devolviendo el resultado de
+      la consulta ANTERIOR. Para que el listado se sienta instantáneo, hasta que
+      llegue se acota en memoria por título, resumen y categoría; cuando el
+      servidor responde puede SUMAR artículos que sólo coinciden dentro del
+      texto, que es lo único que el cliente no tiene cargado.
+    */
+    const escribiendo = search.trim() !== busquedaActiva;
+    const base =
+      escribiendo && tokens.length > 0
+        ? articulos.filter((a) =>
+            coincideBusqueda(tokens, `${a.titulo} ${a.resumen ?? ""} ${a.categoria_nombre ?? ""}`)
+          )
+        : articulos;
+    if (!categoriaSel) return base;
     const alcance = new Set([
       categoriaSel,
       ...categorias.filter((c) => c.parent_id === categoriaSel).map((c) => c.id),
     ]);
-    return articulos.filter((a) => a.categoria_id && alcance.has(a.categoria_id));
-  }, [articulos, categorias, categoriaSel]);
+    return base.filter((a) => a.categoria_id && alcance.has(a.categoria_id));
+  }, [articulos, categorias, categoriaSel, search, busquedaActiva, tokens]);
 
   /**
    * Agrupado por categoría, respetando la jerarquía: una categoría madre
@@ -199,26 +181,12 @@ export default function AyudaClient() {
       .slice(0, 6);
   }, [categorias]);
 
-  const irA = (slug: string) => router.push(`/ayuda/${encodeURIComponent(slug)}`);
-
-  function alTeclear(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!sugerenciasAbiertas || sugerencias.length === 0) {
-      if (e.key === "Escape") setSearch("");
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setResaltada((i) => (i + 1) % sugerencias.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setResaltada((i) => (i - 1 + sugerencias.length) % sugerencias.length);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      irA(sugerencias[resaltada].slug);
-    } else if (e.key === "Escape") {
-      setSugerenciasAbiertas(false);
-    }
-  }
+  /** Enter y el botón se saltean el respiro entre teclas y buscan ya. */
+  const buscarYa = () => {
+    const q = search.trim();
+    setBusquedaActiva(q);
+    void load(q);
+  };
 
   return (
     <div className="-mx-4 -mt-4 md:-mx-6 md:-mt-6">
@@ -235,7 +203,7 @@ export default function AyudaClient() {
           aria-hidden="true"
           className="pointer-events-none absolute -bottom-32 -left-10 h-64 w-64 rounded-full bg-[#4FAEB2]/10 blur-3xl"
         />
-        <div className="relative mx-auto w-full max-w-3xl text-center">
+        <div className="relative mx-auto w-full max-w-4xl text-center">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/80">
             <BookOpen className="h-3.5 w-3.5" />
             Ayuda en línea
@@ -253,27 +221,30 @@ export default function AyudaClient() {
       </section>
 
       {/* ── Buscador, montado sobre el borde de la portada ── */}
-      <div className="relative z-20 mx-auto -mt-16 w-full max-w-3xl px-4 md:-mt-20 md:px-6">
+      <div className="relative z-20 mx-auto -mt-16 w-full max-w-5xl px-4 md:-mt-20 md:px-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xl shadow-[#0B3A3D]/10 md:p-5">
-          <div ref={cajaRef} className="relative">
+          <div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative flex-1">
                 <Search
                   aria-hidden="true"
-                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]"
+                  className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[#4FAEB2]"
                 />
                 <input
                   ref={inputRef}
                   value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setSugerenciasAbiertas(true);
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      buscarYa();
+                    } else if (e.key === "Escape") {
+                      setSearch("");
+                    }
                   }}
-                  onFocus={() => setSugerenciasAbiertas(true)}
-                  onKeyDown={alTeclear}
                   placeholder="Ingresá acá tu consulta"
                   aria-label="Buscar en la ayuda"
-                  className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-9 text-[15px] text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-3.5 pl-11 pr-10 text-base text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
                 />
                 {search ? (
                   <button
@@ -291,52 +262,14 @@ export default function AyudaClient() {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (sugerencias.length > 0) irA(sugerencias[0].slug);
-                }}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2F6E71] px-6 py-3 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-[#255A5C] disabled:opacity-50"
-                disabled={sugerencias.length === 0}
+                onClick={buscarYa}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2F6E71] px-6 py-3 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-[#255A5C]"
               >
                 {buscandoServidor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 Buscar
               </button>
             </div>
 
-            {/* Sugerencias mientras se escribe */}
-            {sugerenciasAbiertas && tokens.length > 0 ? (
-              <div className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-                {sugerencias.length === 0 ? (
-                  <p className="px-4 py-3 text-sm text-slate-400">
-                    Nada para “{search}”. Probá con otra palabra.
-                  </p>
-                ) : (
-                  <ul className="max-h-80 overflow-y-auto py-1">
-                    {sugerencias.map((a, i) => (
-                      <li key={a.id}>
-                        <Link
-                          href={`/ayuda/${encodeURIComponent(a.slug)}`}
-                          onMouseEnter={() => setResaltada(i)}
-                          className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
-                            i === resaltada ? "bg-[#4FAEB2]/10" : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-slate-800">{a.titulo}</span>
-                            <span className="block truncate text-[11px] text-slate-400">
-                              {a.categoria_nombre ?? "Sin categoría"}
-                              {a.resumen ? ` · ${a.resumen}` : ""}
-                            </span>
-                          </span>
-                          {i === resaltada ? (
-                            <CornerDownLeft aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-300" />
-                          ) : null}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : null}
           </div>
 
           {/* Atajos: por dónde suele empezar la duda */}
@@ -349,7 +282,6 @@ export default function AyudaClient() {
                   onClick={() => {
                     setCategoriaSel(categoriaSel === c.id ? "" : c.id);
                     setSearch("");
-                    setSugerenciasAbiertas(false);
                   }}
                   className={`rounded-full border px-3 py-1.5 text-[13px] transition-colors ${
                     categoriaSel === c.id
@@ -376,7 +308,7 @@ export default function AyudaClient() {
       </div>
 
       {/* ── Listado ── */}
-      <div className="mx-auto w-full max-w-3xl px-4 pb-16 pt-10 md:px-6">
+      <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-10 md:px-6">
         {error ? (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             {error}
@@ -400,7 +332,7 @@ export default function AyudaClient() {
             </p>
           </div>
         ) : (
-          <div className="space-y-7">
+          <div className="space-y-10">
             {busquedaActiva ? (
               <p className="text-xs text-slate-500">
                 {visibles.length} {visibles.length === 1 ? "resultado" : "resultados"} para{" "}
@@ -411,7 +343,7 @@ export default function AyudaClient() {
             {porCategoria.map((g) => (
               <section key={g.id}>
                 <div className="mb-4 text-center">
-                  <h2 className="text-lg font-bold tracking-tight text-[#0B3A3D] md:text-xl">{g.nombre}</h2>
+                  <h2 className="text-xl font-bold tracking-tight text-[#0B3A3D] md:text-2xl">{g.nombre}</h2>
                   <p className="mt-0.5 text-[12px] text-slate-400">
                     {(() => {
                       const n = g.items.length + g.hijas.reduce((t, h) => t + h.items.length, 0);
@@ -432,7 +364,7 @@ export default function AyudaClient() {
                       </h3>
                       <span aria-hidden="true" className="h-px flex-1 bg-slate-200" />
                     </div>
-                    <ul className="space-y-2.5">
+                    <ul className="space-y-3">
                       {h.items.map((a) => (
                         <li key={a.id}>
                           <ArticuloCard articulo={a} />
@@ -441,7 +373,7 @@ export default function AyudaClient() {
                     </ul>
                   </div>
                 ))}
-                <ul className="space-y-2.5">
+                <ul className="space-y-3">
                   {g.items.map((a) => (
                     <li key={a.id}>
                       <ArticuloCard articulo={a} />
@@ -466,20 +398,20 @@ function ArticuloCard({ articulo }: { articulo: AyudaArticuloResumen }) {
     >
       <Link
         href={`/ayuda/${encodeURIComponent(articulo.slug)}`}
-        className="group flex h-full items-center gap-4 p-5"
+        className="group flex h-full items-center gap-5 px-6 py-5"
       >
         <span
           aria-hidden="true"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2]/12 text-[#2F6E71] transition-colors group-hover:bg-[#4FAEB2]/20"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2]/12 text-[#2F6E71] transition-colors group-hover:bg-[#4FAEB2]/20"
         >
-          <BookOpen className="h-5 w-5" />
+          <BookOpen className="h-[22px] w-[22px]" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold leading-snug text-slate-900 transition-colors group-hover:text-[#2F6E71]">
+          <span className="block text-base font-semibold leading-snug text-slate-900 transition-colors group-hover:text-[#2F6E71]">
             {articulo.titulo}
           </span>
           {articulo.resumen ? (
-            <span className="mt-1 block line-clamp-2 text-[13px] leading-relaxed text-slate-500">
+            <span className="mt-1 block line-clamp-2 text-sm leading-relaxed text-slate-500">
               {articulo.resumen}
             </span>
           ) : null}

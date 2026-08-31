@@ -65,7 +65,7 @@ export default function MAsesorInboxPage() {
       <main className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-6 text-center text-slate-400 text-sm animate-pulse">Cargando…</div>
-        ) : error ? (
+        ) : error && convs.length === 0 ? (
           <div className="p-4 m-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
             {error.message}
             <button onClick={() => void refresh()} className="ml-2 underline">

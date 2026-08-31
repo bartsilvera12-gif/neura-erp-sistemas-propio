@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import BottomNav from "./BottomNav";
 import MobileHeader from "./MobileHeader";
 import MobileMenu from "./MobileMenu";
+import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 
 const STANDALONE_ROUTES = ["/login"];
 
@@ -41,6 +42,15 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
 
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-[#F8FAFC]">
+      {/*
+        Registro de push dentro de la APK. Vive acá y no en una pantalla puntual
+        porque el shell persiste entre navegaciones: si se monta en una page, al
+        salir de ella el cleanup remueve el listener `registration` y el token
+        nunca llega. No entra en /login ni /m/* (esas rutas salen por isStandalone).
+        En navegador es no-op: el componente chequea Capacitor.isNativePlatform().
+      */}
+      <CapacitorPushRegister />
+
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <MobileHeader onOpenMenu={() => setMenuOpen(true)} />

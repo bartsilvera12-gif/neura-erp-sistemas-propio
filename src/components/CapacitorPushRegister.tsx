@@ -36,7 +36,10 @@ export default function CapacitorPushRegister() {
             await fetchWithSupabaseSession("/api/cc/agent/device-token", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ fcm_token: token.value, platform: "android" }),
+              body: JSON.stringify({
+                fcm_token: token.value,
+                platform: Capacitor.getPlatform() === "ios" ? "ios" : "android",
+              }),
             });
           } catch {
             /* si falla, se reintenta en el próximo arranque de la app */

@@ -3,6 +3,32 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { sendEmail } from "@/lib/email/mailer";
+import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
+import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+
+/**
+ * Borra los avisos in-app de un cobro pendiente cuando el cobro se aprueba o
+ * rechaza (así no quedan registros "en vano" en la campanita). Best-effort.
+ * Requiere que el aviso se haya creado con metadata.cobro_id (ver arriba).
+ */
+export async function limpiarNotificacionesCobro(
+  schemaRaw: string,
+  empresaId: string,
+  cobroId: string
+): Promise<void> {
+  try {
+    const schema = assertAllowedChatDataSchema(schemaRaw);
+    const pool = getChatPostgresPool();
+    if (!pool) return;
+    const t = quoteSchemaTable(schema, "usuario_notificaciones");
+    await pool.query(
+      `DELETE FROM ${t} WHERE empresa_id=$1::uuid AND tipo='cobro_pendiente' AND metadata->>'cobro_id'=$2`,
+      [empresaId, cobroId]
+    );
+  } catch (e) {
+    console.warn("[limpiarNotificacionesCobro]", e instanceof Error ? e.message : e);
+  }
+}
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://sistemas.neura.com.py").replace(/\/+$/, "");
 
@@ -73,6 +99,8 @@ export async function notificarCobroPendiente(
       cuerpo,
       actor_id: data.actorId,
       agrupadas: 1,
+      // Guardamos el cobro para poder limpiar el aviso cuando se apruebe/rechace.
+      metadata: { cobro_id: data.cobroId },
     }));
     await sb.from("usuario_notificaciones").insert(rows);
 

@@ -3,6 +3,7 @@ import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema"
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { requireCobranzasApiAccess } from "@/lib/contabilidad/contabilidad-auth";
 import { aprobarTransferencia, ConciliacionError } from "@/lib/cobranzas/conciliacion-pg";
+import { limpiarNotificacionesCobro } from "@/lib/cobranzas/cobro-pendiente-notificar";
 import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 
 export const runtime = "nodejs";
@@ -16,6 +17,8 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
     const { id } = await ctx.params;
     const schema = await fetchDataSchemaForEmpresaId(auth.empresaId);
     const out = await aprobarTransferencia(schema, auth.empresaId, id, auth.usuarioCatalogId);
+    // Ya resuelto: limpiar el aviso de la campanita (best-effort).
+    await limpiarNotificacionesCobro(schema, auth.empresaId, id);
     return NextResponse.json(successResponse(out));
   } catch (e) {
     if (e instanceof ConciliacionError || e instanceof ContabilidadError) {

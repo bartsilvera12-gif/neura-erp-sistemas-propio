@@ -56,23 +56,37 @@ export async function GET(request: Request, context: RouteContext) {
       .order("orden", { ascending: true });
     const adjuntos = adjData ?? [];
 
-    /** Relacionados: misma categoría, para que el asesor siga leyendo lo que corresponde. */
-    const relacionados = articulos
-      .filter(
-        (a) =>
-          a.id !== articulo.id &&
-          a.categoria_id &&
-          a.categoria_id === articulo.categoria_id &&
-          puedeVerArticulo(a, auth.rol, auth.esAdmin)
-      )
-      .slice(0, 5)
-      .map((a) => ({ id: a.id, slug: a.slug, titulo: a.titulo }));
+    /**
+     * Relacionados para la columna lateral del lector.
+     *
+     * Primero los de la MISMA categoría, que es lo que de verdad ayuda a seguir
+     * leyendo. Si el artículo está solo en su categoría, se cae al resto de la
+     * base en vez de dejar la columna vacía: una barra lateral en blanco parece
+     * un error, y el que entró buscando algo igual necesita a dónde ir.
+     */
+    const visibles = articulos.filter(
+      (a) => a.id !== articulo.id && puedeVerArticulo(a, auth.rol, auth.esAdmin)
+    );
+    const mismaCategoria = visibles.filter(
+      (a) => a.categoria_id && a.categoria_id === articulo.categoria_id
+    );
+    const usaCategoria = mismaCategoria.length > 0;
+    const relacionados = (usaCategoria ? mismaCategoria : visibles)
+      .slice(0, 12)
+      .map((a) => ({
+        id: a.id,
+        slug: a.slug,
+        titulo: a.titulo,
+        categoria_nombre: a.categoria_nombre,
+      }));
 
     return NextResponse.json(
       successResponse({
         articulo,
         adjuntos,
         relacionados,
+        /** De dónde salió la lista lateral, para poder titularla bien. */
+        relacionados_origen: usaCategoria ? "categoria" : "otros",
         mi_feedback: miFeedback,
         meta: { can_edit: auth.esAdmin },
       })

@@ -1829,6 +1829,214 @@ export async function saveYCloudWhatsappChannel(input: YCloudWhatsappChannelInpu
   return newId;
 }
 
+export type BaileysWhatsappChannelInput = {
+  id?: string;
+  nombre: string;
+  /** URL base del puente Baileys (ej. https://wa-bridge.midominio.com). */
+  bridge_url: string;
+  activo?: boolean;
+};
+
+/**
+ * WhatsApp por QR (Baileys). El número se vincula escaneando un QR; la conexión
+ * viva la mantiene un "puente" externo (servicio Baileys, ej. contenedor Coolify).
+ * Acá solo se registra el canal (type='whatsapp', provider='baileys') y la URL del
+ * puente en `config.baileys_bridge_url`. La entrada/salida reusa la maquinaria
+ * omnicanal existente (ver /api/webhooks/baileys/inbound y outbound-send-dispatch).
+ */
+export async function saveBaileysWhatsappChannel(input: BaileysWhatsappChannelInput): Promise<string> {
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
+  const pool = getChatPostgresPool();
+  const tenantPg = isLikelyUnexposedTenantChatSchema(dataSchema) && pool != null;
+  const existingId = typeof input.id === "string" && input.id.trim().length > 0 ? input.id.trim() : undefined;
+
+  let config: Record<string, unknown> = {};
+  if (existingId) {
+    let prevRaw: unknown = null;
+    if (tenantPg) {
+      prevRaw = await pgSelectChatChannelConfig(pool!, dataSchema, empresa_id, existingId);
+    } else {
+      const { data: prevRow, error: prevErr } = await supabase
+        .from("chat_channels")
+        .select("config")
+        .eq("id", existingId)
+        .eq("empresa_id", empresa_id)
+        .maybeSingle();
+      if (prevErr) throw postgrestMutationError(dataSchema, prevErr.message);
+      prevRaw = prevRow?.config;
+    }
+    if (prevRaw && typeof prevRaw === "object" && !Array.isArray(prevRaw)) {
+      config = { ...(prevRaw as Record<string, unknown>) };
+    }
+  }
+
+  const bridgeUrl = (input.bridge_url ?? "").trim().replace(/\/+$/, "");
+  if (bridgeUrl) config.baileys_bridge_url = bridgeUrl;
+
+  const activo = input.activo ?? true;
+  const config_status: "inactive" | "incomplete" | "active" = !activo
+    ? "inactive"
+    : bridgeUrl
+      ? "active"
+      : "incomplete";
+
+  const base = {
+    nombre: input.nombre.trim() || "WhatsApp por QR",
+    type: "whatsapp" as const,
+    provider: "baileys",
+    provider_channel_id: null as string | null,
+    activo,
+    connection_mode: "standard",
+    config_status,
+    config,
+  };
+
+  const updatedAt = new Date().toISOString();
+
+  if (existingId) {
+    if (tenantPg) {
+      const updated = await pgUpdateYCloudWhatsappChannel(pool!, dataSchema, empresa_id, existingId, {
+        nombre: base.nombre,
+        type: base.type,
+        provider: base.provider,
+        provider_channel_id: base.provider_channel_id,
+        activo: base.activo,
+        connection_mode: base.connection_mode,
+        config_status: base.config_status,
+        config: base.config,
+        updated_at: updatedAt,
+      });
+      if (!updated) throw new Error("No se pudo actualizar el canal.");
+      await mirrorTenantChatChannelToCentralCatalog(dataSchema, empresa_id, existingId);
+      return existingId;
+    }
+    const { data: updated, error } = await supabase
+      .from("chat_channels")
+      .update({ ...base, meta_phone_number_id: null, updated_at: updatedAt })
+      .eq("id", existingId)
+      .eq("empresa_id", empresa_id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw postgrestMutationError(dataSchema, error.message);
+    if (!updated) throw new Error("No se pudo actualizar el canal.");
+    await mirrorTenantChatChannelToCentralCatalog(dataSchema, empresa_id, existingId);
+    return existingId;
+  }
+
+  if (tenantPg) {
+    const id = await pgInsertYCloudWhatsappChannel(pool!, dataSchema, {
+      empresa_id,
+      nombre: base.nombre,
+      type: base.type,
+      provider: base.provider,
+      provider_channel_id: base.provider_channel_id,
+      activo: base.activo,
+      connection_mode: base.connection_mode,
+      config_status: base.config_status,
+      config: base.config,
+    });
+    await mirrorTenantChatChannelToCentralCatalog(dataSchema, empresa_id, id);
+    return id;
+  }
+
+  const { data: inserted, error } = await supabase
+    .from("chat_channels")
+    .insert({ empresa_id, ...base, meta_phone_number_id: null })
+    .select("id")
+    .single();
+  if (error) throw postgrestMutationError(dataSchema, error.message);
+  const newId = inserted?.id as string | undefined;
+  if (!newId) throw new Error("No se pudo crear el canal.");
+  await mirrorTenantChatChannelToCentralCatalog(dataSchema, empresa_id, newId);
+  return newId;
+}
+
+export type BaileysChannelStatus = {
+  ok: boolean;
+  connection: "starting" | "qr" | "open" | "close" | "unknown";
+  qrDataUrl: string | null;
+  meNumber: string | null;
+  empresaId: string;
+  channelId: string;
+  error?: string;
+};
+
+/**
+ * Consulta el estado del puente Baileys de un canal (para la pantalla de conexión):
+ * pega a `{bridge_url}/status` con el secreto compartido (server-side, nunca en el
+ * navegador) y, si hay un QR pendiente, lo convierte a imagen (data URL) para mostrar.
+ */
+export async function getBaileysChannelStatus(channelId: string): Promise<BaileysChannelStatus> {
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
+  const pool = getChatPostgresPool();
+  const tenantPg = isLikelyUnexposedTenantChatSchema(dataSchema) && pool != null;
+  const id = channelId.trim();
+  const bail = (error: string, connection: BaileysChannelStatus["connection"] = "unknown"): BaileysChannelStatus => ({
+    ok: false,
+    connection,
+    qrDataUrl: null,
+    meNumber: null,
+    empresaId: empresa_id,
+    channelId: id,
+    error,
+  });
+  if (!id) return bail("Canal inválido.");
+
+  let rawCfg: unknown = null;
+  if (tenantPg) {
+    rawCfg = await pgSelectChatChannelConfig(pool!, dataSchema, empresa_id, id);
+  } else {
+    const { data: row, error } = await supabase
+      .from("chat_channels")
+      .select("config")
+      .eq("id", id)
+      .eq("empresa_id", empresa_id)
+      .maybeSingle();
+    if (error) throw postgrestMutationError(dataSchema, error.message);
+    rawCfg = row?.config ?? null;
+  }
+  const cfg =
+    rawCfg && typeof rawCfg === "object" && !Array.isArray(rawCfg) ? (rawCfg as Record<string, unknown>) : {};
+  const bridgeUrl =
+    typeof cfg.baileys_bridge_url === "string" ? cfg.baileys_bridge_url.trim().replace(/\/+$/, "") : "";
+  if (!bridgeUrl) return bail("Este canal no tiene URL del puente configurada.");
+
+  const secret = (process.env.BAILEYS_BRIDGE_SECRET || "").trim();
+  try {
+    const res = await fetch(`${bridgeUrl}/status`, {
+      method: "GET",
+      headers: { "x-bridge-secret": secret },
+      cache: "no-store",
+    });
+    if (!res.ok) return bail(`El puente respondió ${res.status}.`);
+    const data = (await res.json()) as {
+      connection?: string;
+      lastQr?: string | null;
+      meNumber?: string | null;
+    };
+    const connection = (["starting", "qr", "open", "close"].includes(String(data.connection))
+      ? data.connection
+      : "unknown") as BaileysChannelStatus["connection"];
+    let qrDataUrl: string | null = null;
+    if (connection === "qr" && data.lastQr) {
+      const QRCode = (await import("qrcode")).default as unknown as {
+        toDataURL: (text: string) => Promise<string>;
+      };
+      qrDataUrl = await QRCode.toDataURL(data.lastQr);
+    }
+    return {
+      ok: true,
+      connection,
+      qrDataUrl,
+      meNumber: data.meNumber ?? null,
+      empresaId: empresa_id,
+      channelId: id,
+    };
+  } catch {
+    return bail("No se pudo contactar al puente. ¿Está encendido y accesible desde el servidor?");
+  }
+}
+
 export type GenericOmnichannelChannelInput = {
   id?: string;
   type: "instagram" | "facebook" | "linkedin" | "email";

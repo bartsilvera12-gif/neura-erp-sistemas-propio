@@ -10,7 +10,9 @@ import {
 import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers";
 import {
   resolveOutboundTextContextFromIds,
+  resolveBaileysContextFromIds,
   sendOutboundTextMessage,
+  sendTextViaBaileysBridge,
 } from "@/lib/chat/outbound-send-dispatch";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
@@ -112,16 +114,30 @@ export async function POST(request: NextRequest) {
     // no un chequeo local de ventana. `whatsapp_window_expires_at` se sigue guardando en el
     // inbound como dato informativo, pero ya no bloquea envíos.
 
-    let outbound;
+    let sendResult: Awaited<ReturnType<typeof sendOutboundTextMessage>>;
     try {
-      outbound = await resolveOutboundTextContextFromIds(
+      // Canal WhatsApp por QR (Baileys): enviar por el puente. Si no es baileys,
+      // devuelve null y seguimos por el camino Meta/YCloud de siempre.
+      const baileys = await resolveBaileysContextFromIds(
         supabase,
-        {
-          contactId: conv.contact_id,
-          channelId: conv.channel_id,
-        },
+        { contactId: conv.contact_id, channelId: conv.channel_id },
         { dataSchema, empresaId: conv.empresa_id }
       );
+      if (baileys) {
+        sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, message);
+      } else {
+        const outbound = await resolveOutboundTextContextFromIds(
+          supabase,
+          { contactId: conv.contact_id, channelId: conv.channel_id },
+          { dataSchema, empresaId: conv.empresa_id }
+        );
+        if (outbound.provider === "ycloud") {
+          console.info("[api/chat/send] ycloud_outbound", { conversationId });
+        }
+        sendResult = await sendOutboundTextMessage(outbound, message, {
+          replyToWamid: replyToWamid || null,
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Datos de envío incompletos";
       let status = 400;
@@ -130,14 +146,6 @@ export async function POST(request: NextRequest) {
       else if (msg.includes("token") || msg.includes("ycloud_api_key")) status = 500;
       return NextResponse.json({ ok: false, error: msg }, { status });
     }
-
-    if (outbound.provider === "ycloud") {
-      console.info("[api/chat/send] ycloud_outbound", { conversationId });
-    }
-
-    const sendResult = await sendOutboundTextMessage(outbound, message, {
-      replyToWamid: replyToWamid || null,
-    });
 
     if (!sendResult.ok) {
       return NextResponse.json(

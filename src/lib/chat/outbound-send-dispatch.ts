@@ -7,7 +7,9 @@ import { sendMessageViaYCloud, ycloudSenderToE164 } from "@/lib/chat/ycloud-send
 import { sendWhatsAppText, type SendWhatsAppTextResult } from "@/lib/chat/whatsapp-send-service";
 import type { Pool } from "pg";
 
-/** Contexto mínimo para enviar un mensaje de texto (Meta o YCloud). */
+/** Contexto mínimo para enviar un mensaje de texto (Meta o YCloud).
+ * Baileys (WhatsApp por QR) se resuelve aparte con `resolveBaileysContextFromIds`
+ * para no forzar a todos los consumidores de esta unión a manejar un 3er proveedor. */
 export type ChannelOutboundTextContext =
   | { provider: "meta"; toDigits: string; phoneNumberId: string; accessToken: string }
   | { provider: "ycloud"; toDigits: string; apiKey: string; fromE164: string };
@@ -25,7 +27,7 @@ export type OutboundCredentialSource = "channel" | "legacy_env" | "mixed";
 function logOutboundResolve(payload: {
   empresa_id: string;
   channel_id: string;
-  provider_effective: "meta" | "ycloud";
+  provider_effective: "meta" | "ycloud" | "baileys";
   wa_like_channel_count: number;
   credential_source: OutboundCredentialSource;
 }) {
@@ -54,7 +56,7 @@ export function isOutboundWhatsappLikeChannel(r: {
 }): boolean {
   if (r.activo === false) return false;
   const p = String(r.provider ?? "").trim().toLowerCase();
-  if (p === "ycloud" || p === "meta" || p === "whatsapp_cloud") return true;
+  if (p === "ycloud" || p === "meta" || p === "whatsapp_cloud" || p === "baileys") return true;
   const t = String(r.type ?? "").trim().toLowerCase();
   if (t === "whatsapp") return true;
   if (!t && !p) return true;
@@ -64,8 +66,9 @@ export function isOutboundWhatsappLikeChannel(r: {
 export function effectiveOutboundProvider(channel: {
   provider?: string | null;
   type?: string | null;
-}): "meta" | "ycloud" {
+}): "meta" | "ycloud" | "baileys" {
   const p = String(channel.provider ?? "").trim().toLowerCase();
+  if (p === "baileys") return "baileys";
   if (p === "ycloud") return "ycloud";
   if (p === "whatsapp_cloud" || p === "meta" || p === "") return "meta";
   const t = String(channel.type ?? "").trim().toLowerCase();
@@ -350,6 +353,105 @@ export async function resolveOutboundTextContextFromIds(
     channelId: input.channelId,
     waLikeChannelCount,
   });
+}
+
+export type BaileysOutboundContext = { toDigits: string; bridgeUrl: string };
+
+/**
+ * Si el canal de la conversación es WhatsApp por QR (provider='baileys'), devuelve el
+ * destino normalizado + la URL del puente. Si el canal NO es baileys, devuelve null
+ * (el caller sigue por el camino Meta/YCloud habitual). Lanza si el canal baileys está
+ * mal configurado (desactivado, sin teléfono del contacto, o sin URL de puente).
+ */
+export async function resolveBaileysContextFromIds(
+  supabase: SupabaseAdmin,
+  input: { contactId: string; channelId: string },
+  opts?: { dataSchema?: string; empresaId?: string }
+): Promise<BaileysOutboundContext | null> {
+  const pool = getChatPostgresPool();
+  const sch = opts?.dataSchema?.trim();
+  const usePg = Boolean(pool && sch && isLikelyUnexposedTenantChatSchema(sch));
+
+  let channel:
+    | { provider?: string | null; type?: string | null; config?: unknown; activo?: boolean | null }
+    | undefined;
+  let contactPhone = "";
+
+  if (usePg && pool && sch) {
+    const [cRes, chRes] = await Promise.all([
+      pool.query(
+        `SELECT phone_number FROM ${quoteSchemaTable(sch, "chat_contacts")} WHERE id = $1::uuid LIMIT 1`,
+        [input.contactId]
+      ),
+      pool.query(
+        `SELECT provider, type, config, activo FROM ${quoteSchemaTable(sch, "chat_channels")} WHERE id = $1::uuid LIMIT 1`,
+        [input.channelId]
+      ),
+    ]);
+    channel = chRes.rows?.[0] as typeof channel;
+    contactPhone = (cRes.rows?.[0]?.phone_number as string) ?? "";
+  } else {
+    const [cq, chq] = await Promise.all([
+      supabase.from("chat_contacts").select("phone_number").eq("id", input.contactId).maybeSingle(),
+      supabase
+        .from("chat_channels")
+        .select("provider, type, config, activo")
+        .eq("id", input.channelId)
+        .maybeSingle(),
+    ]);
+    channel = (chq.data as typeof channel) ?? undefined;
+    contactPhone = ((cq.data as { phone_number?: string } | null)?.phone_number as string) ?? "";
+  }
+
+  if (!channel) return null;
+  if (effectiveOutboundProvider(channel) !== "baileys") return null;
+  if (channel.activo === false) {
+    throw new Error("El canal WhatsApp por QR está desactivado. Activalo en Configuración.");
+  }
+
+  const toDigits = normalizeWaPhone(contactPhone);
+  if (!toDigits) throw new Error("Falta teléfono del contacto para enviar por WhatsApp (QR)");
+
+  const cfg =
+    channel.config && typeof channel.config === "object" && !Array.isArray(channel.config)
+      ? (channel.config as Record<string, unknown>)
+      : {};
+  const bridgeUrl =
+    typeof cfg.baileys_bridge_url === "string" ? cfg.baileys_bridge_url.trim().replace(/\/+$/, "") : "";
+  if (!bridgeUrl) {
+    throw new Error(
+      "Falta la URL del puente (baileys_bridge_url) en la configuración del canal WhatsApp por QR."
+    );
+  }
+  return { toDigits, bridgeUrl };
+}
+
+/** Envío de texto por el puente Baileys (canal WhatsApp por QR). Exportado para
+ * uso directo desde la ruta de envío (baileys no está en la unión compartida). */
+export async function sendTextViaBaileysBridge(
+  bridgeUrl: string,
+  toDigits: string,
+  text: string
+): Promise<SendWhatsAppTextResult> {
+  const secret = (process.env.BAILEYS_BRIDGE_SECRET || "").trim();
+  try {
+    const res = await fetch(`${bridgeUrl}/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bridge-secret": secret },
+      body: JSON.stringify({ to: toDigits, text }),
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      id?: string | null;
+      error?: string;
+    };
+    if (!res.ok || !raw.ok) {
+      return { ok: false, error: raw.error || `El puente WhatsApp respondió ${res.status}.`, raw };
+    }
+    return { ok: true, waMessageId: raw.id ?? null, raw };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo contactar al puente WhatsApp." };
+  }
 }
 
 export async function sendOutboundTextMessage(

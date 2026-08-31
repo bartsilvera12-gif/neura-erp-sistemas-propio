@@ -88,6 +88,7 @@ export function NuevoCanalInner() {
             cancelHref="/configuracion/canales"
             onSavedOfficial={(id) => router.push(`/configuracion/canales/${id}`)}
             onSavedYcloud={(id) => router.push(`/configuracion/canales/${id}`)}
+            onSavedQr={(id) => router.push(`/configuracion/canales/${id}`)}
           />
         ) : (
           <GenericOmnichannelChannelForm

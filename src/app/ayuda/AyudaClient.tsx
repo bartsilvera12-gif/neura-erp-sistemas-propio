@@ -111,19 +111,55 @@ export default function AyudaClient() {
     [articulos, categoriaSel]
   );
 
+  /**
+   * Agrupado por categoría, respetando la jerarquía: una categoría madre
+   * muestra sus subcategorías anidadas debajo. `parent_id` null = primer nivel.
+   */
   const porCategoria = useMemo(() => {
-    const grupos = new Map<string, { id: string; nombre: string; items: AyudaArticuloResumen[] }>();
+    const items = new Map<string, AyudaArticuloResumen[]>();
     for (const a of visibles) {
       const key = a.categoria_id ?? "__sin__";
-      const g = grupos.get(key) ?? { id: key, nombre: a.categoria_nombre ?? "Otros", items: [] };
-      g.items.push(a);
-      grupos.set(key, g);
+      items.set(key, [...(items.get(key) ?? []), a]);
     }
-    const orden = new Map(categorias.map((c, i) => [c.id, i]));
-    return [...grupos.values()].sort(
-      (a, b) => (orden.get(a.id) ?? 99) - (orden.get(b.id) ?? 99) || a.nombre.localeCompare(b.nombre, "es")
+    const meta = new Map(categorias.map((c) => [c.id, c]));
+    const posicion = new Map(categorias.map((c, i) => [c.id, i]));
+    const nombreDe = (id: string) =>
+      meta.get(id)?.nombre ?? visibles.find((a) => a.categoria_id === id)?.categoria_nombre ?? "Otros";
+
+    const hijasDe = new Map<string, string[]>();
+    for (const c of categorias) {
+      if (!c.parent_id) continue;
+      hijasDe.set(c.parent_id, [...(hijasDe.get(c.parent_id) ?? []), c.id]);
+    }
+
+    // Con filtro de categoría activo se muestra ese bloque solo, sin el padre.
+    const raices = categoriaSel
+      ? [categoriaSel]
+      : [...new Set([...items.keys()])].filter((id) => !meta.get(id)?.parent_id);
+
+    const bloques: {
+      id: string;
+      nombre: string;
+      items: AyudaArticuloResumen[];
+      hijas: { id: string; nombre: string; items: AyudaArticuloResumen[] }[];
+    }[] = [];
+
+    for (const id of raices) {
+      const hijas = (hijasDe.get(id) ?? [])
+        .filter((h) => (items.get(h) ?? []).length > 0)
+        .sort((a, b) => (posicion.get(a) ?? 99) - (posicion.get(b) ?? 99))
+        .map((h) => ({ id: h, nombre: nombreDe(h), items: items.get(h) ?? [] }));
+      const propios = items.get(id) ?? [];
+      if (propios.length === 0 && hijas.length === 0) continue;
+      bloques.push({ id, nombre: nombreDe(id), items: propios, hijas });
+    }
+
+    return bloques.sort(
+      (a, b) =>
+        (posicion.get(a.id) ?? 99) - (posicion.get(b.id) ?? 99) ||
+        a.nombre.localeCompare(b.nombre, "es")
     );
-  }, [visibles, categorias]);
+  }, [visibles, categorias, categoriaSel]);
 
   /** Atajos: las categorías con más material, que es por donde suele empezar la duda. */
   const atajos = useMemo(
@@ -348,34 +384,28 @@ export default function AyudaClient() {
                   </h2>
                   <span className="h-px flex-1 bg-slate-200" />
                   <span className="text-[11px] text-slate-400">
-                    {g.items.length} {g.items.length === 1 ? "artículo" : "artículos"}
+                    {g.items.length + g.hijas.reduce((n, h) => n + h.items.length, 0)} artículos
                   </span>
                 </div>
+                {g.hijas.map((h) => (
+                  <div key={h.id} className="mb-3">
+                    <h3 className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-slate-600">
+                      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
+                      {h.nombre}
+                    </h3>
+                    <ul className="grid gap-2 sm:grid-cols-2">
+                      {h.items.map((a) => (
+                        <li key={a.id}>
+                          <ArticuloCard articulo={a} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {g.items.map((a) => (
                     <li key={a.id}>
-                      <SpotlightCard
-                        spotlightColor="rgba(79, 174, 178, 0.10)"
-                        className="h-full rounded-xl border border-slate-200 bg-white"
-                      >
-                        <Link href={`/ayuda/${encodeURIComponent(a.slug)}`} className="flex h-full items-start gap-3 p-3.5">
-                          <span
-                            aria-hidden="true"
-                            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/12 text-[#2F6E71]"
-                          >
-                            <BookOpen className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold text-slate-900">{a.titulo}</span>
-                            {a.resumen ? (
-                              <span className="mt-0.5 block line-clamp-2 text-[12px] leading-relaxed text-slate-500">
-                                {a.resumen}
-                              </span>
-                            ) : null}
-                          </span>
-                          <ChevronRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-slate-300" />
-                        </Link>
-                      </SpotlightCard>
+                      <ArticuloCard articulo={a} />
                     </li>
                   ))}
                 </ul>
@@ -385,5 +415,36 @@ export default function AyudaClient() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Tarjeta de artículo del índice. La usan el nivel madre y las subcategorías. */
+function ArticuloCard({ articulo }: { articulo: AyudaArticuloResumen }) {
+  return (
+    <SpotlightCard
+      spotlightColor="rgba(79, 174, 178, 0.10)"
+      className="h-full rounded-xl border border-slate-200 bg-white"
+    >
+      <Link
+        href={`/ayuda/${encodeURIComponent(articulo.slug)}`}
+        className="flex h-full items-start gap-3 p-3.5"
+      >
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/12 text-[#2F6E71]"
+        >
+          <BookOpen className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-slate-900">{articulo.titulo}</span>
+          {articulo.resumen ? (
+            <span className="mt-0.5 block line-clamp-2 text-[12px] leading-relaxed text-slate-500">
+              {articulo.resumen}
+            </span>
+          ) : null}
+        </span>
+        <ChevronRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-slate-300" />
+      </Link>
+    </SpotlightCard>
   );
 }

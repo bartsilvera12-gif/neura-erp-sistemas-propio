@@ -10,6 +10,8 @@ export interface AyudaCategoriaRow {
   descripcion: string | null;
   orden: number;
   activo: boolean;
+  /** Categoría madre. `null` = primer nivel. Un solo nivel de anidamiento. */
+  parent_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -55,7 +57,7 @@ export const ARTICULO_COLS =
   "id, empresa_id, categoria_id, titulo, slug, resumen, contenido_md, modulo, roles_visibles, orden, publicado, vistas, creado_por, actualizado_por, created_at, updated_at";
 
 export const CATEGORIA_COLS =
-  "id, empresa_id, nombre, slug, descripcion, orden, activo, created_at, updated_at";
+  "id, empresa_id, nombre, slug, descripcion, orden, activo, parent_id, created_at, updated_at";
 
 export class AyudaValidationError extends Error {
   status: number;

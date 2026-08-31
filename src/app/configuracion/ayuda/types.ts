@@ -7,6 +7,8 @@ export interface AyudaCategoria {
   descripcion: string | null;
   orden: number;
   activo: boolean;
+  /** Categoría madre. `null` = primer nivel. */
+  parent_id?: string | null;
 }
 
 export interface AyudaArticulo {

@@ -24,8 +24,20 @@ export async function POST(request: Request) {
   }
 
   if (!emailConfigured()) {
+    // Diagnóstico sin exponer valores: qué variable falta a nivel runtime.
+    const presentes = {
+      SMTP_HOST: Boolean(process.env.SMTP_HOST?.trim()),
+      SMTP_USER: Boolean(process.env.SMTP_USER?.trim()),
+      SMTP_PASS: Boolean((process.env.SMTP_PASS ?? "").length > 0),
+      SMTP_PORT: Boolean(process.env.SMTP_PORT?.trim()),
+    };
+    const faltan = Object.entries(presentes).filter(([, v]) => !v).map(([k]) => k);
     return NextResponse.json(
-      errorResponse("SMTP no configurado. Faltan las variables SMTP_HOST / SMTP_USER / SMTP_PASS en el servidor."),
+      {
+        success: false,
+        error: `SMTP incompleto. Falta(n): ${faltan.join(", ") || "—"}.`,
+        detalle: presentes,
+      },
       { status: 400 }
     );
   }

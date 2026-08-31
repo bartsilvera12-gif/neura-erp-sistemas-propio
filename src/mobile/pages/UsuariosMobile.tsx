@@ -28,7 +28,7 @@ export default function UsuariosMobile() {
       <header className="mb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Usuarios</h1>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">RRHH</h1>
             <p className="mt-0.5 text-xs text-slate-500">
               {usuarios.length === 0 ? "Sin usuarios cargados." : `${usuarios.length} usuarios`}
             </p>

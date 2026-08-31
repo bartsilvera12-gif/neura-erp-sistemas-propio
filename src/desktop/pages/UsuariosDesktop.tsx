@@ -143,7 +143,7 @@ export default function UsuariosPage() {
           />
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Equipo</p>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Usuarios</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">RRHH</h1>
         <div className="animate-pulse py-16 text-center text-sm text-slate-400">Cargando…</div>
       </div>
     );
@@ -152,7 +152,7 @@ export default function UsuariosPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Usuarios</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">RRHH</h1>
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       </div>
     );
@@ -169,7 +169,7 @@ export default function UsuariosPage() {
             />
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Equipo</p>
           </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Usuarios</h1>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">RRHH</h1>
           <p className="mt-0.5 text-sm text-slate-500">Personas habilitadas para operar en tu empresa.</p>
         </div>
         <button

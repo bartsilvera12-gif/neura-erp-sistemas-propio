@@ -126,7 +126,7 @@ const SECTIONS: Section[] = [
   {
     title: "Administración",
     items: [
-      { href: "/usuarios", label: "Usuarios", icon: UserCog },
+      { href: "/usuarios", label: "RRHH", icon: UserCog },
       { href: "/configuracion", label: "Configuración", icon: Settings },
     ],
   },

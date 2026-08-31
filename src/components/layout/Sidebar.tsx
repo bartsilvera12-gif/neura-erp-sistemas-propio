@@ -39,7 +39,6 @@ import {
   CalendarDays,
   BarChart3,
   HandCoins,
-  ClipboardList,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -49,7 +48,6 @@ import { supabase } from "@/lib/supabase";
 import type { ModuloEmpresa } from "@/lib/empresas/actions";
 import { getFavoritos, toggleFavorito } from "@/lib/favorites";
 import { canAccessSidebarSlug } from "@/lib/modulos/route-slug-map";
-import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { useBoot } from "@/components/BootContext";
 
 type MenuItem = {
@@ -60,8 +58,6 @@ type MenuItem = {
   icon: React.ComponentType<{ className?: string }>;
   children?: { label: string; href: string; exactMatch?: boolean }[];
   showWhen?: string;
-  /** Solo para administradores de empresa o super admin. */
-  soloAdmin?: boolean;
 };
 
 function menuChildPathActive(path: string, childHref: string, exactMatch?: boolean): boolean {
@@ -157,7 +153,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/notas-credito",
     icon: ScrollText,
   },
-  { key: "usuarios", slug: "usuarios", label: "Usuarios", href: "/usuarios", icon: UserCog },
+  { key: "usuarios", slug: "usuarios", label: "RRHH", href: "/usuarios", icon: UserCog },
   {
     key: "configuracion",
     slug: "configuracion",
@@ -198,16 +194,6 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: Factory,
   },
   {
-    // Cartera de clientes por project manager. Reusa el permiso del módulo
-    // Proyectos (mismo slug), con key propia; el gate fino lo aplica la API.
-    key: "gestion-pm",
-    slug: "proyectos",
-    label: "Gestión Project Manager",
-    href: "/dashboard/project-managers",
-    icon: ClipboardList,
-    soloAdmin: true,
-  },
-  {
     key: "agenda",
     slug: "agenda",
     label: "Agenda",
@@ -242,14 +228,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   {
     id: "comercial",
     title: "Comercial",
-    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda"],
-  },
-  {
-    // Proyectos sale de "Comercial": el tablero y la gestión de PM son la
-    // misma cadena de trabajo (se vende, se desarrolla, se entrega).
-    id: "desarrollo",
-    title: "Desarrollo",
-    itemKeys: ["proyectos", "gestion-pm"],
+    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos"],
   },
   {
     id: "finanzas",
@@ -471,7 +450,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const [collapsedFamilies, setCollapsedFamilies] = useState<Record<string, boolean>>({});
   const [cargando, setCargando] = useState(true);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
-  const [rolUsuario, setRolUsuario] = useState<string | null>(null);
   /** Filtro visual del menú (no altera permisos ni rutas). */
   const [menuSearchQuery, setMenuSearchQuery] = useState("");
   const { setSidebarReady } = useBoot();
@@ -523,11 +501,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         if (res.ok) {
           const body = (await res.json()) as {
             superAdmin?: boolean;
-            rol?: string | null;
             modulos?: ModuloEmpresa[];
           };
           superA = !!body.superAdmin || bootstrapSuper;
-          setRolUsuario(body.rol ?? null);
           modList = Array.isArray(body.modulos) ? body.modulos : [];
         } else {
           superA = bootstrapSuper;
@@ -623,13 +599,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
    * dos: para el localStorage eran el mismo id. `key` es única por ítem del
    * menú y no se comparte nunca.
    */
-  /**
-   * Administrador de empresa (o super admin). Los items marcados
-   * `soloAdmin` no se muestran a nadie mas — es solo la puerta visual;
-   * el permiso de verdad lo aplica la API de cada modulo.
-   */
-  const esAdmin = esSuperAdmin || esRolAdminEmpresaOGlobal(rolUsuario);
-
   const favoritosItemsFiltered = useMemo(() => {
     const slugs = new Set(modulos.map((m) => m.slug));
     const access = (slug: string) => canAccessSidebarSlug(slug, slugs, esSuperAdmin);
@@ -637,10 +606,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       (item) =>
         favoritos.includes(item.key) &&
         access(item.slug) &&
-        (!item.soloAdmin || esAdmin) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
-  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, esAdmin]);
+  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin]);
 
   const mainItemsFiltered = useMemo(() => {
     const slugs = new Set(modulos.map((m) => m.slug));
@@ -649,10 +617,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       (item) =>
         !favoritos.includes(item.key) &&
         access(item.slug) &&
-        (!item.soloAdmin || esAdmin) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
-  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, esAdmin]);
+  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin]);
 
   /** Agrupa `mainItemsFiltered` por familia (preservando acceso/búsqueda/favoritos ya aplicados). */
   const familiesToRender = useMemo(() => {

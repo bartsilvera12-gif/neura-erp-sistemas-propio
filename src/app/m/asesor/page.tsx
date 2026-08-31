@@ -1,21 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 import { attachmentCaptionForDisplay } from "@/lib/chat/message-erp-display";
-
-type Conv = {
-  id: string;
-  status: string;
-  last_message_at: string | null;
-  last_message_preview: string | null;
-  unread_count: number;
-  contact_nombre: string | null;
-  contact_telefono: string | null;
-  window_open: boolean | null;
-};
+import { useAsesorInbox } from "@/shared/hooks/useAsesorInbox";
 
 function shortTime(iso: string | null): string {
   if (!iso) return "";
@@ -31,10 +20,7 @@ function shortTime(iso: string | null): string {
 }
 
 export default function MAsesorInboxPage() {
-  const [convs, setConvs] = useState<Conv[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [isAgent, setIsAgent] = useState(true);
+  const { conversations: convs, isAgent, isLoading: loading, error, refresh } = useAsesorInbox();
   const [q, setQ] = useState("");
 
   const filtered = (() => {
@@ -53,34 +39,6 @@ export default function MAsesorInboxPage() {
     });
   })();
 
-  const load = useCallback(async (silent?: boolean) => {
-    if (!silent) setLoading(true);
-    try {
-      const res = await fetchWithSupabaseSession("/api/mobile/asesor/conversations", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo cargar");
-      setConvs((data.conversations ?? []) as Conv[]);
-      setIsAgent(data.is_agent !== false);
-      setErr(null);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Error");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    const id = window.setInterval(() => void load(true), 20000);
-    const onVis = () => {
-      if (document.visibilityState === "visible") void load(true);
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [load]);
 
   return (
     <div className="min-h-svh bg-slate-50 flex flex-col">
@@ -107,10 +65,10 @@ export default function MAsesorInboxPage() {
       <main className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-6 text-center text-slate-400 text-sm animate-pulse">Cargando…</div>
-        ) : err ? (
+        ) : error ? (
           <div className="p-4 m-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-            {err}
-            <button onClick={() => void load()} className="ml-2 underline">
+            {error.message}
+            <button onClick={() => void refresh()} className="ml-2 underline">
               Reintentar
             </button>
           </div>

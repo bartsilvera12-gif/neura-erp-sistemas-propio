@@ -102,7 +102,7 @@ export async function notificarCobroPendiente(
             <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">El saldo del cliente se actualiza recién cuando aprobás el cobro.</p>
           </div>`;
         const text = `Nuevo cobro por aprobar. ${partes.join(" · ")}. Pendiente en Conciliación bancaria: ${link}`;
-        await sendEmail({ to, subject: `Cobro por aprobar — ${partes.join(" · ")}`, html, text });
+        await sendEmail({ to, subject: `Confirmación de Pago — ${partes.join(" · ")}`, html, text });
       }
     } catch (mailErr) {
       console.warn("[notificarCobroPendiente:email]", mailErr instanceof Error ? mailErr.message : mailErr);

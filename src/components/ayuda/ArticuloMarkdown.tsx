@@ -18,7 +18,7 @@ const MD_COMPONENTS = {
     <h3 className="mb-2 mt-5 text-base font-semibold text-slate-800 first:mt-0" {...props} />
   ),
   p: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
-    <p className="mb-3 text-[15px] leading-relaxed text-slate-700 last:mb-0" {...props} />
+    <p className="mb-3 break-words text-[15px] leading-relaxed text-slate-700 last:mb-0" {...props} />
   ),
   strong: (props: React.HTMLAttributes<HTMLElement>) => (
     <strong className="font-semibold text-slate-900" {...props} />
@@ -45,9 +45,33 @@ const MD_COMPONENTS = {
       {...props}
     />
   ),
-  code: (props: React.HTMLAttributes<HTMLElement>) => (
-    <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13px] text-slate-800" {...props} />
+  /**
+   * Bloque de código. Va con su propio contenedor porque el `<pre>` por defecto
+   * del navegador no encoge ni scrollea: una línea larga (una URL, un import)
+   * empujaba el ancho y el código se salía de la tarjeta del artículo.
+   *
+   * `min-w-0` en el padre + `overflow-x-auto` acá = la línea larga scrollea
+   * dentro del bloque en vez de estirar la página.
+   */
+  pre: (props: React.HTMLAttributes<HTMLPreElement>) => (
+    <pre
+      className="mb-4 max-w-full overflow-x-auto rounded-xl border border-slate-800 bg-[#0B1F22] p-4 font-mono text-[12.5px] leading-relaxed text-slate-100"
+      {...props}
+    />
   ),
+  code: ({ className, ...props }: React.HTMLAttributes<HTMLElement>) => {
+    // Dentro de un bloque cercado, react-markdown pone `language-*`. Ahí el
+    // fondo lo pone el `pre`; la pastilla gris es sólo para el código en línea.
+    const enBloque = typeof className === "string" && className.includes("language-");
+    return enBloque ? (
+      <code className={`font-mono ${className}`} {...props} />
+    ) : (
+      <code
+        className="break-words rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13px] text-slate-800"
+        {...props}
+      />
+    );
+  },
   hr: () => <hr className="my-6 border-slate-200" />,
   table: (props: React.HTMLAttributes<HTMLTableElement>) => (
     <div className="mb-3 overflow-x-auto rounded-lg border border-slate-200">
@@ -71,7 +95,7 @@ const MD_COMPONENTS = {
 
 export default function ArticuloMarkdown({ children }: { children: string }) {
   return (
-    <div className="max-w-none">
+    <div className="min-w-0 max-w-none">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
         {children}
       </ReactMarkdown>

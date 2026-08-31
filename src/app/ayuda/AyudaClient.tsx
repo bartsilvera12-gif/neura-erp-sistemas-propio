@@ -132,10 +132,20 @@ export default function AyudaClient() {
       hijasDe.set(c.parent_id, [...(hijasDe.get(c.parent_id) ?? []), c.id]);
     }
 
-    // Con filtro de categoría activo se muestra ese bloque solo, sin el padre.
+    /*
+      Raíces = las categorías de primer nivel que tienen material propio MÁS las
+      madres de las que sí lo tienen. Sin esa segunda parte, una madre sin
+      artículos propios —"Desarrollo", que sólo contiene "Páginas Web"— quedaba
+      fuera y su hija se dibujaba como si fuera de primer nivel.
+      Con un filtro de categoría activo se muestra ese bloque solo.
+    */
     const raices = categoriaSel
       ? [categoriaSel]
-      : [...new Set([...items.keys()])].filter((id) => !meta.get(id)?.parent_id);
+      : [
+          ...new Set(
+            [...items.keys()].map((id) => meta.get(id)?.parent_id ?? id)
+          ),
+        ];
 
     const bloques: {
       id: string;
@@ -344,7 +354,7 @@ export default function AyudaClient() {
       </div>
 
       {/* ── Listado ── */}
-      <div className="mx-auto w-full max-w-5xl px-4 pb-12 pt-8 md:px-6">
+      <div className="mx-auto w-full max-w-3xl px-4 pb-16 pt-10 md:px-6">
         {error ? (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             {error}
@@ -378,22 +388,29 @@ export default function AyudaClient() {
 
             {porCategoria.map((g) => (
               <section key={g.id}>
-                <div className="mb-2.5 flex items-center gap-2">
-                  <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#2F6E71]">
-                    {g.nombre}
-                  </h2>
-                  <span className="h-px flex-1 bg-slate-200" />
-                  <span className="text-[11px] text-slate-400">
-                    {g.items.length + g.hijas.reduce((n, h) => n + h.items.length, 0)} artículos
-                  </span>
+                <div className="mb-4 text-center">
+                  <h2 className="text-lg font-bold tracking-tight text-[#0B3A3D] md:text-xl">{g.nombre}</h2>
+                  <p className="mt-0.5 text-[12px] text-slate-400">
+                    {(() => {
+                      const n = g.items.length + g.hijas.reduce((t, h) => t + h.items.length, 0);
+                      return `${n} ${n === 1 ? "artículo" : "artículos"}`;
+                    })()}
+                  </p>
+                  <span
+                    aria-hidden="true"
+                    className="mx-auto mt-2.5 block h-0.5 w-10 rounded-full bg-[#4FAEB2]"
+                  />
                 </div>
                 {g.hijas.map((h) => (
-                  <div key={h.id} className="mb-3">
-                    <h3 className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-slate-600">
-                      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" />
-                      {h.nombre}
-                    </h3>
-                    <ul className="grid gap-2 sm:grid-cols-2">
+                  <div key={h.id} className="mb-5">
+                    <div className="mb-2.5 flex items-center gap-2.5">
+                      <span aria-hidden="true" className="h-px flex-1 bg-slate-200" />
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#2F6E71]">
+                        {h.nombre}
+                      </h3>
+                      <span aria-hidden="true" className="h-px flex-1 bg-slate-200" />
+                    </div>
+                    <ul className="space-y-2.5">
                       {h.items.map((a) => (
                         <li key={a.id}>
                           <ArticuloCard articulo={a} />
@@ -402,7 +419,7 @@ export default function AyudaClient() {
                     </ul>
                   </div>
                 ))}
-                <ul className="grid gap-2 sm:grid-cols-2">
+                <ul className="space-y-2.5">
                   {g.items.map((a) => (
                     <li key={a.id}>
                       <ArticuloCard articulo={a} />
@@ -423,27 +440,32 @@ function ArticuloCard({ articulo }: { articulo: AyudaArticuloResumen }) {
   return (
     <SpotlightCard
       spotlightColor="rgba(79, 174, 178, 0.10)"
-      className="h-full rounded-xl border border-slate-200 bg-white"
+      className="h-full rounded-2xl border border-slate-200 bg-white transition-shadow hover:shadow-md hover:shadow-[#0B3A3D]/5"
     >
       <Link
         href={`/ayuda/${encodeURIComponent(articulo.slug)}`}
-        className="flex h-full items-start gap-3 p-3.5"
+        className="group flex h-full items-center gap-4 p-5"
       >
         <span
           aria-hidden="true"
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/12 text-[#2F6E71]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2]/12 text-[#2F6E71] transition-colors group-hover:bg-[#4FAEB2]/20"
         >
-          <BookOpen className="h-4 w-4" />
+          <BookOpen className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-slate-900">{articulo.titulo}</span>
+          <span className="block text-[15px] font-semibold leading-snug text-slate-900 transition-colors group-hover:text-[#2F6E71]">
+            {articulo.titulo}
+          </span>
           {articulo.resumen ? (
-            <span className="mt-0.5 block line-clamp-2 text-[12px] leading-relaxed text-slate-500">
+            <span className="mt-1 block line-clamp-2 text-[13px] leading-relaxed text-slate-500">
               {articulo.resumen}
             </span>
           ) : null}
         </span>
-        <ChevronRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-slate-300" />
+        <ChevronRight
+          aria-hidden="true"
+          className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-[#4FAEB2]"
+        />
       </Link>
     </SpotlightCard>
   );

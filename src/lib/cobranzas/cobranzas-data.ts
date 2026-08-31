@@ -247,6 +247,13 @@ function agruparPorServicio(
     // Solo neura: en Seguimiento Cobranzas contamos únicamente cuotas de suscripción
     // (con suscripcion_id). Deja afuera la implementación (contado) y las mal marcadas.
     if (soloSuscripciones && !sid) continue;
+    // Solo neura: no adelantar la cuota del PRÓXIMO mes. Contamos lo que vence dentro
+    // del mes actual o antes (mora + cuota de este mes); las cuotas que vencen el mes
+    // que viene no cuentan hasta que llegue ese mes.
+    if (soloSuscripciones) {
+      const venc = ymd(f.fecha_vencimiento as string);
+      if (venc && venc.slice(0, 7) > hoyYmd.slice(0, 7)) continue;
+    }
     const key = sid || "general";
     let g = grupos.get(key);
     if (!g) {

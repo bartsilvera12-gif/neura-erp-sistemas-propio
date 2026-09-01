@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchMonitoreoPageData,
   type MonitoringDashboard,
@@ -11,7 +11,7 @@ import {
 } from "@/lib/chat/chat-ops-actions";
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { assignmentWaitBadge, assignmentWaitBadgeClass } from "@/lib/chat/inbox-assignment-labels";
-import { ArrowLeftRight, Eye, Flame } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronDown, Copy, Eye, Flame } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   attachmentCaptionForDisplay,
@@ -28,17 +28,21 @@ type MonitorChatMsg = {
   raw_payload?: Record<string, unknown> | null;
 };
 
-/** Lead del día (prospecto CRM creado ese día) con su conversación, para leerlo desde el monitoreo. */
+/** Chat asignado a un asesor ese día, para leerlo/desplegarlo desde el monitoreo. */
 type LeadDelDia = {
   conversation_id: string;
   nombre: string | null;
   telefono: string | null;
   created_at: string | null;
+  initial_assignment_at?: string | null;
   last_message_at: string | null;
   last_message_preview: string | null;
   status: string | null;
   campania: string | null;
 };
+
+/** Estado del desglose de chats de un asesor (carga perezosa al desplegar). */
+type AgentLeadsState = { loading: boolean; err: string | null; rows: LeadDelDia[] };
 
 /** `formatWaitHuman` depende de `Date.now()`; sin re-render el monitoreo mostraba tiempos “congelados”. */
 function buildMonitoreoInboxHref(row: MonitoringUnassignedRow, opts: { transferir?: boolean }) {
@@ -213,19 +217,20 @@ export default function MonitoreoPage() {
     })();
   }, []);
 
-  // "Chats del día": leads (prospectos CRM) creados en la fecha seleccionada, con su conversación,
-  // para leerlos de corrido desde acá. Comparte la fecha (`leadDate`) con el panel de agentes.
-  const [leadsDia, setLeadsDia] = useState<LeadDelDia[]>([]);
-  const [leadsDiaLoading, setLeadsDiaLoading] = useState(false);
-  const [leadsDiaErr, setLeadsDiaErr] = useState<string | null>(null);
-  const [leadsDiaCollapsed, setLeadsDiaCollapsed] = useState(false);
+  // Desglose de chats por asesor: click en "Leads hoy" despliega abajo los chats de ese
+  // agente ese día (carga perezosa). Comparte la fecha (`leadDate`) con el panel de agentes.
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [agentLeads, setAgentLeads] = useState<Record<string, AgentLeadsState>>({});
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
 
-  const loadLeadsDia = useCallback(async (dateYmd: string) => {
-    setLeadsDiaLoading(true);
-    setLeadsDiaErr(null);
+  const loadAgentLeads = useCallback(async (agentId: string, dateYmd: string) => {
+    setAgentLeads((prev) => ({
+      ...prev,
+      [agentId]: { loading: true, err: null, rows: prev[agentId]?.rows ?? [] },
+    }));
     try {
       const res = await fetchWithSupabaseSession(
-        `/api/monitoreo/leads-del-dia?fecha=${encodeURIComponent(dateYmd)}`,
+        `/api/monitoreo/leads-del-dia?fecha=${encodeURIComponent(dateYmd)}&agentId=${encodeURIComponent(agentId)}`,
         { cache: "no-store" }
       );
       const json = (await res.json().catch(() => ({}))) as {
@@ -233,20 +238,46 @@ export default function MonitoreoPage() {
         data?: { leads?: LeadDelDia[] };
       };
       if (!res.ok || !json.success || !Array.isArray(json.data?.leads)) {
-        throw new Error("No se pudieron cargar los leads del día");
+        throw new Error("No se pudieron cargar los chats del asesor");
       }
-      setLeadsDia(json.data.leads);
+      const rows = json.data.leads;
+      setAgentLeads((prev) => ({ ...prev, [agentId]: { loading: false, err: null, rows } }));
     } catch (e) {
-      setLeadsDiaErr(e instanceof Error ? e.message : "Error al cargar los leads del día");
-      setLeadsDia([]);
-    } finally {
-      setLeadsDiaLoading(false);
+      setAgentLeads((prev) => ({
+        ...prev,
+        [agentId]: { loading: false, err: e instanceof Error ? e.message : "Error al cargar", rows: [] },
+      }));
     }
   }, []);
 
+  const toggleAgentLeads = useCallback(
+    (agentId: string) => {
+      setExpandedAgent((cur) => {
+        const next = cur === agentId ? null : agentId;
+        if (next) void loadAgentLeads(agentId, leadDate);
+        return next;
+      });
+    },
+    [loadAgentLeads, leadDate]
+  );
+
+  // Cambiar la fecha invalida el desglose cacheado y cierra cualquier despliegue.
   useEffect(() => {
-    void loadLeadsDia(leadDate);
-  }, [loadLeadsDia, leadDate]);
+    setAgentLeads({});
+    setExpandedAgent(null);
+  }, [leadDate]);
+
+  const copyPhone = useCallback((phone: string | null) => {
+    const val = phone?.trim();
+    if (!val || !navigator.clipboard) return;
+    void navigator.clipboard
+      .writeText(val)
+      .then(() => {
+        setCopiedPhone(val);
+        window.setTimeout(() => setCopiedPhone((c) => (c === val ? null : c)), 1500);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="flex flex-col gap-6 pb-10">
@@ -847,8 +878,11 @@ export default function MonitoreoPage() {
                 <tbody className="divide-y divide-slate-100">
                   {agents.map((a) => {
                     const tone = avatarToneFor(a.nombre || a.email || "");
+                    const expanded = expandedAgent === a.id;
+                    const drill = agentLeads[a.id];
                     return (
-                      <tr key={a.id} className="transition-colors hover:bg-[#4FAEB2]/[0.04]">
+                      <Fragment key={a.id}>
+                      <tr className={`transition-colors ${expanded ? "bg-[#4FAEB2]/[0.06]" : "hover:bg-[#4FAEB2]/[0.04]"}`}>
                         <td className="px-4 py-3 text-sm text-slate-700">{a.queue_nombre}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
@@ -891,9 +925,29 @@ export default function MonitoreoPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm font-semibold tabular-nums text-[#3F8E91]" title="Leads auto-asignados hoy (reparto del día, America/Asuncion)">
-                            {a.leads_hoy ?? 0}
-                          </span>
+                          {(a.leads_hoy ?? 0) > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleAgentLeads(a.id)}
+                              aria-expanded={expandedAgent === a.id}
+                              title="Ver los chats asignados a este asesor en la fecha elegida"
+                              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-sm font-semibold tabular-nums transition-colors ${
+                                expandedAgent === a.id
+                                  ? "border-[#4FAEB2] bg-[#4FAEB2]/12 text-[#3F8E91]"
+                                  : "border-transparent text-[#3F8E91] hover:border-[#4FAEB2]/50 hover:bg-[#4FAEB2]/8"
+                              }`}
+                            >
+                              {a.leads_hoy ?? 0}
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${expandedAgent === a.id ? "rotate-180" : ""}`}
+                                aria-hidden
+                              />
+                            </button>
+                          ) : (
+                            <span className="text-sm font-semibold tabular-nums text-slate-400" title="Sin leads auto-asignados en la fecha">
+                              0
+                            </span>
+                          )}
                           {a.transfers_hoy ? (
                             <span
                               className="ml-1.5 text-[10px] font-medium text-slate-400"
@@ -934,169 +988,112 @@ export default function MonitoreoPage() {
                           </span>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* Chats del día — leads (prospectos) creados en la fecha elegida, para leerlos de corrido */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className={`flex flex-wrap items-center justify-between gap-3 ${leadsDiaCollapsed ? "" : "mb-4"}`}>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span aria-hidden="true" className="block h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                Chats del día
-              </h2>
-              {leadsDia.length > 0 ? (
-                <span className="inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[#3F8E91]">
-                  {leadsDia.length}
-                </span>
-              ) : null}
-            </div>
-            {!leadsDiaCollapsed ? (
-              <p className="mt-1.5 max-w-3xl pl-3 text-[11px] text-slate-500">
-                Leads (contactos nuevos) del {esLeadHoy ? "día de hoy" : `${leadDate.slice(8, 10)}/${leadDate.slice(5, 7)}`}. Tocá{" "}
-                <span className="font-semibold text-[#3F8E91]">Leer</span> para abrir la conversación sin salir de acá. Cambiá la fecha en el panel de arriba.
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={() => setLeadsDiaCollapsed((v) => !v)}
-            aria-expanded={!leadsDiaCollapsed}
-            title={leadsDiaCollapsed ? "Mostrar listado" : "Ocultar listado"}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`h-3.5 w-3.5 text-[#4FAEB2] transition-transform ${leadsDiaCollapsed ? "" : "rotate-180"}`}
-              aria-hidden="true"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-            {leadsDiaCollapsed ? "Mostrar" : "Ocultar"}
-          </button>
-        </div>
-        {leadsDiaCollapsed ? null : leadsDiaLoading ? (
-          <div className="flex items-center gap-3 py-8 text-sm text-slate-500">
-            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
-            Cargando…
-          </div>
-        ) : leadsDiaErr ? (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <span className="font-medium">{leadsDiaErr}</span>
-            <button
-              type="button"
-              onClick={() => void loadLeadsDia(leadDate)}
-              className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-700 transition-colors hover:bg-red-100"
-            >
-              Reintentar
-            </button>
-          </div>
-        ) : leadsDia.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            No hay leads nuevos {esLeadHoy ? "hoy" : "en esa fecha"}.
-          </p>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50/80">
-                  <tr>
-                    {["Contacto", "Campaña", "Último mensaje", "Estado", ""].map((h, i) => (
-                      <th
-                        key={i}
-                        className={`px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${
-                          i === 4 ? "text-right" : ""
-                        }`}
-                      >
-                        {h || "Acciones"}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {leadsDia.map((l) => {
-                    const name = l.nombre?.trim() || l.telefono || "Sin nombre";
-                    const tone = avatarToneFor(name);
-                    const cerrada = (l.status ?? "").toLowerCase() === "closed";
-                    return (
-                      <tr key={l.conversation_id} className="transition-colors hover:bg-[#4FAEB2]/[0.04]">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <span
-                              aria-hidden="true"
-                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${tone}`}
-                            >
-                              {avatarInitial(name)}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-900">{name}</p>
-                              <p className="truncate font-mono text-[11px] tabular-nums text-slate-500">
-                                {l.telefono ?? "—"}
+                      {expanded ? (
+                        <tr>
+                          <td colSpan={10} className="bg-slate-50/70 px-4 py-3">
+                            {drill?.loading ? (
+                              <div className="flex items-center gap-3 py-3 text-sm text-slate-500">
+                                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
+                                Cargando chats de {a.nombre}…
+                              </div>
+                            ) : drill?.err ? (
+                              <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                <span className="font-medium">{drill.err}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void loadAgentLeads(a.id, leadDate)}
+                                  className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                  Reintentar
+                                </button>
+                              </div>
+                            ) : !drill || drill.rows.length === 0 ? (
+                              <p className="py-2 text-sm text-slate-500">
+                                No hay chats asignados a {a.nombre} {esLeadHoy ? "el día de hoy" : "en esa fecha"}.
                               </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {l.campania ? (
-                            <span className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
-                              <span aria-hidden="true" className="h-1 w-1 shrink-0 rounded-full bg-current opacity-70" />
-                              <span className="truncate">{l.campania}</span>
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-slate-400">Sin atribución</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="max-w-[280px] truncate text-[13px] text-slate-600">
-                            {l.last_message_preview?.trim() || "—"}
-                          </p>
-                          {l.last_message_at ? (
-                            <p className="text-[11px] tabular-nums text-slate-400">
-                              <TickingSinceLabel iso={l.last_message_at} />
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                              cerrada
-                                ? "border-slate-200 bg-slate-50 text-slate-500"
-                                : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            }`}
-                          >
-                            {cerrada ? "Cerrada" : "Abierta"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openChat({
-                                conversation_id: l.conversation_id,
-                                contact_name: l.nombre,
-                                contact_phone: l.telefono,
-                              })
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/50 bg-[#4FAEB2]/8 px-3 py-1.5 text-xs font-semibold text-[#3F8E91] shadow-sm transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/15"
-                          >
-                            <Eye className="h-3.5 w-3.5" aria-hidden />
-                            Leer
-                          </button>
-                        </td>
-                      </tr>
+                            ) : (
+                              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-1.5">
+                                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                    Chats de {a.nombre}
+                                  </span>
+                                  <span className="text-[11px] tabular-nums text-slate-400">{drill.rows.length}</span>
+                                </div>
+                                <ul className="divide-y divide-slate-100">
+                                  {drill.rows.map((l) => {
+                                    const cname = l.nombre?.trim() || l.telefono || "Sin nombre";
+                                    const ctone = avatarToneFor(cname);
+                                    const copied = copiedPhone === (l.telefono?.trim() || " ");
+                                    return (
+                                      <li key={l.conversation_id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#4FAEB2]/[0.04]">
+                                        <span
+                                          aria-hidden
+                                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${ctone}`}
+                                        >
+                                          {avatarInitial(cname)}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-1.5">
+                                            <p className="truncate text-sm font-semibold text-slate-900">{cname}</p>
+                                            {l.campania ? (
+                                              <span className="inline-flex max-w-[180px] items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-1.5 py-0.5 text-[10px] font-semibold text-[#3F8E91]">
+                                                <span className="truncate">{l.campania}</span>
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          <p className="truncate text-[12px] text-slate-500">
+                                            {l.last_message_preview?.trim() || "—"}
+                                          </p>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-1.5">
+                                          <span className="hidden font-mono text-[11px] tabular-nums text-slate-500 sm:inline">
+                                            {l.telefono ?? "—"}
+                                          </span>
+                                          {l.telefono ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => copyPhone(l.telefono)}
+                                              title={copied ? "¡Copiado!" : "Copiar número"}
+                                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+                                            >
+                                              {copied ? (
+                                                <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+                                              ) : (
+                                                <Copy className="h-3.5 w-3.5" aria-hidden />
+                                              )}
+                                              <span className="sr-only">Copiar número</span>
+                                            </button>
+                                          ) : null}
+                                          {l.last_message_at ? (
+                                            <span className="hidden text-[11px] tabular-nums text-slate-400 md:inline">
+                                              <TickingSinceLabel iso={l.last_message_at} />
+                                            </span>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openChat({
+                                                conversation_id: l.conversation_id,
+                                                contact_name: l.nombre,
+                                                contact_phone: l.telefono,
+                                              })
+                                            }
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/50 bg-[#4FAEB2]/8 px-3 py-1.5 text-xs font-semibold text-[#3F8E91] shadow-sm transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/15"
+                                          >
+                                            <Eye className="h-3.5 w-3.5" aria-hidden />
+                                            Leer
+                                          </button>
+                                        </div>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
                     );
                   })}
                 </tbody>

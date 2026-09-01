@@ -54,7 +54,8 @@ export async function GET(request: NextRequest) {
                  AND cv.first_human_response_at >= fi.first_in
                 THEN round(EXTRACT(EPOCH FROM (cv.first_human_response_at - fi.first_in)))::int
                 ELSE NULL
-              END AS aht_seg
+              END AS aht_seg,
+              (cv.first_human_response_at IS NULL AND fi.first_in IS NOT NULL) AS sin_respuesta
          FROM ${tCv} cv
          JOIN ${tC} ct ON ct.id = cv.contact_id
          LEFT JOIN ${tA} a ON a.conversation_id = cv.id

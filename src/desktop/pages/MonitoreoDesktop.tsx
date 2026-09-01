@@ -41,6 +41,8 @@ type LeadDelDia = {
   campania: string | null;
   /** AHT de 1ª respuesta de ESTE chat (seg): 1ª respuesta humana − 1er mensaje del cliente. */
   aht_seg?: number | null;
+  /** true si el cliente escribió y aún no hubo primera respuesta humana (chat pendiente). */
+  sin_respuesta?: boolean;
 };
 
 /** Estado del desglose de chats de un asesor (carga perezosa al desplegar). */
@@ -1131,8 +1133,15 @@ export default function MonitoreoPage() {
                                                 >
                                                   {fmtAht(l.aht_seg)}
                                                 </span>
+                                              ) : l.sin_respuesta ? (
+                                                <span
+                                                  className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                                                  title="El cliente escribió y aún no hubo primera respuesta humana"
+                                                >
+                                                  Sin responder
+                                                </span>
                                               ) : (
-                                                <span className="text-[11px] text-slate-400" title="Sin primera respuesta aún">
+                                                <span className="text-[11px] text-slate-400" title="Sin datos de mensajes">
                                                   —
                                                 </span>
                                               )}

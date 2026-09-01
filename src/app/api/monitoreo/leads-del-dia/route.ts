@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     const tCv = quoteSchemaTable(schema, "chat_conversations");
     const tC = quoteSchemaTable(schema, "chat_contacts");
     const tA = quoteSchemaTable(schema, "chat_conversation_attribution");
+    const tM = quoteSchemaTable(schema, "chat_messages");
 
     const { rows } = await pool.query(
       `SELECT cv.id AS conversation_id,
@@ -44,10 +45,25 @@ export async function GET(request: NextRequest) {
               cv.last_message_at,
               cv.last_message_preview,
               cv.status,
-              a.meta_campaign_name AS campania
+              a.meta_campaign_name AS campania,
+              cv.first_human_response_at,
+              fi.first_in,
+              CASE
+                WHEN cv.first_human_response_at IS NOT NULL
+                 AND fi.first_in IS NOT NULL
+                 AND cv.first_human_response_at >= fi.first_in
+                THEN round(EXTRACT(EPOCH FROM (cv.first_human_response_at - fi.first_in)))::int
+                ELSE NULL
+              END AS aht_seg
          FROM ${tCv} cv
          JOIN ${tC} ct ON ct.id = cv.contact_id
          LEFT JOIN ${tA} a ON a.conversation_id = cv.id
+         LEFT JOIN LATERAL (
+           SELECT min(m.created_at) AS first_in
+             FROM ${tM} m
+            WHERE m.conversation_id = cv.id
+              AND m.from_me = false
+         ) fi ON true
         WHERE cv.empresa_id = $1::uuid
           AND cv.assigned_agent_id = $3::uuid
           AND (COALESCE(cv.initial_assignment_at, cv.created_at) AT TIME ZONE 'America/Asuncion')::date = $2::date

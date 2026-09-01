@@ -39,6 +39,8 @@ type LeadDelDia = {
   last_message_preview: string | null;
   status: string | null;
   campania: string | null;
+  /** AHT de 1ª respuesta de ESTE chat (seg): 1ª respuesta humana − 1er mensaje del cliente. */
+  aht_seg?: number | null;
 };
 
 /** Estado del desglose de chats de un asesor (carga perezosa al desplegar). */
@@ -1048,11 +1050,11 @@ export default function MonitoreoPage() {
                                   <table className="w-full text-sm">
                                     <thead className="bg-slate-50/80">
                                       <tr>
-                                        {["Contacto", "Campaña", "Último mensaje", "Estado", ""].map((h, i) => (
+                                        {["Contacto", "Campaña", "Último mensaje", "AHT 1er Res", "Estado", ""].map((h, i) => (
                                           <th
                                             key={i}
                                             className={`px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${
-                                              i === 4 ? "text-right" : ""
+                                              i === 5 ? "text-right" : ""
                                             }`}
                                           >
                                             {h || "Acciones"}
@@ -1120,6 +1122,20 @@ export default function MonitoreoPage() {
                                                   <TickingSinceLabel iso={l.last_message_at} />
                                                 </p>
                                               ) : null}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                              {l.aht_seg != null ? (
+                                                <span
+                                                  className="text-sm font-semibold tabular-nums text-slate-900"
+                                                  title="Tiempo entre el primer mensaje del cliente y la primera respuesta humana"
+                                                >
+                                                  {fmtAht(l.aht_seg)}
+                                                </span>
+                                              ) : (
+                                                <span className="text-[11px] text-slate-400" title="Sin primera respuesta aún">
+                                                  —
+                                                </span>
+                                              )}
                                             </td>
                                             <td className="px-4 py-3">
                                               <span

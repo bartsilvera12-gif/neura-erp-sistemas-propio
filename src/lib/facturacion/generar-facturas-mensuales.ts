@@ -26,6 +26,23 @@ import { vencimientoPeriodo } from "@/lib/fechas/calendario";
 const ESTADOS_FACTURA_NO_CUENTA = new Set(["anulado", "corregida nc"]);
 const ESTADOS_CLIENTE_INACTIVO = new Set(["inactivo", "baja", "dado de baja", "suspendido"]);
 
+/**
+ * Tope de IDs por request `.in(...)`. PostgREST arma la URL con todos los IDs; con ~90+ UUIDs
+ * la URL supera el límite del gateway (Cloudflare/Kong) y devuelve 502 (HTML), rompiendo la
+ * corrida entera. Igual que en el preview de comisiones: se banda en lotes de 50 (medido: 80 OK,
+ * 100 → 502). NO subir sin re-medir. Esto fue justo lo que hizo fallar la facturación de sept-2026.
+ */
+const IN_CHUNK = 50;
+
+/** Ejecuta `fn` por lotes de IN_CHUNK ids y concatena los resultados (evita el 502 del gateway). */
+async function fetchInChunks<T>(ids: string[], fn: (slice: string[]) => Promise<T[]>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK) {
+    out.push(...(await fn(ids.slice(i, i + IN_CHUNK))));
+  }
+  return out;
+}
+
 export type ErrorSuscripcion = { suscripcion_id: string; error: string };
 
 export type ResumenFacturacionMensual = {
@@ -116,12 +133,15 @@ export async function generarFacturasMensuales(opts: {
   const clienteIds = [...new Set(suscripciones.map((s) => String(s.cliente_id ?? "")).filter(Boolean))];
   const clienteMap = new Map<string, { estado: string | null; deleted_at: string | null; baja_operativa_at: string | null }>();
   if (clienteIds.length > 0) {
-    const { data: cliData, error: cliErr } = await supabase
-      .from("clientes")
-      .select("id, estado, deleted_at, baja_operativa_at")
-      .in("id", clienteIds);
-    if (cliErr) throw new Error(`No se pudieron leer clientes: ${cliErr.message}`);
-    for (const c of (cliData ?? []) as Record<string, unknown>[]) {
+    const cliData = await fetchInChunks(clienteIds, async (slice) => {
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("id, estado, deleted_at, baja_operativa_at")
+        .in("id", slice);
+      if (error) throw new Error(`No se pudieron leer clientes: ${error.message}`);
+      return (data ?? []) as Record<string, unknown>[];
+    });
+    for (const c of cliData) {
       clienteMap.set(String(c.id), {
         estado: (c.estado as string) ?? null,
         deleted_at: (c.deleted_at as string) ?? null,
@@ -134,8 +154,11 @@ export async function generarFacturasMensuales(opts: {
   const planIds = [...new Set(suscripciones.map((s) => String(s.plan_id ?? "")).filter(Boolean))];
   const planMap = new Map<string, { nombre: string | null; precio: number }>();
   if (planIds.length > 0) {
-    const { data: planData } = await supabase.from("planes").select("id, nombre, precio").in("id", planIds);
-    for (const p of (planData ?? []) as Record<string, unknown>[]) {
+    const planData = await fetchInChunks(planIds, async (slice) => {
+      const { data } = await supabase.from("planes").select("id, nombre, precio").in("id", slice);
+      return (data ?? []) as Record<string, unknown>[];
+    });
+    for (const p of planData) {
       planMap.set(String(p.id), { nombre: (p.nombre as string) ?? null, precio: Number(p.precio) || 0 });
     }
   }

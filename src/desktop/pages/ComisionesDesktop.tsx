@@ -236,35 +236,6 @@ function ACobrarTablaVendedor({
   );
 }
 
-/** Bloque "A cobrar (comisionable)" dentro de la tarjeta expandida de un asesor (vista admin). */
-function ACobrarBloqueVendedor({
-  aCobrar,
-  onCobrar,
-}: {
-  aCobrar: ACobrarVendedor | null;
-  onCobrar?: (f: ACobrarFactura) => void;
-}) {
-  const facturas = aCobrar?.facturas ?? [];
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
-      <div className="mb-2">
-        <p className="text-xs font-semibold text-slate-800">A cobrar (comisionable) — cuáles cobrar</p>
-        <p className="text-[11px] text-slate-500">
-          El detalle del &quot;Pendiente de cobro&quot; de arriba: las facturas comisionables con saldo que hay
-          que perseguir (se vuelven comisión al cobrarlas).
-        </p>
-      </div>
-      {aCobrar && facturas.length > 0 ? (
-        <ACobrarTablaVendedor v={aCobrar} onCobrar={onCobrar} />
-      ) : (
-        <p className="rounded-lg border border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">
-          Sin facturas comisionables con saldo pendiente. ¡Todo cobrado!
-        </p>
-      )}
-    </div>
-  );
-}
-
 /**
  * Panel "A cobrar (comisionable)". `sellerView`=true → un solo asesor (tabla plana);
  * admin → agrupado por asesor.
@@ -1483,6 +1454,13 @@ function renderAdminView({
         </section>
       )}
 
+      {/* A cobrar (comisionable) — TODOS los asesores, independiente de si hubo cobro este mes.
+          Es balance-driven: por eso un asesor sin movimientos del período (p. ej. no cargó ventas
+          este mes) igual aparece con sus saldos comisionables pendientes de perseguir. Antes esta
+          lista solo se veía anidada en la tarjeta de un asesor con movimientos del mes, así que los
+          pendientes de un asesor sin actividad del mes quedaban invisibles para el admin. */}
+      <ACobrarPanel vendedores={aCobrar} sellerView={false} onCobrar={onCobrar} />
+
       {/* Por vendedor */}
       <section>
         <div className="mb-4 flex items-center gap-2">
@@ -1586,10 +1564,6 @@ function renderAdminView({
                     <ScaleProgress row={r} />
                     <TotalsStrip row={r} />
                     <MovimientosTable row={r} overrideCtx={overrideCtx} />
-                    <ACobrarBloqueVendedor
-                      aCobrar={aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id) ?? null}
-                      onCobrar={onCobrar}
-                    />
                   </div>
                 </details>
               );

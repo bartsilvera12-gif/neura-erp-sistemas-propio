@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchMonitoreoPageData,
   type MonitoringDashboard,
@@ -11,7 +11,7 @@ import {
 } from "@/lib/chat/chat-ops-actions";
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { assignmentWaitBadge, assignmentWaitBadgeClass } from "@/lib/chat/inbox-assignment-labels";
-import { ArrowLeftRight, Check, ChevronDown, Copy, Eye, Flame } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronDown, Copy, Eye, Flame, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   attachmentCaptionForDisplay,
@@ -865,6 +865,7 @@ export default function MonitoreoPage() {
             )}
           </p>
         ) : (
+          <>
           <div className="overflow-hidden rounded-xl border border-slate-200">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -898,8 +899,7 @@ export default function MonitoreoPage() {
                     const expanded = expandedAgent === a.id;
                     const drill = agentLeads[a.id];
                     return (
-                      <Fragment key={a.id}>
-                      <tr className={`transition-colors ${expanded ? "bg-[#4FAEB2]/[0.06]" : "hover:bg-[#4FAEB2]/[0.04]"}`}>
+                      <tr key={a.id} className={`transition-colors ${expanded ? "bg-[#4FAEB2]/[0.06]" : "hover:bg-[#4FAEB2]/[0.04]"}`}>
                         <td className="px-4 py-3 text-sm text-slate-700">{a.queue_nombre}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
@@ -1023,174 +1023,209 @@ export default function MonitoreoPage() {
                           )}
                         </td>
                       </tr>
-                      {expanded ? (
-                        <tr>
-                          <td colSpan={11} className="bg-slate-50/70 px-4 py-3">
-                            {drill?.loading ? (
-                              <div className="flex items-center gap-3 py-3 text-sm text-slate-500">
-                                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
-                                Cargando chats de {a.nombre}…
-                              </div>
-                            ) : drill?.err ? (
-                              <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                <span className="font-medium">{drill.err}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => void loadAgentLeads(a.id, leadDate)}
-                                  className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
-                                >
-                                  Reintentar
-                                </button>
-                              </div>
-                            ) : !drill || drill.rows.length === 0 ? (
-                              <p className="py-2 text-sm text-slate-500">
-                                No hay chats asignados a {a.nombre} {esLeadHoy ? "el día de hoy" : "en esa fecha"}.
-                              </p>
-                            ) : (
-                              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-sm">
-                                    <thead className="bg-slate-50/80">
-                                      <tr>
-                                        {["Contacto", "Campaña", "Último mensaje", "AHT 1er Res", "Estado", ""].map((h, i) => (
-                                          <th
-                                            key={i}
-                                            className={`px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${
-                                              i === 5 ? "text-right" : ""
-                                            }`}
-                                          >
-                                            {h || "Acciones"}
-                                          </th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                      {drill.rows.map((l) => {
-                                        const cname = l.nombre?.trim() || l.telefono || "Sin nombre";
-                                        const ctone = avatarToneFor(cname);
-                                        const copied = copiedPhone === (l.telefono?.trim() || " ");
-                                        const cerrada = (l.status ?? "").toLowerCase() === "closed";
-                                        return (
-                                          <tr key={l.conversation_id} className="transition-colors hover:bg-[#4FAEB2]/[0.04]">
-                                            <td className="px-4 py-3">
-                                              <div className="flex items-center gap-2.5">
-                                                <span
-                                                  aria-hidden
-                                                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${ctone}`}
-                                                >
-                                                  {avatarInitial(cname)}
-                                                </span>
-                                                <div className="min-w-0">
-                                                  <p className="truncate text-sm font-semibold text-slate-900">{cname}</p>
-                                                  <div className="flex items-center gap-1">
-                                                    <span className="truncate font-mono text-[11px] tabular-nums text-slate-500">
-                                                      {l.telefono ?? "—"}
-                                                    </span>
-                                                    {l.telefono ? (
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => copyPhone(l.telefono)}
-                                                        title={copied ? "¡Copiado!" : "Copiar número"}
-                                                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91]"
-                                                      >
-                                                        {copied ? (
-                                                          <Check className="h-3 w-3 text-emerald-600" aria-hidden />
-                                                        ) : (
-                                                          <Copy className="h-3 w-3" aria-hidden />
-                                                        )}
-                                                        <span className="sr-only">Copiar número</span>
-                                                      </button>
-                                                    ) : null}
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                              {l.campania ? (
-                                                <span className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
-                                                  <span aria-hidden className="h-1 w-1 shrink-0 rounded-full bg-current opacity-70" />
-                                                  <span className="truncate">{l.campania}</span>
-                                                </span>
-                                              ) : (
-                                                <span className="text-[11px] text-slate-400">Sin atribución</span>
-                                              )}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                              <p className="max-w-[280px] truncate text-[13px] text-slate-600">
-                                                {l.last_message_preview?.trim() || "—"}
-                                              </p>
-                                              {l.last_message_at ? (
-                                                <p className="text-[11px] tabular-nums text-slate-400">
-                                                  <TickingSinceLabel iso={l.last_message_at} />
-                                                </p>
-                                              ) : null}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                              {l.aht_seg != null ? (
-                                                <span
-                                                  className="text-sm font-semibold tabular-nums text-slate-900"
-                                                  title="Tiempo entre el primer mensaje del cliente y la primera respuesta humana"
-                                                >
-                                                  {fmtAht(l.aht_seg)}
-                                                </span>
-                                              ) : l.sin_respuesta ? (
-                                                <span
-                                                  className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-                                                  title="El cliente escribió y aún no hubo primera respuesta humana"
-                                                >
-                                                  Sin responder
-                                                </span>
-                                              ) : (
-                                                <span className="text-[11px] text-slate-400" title="Sin datos de mensajes">
-                                                  —
-                                                </span>
-                                              )}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                              <span
-                                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                                                  cerrada
-                                                    ? "border-slate-200 bg-slate-50 text-slate-500"
-                                                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                                }`}
-                                              >
-                                                {cerrada ? "Cerrada" : "Abierta"}
-                                              </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  openChat({
-                                                    conversation_id: l.conversation_id,
-                                                    contact_name: l.nombre,
-                                                    contact_phone: l.telefono,
-                                                  })
-                                                }
-                                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/50 bg-[#4FAEB2]/8 px-3 py-1.5 text-xs font-semibold text-[#3F8E91] shadow-sm transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/15"
-                                              >
-                                                <Eye className="h-3.5 w-3.5" aria-hidden />
-                                                Leer
-                                              </button>
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ) : null}
-                      </Fragment>
                     );
                   })}
                 </tbody>
               </table>
             </div>
           </div>
+          {expandedAgent
+            ? (() => {
+                const a = agents.find((x) => x.id === expandedAgent);
+                if (!a) return null;
+                const drill = agentLeads[expandedAgent];
+                return (
+                  <div className="mt-4 overflow-hidden rounded-xl border border-[#4FAEB2]/30 bg-slate-50/40">
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span aria-hidden className="block h-4 w-1 rounded-full bg-[#4FAEB2]" />
+                        <span className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-600">
+                          Chats de {a.nombre}
+                        </span>
+                        {drill && !drill.loading && !drill.err ? (
+                          <span className="rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-[#3F8E91]">
+                            {drill.rows.length}
+                          </span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedAgent(null)}
+                        title="Cerrar"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden />
+                        <span className="sr-only">Cerrar</span>
+                      </button>
+                    </div>
+                    <div className="p-3">
+                      {drill?.loading ? (
+                        <div className="flex items-center gap-3 py-3 text-sm text-slate-500">
+                          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
+                          Cargando chats de {a.nombre}…
+                        </div>
+                      ) : drill?.err ? (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                          <span className="font-medium">{drill.err}</span>
+                          <button
+                            type="button"
+                            onClick={() => void loadAgentLeads(a.id, leadDate)}
+                            className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                          >
+                            Reintentar
+                          </button>
+                        </div>
+                      ) : !drill || drill.rows.length === 0 ? (
+                        <p className="py-2 text-sm text-slate-500">
+                          No hay chats asignados a {a.nombre} {esLeadHoy ? "el día de hoy" : "en esa fecha"}.
+                        </p>
+                      ) : (
+                        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          <table className="w-full table-fixed text-sm">
+                            <thead className="bg-slate-50/80">
+                              <tr>
+                                <th className="w-[26%] px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                  Contacto
+                                </th>
+                                <th className="w-[20%] px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                  Campaña
+                                </th>
+                                <th className="w-[28%] px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                  Último mensaje
+                                </th>
+                                <th className="w-[10%] px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                  AHT 1er Res
+                                </th>
+                                <th className="w-[8%] px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                  Estado
+                                </th>
+                                <th className="w-[8%] px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                  Acciones
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {drill.rows.map((l) => {
+                                const cname = l.nombre?.trim() || l.telefono || "Sin nombre";
+                                const ctone = avatarToneFor(cname);
+                                const copied = copiedPhone === (l.telefono?.trim() || " ");
+                                const cerrada = (l.status ?? "").toLowerCase() === "closed";
+                                return (
+                                  <tr key={l.conversation_id} className="transition-colors hover:bg-[#4FAEB2]/[0.04]">
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <span
+                                          aria-hidden
+                                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${ctone}`}
+                                        >
+                                          {avatarInitial(cname)}
+                                        </span>
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-semibold text-slate-900">{cname}</p>
+                                          <div className="flex items-center gap-1">
+                                            <span className="truncate font-mono text-[11px] tabular-nums text-slate-500">
+                                              {l.telefono ?? "—"}
+                                            </span>
+                                            {l.telefono ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => copyPhone(l.telefono)}
+                                                title={copied ? "¡Copiado!" : "Copiar número"}
+                                                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91]"
+                                              >
+                                                {copied ? (
+                                                  <Check className="h-3 w-3 text-emerald-600" aria-hidden />
+                                                ) : (
+                                                  <Copy className="h-3 w-3" aria-hidden />
+                                                )}
+                                                <span className="sr-only">Copiar número</span>
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {l.campania ? (
+                                        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+                                          <span aria-hidden className="h-1 w-1 shrink-0 rounded-full bg-current opacity-70" />
+                                          <span className="truncate">{l.campania}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-[11px] text-slate-400">Sin atribución</span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <p className="truncate text-[13px] text-slate-600">
+                                        {l.last_message_preview?.trim() || "—"}
+                                      </p>
+                                      {l.last_message_at ? (
+                                        <p className="text-[11px] tabular-nums text-slate-400">
+                                          <TickingSinceLabel iso={l.last_message_at} />
+                                        </p>
+                                      ) : null}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {l.aht_seg != null ? (
+                                        <span
+                                          className="text-sm font-semibold tabular-nums text-slate-900"
+                                          title="Tiempo entre el primer mensaje del cliente y la primera respuesta humana"
+                                        >
+                                          {fmtAht(l.aht_seg)}
+                                        </span>
+                                      ) : l.sin_respuesta ? (
+                                        <span
+                                          className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                                          title="El cliente escribió y aún no hubo primera respuesta humana"
+                                        >
+                                          Sin responder
+                                        </span>
+                                      ) : (
+                                        <span className="text-[11px] text-slate-400" title="Sin datos de mensajes">
+                                          —
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                          cerrada
+                                            ? "border-slate-200 bg-slate-50 text-slate-500"
+                                            : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        }`}
+                                      >
+                                        {cerrada ? "Cerrada" : "Abierta"}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openChat({
+                                            conversation_id: l.conversation_id,
+                                            contact_name: l.nombre,
+                                            contact_phone: l.telefono,
+                                          })
+                                        }
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/50 bg-[#4FAEB2]/8 px-3 py-1.5 text-xs font-semibold text-[#3F8E91] shadow-sm transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/15"
+                                      >
+                                        <Eye className="h-3.5 w-3.5" aria-hidden />
+                                        Leer
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
+            : null}
+          </>
         )}
       </section>
 

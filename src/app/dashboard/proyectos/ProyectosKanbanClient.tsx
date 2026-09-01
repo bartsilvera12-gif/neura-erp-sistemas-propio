@@ -20,6 +20,7 @@ import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
@@ -83,32 +84,54 @@ function isEntregado(p: ProyectoCard): boolean {
 }
 
 /** ym (YYYY-MM) en hora de Paraguay de una fecha ISO, o null. */
-function ymAsuncionDe(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return null;
-  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", timeZone: "America/Asuncion" })
-    .format(new Date(ms))
-    .slice(0, 7);
-}
 
 /**
  * Proyecto en estado FINAL "Entregado" (no cancelación) cuya entrega fue en un mes ANTERIOR al
  * actual → se saca del tablero para que "Entregado" muestre solo lo del mes. El histórico de
  * meses anteriores se consulta en el panel gerencial (Dashboard → Proyectos).
  */
-function esEntregadoDeMesAnterior(p: ProyectoCard): boolean {
+/** ¿Es un proyecto ENTREGADO? (estado final que no es una cancelación). */
+function esEntregado(p: ProyectoCard): boolean {
   const est = p.proyecto_estado;
   if (!est || est.es_estado_final !== true) return false;
   const cod = (est.codigo ?? "").toLowerCase();
   const nom = (est.nombre ?? "").toLowerCase();
-  if (/cancel/.test(cod) || /cancel/.test(nom)) return false; // cancelado no es "entregado"
-  const ymEntrega = ymAsuncionDe(p.estado_actual_desde);
-  if (!ymEntrega) return false; // sin fecha de entrega → no filtrar (se muestra)
-  const ymActual = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", timeZone: "America/Asuncion" })
-    .format(new Date())
-    .slice(0, 7);
-  return ymEntrega < ymActual;
+  return !/cancel/.test(cod) && !/cancel/.test(nom);
+}
+
+/** Fecha de entrega (YYYY-MM-DD en hora de Paraguay) o "" si no se sabe. */
+function fechaEntregaDe(p: ProyectoCard): string {
+  if (!p.estado_actual_desde) return "";
+  const d = new Date(p.estado_actual_desde);
+  if (!Number.isFinite(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Asuncion",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/**
+ * ¿Queda fuera del rango de entrega elegido?
+ *
+ * ANTES esto era "entregado en un mes anterior al actual", y tenía un borde
+ * feo: el día 1 de cada mes la columna Entregado amanecía VACÍA. El 31 de
+ * agosto mostraba 42 proyectos y el 1 de septiembre, cero — sin que nadie
+ * hubiera tocado nada. Ahora la ventana la elige quien mira, con desde/hasta;
+ * sin rango, no se esconde nada.
+ *
+ * Sólo aplica a los ENTREGADOS: un proyecto en curso no tiene fecha de entrega
+ * y filtrarlo por ella lo haría desaparecer del tablero.
+ */
+function fueraDelRango(p: ProyectoCard, desde: string, hasta: string): boolean {
+  if (!desde && !hasta) return false;
+  if (!esEntregado(p)) return false;
+  const f = fechaEntregaDe(p);
+  if (!f) return false; // sin fecha conocida: se muestra, no se esconde en silencio
+  if (desde && f < desde) return true;
+  if (hasta && f > hasta) return true;
+  return false;
 }
 
 type PostentregaInfo = {
@@ -751,6 +774,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   const [nuevoModalOpen, setNuevoModalOpen] = useState(false);
   /** Paginación de la vista Lista (elevado desde ProyectosLista para mostrar el control en la barra). */
   const [pageSize, setPageSize] = useState<ListPageSize>(25);
+  /** Rango de FECHA DE ENTREGA. Vacío = sin recorte: se ven todos los entregados. */
+  const [entregaDesde, setEntregaDesde] = useState("");
+  const [entregaHasta, setEntregaHasta] = useState("");
 
   /** Vista del tablero: "kanban" (cards por estado) | "lista" (tabla). Persiste por navegador. */
   const [vista, setVista] = useState<"kanban" | "lista">(() => {
@@ -941,9 +967,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
    *     título, tipo, estado y responsables—, sin acentos y por tokens sueltos.
    */
   const proyectosVisibles = useMemo(() => {
-    const hayFiltro =
-      tokensBusqueda.length > 0 || Boolean(filtroEstado || filtroTipo || filtroRc || filtroRt);
-    const base = hayFiltro ? proyectos : proyectos.filter((p) => !esEntregadoDeMesAnterior(p));
+    const base = proyectos.filter((p) => !fueraDelRango(p, entregaDesde, entregaHasta));
     if (tokensBusqueda.length === 0) return base;
     return base.filter((p) =>
       coincideBusqueda(
@@ -961,7 +985,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           .join(" ")
       )
     );
-  }, [proyectos, tokensBusqueda, filtroEstado, filtroTipo, filtroRc, filtroRt]);
+  }, [proyectos, tokensBusqueda, entregaDesde, entregaHasta]);
 
   const estadoActivoIds = useMemo(() => new Set(estados.map((e) => e.id)), [estados]);
 
@@ -1364,7 +1388,32 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
             })),
           ]}
         />
-        {(q || filtroEstado || filtroTipo || filtroRc || filtroRt) ? (
+        {/*
+          Rango de entrega. Va al final de la barra porque acota una sola
+          columna del tablero (Entregado), no todo el pipeline.
+        */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Entregado
+          </span>
+          <FechaSelect
+            value={entregaDesde}
+            onChange={(e) => setEntregaDesde(e.target.value)}
+            placeholder="Desde"
+            aria-label="Entregados desde"
+            max={entregaHasta || undefined}
+            className="w-[132px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+          />
+          <FechaSelect
+            value={entregaHasta}
+            onChange={(e) => setEntregaHasta(e.target.value)}
+            placeholder="Hasta"
+            aria-label="Entregados hasta"
+            min={entregaDesde || undefined}
+            className="w-[132px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+          />
+        </div>
+        {(q || filtroEstado || filtroTipo || filtroRc || filtroRt || entregaDesde || entregaHasta) ? (
           <button
             type="button"
             className="shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
@@ -1374,6 +1423,8 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
               setFiltroTipo("");
               setFiltroRc("");
               setFiltroRt("");
+              setEntregaDesde("");
+              setEntregaHasta("");
             }}
           >
             Limpiar filtros

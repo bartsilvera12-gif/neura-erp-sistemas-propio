@@ -1013,81 +1013,116 @@ export default function MonitoreoPage() {
                               </p>
                             ) : (
                               <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-1.5">
-                                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                                    Chats de {a.nombre}
-                                  </span>
-                                  <span className="text-[11px] tabular-nums text-slate-400">{drill.rows.length}</span>
-                                </div>
-                                <ul className="divide-y divide-slate-100">
-                                  {drill.rows.map((l) => {
-                                    const cname = l.nombre?.trim() || l.telefono || "Sin nombre";
-                                    const ctone = avatarToneFor(cname);
-                                    const copied = copiedPhone === (l.telefono?.trim() || " ");
-                                    return (
-                                      <li key={l.conversation_id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#4FAEB2]/[0.04]">
-                                        <span
-                                          aria-hidden
-                                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${ctone}`}
-                                        >
-                                          {avatarInitial(cname)}
-                                        </span>
-                                        <div className="min-w-0 flex-1">
-                                          <div className="flex items-center gap-1.5">
-                                            <p className="truncate text-sm font-semibold text-slate-900">{cname}</p>
-                                            {l.campania ? (
-                                              <span className="inline-flex max-w-[180px] items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-1.5 py-0.5 text-[10px] font-semibold text-[#3F8E91]">
-                                                <span className="truncate">{l.campania}</span>
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                          <p className="truncate text-[12px] text-slate-500">
-                                            {l.last_message_preview?.trim() || "—"}
-                                          </p>
-                                        </div>
-                                        <div className="flex shrink-0 items-center gap-1.5">
-                                          <span className="hidden font-mono text-[11px] tabular-nums text-slate-500 sm:inline">
-                                            {l.telefono ?? "—"}
-                                          </span>
-                                          {l.telefono ? (
-                                            <button
-                                              type="button"
-                                              onClick={() => copyPhone(l.telefono)}
-                                              title={copied ? "¡Copiado!" : "Copiar número"}
-                                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
-                                            >
-                                              {copied ? (
-                                                <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-                                              ) : (
-                                                <Copy className="h-3.5 w-3.5" aria-hidden />
-                                              )}
-                                              <span className="sr-only">Copiar número</span>
-                                            </button>
-                                          ) : null}
-                                          {l.last_message_at ? (
-                                            <span className="hidden text-[11px] tabular-nums text-slate-400 md:inline">
-                                              <TickingSinceLabel iso={l.last_message_at} />
-                                            </span>
-                                          ) : null}
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              openChat({
-                                                conversation_id: l.conversation_id,
-                                                contact_name: l.nombre,
-                                                contact_phone: l.telefono,
-                                              })
-                                            }
-                                            className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/50 bg-[#4FAEB2]/8 px-3 py-1.5 text-xs font-semibold text-[#3F8E91] shadow-sm transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/15"
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-slate-50/80">
+                                      <tr>
+                                        {["Contacto", "Campaña", "Último mensaje", "Estado", ""].map((h, i) => (
+                                          <th
+                                            key={i}
+                                            className={`px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 whitespace-nowrap ${
+                                              i === 4 ? "text-right" : ""
+                                            }`}
                                           >
-                                            <Eye className="h-3.5 w-3.5" aria-hidden />
-                                            Leer
-                                          </button>
-                                        </div>
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
+                                            {h || "Acciones"}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {drill.rows.map((l) => {
+                                        const cname = l.nombre?.trim() || l.telefono || "Sin nombre";
+                                        const ctone = avatarToneFor(cname);
+                                        const copied = copiedPhone === (l.telefono?.trim() || " ");
+                                        const cerrada = (l.status ?? "").toLowerCase() === "closed";
+                                        return (
+                                          <tr key={l.conversation_id} className="transition-colors hover:bg-[#4FAEB2]/[0.04]">
+                                            <td className="px-4 py-3">
+                                              <div className="flex items-center gap-2.5">
+                                                <span
+                                                  aria-hidden
+                                                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${ctone}`}
+                                                >
+                                                  {avatarInitial(cname)}
+                                                </span>
+                                                <div className="min-w-0">
+                                                  <p className="truncate text-sm font-semibold text-slate-900">{cname}</p>
+                                                  <div className="flex items-center gap-1">
+                                                    <span className="truncate font-mono text-[11px] tabular-nums text-slate-500">
+                                                      {l.telefono ?? "—"}
+                                                    </span>
+                                                    {l.telefono ? (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => copyPhone(l.telefono)}
+                                                        title={copied ? "¡Copiado!" : "Copiar número"}
+                                                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91]"
+                                                      >
+                                                        {copied ? (
+                                                          <Check className="h-3 w-3 text-emerald-600" aria-hidden />
+                                                        ) : (
+                                                          <Copy className="h-3 w-3" aria-hidden />
+                                                        )}
+                                                        <span className="sr-only">Copiar número</span>
+                                                      </button>
+                                                    ) : null}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                              {l.campania ? (
+                                                <span className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">
+                                                  <span aria-hidden className="h-1 w-1 shrink-0 rounded-full bg-current opacity-70" />
+                                                  <span className="truncate">{l.campania}</span>
+                                                </span>
+                                              ) : (
+                                                <span className="text-[11px] text-slate-400">Sin atribución</span>
+                                              )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                              <p className="max-w-[280px] truncate text-[13px] text-slate-600">
+                                                {l.last_message_preview?.trim() || "—"}
+                                              </p>
+                                              {l.last_message_at ? (
+                                                <p className="text-[11px] tabular-nums text-slate-400">
+                                                  <TickingSinceLabel iso={l.last_message_at} />
+                                                </p>
+                                              ) : null}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                              <span
+                                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                                  cerrada
+                                                    ? "border-slate-200 bg-slate-50 text-slate-500"
+                                                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                }`}
+                                              >
+                                                {cerrada ? "Cerrada" : "Abierta"}
+                                              </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  openChat({
+                                                    conversation_id: l.conversation_id,
+                                                    contact_name: l.nombre,
+                                                    contact_phone: l.telefono,
+                                                  })
+                                                }
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/50 bg-[#4FAEB2]/8 px-3 py-1.5 text-xs font-semibold text-[#3F8E91] shadow-sm transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/15"
+                                              >
+                                                <Eye className="h-3.5 w-3.5" aria-hidden />
+                                                Leer
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
                               </div>
                             )}
                           </td>

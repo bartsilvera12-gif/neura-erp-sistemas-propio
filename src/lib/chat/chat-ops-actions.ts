@@ -1046,6 +1046,14 @@ export type SupervisorAgentLoadRow = ChatAgentDirectoryRow & {
   transfers_hoy?: number;
   /** Hora ISO de la última auto-asignación de hoy (updated_at del contador), si hubo. */
   ultima_asignacion_hoy?: string | null;
+  /**
+   * AHT de primera respuesta (segundos): promedio del tiempo entre el primer mensaje del
+   * cliente y la primera respuesta humana, sobre los chats del asesor asignados en la fecha
+   * elegida (solo chats ya respondidos). null si no hay datos. Solo se calcula en el path PG.
+   */
+  aht_primera_respuesta_seg?: number | null;
+  /** Cantidad de chats que entran en el promedio de `aht_primera_respuesta_seg`. */
+  aht_primera_respuesta_n?: number;
 };
 
 type DailyLeadStats = {
@@ -1110,6 +1118,62 @@ async function pgLoadDailyLeadStats(
   return { leads, transfers, ultima };
 }
 
+/**
+ * AHT de primera respuesta por agente (segundos), para la fecha dada (America/Asuncion).
+ * = promedio de (first_human_response_at - primer mensaje inbound del cliente) sobre los
+ * chats del asesor asignados esa fecha y YA respondidos. Solo lectura, degradación segura.
+ * El anclaje de fecha (initial_assignment_at, fallback created_at) calza con "Leads hoy".
+ */
+async function pgLoadFirstResponseAht(
+  pool: NonNullable<ReturnType<typeof getChatPostgresPool>>,
+  dataSchema: string,
+  empresaId: string,
+  agentIds: string[],
+  dateYmd?: string | null
+): Promise<Map<string, { seg: number; n: number }>> {
+  const out = new Map<string, { seg: number; n: number }>();
+  if (agentIds.length === 0) return out;
+  const d = typeof dateYmd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd) ? dateYmd : null;
+  try {
+    const convTbl = quoteSchemaTable(dataSchema, "chat_conversations");
+    const msgTbl = quoteSchemaTable(dataSchema, "chat_messages");
+    const rc = await pool.query(
+      `WITH conv AS (
+         SELECT cv.id, cv.assigned_agent_id, cv.first_human_response_at
+           FROM ${convTbl} cv
+          WHERE cv.empresa_id = $1::uuid
+            AND cv.assigned_agent_id = ANY($2::uuid[])
+            AND cv.first_human_response_at IS NOT NULL
+            AND (COALESCE(cv.initial_assignment_at, cv.created_at) AT TIME ZONE 'America/Asuncion')::date
+                = COALESCE($3::date, (now() AT TIME ZONE 'America/Asuncion')::date)
+       ),
+       firstin AS (
+         SELECT m.conversation_id, min(m.created_at) AS first_in
+           FROM ${msgTbl} m
+           JOIN conv ON conv.id = m.conversation_id
+          WHERE m.from_me = false
+          GROUP BY m.conversation_id
+       )
+       SELECT c.assigned_agent_id::text AS agent_id,
+              avg(EXTRACT(EPOCH FROM (c.first_human_response_at - f.first_in)))::float8 AS avg_seg,
+              count(*)::int AS n
+         FROM conv c
+         JOIN firstin f ON f.conversation_id = c.id
+        WHERE c.first_human_response_at >= f.first_in
+        GROUP BY c.assigned_agent_id`,
+      [empresaId, agentIds, d]
+    );
+    for (const r of rc.rows as Array<{ agent_id: string; avg_seg: number | null; n: number }>) {
+      if (r.agent_id && r.avg_seg != null && Number.isFinite(Number(r.avg_seg))) {
+        out.set(r.agent_id, { seg: Math.max(0, Math.round(Number(r.avg_seg))), n: Number(r.n) || 0 });
+      }
+    }
+  } catch (e) {
+    console.warn("[monitor] first_response_aht_skip", e instanceof Error ? e.message : String(e));
+  }
+  return out;
+}
+
 async function loadSupervisorAgentLoadsWithContext(
   ctx: EmpresaTenantSrContext,
   scope: OmnicanalScope,
@@ -1157,6 +1221,7 @@ async function loadSupervisorAgentLoadsWithContext(
     }
 
     const daily = await pgLoadDailyLeadStats(poolPg, dataSchema, empresa_id, agentIds, leadsDateYmd);
+    const aht = await pgLoadFirstResponseAht(poolPg, dataSchema, empresa_id, agentIds, leadsDateYmd);
     return agents.map((a) => ({
       ...a,
       active_conversations: tally.get(a.id) ?? 0,
@@ -1165,6 +1230,8 @@ async function loadSupervisorAgentLoadsWithContext(
       leads_hoy: daily.leads.get(a.id) ?? 0,
       transfers_hoy: daily.transfers.get(a.id) ?? 0,
       ultima_asignacion_hoy: daily.ultima.get(a.id) ?? null,
+      aht_primera_respuesta_seg: aht.get(a.id)?.seg ?? null,
+      aht_primera_respuesta_n: aht.get(a.id)?.n ?? 0,
     }));
   }
 

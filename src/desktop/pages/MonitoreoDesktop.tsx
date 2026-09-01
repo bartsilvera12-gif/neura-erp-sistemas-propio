@@ -44,6 +44,18 @@ type LeadDelDia = {
 /** Estado del desglose de chats de un asesor (carga perezosa al desplegar). */
 type AgentLeadsState = { loading: boolean; err: string | null; rows: LeadDelDia[] };
 
+/** Formatea segundos a un AHT legible: "45s", "3m 12s", "1h 5m". */
+function fmtAht(totalSeg: number): string {
+  const s = Math.max(0, Math.round(totalSeg));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  if (m < 60) return rs ? `${m}m ${rs}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm ? `${h}h ${rm}m` : `${h}h`;
+}
+
 /** `formatWaitHuman` depende de `Date.now()`; sin re-render el monitoreo mostraba tiempos “congelados”. */
 function buildMonitoreoInboxHref(row: MonitoringUnassignedRow, opts: { transferir?: boolean }) {
   const p = new URLSearchParams();
@@ -865,6 +877,7 @@ export default function MonitoreoPage() {
                       "Máx.",
                       "Chats activos",
                       "Sin 1ª resp.",
+                      "AHT 1er Res",
                     ].map((h) => (
                       <th
                         key={h}
@@ -987,10 +1000,28 @@ export default function MonitoreoPage() {
                             {a.pending_first_reply}
                           </span>
                         </td>
+                        <td className="px-4 py-3">
+                          {a.aht_primera_respuesta_seg != null ? (
+                            <span
+                              className="text-sm font-semibold tabular-nums text-slate-900"
+                              title={`Promedio de tiempo hasta la 1ª respuesta humana${
+                                a.aht_primera_respuesta_n
+                                  ? ` · ${a.aht_primera_respuesta_n} chat${a.aht_primera_respuesta_n === 1 ? "" : "s"}`
+                                  : ""
+                              }`}
+                            >
+                              {fmtAht(a.aht_primera_respuesta_seg)}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-slate-400" title="Sin chats respondidos en la fecha">
+                              —
+                            </span>
+                          )}
+                        </td>
                       </tr>
                       {expanded ? (
                         <tr>
-                          <td colSpan={10} className="bg-slate-50/70 px-4 py-3">
+                          <td colSpan={11} className="bg-slate-50/70 px-4 py-3">
                             {drill?.loading ? (
                               <div className="flex items-center gap-3 py-3 text-sm text-slate-500">
                                 <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />

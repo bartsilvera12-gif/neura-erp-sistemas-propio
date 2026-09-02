@@ -14,10 +14,10 @@ interface Cobro {
 }
 interface Factura { id: string; numero_factura: string; saldo: number; estado: string; cliente_id?: string | null }
 
-interface AprobadoLite { id: string; monto: number; fecha: string; numero_operacion: string | null; banco_origen: string | null; titular: string | null; cliente_nombre: string | null; numero_factura: string | null }
+interface AprobadoLite { id: string; monto: number; fecha: string; numero_operacion: string | null; banco_origen: string | null; titular: string | null; cliente_nombre: string | null; numero_factura: string | null; agrupadas?: number }
 interface ExtractoTx { fecha: string | null; monto: number; tipo: string; referencia: string | null; descripcion: string | null }
 interface Reporte {
-  mes: string | null; archivo: string; moneda: string | null; banco_detectado: string | null;
+  mes: string | null; archivo: string; moneda: string | null; banco_detectado: string | null; via?: string;
   conciliados: { aprobado: AprobadoLite; credito: ExtractoTx }[];
   montos_difieren: { aprobado: AprobadoLite; credito: ExtractoTx; diff: number }[];
   aprobados_sin_extracto: AprobadoLite[];
@@ -148,12 +148,12 @@ export default function ConciliacionClient() {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Conciliación bancaria</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <input ref={fileRef} type="file" accept="application/pdf" className="hidden"
+          <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) analizarExtracto(f); e.target.value = ""; }} />
           <button onClick={() => fileRef.current?.click()} disabled={analizando}
-            title="Subí el PDF de tu extracto y la IA verifica las aprobaciones del mes contra el banco"
+            title="Subí tu extracto (PDF o Excel) y verificá las aprobaciones del mes contra el banco"
             className="rounded-xl border border-[#4FAEB2] bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/8 disabled:opacity-60">
-            {analizando ? "Analizando…" : "📄 Cargar extracto (PDF)"}
+            {analizando ? "Analizando…" : "📄 Cargar extracto (PDF o Excel)"}
           </button>
           <button onClick={() => setModal(true)} className="rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#3F8E91]">+ Registrar transferencia</button>
         </div>
@@ -271,6 +271,7 @@ export default function ConciliacionClient() {
                 <h3 className="text-lg font-semibold text-slate-900">Conciliación del extracto</h3>
                 <p className="truncate text-xs text-slate-500">
                   {reporte.archivo}{reporte.banco_detectado ? ` · ${reporte.banco_detectado}` : ""}{reporte.mes ? ` · ${reporte.mes}` : ""}
+                  {reporte.via === "excel-directo" ? " · Excel (lectura directa)" : reporte.via === "excel-ia" ? " · Excel (IA)" : reporte.via === "pdf-ia" ? " · PDF (IA)" : ""}
                 </p>
               </div>
               <button onClick={() => setReporte(null)} className="shrink-0 text-lg text-slate-400 hover:text-slate-600">✕</button>
@@ -308,7 +309,7 @@ export default function ConciliacionClient() {
                       <div key={a.id} className="flex items-center justify-between gap-2 border-b border-red-50 px-3 py-2 text-sm last:border-0">
                         <div className="min-w-0">
                           <p className="truncate font-medium text-slate-800">{a.cliente_nombre ?? a.titular ?? "—"}</p>
-                          <p className="text-[11px] text-slate-500">{a.fecha} · {a.banco_origen ?? "—"} · Op {a.numero_operacion ?? "—"}{a.numero_factura ? ` · ${a.numero_factura}` : ""}</p>
+                          <p className="text-[11px] text-slate-500">{a.fecha} · {a.banco_origen ?? "—"} · Op {a.numero_operacion ?? "—"}{a.numero_factura ? ` · ${a.numero_factura}` : ""}{a.agrupadas && a.agrupadas > 1 ? ` · ${a.agrupadas} cobros agrupados` : ""}</p>
                         </div>
                         <span className="shrink-0 font-semibold tabular-nums text-red-700">{fmt(a.monto)}</span>
                       </div>

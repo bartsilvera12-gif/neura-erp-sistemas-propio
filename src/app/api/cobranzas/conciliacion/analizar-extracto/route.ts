@@ -3,12 +3,13 @@ import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema"
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { requireCobranzasApiAccess } from "@/lib/contabilidad/contabilidad-auth";
 import { listCobrosPendientes } from "@/lib/cobranzas/conciliacion-pg";
-import { extraerTransaccionesDeExtracto, conciliar, type AprobadoLite } from "@/lib/cobranzas/extracto-conciliacion";
+import { extraerTransacciones, conciliar, type AprobadoLite } from "@/lib/cobranzas/extracto-conciliacion";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
+const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+const EXT_OK = /\.(pdf|xlsx|xls|csv)$/i;
 
 /**
  * POST /api/cobranzas/conciliacion/analizar-extracto
@@ -27,21 +28,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(errorResponse("Mes inválido (YYYY-MM)"), { status: 400 });
     }
     if (!(file instanceof File) || file.size === 0) {
-      return NextResponse.json(errorResponse("Subí el PDF del extracto"), { status: 400 });
+      return NextResponse.json(errorResponse("Subí el extracto (PDF o Excel)"), { status: 400 });
     }
-    if (file.type && file.type !== "application/pdf") {
-      return NextResponse.json(errorResponse("El archivo debe ser un PDF"), { status: 400 });
+    if (!EXT_OK.test(file.name || "")) {
+      return NextResponse.json(errorResponse("El archivo debe ser PDF, Excel (.xlsx/.xls) o CSV"), { status: 400 });
     }
-    if (file.size > MAX_PDF_BYTES) {
-      return NextResponse.json(errorResponse("El PDF supera el límite de 15 MB"), { status: 400 });
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json(errorResponse("El archivo supera el límite de 15 MB"), { status: 400 });
     }
 
-    const pdfBytes = Buffer.from(await file.arrayBuffer());
+    const bytes = Buffer.from(await file.arrayBuffer());
 
-    // 1) Extraer transacciones del extracto con IA.
+    // 1) Extraer transacciones del extracto (PDF→IA, Excel→directo con fallback IA).
     let extracto;
     try {
-      extracto = await extraerTransaccionesDeExtracto(pdfBytes);
+      extracto = await extraerTransacciones(bytes, file.name || "extracto.pdf");
     } catch (e) {
       const raw = e instanceof Error ? e.message : "Error al analizar el PDF";
       const status = (e as { status?: number })?.status;
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
       successResponse({
         mes: mes || null,
         archivo: file.name,
+        via: extracto.via,
         ...resultado,
       })
     );

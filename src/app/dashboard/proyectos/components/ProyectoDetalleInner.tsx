@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
@@ -631,6 +631,54 @@ export type ProyectoDetalleInnerProps = {
   proyectoPreview?: (Record<string, unknown> & { id: string }) | null;
 };
 
+/**
+ * Formulario de comentario nuevo, aislado con estado LOCAL. Antes el texto vivía
+ * en el estado del componente gigante, así que cada tecla re-renderizaba todo el
+ * árbol de la solapa activa (incluida la lista de comentarios). Con el estado
+ * acá, tipear sólo re-renderiza este formulario. `onEnviar` devuelve `true` si el
+ * guardado salió bien, y recién ahí se limpia el textarea (si falla, no se pierde
+ * lo escrito).
+ */
+const NuevoComentarioForm = memo(function NuevoComentarioForm({
+  onEnviar,
+  inputCls,
+}: {
+  onEnviar: (texto: string) => Promise<boolean>;
+  inputCls: string;
+}) {
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!texto.trim() || enviando) return;
+        setEnviando(true);
+        const ok = await onEnviar(texto);
+        setEnviando(false);
+        if (ok) setTexto("");
+      }}
+      className="space-y-2"
+    >
+      <textarea
+        className={`${inputCls} min-h-[88px]`}
+        rows={3}
+        placeholder="Comentario interno"
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        disabled={enviando}
+      />
+      <button
+        type="submit"
+        disabled={enviando || !texto.trim()}
+        className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {enviando ? "Publicando…" : "Publicar"}
+      </button>
+    </form>
+  );
+});
+
 export default function ProyectoDetalleInner({
   projectId,
   variant,
@@ -680,7 +728,6 @@ export default function ProyectoDetalleInner({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [comTexto, setComTexto] = useState("");
   const [comEditandoId, setComEditandoId] = useState<string | null>(null);
   const [comEditTexto, setComEditTexto] = useState("");
   const [comActionId, setComActionId] = useState<string | null>(null);
@@ -1200,22 +1247,25 @@ export default function ProyectoDetalleInner({
     }
   }, [recargarQaResumen, tab]);
 
-  async function agregarComentario(e: React.FormEvent) {
-    e.preventDefault();
-    if (!comTexto.trim()) return;
-    const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comentario: comTexto.trim() }),
-    });
-    const j = (await res.json()) as { success?: boolean; error?: string };
-    if (!res.ok || !j.success) {
-      setErr(j.error ?? "Error");
-      return;
-    }
-    setComTexto("");
-    scheduleReload();
-  }
+  const agregarComentario = useCallback(
+    async (texto: string): Promise<boolean> => {
+      const comentario = texto.trim();
+      if (!comentario) return false;
+      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comentario }),
+      });
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "Error");
+        return false;
+      }
+      scheduleReload();
+      return true;
+    },
+    [projectId, scheduleReload]
+  );
 
   async function guardarCambio(nro: number) {
     if (cambioSavingNro != null) return;
@@ -2750,21 +2800,7 @@ export default function ProyectoDetalleInner({
               <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
               <h2 className="text-sm font-semibold text-slate-900">Comentarios internos</h2>
             </div>
-            <form onSubmit={agregarComentario} className="space-y-2">
-              <textarea
-                className={`${inputCls} min-h-[88px]`}
-                rows={3}
-                placeholder="Comentario interno"
-                value={comTexto}
-                onChange={(e) => setComTexto(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91]"
-              >
-                Publicar
-              </button>
-            </form>
+            <NuevoComentarioForm onEnviar={agregarComentario} inputCls={inputCls} />
             <ul className="space-y-3">
               {(data.comentarios ?? []).map((c) => {
                 const cid = String(c.id ?? "");

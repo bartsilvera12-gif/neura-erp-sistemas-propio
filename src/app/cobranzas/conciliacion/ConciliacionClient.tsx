@@ -34,6 +34,25 @@ export default function ConciliacionClient() {
   const [ok, setOk] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
 
+  // Selector de meses (filtra por fecha de la transferencia, del lado del cliente).
+  const mesActual = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  const [mes, setMes] = useState<string>(mesActual);
+  const meses = useMemo(() => {
+    const arr: { value: string; label: string }[] = [{ value: "", label: "Todos los meses" }];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      const label = dt.toLocaleDateString("es-PY", { month: "long", year: "numeric" });
+      arr.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
+    }
+    return arr;
+  }, []);
+  const cobrosMostrados = useMemo(
+    () => (mes ? cobros.filter((c) => (c.fecha ?? "").slice(0, 7) === mes) : cobros),
+    [cobros, mes]
+  );
+
   const cargar = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -93,7 +112,6 @@ export default function ConciliacionClient() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">Finanzas · Cobranzas</p>
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Conciliación bancaria</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">Transferencias pendientes de aprobar. Pendiente no reduce saldo ni contabiliza; al aprobar nace el pago, baja el saldo y se genera el asiento (Debe Banco / Haber Clientes o Anticipos).</p>
         </div>
         <button onClick={() => setModal(true)} className="shrink-0 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#3F8E91]">+ Registrar transferencia</button>
       </div>
@@ -101,13 +119,23 @@ export default function ConciliacionClient() {
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {ok && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{ok}</div>}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {["pendiente", "aprobado", "rechazado", ""].map((e) => (
           <button key={e || "todas"} onClick={() => setFiltro(e)}
             className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${filtro === e ? "bg-[#4FAEB2] text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
             {e ? ESTADO[e].label : "Todas"}
           </button>
         ))}
+        <select
+          value={mes}
+          onChange={(ev) => setMes(ev.target.value)}
+          aria-label="Filtrar por mes"
+          className="ml-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+        >
+          {meses.map((m) => (
+            <option key={m.value || "all"} value={m.value}>{m.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -129,9 +157,9 @@ export default function ConciliacionClient() {
           <tbody>
             {loading ? (
               <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Cargando…</td></tr>
-            ) : cobros.length === 0 ? (
-              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Sin transferencias.</td></tr>
-            ) : cobros.map((c) => {
+            ) : cobrosMostrados.length === 0 ? (
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Sin transferencias{mes ? " en el mes seleccionado" : ""}.</td></tr>
+            ) : cobrosMostrados.map((c) => {
               const e = ESTADO[c.estado] ?? { label: c.estado, cls: "bg-slate-100 text-slate-600" };
               return (
                 <tr key={c.id} className="border-b last:border-0 hover:bg-slate-50/60">

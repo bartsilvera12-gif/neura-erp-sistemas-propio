@@ -12,6 +12,7 @@ interface Cobro {
   aprobado_por_nombre?: string | null; aprobado_at?: string | null;
   rechazado_por_nombre?: string | null; rechazado_at?: string | null;
   anulado_por_nombre?: string | null; anulado_at?: string | null; motivo_anulacion?: string | null;
+  creado_por_nombre?: string | null; vendedor_nombre?: string | null;
 }
 interface Factura { id: string; numero_factura: string; saldo: number; estado: string; cliente_id?: string | null }
 
@@ -52,6 +53,10 @@ export default function ConciliacionClient() {
   const [analizando, setAnalizando] = useState(false);
   const [reporte, setReporte] = useState<Reporte | null>(null);
   const [analisisError, setAnalisisError] = useState<string | null>(null);
+  // Modal propio para anular una aprobación (reemplaza el confirm/prompt del navegador).
+  const [anularTarget, setAnularTarget] = useState<Cobro | null>(null);
+  const [anularMotivo, setAnularMotivo] = useState("");
+  const [anularBusy, setAnularBusy] = useState(false);
 
   // Selector de meses (filtra por fecha de la transferencia, del lado del cliente).
   const mesActual = useMemo(() => new Date().toISOString().slice(0, 7), []);
@@ -119,18 +124,12 @@ export default function ConciliacionClient() {
     }).catch(() => {});
   }, [modal]);
 
-  async function accion(id: string, tipo: "aprobar" | "rechazar" | "anular") {
+  async function accion(id: string, tipo: "aprobar" | "rechazar") {
     setError(null); setOk(null);
     let body: Record<string, unknown> = {};
     if (tipo === "rechazar") {
       const motivo = window.prompt("Motivo del rechazo:");
       if (!motivo?.trim()) { setError("Se requiere un motivo para rechazar."); return; }
-      body = { motivo };
-    }
-    if (tipo === "anular") {
-      if (!window.confirm("¿Anular esta transferencia APROBADA? Se revierte el asiento contable y se restaura el saldo de la factura. Esta acción queda auditada.")) return;
-      const motivo = window.prompt("Motivo de la anulación:");
-      if (!motivo?.trim()) { setError("Se requiere un motivo para anular."); return; }
       body = { motivo };
     }
     const r = await apiFetch(`/api/cobranzas/conciliacion/${id}/${tipo}`, {
@@ -142,10 +141,26 @@ export default function ConciliacionClient() {
       setOk(j.data?.es_anticipo
         ? "Aprobada. La factura aún no tiene DTE aprobado → se registró como Anticipo de Clientes."
         : "Aprobada y contabilizada (Debe Banco / Haber Clientes).");
-    } else if (tipo === "anular") {
-      setOk("Transferencia anulada: asiento revertido y saldo de la factura restaurado.");
     } else setOk("Transferencia rechazada.");
     cargar();
+  }
+
+  async function doAnular() {
+    if (!anularTarget) return;
+    if (!anularMotivo.trim()) { setError("Se requiere un motivo para anular."); return; }
+    setAnularBusy(true); setError(null); setOk(null);
+    try {
+      const r = await apiFetch(`/api/cobranzas/conciliacion/${anularTarget.id}/anular`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ motivo: anularMotivo.trim() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.success) { setError(j?.error ?? `Error ${r.status}`); return; }
+      setOk("Transferencia anulada: asiento revertido y saldo de la factura restaurado.");
+      setAnularTarget(null); setAnularMotivo("");
+      cargar();
+    } finally {
+      setAnularBusy(false);
+    }
   }
 
   async function verComprobante(id: string) {
@@ -282,7 +297,7 @@ export default function ConciliacionClient() {
                         </>
                       )}
                       {c.estado === "aprobado" && (
-                        <button onClick={() => accion(c.id, "anular")} title="Anular la aprobación (revierte el asiento y restaura el saldo)" className="rounded border border-red-200 px-2 py-1 font-semibold text-red-600 hover:bg-red-50">Anular</button>
+                        <button onClick={() => { setAnularTarget(c); setAnularMotivo(""); }} title="Anular la aprobación (revierte el asiento y restaura el saldo)" className="rounded border border-red-200 px-2 py-1 font-semibold text-red-600 hover:bg-red-50">Anular</button>
                       )}
                     </div>
                   </td>
@@ -296,6 +311,50 @@ export default function ConciliacionClient() {
       {modal && (
         <ModalRegistrar facturas={facturas} onClose={() => setModal(false)}
           onSaved={(msg) => { setModal(false); setOk(msg); cargar(); }} />
+      )}
+
+      {anularTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !anularBusy && setAnularTarget(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 border-b p-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Anular transferencia aprobada</h3>
+                <p className="text-xs text-slate-500">Revierte el asiento contable y restaura el saldo de la factura. Queda auditado.</p>
+              </div>
+              <button onClick={() => setAnularTarget(null)} disabled={anularBusy} className="shrink-0 text-lg text-slate-400 hover:text-slate-600 disabled:opacity-50">✕</button>
+            </div>
+            <div className="space-y-3 p-4">
+              <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-sm">
+                <dt className="text-slate-400">Cliente</dt>
+                <dd className="col-span-2 font-medium text-slate-800">{anularTarget.cliente_nombre ?? "—"}</dd>
+                <dt className="text-slate-400">Vendedor</dt>
+                <dd className="col-span-2 text-slate-700">{anularTarget.vendedor_nombre ?? "—"}</dd>
+                <dt className="text-slate-400">Cargó el pago</dt>
+                <dd className="col-span-2 text-slate-700">{anularTarget.creado_por_nombre ?? "—"}</dd>
+                <dt className="text-slate-400">Factura</dt>
+                <dd className="col-span-2 font-mono text-xs text-slate-700">{anularTarget.numero_factura ?? "—"}</dd>
+                <dt className="text-slate-400">Banco / Titular</dt>
+                <dd className="col-span-2 text-slate-700">{anularTarget.banco_origen} · {anularTarget.titular}</dd>
+                <dt className="text-slate-400">N° operación</dt>
+                <dd className="col-span-2 font-mono text-xs text-slate-700">{anularTarget.numero_operacion}</dd>
+                <dt className="text-slate-400">Monto</dt>
+                <dd className="col-span-2 text-base font-semibold tabular-nums text-slate-900">₲ {fmt(anularTarget.monto)}</dd>
+              </dl>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Motivo de la anulación <span className="text-red-500">*</span></label>
+                <textarea value={anularMotivo} onChange={(e) => setAnularMotivo(e.target.value)} rows={2} autoFocus
+                  placeholder="Ej: aprobación duplicada / monto incorrecto…"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t p-4">
+              <button onClick={() => setAnularTarget(null)} disabled={anularBusy} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancelar</button>
+              <button onClick={doAnular} disabled={anularBusy || !anularMotivo.trim()} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50">
+                {anularBusy ? "Anulando…" : "Anular y revertir"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {reporte && (

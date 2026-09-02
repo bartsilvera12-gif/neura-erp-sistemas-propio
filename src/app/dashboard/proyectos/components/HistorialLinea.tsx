@@ -132,6 +132,11 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
               // estado". Se normaliza a vacío.
               const durCruda = String(h.duration_label ?? "").trim();
               const duracion = durCruda && durCruda !== "—" ? durCruda : "";
+              // Primera sub-etapa (no había ninguna antes): se muestra como
+              // "Estableció: X" en vez del feo "Sin definir → X".
+              const subestadoPrimera =
+                esSubestado &&
+                !((h.metadata as { de?: unknown } | null | undefined)?.de);
 
               return (
                 <li key={String(h.id)}>
@@ -190,15 +195,24 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                             <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-indigo-600">
                               Sub-etapa de desarrollo
                             </p>
-                            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px]">
-                              <span className="text-slate-500">
-                                {(h.subestado_de_label as string | undefined) ?? "Sin definir"}
-                              </span>
-                              <span aria-hidden="true" className="text-slate-300">→</span>
-                              <span className="font-semibold text-slate-900">
-                                {(h.subestado_a_label as string | undefined) ?? "Sin definir"}
-                              </span>
-                            </p>
+                            {subestadoPrimera ? (
+                              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px]">
+                                <span className="text-slate-500">Estableció:</span>
+                                <span className="font-semibold text-slate-900">
+                                  {(h.subestado_a_label as string | undefined) ?? "Sin definir"}
+                                </span>
+                              </p>
+                            ) : (
+                              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px]">
+                                <span className="text-slate-500">
+                                  {(h.subestado_de_label as string | undefined) ?? "Sin definir"}
+                                </span>
+                                <span aria-hidden="true" className="text-slate-300">→</span>
+                                <span className="font-semibold text-slate-900">
+                                  {(h.subestado_a_label as string | undefined) ?? "Sin definir"}
+                                </span>
+                              </p>
+                            )}
                           </>
                         ) : (
                           <>

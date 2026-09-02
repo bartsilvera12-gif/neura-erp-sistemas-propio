@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
 import { TZ_PY, horaPY } from "@/lib/format/hora-py";
@@ -80,11 +80,15 @@ function IconCapas() {
 }
 
 export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
+  // "desc" = más nuevo primero (por defecto); "asc" = más antiguo primero (el
+  // alta del proyecto arriba). El usuario lo alterna con el botón de la cabecera.
+  const [orden, setOrden] = useState<"desc" | "asc">("desc");
+
   const porDia = useMemo(() => {
-    // Timeline más nuevo primero: se lee de arriba (lo último que pasó) hacia
-    // abajo (el alta del proyecto). Se ordena tanto los días como los eventos
-    // dentro de cada día por `entered_at` descendente.
+    // Se ordena tanto los días como los eventos dentro de cada día por
+    // `entered_at`, en el sentido elegido.
     const ts = (e: Evento) => new Date(String(e.entered_at ?? "")).getTime() || 0;
+    const signo = orden === "desc" ? -1 : 1;
     const m = new Map<string, Evento[]>();
     for (const e of eventos) {
       const k = diaPY(String(e.entered_at ?? ""));
@@ -92,9 +96,9 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
       arr.push(e);
       m.set(k, arr);
     }
-    for (const arr of m.values()) arr.sort((a, b) => ts(b) - ts(a));
-    return [...m.entries()].sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0));
-  }, [eventos]);
+    for (const arr of m.values()) arr.sort((a, b) => signo * (ts(a) - ts(b)));
+    return [...m.entries()].sort(([a], [b]) => (a < b ? -signo : a > b ? signo : 0));
+  }, [eventos, orden]);
 
   if (eventos.length === 0) {
     return (
@@ -108,7 +112,33 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setOrden((o) => (o === "desc" ? "asc" : "desc"))}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+          title="Cambiar el orden del historial"
+          aria-label={`Orden actual: ${orden === "desc" ? "más recientes primero" : "más antiguos primero"}. Tocá para cambiar.`}
+        >
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className={orden === "asc" ? "rotate-180" : ""}
+          >
+            <path d="M3 6h11M3 12h7M3 18h4" />
+            <path d="M18 9V4M18 4l-2.5 2.5M18 4l2.5 2.5" />
+          </svg>
+          {orden === "desc" ? "Más recientes primero" : "Más antiguos primero"}
+        </button>
+      </div>
       {porDia.map(([dia, delDia]) => (
         <section key={dia}>
           <div className="mb-2.5 flex items-center gap-2">

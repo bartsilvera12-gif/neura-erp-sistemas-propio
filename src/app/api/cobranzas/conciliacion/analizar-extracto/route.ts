@@ -43,9 +43,15 @@ export async function POST(request: NextRequest) {
     try {
       extracto = await extraerTransaccionesDeExtracto(pdfBytes);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Error al analizar el PDF";
-      console.error("[analizar-extracto] extract", msg.slice(0, 200));
-      return NextResponse.json(errorResponse(`No se pudo leer el extracto: ${msg}`), { status: 502 });
+      const raw = e instanceof Error ? e.message : "Error al analizar el PDF";
+      const status = (e as { status?: number })?.status;
+      const overloaded = status === 529 || /overloaded/i.test(raw);
+      console.error("[analizar-extracto] extract", String(status ?? ""), raw.slice(0, 200));
+      const msg = overloaded
+        ? "El servicio de IA está saturado en este momento. Probá de nuevo en unos segundos."
+        : `No se pudo leer el extracto: ${raw}`;
+      // 422 (no 5xx): así el proxy no reemplaza el cuerpo y el mensaje llega al usuario.
+      return NextResponse.json(errorResponse(msg), { status: 422 });
     }
 
     // 2) Transferencias APROBADAS (opcionalmente del mes elegido).

@@ -100,6 +100,24 @@ function toNum(v: unknown): number {
   return NaN;
 }
 
+/** Reintenta ante errores transitorios de la API (529 overloaded, 429, 503) con backoff. */
+async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const status = (e as { status?: number })?.status;
+      const msg = String((e as { message?: string })?.message ?? "");
+      const transitorio = status === 529 || status === 429 || status === 503 || /overloaded/i.test(msg);
+      if (!transitorio || i === tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 export async function extraerTransaccionesDeExtracto(
   pdfBytes: Buffer,
   opts?: { model?: string }
@@ -110,22 +128,25 @@ export async function extraerTransaccionesDeExtracto(
   const anthropic = new Anthropic();
   const model = opts?.model || process.env.CONCILIACION_MODEL?.trim() || DEFAULT_MODEL;
 
-  const msg = await anthropic.messages.create({
-    model,
-    max_tokens: 8192,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: pdfBytes.toString("base64") },
-          },
-          { type: "text", text: PROMPT_EXTRACCION },
-        ],
-      },
-    ],
-  });
+  // La API puede devolver 529 (overloaded) o 429/503 transitorios; reintentar con backoff.
+  const msg = await withRetry(() =>
+    anthropic.messages.create({
+      model,
+      max_tokens: 8192,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: pdfBytes.toString("base64") },
+            },
+            { type: "text", text: PROMPT_EXTRACCION },
+          ],
+        },
+      ],
+    })
+  );
 
   const textPart = msg.content.find((b): b is Anthropic.TextBlock => b.type === "text");
   if (!textPart) throw new Error("El modelo no devolvió texto");

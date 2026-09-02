@@ -9,12 +9,15 @@ export default function ProyectoDetalleModal({
   onClose,
   onUpdated,
   dataSchema,
+  proyectoPreview,
 }: {
   projectId: string | null;
   open: boolean;
   onClose: () => void;
   onUpdated: () => void;
   dataSchema: string;
+  /** Fila del tablero para pintar la cabecera al instante (ver ProyectoDetalleInner). */
+  proyectoPreview?: (Record<string, unknown> & { id: string }) | null;
 }) {
   const [dirty, setDirty] = useState(false);
 
@@ -75,6 +78,7 @@ export default function ProyectoDetalleModal({
           onProjectUpdated={onUpdated}
           onDirtyChange={setDirty}
           dataSchema={dataSchema}
+          proyectoPreview={proyectoPreview}
         />
       </div>
     </div>

@@ -1510,6 +1510,13 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       <ProyectoDetalleModal
         projectId={modalProjectId}
         open={modalProjectId != null}
+        // La fila ya está en memoria del tablero: se la pasamos para que la
+        // cabecera del detalle se pinte al instante mientras llega el GET.
+        proyectoPreview={
+          modalProjectId != null
+            ? proyectos.find((p) => p.id === modalProjectId) ?? null
+            : null
+        }
         // Al cerrar se recarga el listado además de al guardar: abrir el
         // proyecto marca leídas sus novedades de QA, y el badge de la fila
         // tiene que apagarse sin que el usuario refresque la página.

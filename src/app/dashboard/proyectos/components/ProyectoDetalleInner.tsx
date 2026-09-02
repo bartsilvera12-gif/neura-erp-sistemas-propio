@@ -75,6 +75,23 @@ const POSTENTREGA_PERIODO_DIAS = 30;
 const CAMBIOS_SLOTS = [1, 2, 3] as const;
 
 type UsuarioActivo = { id: string; nombre?: string | null; email?: string | null };
+type CatalogoCliente = { id: string; empresa?: string | null; nombre_contacto?: string | null };
+
+/**
+ * Cache en memoria (por sesión/tab) de los catálogos de la tarjeta: estados,
+ * tipos, usuarios, módulos y clientes. Son listas de referencia iguales para
+ * todos los proyectos y se re-descargaban `no-store` en CADA apertura del modal.
+ * Con un TTL corto, reabrir es instantáneo y se refresca solo pasado el tiempo.
+ */
+type CatalogosDetalle = {
+  estados: { id: string; nombre: string }[];
+  tipos: { id: string; nombre: string }[];
+  usuarios: UsuarioActivo[];
+  modulos: ModuloCatalogo[];
+  clientes: CatalogoCliente[];
+};
+let catalogosDetalleCache: { at: number; data: CatalogosDetalle } | null = null;
+const CATALOGOS_DETALLE_TTL_MS = 60_000;
 
 /** Respuesta de `GET /api/proyectos/[id]/qa/observaciones/resumen`. */
 type QAResumen = {
@@ -606,6 +623,12 @@ export type ProyectoDetalleInnerProps = {
   onProjectUpdated?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   dataSchema: string;
+  /**
+   * Fila que el Kanban (o el tablero) ya tiene en memoria. Se usa para pintar la
+   * cabecera (título, tipo, estado, cliente) al instante mientras llega el GET
+   * completo, en vez de bloquear toda la tarjeta con un spinner.
+   */
+  proyectoPreview?: (Record<string, unknown> & { id: string }) | null;
 };
 
 export default function ProyectoDetalleInner({
@@ -615,6 +638,7 @@ export default function ProyectoDetalleInner({
   onProjectUpdated,
   onDirtyChange,
   dataSchema,
+  proyectoPreview,
 }: ProyectoDetalleInnerProps) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -631,7 +655,24 @@ export default function ProyectoDetalleInner({
     [variant, router, projectId]
   );
 
-  const [data, setData] = useState<DetalleResp | null>(null);
+  // Seed instantáneo desde la fila del Kanban: la cabecera se pinta ya con lo
+  // que el tablero tenía en memoria (título/tipo/estado/cliente) y el GET
+  // completo reemplaza esto apenas llega. Sólo la primera vez que abre (mismo
+  // proyecto por apertura, porque el modal re-monta al cerrarse).
+  const [data, setData] = useState<DetalleResp | null>(() =>
+    proyectoPreview && proyectoPreview.id === projectId
+      ? {
+          proyecto: proyectoPreview,
+          historial: [],
+          sla: {},
+          tareas: [],
+          comentarios: [],
+          archivos: [],
+          cambios: [],
+          avance_pct: null,
+        }
+      : null
+  );
   const [estados, setEstados] = useState<{ id: string; nombre: string }[]>([]);
   const [tipos, setTipos] = useState<{ id: string; nombre: string }[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioActivo[]>([]);
@@ -935,6 +976,16 @@ export default function ProyectoDetalleInner({
 
   useEffect(() => {
     let c = false;
+    // Cache fresco: sembramos las listas y no pegamos a la red.
+    if (catalogosDetalleCache && Date.now() - catalogosDetalleCache.at < CATALOGOS_DETALLE_TTL_MS) {
+      const cch = catalogosDetalleCache.data;
+      setEstados(cch.estados);
+      setTipos(cch.tipos);
+      setUsuarios(cch.usuarios);
+      setModulosCatalogo(cch.modulos);
+      setClientes(cch.clientes);
+      return;
+    }
     (async () => {
       const [r, rUsers, rModulos, rClientes, rTipos] = await Promise.all([
         fetchWithSupabaseSession("/api/proyectos/estados", { cache: "no-store" }),
@@ -951,14 +1002,30 @@ export default function ProyectoDetalleInner({
       const jTipos = (await rTipos.json().catch(() => null)) as
         | { success?: boolean; data?: { id: string; nombre: string }[] }
         | null;
-      if (!c && jTipos?.success && jTipos.data) setTipos(jTipos.data);
-      if (!c && j.success && j.data) setEstados(j.data);
-      if (!c) setUsuarios(jUsers.usuarios ?? []);
-      if (!c && jModulos.success && jModulos.data) setModulosCatalogo(jModulos.data);
       const jCli = (await rClientes.json().catch(() => null)) as
-        | { success?: boolean; data?: { id: string; empresa?: string | null; nombre_contacto?: string | null }[] }
+        | { success?: boolean; data?: CatalogoCliente[] }
         | null;
-      if (!c && jCli?.data) setClientes(jCli.data);
+
+      const estados = j.success && j.data ? j.data : null;
+      const tipos = jTipos?.success && jTipos.data ? jTipos.data : null;
+      const usuarios = jUsers.usuarios ?? [];
+      const modulos = jModulos.success && jModulos.data ? jModulos.data : null;
+      const clientes = jCli?.data ?? null;
+
+      // Se cachea sólo si todo cargó; si algo falló, la próxima apertura reintenta.
+      if (estados && tipos && modulos && clientes) {
+        catalogosDetalleCache = {
+          at: Date.now(),
+          data: { estados, tipos, usuarios, modulos, clientes },
+        };
+      }
+
+      if (c) return;
+      if (tipos) setTipos(tipos);
+      if (estados) setEstados(estados);
+      setUsuarios(usuarios);
+      if (modulos) setModulosCatalogo(modulos);
+      if (clientes) setClientes(clientes);
     })();
     return () => {
       c = true;
@@ -1121,10 +1188,16 @@ export default function ProyectoDetalleInner({
     if (res.ok && j?.success && j.data) setQaResumen(j.data);
   }, [projectId]);
 
-  // Se refresca al cambiar de solapa: alcanza para que el badge y la barra
-  // queden al día después de trabajar en QA, sin suscribirse a nada.
+  // El resumen de QA sólo cambia trabajando en la solapa QA. Antes se re-pedía
+  // a la red en CADA cambio de solapa; ahora sólo en el mount y al entrar/salir
+  // de QA, que es cuando pudo cambiar. Igual mantiene el badge y la barra al día.
+  const prevTabRef = useRef<TabId | null>(null);
   useEffect(() => {
-    void recargarQaResumen();
+    const prev = prevTabRef.current;
+    prevTabRef.current = tab;
+    if (prev === null || tab === "qa" || prev === "qa") {
+      void recargarQaResumen();
+    }
   }, [recargarQaResumen, tab]);
 
   async function agregarComentario(e: React.FormEvent) {

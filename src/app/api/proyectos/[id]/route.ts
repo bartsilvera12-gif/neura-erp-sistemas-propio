@@ -5,7 +5,11 @@ import { mergeBriefDataPatch } from "@/lib/proyectos/brief-data";
 import { listProyectoCambios } from "@/lib/proyectos/cambios-config";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { enrichProyectoHistorialRows } from "@/lib/proyectos/historial-enrich";
-import { insertHistorialReasignacionTecnico } from "@/lib/proyectos/historial-actions";
+import {
+  insertHistorialReasignacionTecnico,
+  insertHistorialSubestadoDesarrollo,
+} from "@/lib/proyectos/historial-actions";
+import { esSubestadoValidoParaTipo } from "@/lib/proyectos/subestados-desarrollo";
 import {
   ETAPA_FINAL,
   ETAPA_INICIAL,
@@ -198,6 +202,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     };
     // Reasignación de responsable técnico a registrar en el historial (tras el update OK).
     let reasignacionTecnico: { de: string | null; a: string | null } | null = null;
+    // Cambio de sub-etapa de desarrollo a registrar en el historial (tras el update OK).
+    let subestadoChange: { de: string | null; a: string | null } | null = null;
 
     if (typeof body.titulo === "string") patch.titulo = body.titulo.trim();
     if (typeof body.descripcion === "string") patch.descripcion = body.descripcion;
@@ -459,6 +465,75 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
+    // --- Sub-etapa de desarrollo -----------------------------------------------
+    // Sólo se puede cambiar mientras el proyecto está en el estado 'desarrollo'; la
+    // validez de la sub-etapa depende del tipo (web/saas). Bloque autónomo: el
+    // selector de la tarjeta manda normalmente sólo este campo, así que no cae en
+    // el bloque de arriba y necesita su propia lectura del estado.
+    if ("subestado_desarrollo" in body) {
+      const raw = body.subestado_desarrollo;
+      const nuevoCod =
+        raw === null || raw === "" ? null : typeof raw === "string" ? raw.trim() : undefined;
+      if (nuevoCod === undefined) {
+        return NextResponse.json(errorResponse("Sub-etapa de desarrollo inválida"), { status: 400 });
+      }
+
+      const { data: pr, error: ePr } = await sb
+        .from("proyectos")
+        .select("subestado_desarrollo, estado_id, tipo_id")
+        .eq("empresa_id", auth.empresaId)
+        .eq("id", pid)
+        .maybeSingle();
+      if (ePr) return NextResponse.json(errorResponse(ePr.message), { status: 400 });
+      if (!pr) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+      const prRow = pr as {
+        subestado_desarrollo?: string | null;
+        estado_id?: string | null;
+        tipo_id?: string | null;
+      };
+
+      const [estRes, tipoRes] = await Promise.all([
+        prRow.estado_id
+          ? sb
+              .from("proyecto_estados")
+              .select("codigo")
+              .eq("empresa_id", auth.empresaId)
+              .eq("id", prRow.estado_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+        prRow.tipo_id
+          ? sb
+              .from("proyecto_tipos")
+              .select("codigo")
+              .eq("empresa_id", auth.empresaId)
+              .eq("id", prRow.tipo_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      const estadoCodigo = String((estRes.data as { codigo?: string } | null)?.codigo ?? "").toLowerCase();
+      const tipoCodigo = String((tipoRes.data as { codigo?: string } | null)?.codigo ?? "");
+
+      if (estadoCodigo !== "desarrollo") {
+        return NextResponse.json(
+          errorResponse("La sub-etapa sólo se puede cambiar cuando el proyecto está En desarrollo"),
+          { status: 409 }
+        );
+      }
+      if (nuevoCod && !esSubestadoValidoParaTipo(nuevoCod, tipoCodigo)) {
+        return NextResponse.json(
+          errorResponse("Sub-etapa no válida para el tipo de proyecto"),
+          { status: 400 }
+        );
+      }
+
+      const actualCod = prRow.subestado_desarrollo ?? null;
+      if (nuevoCod !== actualCod) {
+        patch.subestado_desarrollo = nuevoCod;
+        patch.subestado_desarrollo_at = nuevoCod ? new Date().toISOString() : null;
+        subestadoChange = { de: actualCod, a: nuevoCod };
+      }
+    }
+
     const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
     if (keys.length <= 2) {
       return NextResponse.json(errorResponse("Nada para actualizar"), { status: 400 });
@@ -490,6 +565,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         });
       } catch (e) {
         console.error("[proyectos] no se pudo registrar la reasignación de técnico en historial", e);
+      }
+    }
+
+    // Cambio de sub-etapa de desarrollo → queda en el historial. No bloqueante.
+    if (subestadoChange && subestadoChange.de !== subestadoChange.a) {
+      try {
+        await insertHistorialSubestadoDesarrollo({
+          sb,
+          empresaId: auth.empresaId,
+          proyectoId: pid,
+          deCodigo: subestadoChange.de,
+          aCodigo: subestadoChange.a,
+          changedBy: auth.usuarioCatalogId,
+        });
+      } catch (e) {
+        console.error("[proyectos] no se pudo registrar el cambio de sub-etapa en historial", e);
       }
     }
 

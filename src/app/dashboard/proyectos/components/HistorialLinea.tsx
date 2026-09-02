@@ -70,8 +70,21 @@ function IconPersona() {
   );
 }
 
+function IconCapas() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+      <path d="M12 2 2 7l10 5 10-5-10-5Z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m2 17 10 5 10-5M2 12l10 5 10-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
   const porDia = useMemo(() => {
+    // Timeline más nuevo primero: se lee de arriba (lo último que pasó) hacia
+    // abajo (el alta del proyecto). Se ordena tanto los días como los eventos
+    // dentro de cada día por `entered_at` descendente.
+    const ts = (e: Evento) => new Date(String(e.entered_at ?? "")).getTime() || 0;
     const m = new Map<string, Evento[]>();
     for (const e of eventos) {
       const k = diaPY(String(e.entered_at ?? ""));
@@ -79,7 +92,8 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
       arr.push(e);
       m.set(k, arr);
     }
-    return [...m.entries()];
+    for (const arr of m.values()) arr.sort((a, b) => ts(b) - ts(a));
+    return [...m.entries()].sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0));
   }, [eventos]);
 
   if (eventos.length === 0) {
@@ -112,6 +126,7 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
               const usr = nombreCapitular((h.usuario_cambio_label as string | undefined) ?? "");
               const hora = horaPY(String(h.entered_at ?? ""));
               const esReasignacion = h.evento_tipo === "reasignacion_tecnico";
+              const esSubestado = h.evento_tipo === "subestado_desarrollo";
               // `formatDurationHuman` devuelve "—" cuando todavía no hay salida;
               // como string es truthy y se colaba en el badge como "— en este
               // estado". Se normaliza a vacío.
@@ -122,10 +137,18 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                 <li key={String(h.id)}>
                   <SpotlightCard
                     spotlightColor={
-                      esReasignacion ? "rgba(245, 158, 11, 0.10)" : "rgba(79, 174, 178, 0.10)"
+                      esReasignacion
+                        ? "rgba(245, 158, 11, 0.10)"
+                        : esSubestado
+                          ? "rgba(99, 102, 241, 0.10)"
+                          : "rgba(79, 174, 178, 0.10)"
                     }
                     className={`rounded-xl border bg-white p-3 ${
-                      esReasignacion ? "border-amber-200" : "border-slate-200"
+                      esReasignacion
+                        ? "border-amber-200"
+                        : esSubestado
+                          ? "border-indigo-200"
+                          : "border-slate-200"
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -134,10 +157,12 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                         className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
                           esReasignacion
                             ? "bg-amber-100 text-amber-700"
-                            : "bg-[#4FAEB2]/12 text-[#2F6E71]"
+                            : esSubestado
+                              ? "bg-indigo-100 text-indigo-700"
+                              : "bg-[#4FAEB2]/12 text-[#2F6E71]"
                         }`}
                       >
-                        {esReasignacion ? <IconPersona /> : <IconFlecha />}
+                        {esReasignacion ? <IconPersona /> : esSubestado ? <IconCapas /> : <IconFlecha />}
                       </span>
 
                       <div className="min-w-0 flex-1">
@@ -157,6 +182,21 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                                 {nombreCapitular(
                                   (h.reasignacion_a_label as string | undefined) ?? "Sin asignar"
                                 )}
+                              </span>
+                            </p>
+                          </>
+                        ) : esSubestado ? (
+                          <>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-indigo-600">
+                              Sub-etapa de desarrollo
+                            </p>
+                            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px]">
+                              <span className="text-slate-500">
+                                {(h.subestado_de_label as string | undefined) ?? "Sin definir"}
+                              </span>
+                              <span aria-hidden="true" className="text-slate-300">→</span>
+                              <span className="font-semibold text-slate-900">
+                                {(h.subestado_a_label as string | undefined) ?? "Sin definir"}
                               </span>
                             </p>
                           </>

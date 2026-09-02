@@ -7,6 +7,7 @@ import {
   formatDurationHuman,
   slaTipoSnapshotLabel,
 } from "@/lib/proyectos/brief-data";
+import { subestadoDesarrolloLabel } from "@/lib/proyectos/subestados-desarrollo";
 
 export type HistorialRowRaw = {
   id: string;
@@ -27,16 +28,33 @@ export type HistorialRowEnriched = HistorialRowRaw & {
   tipo_sla_label: string;
   usuario_cambio_label: string;
   duration_label: string;
-  /** "estado" (cambio de estado) | "reasignacion_tecnico" (cambio de responsable). */
-  evento_tipo: "estado" | "reasignacion_tecnico";
+  /**
+   * "estado" (cambio de estado) | "reasignacion_tecnico" (cambio de responsable)
+   * | "subestado_desarrollo" (cambio de sub-etapa de desarrollo).
+   */
+  evento_tipo: "estado" | "reasignacion_tecnico" | "subestado_desarrollo";
   reasignacion_de_label: string | null;
   reasignacion_a_label: string | null;
+  subestado_de_label: string | null;
+  subestado_a_label: string | null;
 };
 
 /** Lee metadata.tipo/de/a de una fila de reasignación (defensivo con jsonb suelto). */
 function leerReasignacion(meta: Record<string, unknown> | null | undefined): { de: string | null; a: string | null } | null {
   if (!meta || typeof meta !== "object") return null;
   if (String((meta as { tipo?: unknown }).tipo ?? "") !== "reasignacion_tecnico") return null;
+  const de = (meta as { de?: unknown }).de;
+  const a = (meta as { a?: unknown }).a;
+  return {
+    de: typeof de === "string" && de ? de : null,
+    a: typeof a === "string" && a ? a : null,
+  };
+}
+
+/** Lee metadata.tipo/de/a de una fila de cambio de sub-etapa (de/a son códigos). */
+function leerSubestado(meta: Record<string, unknown> | null | undefined): { de: string | null; a: string | null } | null {
+  if (!meta || typeof meta !== "object") return null;
+  if (String((meta as { tipo?: unknown }).tipo ?? "") !== "subestado_desarrollo") return null;
   const de = (meta as { de?: unknown }).de;
   const a = (meta as { a?: unknown }).a;
   return {
@@ -98,6 +116,7 @@ export async function enrichProyectoHistorialRows(
     }
 
     const rea = leerReasignacion(r.metadata);
+    const sub = leerSubestado(r.metadata);
     const nombreDe = (id: string | null) =>
       id ? nombreUsuario.get(id) ?? "Usuario desconocido" : "Sin asignar";
 
@@ -110,9 +129,11 @@ export async function enrichProyectoHistorialRows(
       duration_label: formatDurationHuman(
         r.duration_seconds != null ? Number(r.duration_seconds) : null
       ),
-      evento_tipo: rea ? "reasignacion_tecnico" : "estado",
+      evento_tipo: rea ? "reasignacion_tecnico" : sub ? "subestado_desarrollo" : "estado",
       reasignacion_de_label: rea ? nombreDe(rea.de) : null,
       reasignacion_a_label: rea ? nombreDe(rea.a) : null,
+      subestado_de_label: sub ? subestadoDesarrolloLabel(sub.de) ?? "Sin definir" : null,
+      subestado_a_label: sub ? subestadoDesarrolloLabel(sub.a) ?? "Sin definir" : null,
     };
   });
 }

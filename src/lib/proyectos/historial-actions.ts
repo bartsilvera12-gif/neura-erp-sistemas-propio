@@ -61,6 +61,39 @@ export async function insertHistorialReasignacionTecnico(input: {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Registra en el historial un cambio de sub-etapa de desarrollo como evento puntual
+ * (entrada = salida, sin duración), igual que la reasignación de técnico. Va en la
+ * misma tabla con `estado_*` en null y `metadata.tipo = "subestado_desarrollo"` (más
+ * los códigos `de`/`a`), así queda en la línea de tiempo sin cerrar el segmento de
+ * estado abierto. `de`/`a` son códigos del catálogo (no ids), se resuelven a nombre
+ * en el enriquecido.
+ */
+export async function insertHistorialSubestadoDesarrollo(input: {
+  sb: AppSupabaseClient;
+  empresaId: string;
+  proyectoId: string;
+  deCodigo: string | null;
+  aCodigo: string | null;
+  changedBy: string | null;
+}): Promise<void> {
+  const { sb, empresaId, proyectoId, deCodigo, aCodigo, changedBy } = input;
+  const ahora = new Date().toISOString();
+  const { error } = await sb.from("proyecto_estado_historial").insert({
+    empresa_id: empresaId,
+    proyecto_id: proyectoId,
+    estado_anterior_id: null,
+    estado_nuevo_id: null,
+    changed_by: changedBy,
+    changed_at: ahora,
+    entered_at: ahora,
+    exited_at: ahora,
+    duration_seconds: 0,
+    metadata: { tipo: "subestado_desarrollo", de: deCodigo, a: aCodigo },
+  });
+  if (error) throw new Error(error.message);
+}
+
 export async function insertHistorialCambioEstado(input: {
   sb: AppSupabaseClient;
   empresaId: string;

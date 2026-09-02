@@ -34,6 +34,7 @@ import {
   type ProyectoSaasBriefForm,
 } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { subestadosParaTipo } from "@/lib/proyectos/subestados-desarrollo";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 
 export type ProyectoCambioCliente = {
@@ -1594,6 +1595,27 @@ export default function ProyectoDetalleInner({
     }
   }
 
+  // Sub-etapa de desarrollo: sólo editable en el estado 'desarrollo' (el server lo
+  // vuelve a validar). Enviar "" limpia la sub-etapa (null). Cada cambio queda en
+  // el historial vía el PATCH.
+  async function cambiarSubestado(codigo: string) {
+    const actual = String(
+      (proyecto as { subestado_desarrollo?: string | null } | undefined)?.subestado_desarrollo ?? ""
+    );
+    if (codigo === actual) return;
+    const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subestado_desarrollo: codigo || null }),
+    });
+    const j = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || !j.success) setErr(j.error ?? "No se pudo cambiar la sub-etapa");
+    else {
+      await load();
+      onProjectUpdated?.();
+    }
+  }
+
   const slaFmt = useMemo(() => {
     const s = data?.sla as { segundos_interno?: number; segundos_cliente?: number; segundos_pausado?: number } | undefined;
     if (!s) return null;
@@ -1611,6 +1633,15 @@ export default function ProyectoDetalleInner({
   // El tipo mixto muestra los dos bloques de brief a la vez.
   const esWeb = tipoIncluyeWeb(codigoTipo);
   const esSaas = tipoIncluyeSaas(codigoTipo);
+  // Sub-etapa de desarrollo: catálogo según el tipo; sólo editable en 'desarrollo'.
+  const codigoEstadoActual = String(
+    (proyecto as { proyecto_estado?: { codigo?: string } } | undefined)?.proyecto_estado?.codigo ?? ""
+  ).toLowerCase();
+  const esEstadoDesarrollo = codigoEstadoActual === "desarrollo";
+  const subestadosDisponibles = subestadosParaTipo(codigoTipo);
+  const subestadoActual = String(
+    (proyecto as { subestado_desarrollo?: string | null } | undefined)?.subestado_desarrollo ?? ""
+  );
   const briefCoerced = coalesceBriefData(proyecto?.brief_data);
   // El hero del resumen los muestra en dos niveles; `clienteNombre` los pega
   // con " · ", que sirve para una fila pero no para un encabezado.
@@ -1714,6 +1745,30 @@ export default function ProyectoDetalleInner({
             onChange={(v) => void cambiarEstado(v)}
             options={estados.map((e) => ({ value: e.id, label: e.nombre }))}
           />
+          {/* Sub-etapa de desarrollo: siempre visible; sólo editable en «En desarrollo».
+              Fuera de ese estado se muestra deshabilitada (informativa). */}
+          {subestadosDisponibles.length > 0 ? (
+            <span
+              title={
+                esEstadoDesarrollo
+                  ? "Sub-etapa de desarrollo"
+                  : "La sub-etapa sólo se puede cambiar cuando el proyecto está En desarrollo"
+              }
+            >
+              <FancySelect
+                className="min-w-[190px]"
+                ariaLabel="Cambiar sub-etapa de desarrollo"
+                disabled={!esEstadoDesarrollo}
+                placeholder="Sub-etapa…"
+                value={subestadoActual}
+                onChange={(v) => void cambiarSubestado(v)}
+                options={[
+                  { value: "", label: "Sin sub-etapa" },
+                  ...subestadosDisponibles.map((s) => ({ value: s.codigo, label: s.nombre })),
+                ]}
+              />
+            </span>
+          ) : null}
           {(() => {
             // El permiso lo resuelve el server (mismo criterio que el DELETE); acá solo se refleja.
             if (!data.current_user_puede_eliminar) return null;

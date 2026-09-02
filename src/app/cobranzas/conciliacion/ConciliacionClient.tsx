@@ -14,6 +14,17 @@ interface Cobro {
 }
 interface Factura { id: string; numero_factura: string; saldo: number; estado: string; cliente_id?: string | null }
 
+interface AprobadoLite { id: string; monto: number; fecha: string; numero_operacion: string | null; banco_origen: string | null; titular: string | null; cliente_nombre: string | null; numero_factura: string | null }
+interface ExtractoTx { fecha: string | null; monto: number; tipo: string; referencia: string | null; descripcion: string | null }
+interface Reporte {
+  mes: string | null; archivo: string; moneda: string | null; banco_detectado: string | null;
+  conciliados: { aprobado: AprobadoLite; credito: ExtractoTx }[];
+  montos_difieren: { aprobado: AprobadoLite; credito: ExtractoTx; diff: number }[];
+  aprobados_sin_extracto: AprobadoLite[];
+  extracto_sin_registrar: ExtractoTx[];
+  resumen: { aprobados: number; creditos_extracto: number; conciliados: number; difieren: number; sin_extracto: number; sin_registrar: number; monto_conciliado: number; monto_sin_extracto: number; monto_sin_registrar: number };
+}
+
 const fmt = (v: number | string) => Math.round(Number(v) || 0).toLocaleString("es-PY");
 const n = (v: string | number | null | undefined) => Number(v) || 0;
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -34,6 +45,12 @@ export default function ConciliacionClient() {
   const [ok, setOk] = useState<string | null>(null);
   const [modal, setModal] = useState(false);
 
+  // Conciliación asistida por IA: subir el PDF del extracto y cruzar contra las aprobadas del mes.
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [analizando, setAnalizando] = useState(false);
+  const [reporte, setReporte] = useState<Reporte | null>(null);
+  const [analisisError, setAnalisisError] = useState<string | null>(null);
+
   // Selector de meses (filtra por fecha de la transferencia, del lado del cliente).
   const mesActual = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const [mes, setMes] = useState<string>(mesActual);
@@ -52,6 +69,23 @@ export default function ConciliacionClient() {
     () => (mes ? cobros.filter((c) => (c.fecha ?? "").slice(0, 7) === mes) : cobros),
     [cobros, mes]
   );
+
+  async function analizarExtracto(f: File) {
+    setAnalizando(true); setAnalisisError(null); setReporte(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      if (mes) fd.append("mes", mes);
+      const r = await apiFetch("/api/cobranzas/conciliacion/analizar-extracto", { method: "POST", body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.success) { setAnalisisError(j?.error ?? `Error ${r.status}`); return; }
+      setReporte(j.data as Reporte);
+    } catch (e) {
+      setAnalisisError(e instanceof Error ? e.message : "Error de red");
+    } finally {
+      setAnalizando(false);
+    }
+  }
 
   const cargar = useCallback(async () => {
     setLoading(true); setError(null);
@@ -113,8 +147,25 @@ export default function ConciliacionClient() {
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Conciliación bancaria</h1>
         </div>
-        <button onClick={() => setModal(true)} className="shrink-0 rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#3F8E91]">+ Registrar transferencia</button>
+        <div className="flex shrink-0 items-center gap-2">
+          <input ref={fileRef} type="file" accept="application/pdf" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) analizarExtracto(f); e.target.value = ""; }} />
+          <button onClick={() => fileRef.current?.click()} disabled={analizando}
+            title="Subí el PDF de tu extracto y la IA verifica las aprobaciones del mes contra el banco"
+            className="rounded-xl border border-[#4FAEB2] bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/8 disabled:opacity-60">
+            {analizando ? "Analizando…" : "📄 Cargar extracto (PDF)"}
+          </button>
+          <button onClick={() => setModal(true)} className="rounded-xl bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#3F8E91]">+ Registrar transferencia</button>
+        </div>
       </div>
+
+      {analisisError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{analisisError}</div>}
+      {analizando && (
+        <div className="flex items-center gap-3 rounded-lg border border-[#4FAEB2]/30 bg-[#4FAEB2]/5 p-3 text-sm text-[#3F8E91]">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#4FAEB2]" />
+          Analizando el extracto con IA y cruzando contra las transferencias aprobadas{mes ? ` de ${mes}` : ""}…
+        </div>
+      )}
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {ok && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{ok}</div>}
@@ -210,6 +261,106 @@ export default function ConciliacionClient() {
       {modal && (
         <ModalRegistrar facturas={facturas} onClose={() => setModal(false)}
           onSaved={(msg) => { setModal(false); setOk(msg); cargar(); }} />
+      )}
+
+      {reporte && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={() => setReporte(null)}>
+          <div className="my-6 w-full max-w-3xl rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 border-b p-4">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-slate-900">Conciliación del extracto</h3>
+                <p className="truncate text-xs text-slate-500">
+                  {reporte.archivo}{reporte.banco_detectado ? ` · ${reporte.banco_detectado}` : ""}{reporte.mes ? ` · ${reporte.mes}` : ""}
+                </p>
+              </div>
+              <button onClick={() => setReporte(null)} className="shrink-0 text-lg text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto p-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { l: "Aprobadas", v: reporte.resumen.aprobados, cls: "text-slate-900" },
+                  { l: "Conciliadas", v: reporte.resumen.conciliados, cls: "text-emerald-700" },
+                  { l: "Sin respaldo", v: reporte.resumen.sin_extracto, cls: "text-red-700" },
+                  { l: "No registradas", v: reporte.resumen.sin_registrar, cls: "text-amber-700" },
+                ].map((c) => (
+                  <div key={c.l} className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-400">{c.l}</p>
+                    <p className={`text-2xl font-semibold tabular-nums ${c.cls}`}>{c.v}</p>
+                  </div>
+                ))}
+              </div>
+
+              {reporte.resumen.sin_extracto === 0 && reporte.resumen.difieren === 0 ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                  ✅ Todas las transferencias aprobadas tienen respaldo en el extracto.
+                </div>
+              ) : (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  ⚠️ {reporte.resumen.sin_extracto} aprobada(s) sin respaldo y {reporte.resumen.difieren} con monto distinto. Revisá abajo.
+                </div>
+              )}
+
+              {reporte.aprobados_sin_extracto.length > 0 && (
+                <section>
+                  <h4 className="mb-1.5 text-sm font-semibold text-red-700">🔴 Aprobadas sin respaldo en el extracto · {fmt(reporte.resumen.monto_sin_extracto)}</h4>
+                  <div className="overflow-hidden rounded-lg border border-red-100">
+                    {reporte.aprobados_sin_extracto.map((a) => (
+                      <div key={a.id} className="flex items-center justify-between gap-2 border-b border-red-50 px-3 py-2 text-sm last:border-0">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-800">{a.cliente_nombre ?? a.titular ?? "—"}</p>
+                          <p className="text-[11px] text-slate-500">{a.fecha} · {a.banco_origen ?? "—"} · Op {a.numero_operacion ?? "—"}{a.numero_factura ? ` · ${a.numero_factura}` : ""}</p>
+                        </div>
+                        <span className="shrink-0 font-semibold tabular-nums text-red-700">{fmt(a.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {reporte.montos_difieren.length > 0 && (
+                <section>
+                  <h4 className="mb-1.5 text-sm font-semibold text-amber-700">⚠️ Montos que no coinciden</h4>
+                  <div className="overflow-hidden rounded-lg border border-amber-100">
+                    {reporte.montos_difieren.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 border-b border-amber-50 px-3 py-2 text-sm last:border-0">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-800">{p.aprobado.cliente_nombre ?? p.aprobado.titular ?? "—"}</p>
+                          <p className="text-[11px] text-slate-500">Op {p.aprobado.numero_operacion ?? "—"} · {p.aprobado.fecha}</p>
+                        </div>
+                        <span className="shrink-0 text-right text-[13px] tabular-nums">
+                          <span className="text-slate-700">Sist: {fmt(p.aprobado.monto)}</span>
+                          <span className="block text-amber-700">Banco: {fmt(p.credito.monto)}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {reporte.extracto_sin_registrar.length > 0 && (
+                <section>
+                  <h4 className="mb-1.5 text-sm font-semibold text-amber-700">🟡 Ingresos del extracto no registrados en el sistema · {fmt(reporte.resumen.monto_sin_registrar)}</h4>
+                  <div className="overflow-hidden rounded-lg border border-amber-100">
+                    {reporte.extracto_sin_registrar.map((c, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 border-b border-amber-50 px-3 py-2 text-sm last:border-0">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-800">{c.descripcion ?? "Ingreso"}</p>
+                          <p className="text-[11px] text-slate-500">{c.fecha ?? "—"} · Ref {c.referencia ?? "—"}</p>
+                        </div>
+                        <span className="shrink-0 font-semibold tabular-nums text-amber-700">{fmt(c.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {reporte.conciliados.length > 0 && (
+                <p className="text-xs text-emerald-700">✅ {reporte.conciliados.length} transferencia(s) conciliada(s) por {fmt(reporte.resumen.monto_conciliado)}.</p>
+              )}
+              <p className="text-[11px] text-slate-400">El extracto se procesó con IA (Claude) y no modifica nada: es una verificación. Revisá los casos marcados.</p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

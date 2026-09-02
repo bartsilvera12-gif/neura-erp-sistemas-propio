@@ -64,6 +64,9 @@ export default function ProyectoNuevoForm({
   const [fechaProm, setFechaProm] = useState("");
   const [brief, setBrief] = useState<Record<string, string>>({});
   const [briefLists, setBriefLists] = useState<Record<string, string[]>>({});
+  // Observaciones del proyecto web: se guardan en la columna `observaciones_comerciales`, la
+  // misma que edita la pestaña Datos ("Observaciones comerciales"), para que se reflejen ahí.
+  const [observacionesComerciales, setObservacionesComerciales] = useState("");
   const [saasEmpresaNombre, setSaasEmpresaNombre] = useState("");
   // WhatsApp / contacto del proyecto (arriba, junto a Fecha prometida). Se autocompleta con el
   // teléfono del cliente elegido y queda editable.
@@ -169,6 +172,8 @@ export default function ProyectoNuevoForm({
       responsable_tecnico_id: rt || null,
       fecha_ingreso: new Date(fechaIngreso + "T12:00:00").toISOString(),
       fecha_prometida: fechaProm ? new Date(fechaProm + "T12:00:00").toISOString() : null,
+      // Observaciones del bloque web → columna `observaciones_comerciales` (la lee la pestaña Datos).
+      observaciones_comerciales: esWeb ? observacionesComerciales.trim() || null : null,
       brief_data,
     };
     if (estadoId) body.estado_id = estadoId;
@@ -501,6 +506,15 @@ export default function ProyectoNuevoForm({
                   </label>
                 );
               })}
+              <label className="block text-sm sm:col-span-2">
+                <span className={LABEL_CLS}>Observaciones</span>
+                <textarea
+                  className={`${INPUT_CLS} min-h-[88px]`}
+                  rows={3}
+                  value={observacionesComerciales}
+                  onChange={(e) => setObservacionesComerciales(e.target.value)}
+                />
+              </label>
             </div>
           </div>
         ) : null}

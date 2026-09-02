@@ -67,10 +67,18 @@ export default function ConciliacionClient() {
     }
     return arr;
   }, []);
-  const cobrosMostrados = useMemo(
-    () => (mes ? cobros.filter((c) => (c.fecha ?? "").slice(0, 7) === mes) : cobros),
-    [cobros, mes]
-  );
+  const [busqueda, setBusqueda] = useState("");
+  const cobrosMostrados = useMemo(() => {
+    let list = mes ? cobros.filter((c) => (c.fecha ?? "").slice(0, 7) === mes) : cobros;
+    const q = busqueda.trim().toLowerCase();
+    if (q) {
+      list = list.filter((c) =>
+        [c.cliente_nombre, c.banco_origen, c.titular, c.numero_operacion, c.numero_factura, String(c.monto)]
+          .some((v) => String(v ?? "").toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [cobros, mes, busqueda]);
 
   async function analizarExtracto(f: File) {
     setAnalizando(true); setAnalisisError(null); setReporte(null);
@@ -187,6 +195,14 @@ export default function ConciliacionClient() {
             {e ? ESTADO[e].label : "Todas"}
           </button>
         ))}
+        <input
+          type="search"
+          value={busqueda}
+          onChange={(ev) => setBusqueda(ev.target.value)}
+          placeholder="🔍 Buscar cliente, banco, titular, N° op, factura o monto…"
+          aria-label="Buscar transferencias"
+          className="ml-2 w-72 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+        />
         <select
           value={mes}
           onChange={(ev) => setMes(ev.target.value)}
@@ -219,7 +235,7 @@ export default function ConciliacionClient() {
             {loading ? (
               <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Cargando…</td></tr>
             ) : cobrosMostrados.length === 0 ? (
-              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Sin transferencias{mes ? " en el mes seleccionado" : ""}.</td></tr>
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">{busqueda.trim() ? "Sin resultados para la búsqueda." : `Sin transferencias${mes ? " en el mes seleccionado" : ""}.`}</td></tr>
             ) : cobrosMostrados.map((c) => {
               const e = ESTADO[c.estado] ?? { label: c.estado, cls: "bg-slate-100 text-slate-600" };
               return (

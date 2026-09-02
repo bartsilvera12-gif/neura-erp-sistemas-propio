@@ -850,6 +850,40 @@ export default function ProyectoDetalleInner({
     loadRef.current = load;
   }, [load]);
 
+  // Recarga silenciosa y COALESCIDA. Antes cada edición disparaba dos recargas
+  // completas del detalle (la explícita `await load()` y el eco de Realtime de
+  // las 5 tablas, sin debounce y compitiendo entre sí) más la del tablero: ~30
+  // consultas por un clic. Ahora la mutación del usuario, el eco de Realtime y
+  // el aviso al tablero se juntan en UN solo GET, sin spinner. La ref hace que
+  // el scheduler sea estable (no re-suscribe el canal de Realtime).
+  const onProjectUpdatedRef = useRef(onProjectUpdated);
+  useEffect(() => {
+    onProjectUpdatedRef.current = onProjectUpdated;
+  }, [onProjectUpdated]);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReload = useCallback(() => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      reloadTimerRef.current = null;
+      void loadRef.current?.(true);
+      onProjectUpdatedRef.current?.();
+    }, 300);
+  }, []);
+
+  // Patch optimista de campos escalares del proyecto: el control (ej. el select
+  // de estado) refleja el valor elegido al instante, sin esperar los 300ms del
+  // reload de reconciliación. Los datos derivados (nombre del estado, SLA,
+  // historial) se completan cuando llega el GET silencioso.
+  const patchProyectoLocal = useCallback((campos: Record<string, unknown>) => {
+    setData((prev) => (prev ? { ...prev, proyecto: { ...prev.proyecto, ...campos } } : prev));
+  }, []);
+  useEffect(
+    () => () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    },
+    []
+  );
+
   // Realtime: cualquier cambio en las 5 tablas del proyecto dispara re-fetch.
   // Filtramos por proyecto_id para no recibir eventos de otros proyectos.
   useEffect(() => {
@@ -862,34 +896,34 @@ export default function ProyectoDetalleInner({
       .on(
         "postgres_changes",
         { event: "*", schema: dataSchema, table: "proyectos", filter: `id=eq.${projectId}` },
-        () => void loadRef.current?.()
+        () => scheduleReload()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: dataSchema, table: "proyecto_tareas", filter: filtro },
-        () => void loadRef.current?.()
+        () => scheduleReload()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: dataSchema, table: "proyecto_comentarios", filter: filtro },
-        () => void loadRef.current?.()
+        () => scheduleReload()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: dataSchema, table: "proyecto_archivos", filter: filtro },
-        () => void loadRef.current?.()
+        () => scheduleReload()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: dataSchema, table: "proyecto_estado_historial", filter: filtro },
-        () => void loadRef.current?.()
+        () => scheduleReload()
       )
       .subscribe();
 
     return () => {
       void sb.removeChannel(channel);
     };
-  }, [projectId, dataSchema]);
+  }, [projectId, dataSchema, scheduleReload]);
 
   useEffect(() => {
     if (variant !== "page" || !projectId) return;
@@ -1017,8 +1051,7 @@ export default function ProyectoDetalleInner({
     // haya derivado del cambio. Antes esto se esperaba, y entre la recarga del
     // detalle y la del tablero el guardado tardaba varios segundos en devolver
     // el control aunque el dato ya estuviera escrito.
-    void load(true);
-    onProjectUpdated?.();
+    scheduleReload();
   }
 
   const [deleting, setDeleting] = useState(false);
@@ -1108,8 +1141,7 @@ export default function ProyectoDetalleInner({
       return;
     }
     setComTexto("");
-    await load();
-    onProjectUpdated?.();
+    scheduleReload();
   }
 
   async function guardarCambio(nro: number) {
@@ -1140,8 +1172,7 @@ export default function ProyectoDetalleInner({
         return;
       }
       setErr(null);
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setCambioSavingNro(null);
     }
@@ -1176,8 +1207,7 @@ export default function ProyectoDetalleInner({
         return;
       }
       cancelarEdicionComentario();
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setComActionId(null);
     }
@@ -1199,8 +1229,7 @@ export default function ProyectoDetalleInner({
         return;
       }
       if (comEditandoId === cid) cancelarEdicionComentario();
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setComActionId(null);
     }
@@ -1231,8 +1260,7 @@ export default function ProyectoDetalleInner({
       setTareaDescripcion("");
       setTareaResponsableId("");
       setTareaFechaLimite("");
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setTareaSaving(false);
     }
@@ -1254,8 +1282,7 @@ export default function ProyectoDetalleInner({
     const j = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !j.success) setErr(j.error ?? "Error");
     else {
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     }
   }
 
@@ -1301,8 +1328,7 @@ export default function ProyectoDetalleInner({
         return;
       }
       cancelarEdicionTarea();
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setTareaActionId(null);
     }
@@ -1324,8 +1350,7 @@ export default function ProyectoDetalleInner({
         return;
       }
       if (tareaEditandoId === tareaId) cancelarEdicionTarea();
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setTareaActionId(null);
     }
@@ -1385,8 +1410,7 @@ export default function ProyectoDetalleInner({
         }
       }
       setSubirComoConfirmacion(false);
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setArchivoUploading(false);
     }
@@ -1407,7 +1431,7 @@ export default function ProyectoDetalleInner({
         setErr(j?.error ?? "No se pudo actualizar el archivo");
         return;
       }
-      await load();
+      scheduleReload();
     } finally {
       setConfirmacionActionId(null);
     }
@@ -1488,8 +1512,7 @@ export default function ProyectoDetalleInner({
         setErr(j.error ?? "No se pudo eliminar");
         return;
       }
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
     } finally {
       setArchivoActionId(null);
     }
@@ -1557,8 +1580,7 @@ export default function ProyectoDetalleInner({
         }
       }
       setArchivoSelLote(ids, false);
-      await load();
-      onProjectUpdated?.();
+      scheduleReload();
       if (!huboError) setErr(null);
     } finally {
       setArchivoBulkBusy(false);
@@ -1574,8 +1596,8 @@ export default function ProyectoDetalleInner({
     const j = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !j.success) setErr(j.error ?? "Error");
     else {
-      await load();
-      onProjectUpdated?.();
+      patchProyectoLocal({ estado_id: estadoId });
+      scheduleReload();
     }
   }
 
@@ -1590,8 +1612,8 @@ export default function ProyectoDetalleInner({
     const j = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !j.success) setErr(j.error ?? "No se pudo cambiar el tipo");
     else {
-      await load();
-      onProjectUpdated?.();
+      patchProyectoLocal({ tipo_id: tipoId });
+      scheduleReload();
     }
   }
 
@@ -1611,8 +1633,8 @@ export default function ProyectoDetalleInner({
     const j = (await res.json()) as { success?: boolean; error?: string };
     if (!res.ok || !j.success) setErr(j.error ?? "No se pudo cambiar la sub-etapa");
     else {
-      await load();
-      onProjectUpdated?.();
+      patchProyectoLocal({ subestado_desarrollo: codigo || null });
+      scheduleReload();
     }
   }
 

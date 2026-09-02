@@ -48,18 +48,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
     const empresaId = auth.empresaId;
 
-    const { data: proyecto, error: e1 } = await sb
-      .from("proyectos")
-      .select("*")
-      .eq("empresa_id", empresaId)
-      .eq("id", pid)
-      .maybeSingle();
-
-    if (e1) return NextResponse.json(errorResponse(e1.message), { status: 400 });
-    if (!proyecto) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
-
-    const [enrichedArr, hist, tareas, comentarios, archivos, cambios] = await Promise.all([
-      enrichProyectosRows(sb, empresaId, [proyecto as Record<string, unknown>]),
+    // Wave 1: la fila del proyecto y todas las listas que sólo dependen de
+    // (pid, empresaId). Ninguna de las listas necesita la fila del proyecto, así
+    // que se piden todas juntas (antes la fila iba sola en una ola previa). Sólo
+    // los enriquecidos de la Wave 2 dependen de estos resultados.
+    const [proyectoRes, hist, tareas, comentarios, archivos, cambios] = await Promise.all([
+      sb.from("proyectos").select("*").eq("empresa_id", empresaId).eq("id", pid).maybeSingle(),
       sb
         .from("proyecto_estado_historial")
         .select(
@@ -89,9 +83,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       listProyectoCambios(sb, empresaId, pid).catch(() => []),
     ]);
 
+    if (proyectoRes.error) return NextResponse.json(errorResponse(proyectoRes.error.message), { status: 400 });
+    const proyecto = proyectoRes.data;
+    if (!proyecto) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+
     const histRows = (hist.data ?? []) as HistorialRow[];
     const sla = computeSlaTotales(histRows);
-    const historialEnriched = await enrichProyectoHistorialRows(sb, empresaId, hist.data ?? []);
 
     const comRows = (comentarios.data ?? []) as { usuario_id: string }[];
     const tareaRows = (tareas.data ?? []) as Array<{
@@ -110,10 +107,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       ].filter((u): u is string => Boolean(u))),
     ];
     const catalog = createServiceRoleClient();
-    const { data: names } =
+
+    // Wave 2: los tres enriquecidos que dependen de la Wave 1 (la fila del
+    // proyecto, el historial y las filas de comentarios/tareas/archivos) y son
+    // independientes entre sí. Antes eran tres olas secuenciales (enrich del
+    // proyecto, enrich del historial y nombres de autores); ahora una sola.
+    const [enrichedArr, historialEnriched, namesRes] = await Promise.all([
+      enrichProyectosRows(sb, empresaId, [proyecto as Record<string, unknown>]),
+      enrichProyectoHistorialRows(sb, empresaId, hist.data ?? []),
       uids.length > 0
-        ? await catalog.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", uids)
-        : { data: [] as { id: string; nombre?: string }[] };
+        ? catalog.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", uids)
+        : Promise.resolve({ data: [] as { id: string; nombre?: string }[] }),
+    ]);
+    const names = namesRes.data;
     const nameMap = new Map((names ?? []).map((u) => [u.id, u.nombre ?? ""]));
 
     const comentariosRich = comRows.map((c) => ({

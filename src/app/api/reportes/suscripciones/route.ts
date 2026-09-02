@@ -15,6 +15,9 @@ import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalo
  */
 
 const ESTADOS_CLIENTE_INACTIVO = new Set(["inactivo", "baja", "dado de baja", "suspendido"]);
+// Tope de IDs por `.in(...)`: con ~90+ uuids la URL supera el límite del gateway → 502 → data vacío.
+// Con ~110 clientes activos, el lote de 150 metía todo en una URL y la lista salía vacía. (mismo bug que comisiones/facturación)
+const IN_CHUNK = 50;
 
 type FacturaRow = { suscripcion_id: string | null; estado: string | null; saldo: number | null };
 
@@ -59,8 +62,8 @@ export async function GET(request: NextRequest) {
     // 2) Planes (nombre, tipo_servicio, precio fallback).
     const planIds = [...new Set(subs.map((s) => s.plan_id).filter(Boolean))] as string[];
     const planMap = new Map<string, { nombre: string; tipo: string; precio: number }>();
-    for (let i = 0; i < planIds.length; i += 150) {
-      const slice = planIds.slice(i, i + 150);
+    for (let i = 0; i < planIds.length; i += IN_CHUNK) {
+      const slice = planIds.slice(i, i + IN_CHUNK);
       const { data } = await supabase.from("planes").select("id, nombre, tipo_servicio, precio").in("id", slice);
       for (const p of (data ?? []) as { id: string; nombre: string | null; tipo_servicio: string | null; precio: number | null }[]) {
         planMap.set(String(p.id), {
@@ -83,8 +86,8 @@ export async function GET(request: NextRequest) {
         vigente: boolean;
       }
     >();
-    for (let i = 0; i < cliIds.length; i += 150) {
-      const slice = cliIds.slice(i, i + 150);
+    for (let i = 0; i < cliIds.length; i += IN_CHUNK) {
+      const slice = cliIds.slice(i, i + IN_CHUNK);
       const { data } = await supabase
         .from("clientes")
         .select("id, empresa, nombre_contacto, tipo_servicio_cliente, vendedor_asignado, vendedor_usuario_id, estado, deleted_at, baja_operativa_at")
@@ -110,8 +113,8 @@ export async function GET(request: NextRequest) {
     //     catálogo, NO auth_user_id — mismo cruce que /api/clientes). Fallback: texto vendedor_asignado.
     const vendedorUids = [...new Set([...cliMap.values()].map((c) => c.vendedorUid).filter(Boolean))];
     const nombrePorUid = new Map<string, string>();
-    for (let i = 0; i < vendedorUids.length; i += 150) {
-      const slice = vendedorUids.slice(i, i + 150);
+    for (let i = 0; i < vendedorUids.length; i += IN_CHUNK) {
+      const slice = vendedorUids.slice(i, i + IN_CHUNK);
       const { data } = await supabase
         .from("usuarios")
         .select("id, nombre")

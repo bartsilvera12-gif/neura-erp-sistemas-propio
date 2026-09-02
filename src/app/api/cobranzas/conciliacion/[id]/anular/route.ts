@@ -1,0 +1,32 @@
+import { NextRequest, NextResponse } from "next/server";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
+import { successResponse, errorResponse } from "@/lib/api/response";
+import { requireCobranzasApiAccess } from "@/lib/contabilidad/contabilidad-auth";
+import { anularTransferencia, ConciliacionError } from "@/lib/cobranzas/conciliacion-pg";
+import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
+
+export const runtime = "nodejs";
+type RouteContext = { params: Promise<{ id: string }> };
+
+/**
+ * POST — anula una transferencia YA APROBADA (exige motivo). Reversión contable atómica:
+ * contra-asiento + restaura saldo de la factura + pago 'revertido' + cobro 'anulado'.
+ */
+export async function POST(request: NextRequest, ctx: RouteContext) {
+  const auth = await requireCobranzasApiAccess(request);
+  if (!auth.ok) return NextResponse.json(errorResponse(auth.message), { status: auth.status });
+  try {
+    const { id } = await ctx.params;
+    const schema = await fetchDataSchemaForEmpresaId(auth.empresaId);
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const res = await anularTransferencia(schema, auth.empresaId, id, String(body.motivo ?? ""), auth.usuarioCatalogId);
+    return NextResponse.json(successResponse({ ok: true, asiento_reversion_id: res.asiento_reversion_id }));
+  } catch (e) {
+    if (e instanceof ConciliacionError || e instanceof ContabilidadError) {
+      const status = e instanceof ConciliacionError ? e.status : 400;
+      return NextResponse.json(errorResponse(e.message), { status });
+    }
+    console.error("[/api/cobranzas/conciliacion/[id]/anular]", e instanceof Error ? e.message : e);
+    return NextResponse.json(errorResponse("No se pudo anular la transferencia."), { status: 500 });
+  }
+}

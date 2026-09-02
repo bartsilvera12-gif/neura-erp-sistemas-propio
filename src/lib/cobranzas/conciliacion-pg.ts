@@ -1,7 +1,7 @@
 import "server-only";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
-import { getConfigContable, generarAsientoEnTx, ContabilidadError, type AsientoLineaInput } from "@/lib/contabilidad/asientos-pg";
+import { getConfigContable, generarAsientoEnTx, getAsientoConDetalles, ContabilidadError, type AsientoLineaInput } from "@/lib/contabilidad/asientos-pg";
 
 /**
  * Conciliación bancaria — transferencias pendientes de aprobación (SOLO transferencias).
@@ -48,8 +48,9 @@ export interface CobroPendienteRow {
   created_at: string;
   aprobado_by?: string | null; aprobado_at?: string | null;
   rechazado_by?: string | null; rechazado_at?: string | null;
+  anulado_by?: string | null; anulado_at?: string | null; motivo_anulacion?: string | null;
   /** Nombres resueltos en la capa API (catálogo de usuarios). */
-  aprobado_por_nombre?: string | null; rechazado_por_nombre?: string | null;
+  aprobado_por_nombre?: string | null; rechazado_por_nombre?: string | null; anulado_por_nombre?: string | null;
 }
 
 const COLS = `id, factura_id, cliente_id, monto, fecha, banco_origen, titular, numero_operacion,
@@ -213,6 +214,7 @@ export async function listCobrosPendientes(schemaRaw: string, empresaId: string,
     `SELECT c.id, c.factura_id, c.cliente_id, c.monto, c.fecha, c.banco_origen, c.titular, c.numero_operacion,
             c.comprobante_path, c.estado, c.motivo_rechazo, c.pago_id, c.created_at,
             c.aprobado_by, c.aprobado_at, c.rechazado_by, c.rechazado_at,
+            c.anulado_by, c.anulado_at, c.motivo_anulacion,
             f.numero_factura, f.saldo AS saldo_factura,
             COALESCE(NULLIF(btrim(cl.razon_social),''), NULLIF(btrim(cl.nombre),''), NULLIF(btrim(cl.empresa),'')) AS cliente_nombre
        FROM ${tC} c
@@ -322,6 +324,103 @@ export async function rechazarTransferencia(schemaRaw: string, empresaId: string
       WHERE id=$1::uuid AND empresa_id=$2::uuid AND estado='pendiente'`,
     [cobroId, empresaId, motivo.trim(), userId]
   );
+}
+
+/** Fecha de hoy (America/Asuncion) para la fecha contable de la reversión. */
+function hoyPY(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+export interface AnularResult { asiento_reversion_id: string | null }
+
+/**
+ * Anula una transferencia YA APROBADA con REVERSIÓN CONTABLE (no borra historia), atómico:
+ *  1) contra-asiento invirtiendo las líneas del asiento original (Debe↔Haber),
+ *  2) restaura saldo/estado de la factura,
+ *  3) marca el pago 'revertido' (queda fuera de comisiones/cobrado),
+ *  4) deja el cobro en estado 'anulado' con motivo + auditoría.
+ */
+export async function anularTransferencia(schemaRaw: string, empresaId: string, cobroId: string, motivo: string, userId: string | null): Promise<AnularResult> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  if (!motivo?.trim()) throw new ConciliacionError("Indicá el motivo de la anulación.");
+  const tC = quoteSchemaTable(schema, "cobros_pendientes");
+  const tF = quoteSchemaTable(schema, "facturas");
+  const tP = quoteSchemaTable(schema, "pagos");
+
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: cr } = await client.query<{ estado: string; factura_id: string; monto: string; pago_id: string | null }>(
+      `SELECT estado, factura_id, monto, pago_id FROM ${tC} WHERE id=$1::uuid AND empresa_id=$2::uuid FOR UPDATE`,
+      [cobroId, empresaId]
+    );
+    const c = cr[0];
+    if (!c) throw new ConciliacionError("Transferencia no encontrada.", 404);
+    if (c.estado !== "aprobado") throw new ConciliacionError(`Solo se puede anular una transferencia aprobada (está ${c.estado}).`, 409);
+    if (!c.pago_id) throw new ConciliacionError("La aprobación no tiene pago asociado; no se puede revertir.", 409);
+
+    const { rows: pr } = await client.query<{ id: string; asiento_contable_id: string | null; estado_contable: string }>(
+      `SELECT id, asiento_contable_id, estado_contable FROM ${tP} WHERE id=$1::uuid AND empresa_id=$2::uuid FOR UPDATE`,
+      [c.pago_id, empresaId]
+    );
+    const p = pr[0];
+    if (!p) throw new ConciliacionError("Pago no encontrado.", 404);
+    if (p.estado_contable === "revertido") throw new ConciliacionError("El pago ya fue revertido.", 409);
+
+    const { rows: fr } = await client.query<{ estado: string; saldo: string; moneda: string; numero_factura: string }>(
+      `SELECT estado, saldo, moneda, numero_factura FROM ${tF} WHERE id=$1::uuid AND empresa_id=$2::uuid FOR UPDATE`,
+      [c.factura_id, empresaId]
+    );
+    const f = fr[0];
+    if (!f) throw new ConciliacionError("Factura no encontrada.", 404);
+    const monto = Number(c.monto);
+
+    // 1) Contra-asiento: invertir las líneas del asiento original (Debe↔Haber).
+    let reversionId: string | null = null;
+    if (p.asiento_contable_id) {
+      const orig = await getAsientoConDetalles(client, schema, empresaId, p.asiento_contable_id);
+      if (orig && orig.detalles.length > 0) {
+        const lineas: AsientoLineaInput[] = orig.detalles.map((l) => ({
+          cuenta_contable_id: l.cuenta_contable_id,
+          descripcion: `Reversión: ${l.descripcion ?? ""}`.slice(0, 200),
+          debe: Number(l.haber) || 0,
+          haber: Number(l.debe) || 0,
+          documento_tipo: "cobro",
+          documento_id: p.id,
+        }));
+        const asiento = await generarAsientoEnTx(client, schema, empresaId, {
+          origen_tipo: "reversion", origen_id: p.id, evento_origen: "conciliacion_anulada",
+          fecha_contable: hoyPY(), glosa: `Reversión cobro ${f.numero_factura} (anulación de transferencia)`,
+          moneda: f.moneda === "USD" ? "USD" : "PYG", tipo_cambio: 1, lineas, createdBy: userId,
+        });
+        reversionId = asiento.id;
+      }
+    }
+
+    // 2) Restaurar saldo/estado de la factura.
+    const nuevoSaldo = Number(f.saldo) + monto;
+    const nuevoEstado = f.estado === "Pagado" ? "Pendiente" : f.estado;
+    await client.query(`UPDATE ${tF} SET saldo=$3::numeric, estado=$4, updated_at=now() WHERE id=$1::uuid AND empresa_id=$2::uuid`,
+      [c.factura_id, empresaId, nuevoSaldo, nuevoEstado]);
+
+    // 3) Marcar el pago revertido (fuera de comisiones/cobrado).
+    await client.query(`UPDATE ${tP} SET estado_contable='revertido' WHERE id=$1::uuid AND empresa_id=$2::uuid`, [p.id, empresaId]);
+
+    // 4) Cobro → anulado (auditoría).
+    await client.query(
+      `UPDATE ${tC} SET estado='anulado', motivo_anulacion=$3, anulado_by=$4::uuid, anulado_at=now(), asiento_reversion_id=$5::uuid, updated_at=now()
+        WHERE id=$1::uuid AND empresa_id=$2::uuid AND estado='aprobado'`,
+      [cobroId, empresaId, motivo.trim(), userId, reversionId]
+    );
+
+    await client.query("COMMIT");
+    return { asiento_reversion_id: reversionId };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // ── Reclasificación de anticipos (al aprobarse el DTE de la factura) ─────────

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const ids = [
       ...new Set(
         rows
-          .flatMap((r) => [r.aprobado_by, r.rechazado_by])
+          .flatMap((r) => [r.aprobado_by, r.rechazado_by, r.anulado_by])
           .filter((x): x is string => typeof x === "string" && x.length > 0)
       ),
     ];
@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       for (const r of rows) {
         if (r.aprobado_by) r.aprobado_por_nombre = map.get(r.aprobado_by) ?? null;
         if (r.rechazado_by) r.rechazado_por_nombre = map.get(r.rechazado_by) ?? null;
+        if (r.anulado_by) r.anulado_por_nombre = map.get(r.anulado_by) ?? null;
       }
     }
 

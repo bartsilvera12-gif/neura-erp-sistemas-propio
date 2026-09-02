@@ -427,6 +427,7 @@ export async function GET(request: Request) {
           .from("pagos")
           .select("id, factura_id, monto, fecha_pago")
           .eq("empresa_id", empresaId)
+          .neq("estado_contable", "revertido")
           .gte("fecha_pago", desdeYmd)
           .lte("fecha_pago", hastaYmd)
           .range(from, from + PAGE - 1);
@@ -553,6 +554,7 @@ export async function GET(request: Request) {
           .from("pagos")
           .select("factura_id, monto, fecha_pago")
           .eq("empresa_id", empresaId)
+          .neq("estado_contable", "revertido")
           .in("factura_id", slice)
           .gte("fecha_pago", desdeYmd)
           .lte("fecha_pago", hastaYmd);
@@ -605,6 +607,7 @@ export async function GET(request: Request) {
           .from("pagos")
           .select("factura_id, fecha_pago, monto")
           .eq("empresa_id", empresaId)
+          .neq("estado_contable", "revertido")
           .lte("fecha_pago", hastaYmd)
           .range(from, from + PAGE - 1);
         if (error) throw new Error(error.message);

@@ -11,6 +11,7 @@ interface Cobro {
   saldo_factura?: string | number | null;
   aprobado_por_nombre?: string | null; aprobado_at?: string | null;
   rechazado_por_nombre?: string | null; rechazado_at?: string | null;
+  anulado_por_nombre?: string | null; anulado_at?: string | null; motivo_anulacion?: string | null;
 }
 interface Factura { id: string; numero_factura: string; saldo: number; estado: string; cliente_id?: string | null }
 
@@ -34,6 +35,7 @@ const ESTADO: Record<string, { label: string; cls: string }> = {
   pendiente: { label: "Pendiente", cls: "bg-amber-50 text-amber-700" },
   aprobado: { label: "Aprobado", cls: "bg-emerald-50 text-emerald-700" },
   rechazado: { label: "Rechazado", cls: "bg-red-50 text-red-700" },
+  anulado: { label: "Anulado", cls: "bg-slate-100 text-slate-500 line-through" },
 };
 
 export default function ConciliacionClient() {
@@ -109,12 +111,18 @@ export default function ConciliacionClient() {
     }).catch(() => {});
   }, [modal]);
 
-  async function accion(id: string, tipo: "aprobar" | "rechazar") {
+  async function accion(id: string, tipo: "aprobar" | "rechazar" | "anular") {
     setError(null); setOk(null);
     let body: Record<string, unknown> = {};
     if (tipo === "rechazar") {
       const motivo = window.prompt("Motivo del rechazo:");
       if (!motivo?.trim()) { setError("Se requiere un motivo para rechazar."); return; }
+      body = { motivo };
+    }
+    if (tipo === "anular") {
+      if (!window.confirm("¿Anular esta transferencia APROBADA? Se revierte el asiento contable y se restaura el saldo de la factura. Esta acción queda auditada.")) return;
+      const motivo = window.prompt("Motivo de la anulación:");
+      if (!motivo?.trim()) { setError("Se requiere un motivo para anular."); return; }
       body = { motivo };
     }
     const r = await apiFetch(`/api/cobranzas/conciliacion/${id}/${tipo}`, {
@@ -126,6 +134,8 @@ export default function ConciliacionClient() {
       setOk(j.data?.es_anticipo
         ? "Aprobada. La factura aún no tiene DTE aprobado → se registró como Anticipo de Clientes."
         : "Aprobada y contabilizada (Debe Banco / Haber Clientes).");
+    } else if (tipo === "anular") {
+      setOk("Transferencia anulada: asiento revertido y saldo de la factura restaurado.");
     } else setOk("Transferencia rechazada.");
     cargar();
   }
@@ -171,7 +181,7 @@ export default function ConciliacionClient() {
       {ok && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{ok}</div>}
 
       <div className="flex flex-wrap items-center gap-2">
-        {["pendiente", "aprobado", "rechazado", ""].map((e) => (
+        {["pendiente", "aprobado", "rechazado", "anulado", ""].map((e) => (
           <button key={e || "todas"} onClick={() => setFiltro(e)}
             className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${filtro === e ? "bg-[#4FAEB2] text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
             {e ? ESTADO[e].label : "Todas"}
@@ -224,6 +234,7 @@ export default function ConciliacionClient() {
                   <td className="px-3 py-2 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${e.cls}`}>{e.label}</span>
                     {c.estado === "rechazado" && c.motivo_rechazo && <span className="mt-0.5 block text-[10px] italic text-slate-400">{c.motivo_rechazo}</span>}
+                    {c.estado === "anulado" && c.motivo_anulacion && <span className="mt-0.5 block text-[10px] italic text-slate-400">{c.motivo_anulacion}</span>}
                   </td>
                   <td className="px-3 py-2">
                     {c.estado === "aprobado" && c.aprobado_por_nombre ? (
@@ -235,6 +246,11 @@ export default function ConciliacionClient() {
                       <div>
                         <span className="text-slate-700">{c.rechazado_por_nombre}</span>
                         {c.rechazado_at && <span className="block text-[10px] text-slate-400">{new Date(c.rechazado_at).toLocaleString("es-PY", { dateStyle: "short", timeStyle: "short" })}</span>}
+                      </div>
+                    ) : c.estado === "anulado" && c.anulado_por_nombre ? (
+                      <div>
+                        <span className="text-slate-700">Anuló: {c.anulado_por_nombre}</span>
+                        {c.anulado_at && <span className="block text-[10px] text-slate-400">{new Date(c.anulado_at).toLocaleString("es-PY", { dateStyle: "short", timeStyle: "short" })}</span>}
                       </div>
                     ) : (
                       <span className="text-slate-300">—</span>
@@ -248,6 +264,9 @@ export default function ConciliacionClient() {
                           <button onClick={() => accion(c.id, "aprobar")} className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white hover:bg-emerald-700">Aprobar</button>
                           <button onClick={() => accion(c.id, "rechazar")} className="rounded px-2 py-1 text-red-600 hover:bg-red-50">Rechazar</button>
                         </>
+                      )}
+                      {c.estado === "aprobado" && (
+                        <button onClick={() => accion(c.id, "anular")} title="Anular la aprobación (revierte el asiento y restaura el saldo)" className="rounded border border-red-200 px-2 py-1 font-semibold text-red-600 hover:bg-red-50">Anular</button>
                       )}
                     </div>
                   </td>

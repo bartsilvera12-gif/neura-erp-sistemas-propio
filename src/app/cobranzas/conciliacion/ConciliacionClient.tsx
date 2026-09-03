@@ -90,8 +90,21 @@ export default function ConciliacionClient() {
   async function analizarExtracto(f: File) {
     setAnalizando(true); setAnalisisError(null); setReporte(null); setError(null); setOk(null);
     try {
+      // Materializar los bytes YA (antes de cualquier await): evita que el File llegue vacío
+      // (archivos en OneDrive/nube "placeholder", o File anulado por re-render).
+      let buf: ArrayBuffer;
+      try {
+        buf = await f.arrayBuffer();
+      } catch {
+        setAnalisisError("No se pudo leer el archivo. Si está en OneDrive/Drive, descargalo primero y volvé a seleccionarlo.");
+        return;
+      }
+      if (!buf || buf.byteLength === 0) {
+        setAnalisisError("El archivo llegó vacío (0 bytes). Si está en la nube (OneDrive/Drive), descargalo a tu equipo y volvé a subirlo.");
+        return;
+      }
       const fd = new FormData();
-      fd.append("file", f);
+      fd.append("file", new File([buf], f.name || "extracto", { type: f.type || "application/octet-stream" }));
       if (mes) fd.append("mes", mes);
       const r = await apiFetch("/api/cobranzas/conciliacion/analizar-extracto", { method: "POST", body: fd });
       const j = await r.json().catch(() => ({}));

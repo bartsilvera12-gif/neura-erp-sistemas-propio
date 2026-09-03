@@ -55,7 +55,9 @@ function channelMatchesTargetId(row: ChannelRow, targetId: string): boolean {
   return (
     String(cfg.page_id ?? "").trim() === t ||
     String(cfg.ig_id ?? "").trim() === t ||
-    String(cfg.instagram_id ?? "").trim() === t
+    String(cfg.instagram_id ?? "").trim() === t ||
+    // Instagram (business login) puede identificar la cuenta con el id "scoped".
+    String((cfg as Record<string, unknown>).ig_scoped_id ?? "").trim() === t
   );
 }
 

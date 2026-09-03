@@ -88,7 +88,7 @@ export default function ConciliacionClient() {
   }, [cobros, mes, busqueda]);
 
   async function analizarExtracto(f: File) {
-    setAnalizando(true); setAnalisisError(null); setReporte(null);
+    setAnalizando(true); setAnalisisError(null); setReporte(null); setError(null); setOk(null);
     try {
       const fd = new FormData();
       fd.append("file", f);
@@ -127,7 +127,7 @@ export default function ConciliacionClient() {
   }, [modal]);
 
   async function accion(id: string, tipo: "aprobar" | "rechazar") {
-    setError(null); setOk(null);
+    setError(null); setOk(null); setAnalisisError(null);
     let body: Record<string, unknown> = {};
     if (tipo === "rechazar") {
       const motivo = window.prompt("Motivo del rechazo:");
@@ -161,7 +161,7 @@ export default function ConciliacionClient() {
   async function doAnular() {
     if (!anularTarget) return;
     if (!anularMotivo.trim()) { setError("Se requiere un motivo para anular."); return; }
-    setAnularBusy(true); setError(null); setOk(null);
+    setAnularBusy(true); setError(null); setOk(null); setAnalisisError(null);
     try {
       const r = await apiFetch(`/api/cobranzas/conciliacion/${anularTarget.id}/anular`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ motivo: anularMotivo.trim() }),

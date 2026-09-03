@@ -711,9 +711,34 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
       <textarea
         className={`${inputCls} min-h-[88px]`}
         rows={3}
-        placeholder={canal === "desarrollo" ? "Comentario para PM / QA" : "Comentario para el PM"}
+        placeholder={
+          canal === "desarrollo"
+            ? "Comentario para PM / QA (podés pegar una imagen)"
+            : "Comentario para el PM (podés pegar una imagen)"
+        }
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
+        onPaste={(e) => {
+          // Pegar imágenes del portapapeles (captura de pantalla, copiar imagen).
+          const items = e.clipboardData?.items;
+          if (!items) return;
+          const pegadas: File[] = [];
+          for (const it of Array.from(items)) {
+            if (it.kind === "file" && it.type.startsWith("image/")) {
+              const f = it.getAsFile();
+              if (f && f.size > 0) {
+                // Las capturas suelen venir sin nombre; le damos uno.
+                pegadas.push(
+                  f.name ? f : new File([f], `pegada-${Date.now()}.png`, { type: f.type })
+                );
+              }
+            }
+          }
+          if (pegadas.length > 0) {
+            e.preventDefault();
+            setImagenes((prev) => [...prev, ...pegadas].slice(0, 10));
+          }
+        }}
         disabled={enviando}
       />
       {imagenes.length > 0 ? (

@@ -101,6 +101,9 @@ export default function ConciliacionClient() {
       setAnalisisError(e instanceof Error ? e.message : "Error de red");
     } finally {
       setAnalizando(false);
+      // Resetear el input DESPUÉS de enviar (no antes): limpiarlo mientras el File aún no se
+      // leyó anula sus bytes y el archivo llega vacío (bug del Excel). Así se puede re-subir el mismo.
+      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -195,7 +198,7 @@ export default function ConciliacionClient() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) analizarExtracto(f); e.target.value = ""; }} />
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) analizarExtracto(f); }} />
           <button onClick={() => fileRef.current?.click()} disabled={analizando}
             title="Subí tu extracto (PDF o Excel) y verificá las aprobaciones del mes contra el banco"
             className="rounded-xl border border-[#4FAEB2] bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/8 disabled:opacity-60">

@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  MessageSquare,
   PackageCheck,
   TimerOff,
   MoveRight,
@@ -36,6 +37,7 @@ type TipoNotificacion =
   | "proyecto_estado_cambio"
   | "proyecto_entregado"
   | "cobro_pendiente"
+  | "comentario_proyecto"
   | "agenda_recordatorio"
   | "qa_vence";
 
@@ -49,6 +51,8 @@ type Notificacion = {
   agrupadas: number;
   leida_at: string | null;
   created_at: string;
+  /** Sólo en comentarios: canal al que apunta, para abrir la sección correcta. */
+  metadata?: { canal?: string } | null;
   /**
    * Aviso calculado en vivo por la API, sin fila en la base (compromiso de
    * esqueleto). No se puede marcar leído: se apaga cuando el proyecto avanza.
@@ -134,6 +138,11 @@ const ESTILO_TIPO: Record<
     // Ámbar: requiere una acción (aprobar/rechazar en Conciliación).
     wrap: "bg-amber-50 text-amber-600",
     label: "Cobro por aprobar",
+  },
+  comentario_proyecto: {
+    icon: MessageSquare,
+    wrap: "bg-[#4FAEB2]/12 text-[#3F8E91]",
+    label: "Nuevo comentario",
   },
 };
 
@@ -417,6 +426,12 @@ export default function NotificacionesBell() {
                   ? "/dashboard/agenda"
                   : n.tipo === "cobro_pendiente"
                   ? "/cobranzas/conciliacion"
+                  : n.tipo === "comentario_proyecto" && n.proyecto_id
+                  ? // Directo a la solapa Comentarios, abriendo la sección del canal
+                    // (para PM/QA que ven ambas). `cc` = canal del comentario.
+                    `/dashboard/proyectos/${n.proyecto_id}?tab=comentarios${
+                      n.metadata?.canal ? `&cc=${n.metadata.canal}` : ""
+                    }`
                   : n.proyecto_id
                   ? `/dashboard/proyectos/${n.proyecto_id}`
                   : null;

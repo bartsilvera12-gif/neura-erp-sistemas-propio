@@ -6,6 +6,7 @@ import {
   esCanalComentario,
   permisoComentariosDe,
 } from "@/lib/proyectos/comentarios-permisos";
+import { notificarComentarioProyecto } from "@/lib/proyectos/comentario-notificaciones";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -109,12 +110,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .select("nombre")
       .eq("id", auth.usuarioCatalogId)
       .maybeSingle();
+    const autorNombre = (u as { nombre?: string } | null)?.nombre ?? null;
+
+    // Notifica al "otro lado" del canal (+ admins). No bloqueante: nunca lanza.
+    await notificarComentarioProyecto(sb, {
+      empresaId: auth.empresaId,
+      proyectoId: pid,
+      canal,
+      actorId: auth.usuarioCatalogId,
+      actorNombre: autorNombre,
+      texto,
+    });
 
     const row = Array.isArray(data) ? data[0] : data;
     return NextResponse.json(
       successResponse({
         ...row,
-        usuario_nombre: (u as { nombre?: string } | null)?.nombre ?? null,
+        usuario_nombre: autorNombre,
       })
     );
   } catch (e) {

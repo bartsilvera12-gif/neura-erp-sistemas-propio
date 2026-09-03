@@ -37,7 +37,7 @@ export async function GET(request: Request) {
 
     let listado = sb
       .from("usuario_notificaciones")
-      .select("id, tipo, titulo, cuerpo, proyecto_id, observacion_id, agrupadas, leida_at, created_at")
+      .select("id, tipo, titulo, cuerpo, proyecto_id, observacion_id, agrupadas, leida_at, created_at, metadata")
       .eq("empresa_id", auth.empresaId)
       .eq("usuario_id", auth.usuarioId);
     if (soloNoLeidas) listado = listado.is("leida_at", null);

@@ -1277,6 +1277,24 @@ export default function ProyectoDetalleInner({
     }
   }, [canalesComentarioVisibles, canalComentario]);
 
+  // Deep-link desde una notificación de comentario (variant page): `?tab=comentarios&cc=<canal>`
+  // abre la sección correcta para quien ve ambas (PM/QA). Se aplica una sola vez,
+  // cuando ya se conocen los canales visibles, y no vuelve a pisar si el usuario
+  // cambia de sección a mano.
+  const ccAplicadoRef = useRef(false);
+  useEffect(() => {
+    if (variant !== "page" || ccAplicadoRef.current) return;
+    const cc = sp?.get("cc");
+    if (cc === "comercial" || cc === "desarrollo") {
+      if (canalesComentarioVisibles.includes(cc)) {
+        setCanalComentario(cc);
+        ccAplicadoRef.current = true;
+      }
+    } else {
+      ccAplicadoRef.current = true;
+    }
+  }, [variant, sp, canalesComentarioVisibles]);
+
   const agregarComentario = useCallback(
     async (texto: string, canal: CanalComentarioUI): Promise<boolean> => {
       const comentario = texto.trim();

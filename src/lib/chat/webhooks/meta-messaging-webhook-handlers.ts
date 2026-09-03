@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyMetaSignature } from "@/lib/chat/meta-signature";
 import { processMetaMessagingWebhookBody } from "@/lib/chat/webhooks/meta-messaging-webhook-service";
+import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
+
+/** DEBUG temporal: registra cada hit del webhook en neura.webhook_debug para diagnóstico. */
+async function debugLogHit(source: string, body: unknown): Promise<void> {
+  try {
+    const pool = getChatPostgresPool();
+    if (!pool) return;
+    const object =
+      body && typeof body === "object" ? String((body as { object?: string }).object ?? "") : "";
+    await pool.query(
+      `INSERT INTO neura.webhook_debug (source, object, raw) VALUES ($1, $2, $3::jsonb)`,
+      [source, object, JSON.stringify(body ?? null)]
+    );
+  } catch {
+    /* nunca romper el webhook por el debug */
+  }
+}
 
 /**
  * Handlers compartidos del webhook de mensajería de Meta (Messenger + Instagram).
@@ -63,6 +80,7 @@ export async function handleMetaMessagingWebhookPost(request: NextRequest): Prom
       return NextResponse.json({ ok: false, error: "JSON inválido" }, { status: 400 });
     }
 
+    await debugLogHit("meta-messaging", body);
     const result = await processMetaMessagingWebhookBody(body);
 
     if (result.errors.length > 0) {

@@ -7,6 +7,7 @@ import {
   permisoComentariosDe,
 } from "@/lib/proyectos/comentarios-permisos";
 import { notificarComentarioProyecto } from "@/lib/proyectos/comentario-notificaciones";
+import { comentarioAdjuntoPrefix } from "@/lib/proyectos/proyectos-archivos-storage";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -67,13 +68,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   try {
     const body = (await request.json().catch(() => null)) as
-      | { comentario?: string; canal?: string; reenviar_de?: string }
+      | {
+          comentario?: string;
+          canal?: string;
+          reenviar_de?: string;
+          adjuntos?: Array<{ path?: string; nombre?: string; mime_type?: string; size_bytes?: number }>;
+        }
       | null;
     const texto = typeof body?.comentario === "string" ? body.comentario.trim() : "";
     const reenviarDe = typeof body?.reenviar_de === "string" ? body.reenviar_de.trim() : "";
     const esReenvio = reenviarDe.length > 0;
-    // La nota es opcional SÓLO al reenviar (el contenido lo aporta el original).
-    if (!esReenvio && !texto) {
+
+    // Adjuntos (imágenes ya subidas): se validan y se quedan sólo los paths de
+    // ESTE proyecto/comentarios, para no referenciar archivos de otro lado.
+    const prefijoAdjuntos = comentarioAdjuntoPrefix(auth.empresaId, pid);
+    const adjuntos = Array.isArray(body?.adjuntos)
+      ? body.adjuntos
+          .filter(
+            (a) =>
+              a &&
+              typeof a.path === "string" &&
+              a.path.startsWith(prefijoAdjuntos)
+          )
+          .slice(0, 10)
+          .map((a) => ({
+            path: String(a.path),
+            nombre: typeof a.nombre === "string" ? a.nombre.slice(0, 200) : "imagen",
+            mime_type: typeof a.mime_type === "string" ? a.mime_type : "image/*",
+            size_bytes: typeof a.size_bytes === "number" ? a.size_bytes : 0,
+          }))
+      : [];
+
+    // Hace falta texto salvo que sea un reenvío o que traiga imágenes.
+    if (!esReenvio && !texto && adjuntos.length === 0) {
       return NextResponse.json(errorResponse("comentario obligatorio"), { status: 400 });
     }
     if (!esCanalComentario(body?.canal)) {
@@ -144,6 +171,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       comentario: texto,
       canal,
       ...(reenvio ? { reenvio } : {}),
+      ...(adjuntos.length > 0 ? { adjuntos } : {}),
     };
 
     const { data, error } = await sb.from("proyecto_comentarios").insert(insert).select("*");
@@ -170,7 +198,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       canal,
       actorId: auth.usuarioCatalogId,
       actorNombre: autorNombre,
-      texto: texto || (reenvio ? String(reenvio.texto ?? "") : ""),
+      texto:
+        texto ||
+        (reenvio ? String(reenvio.texto ?? "") : "") ||
+        (adjuntos.length > 0 ? "📷 Imagen" : ""),
       esReenvio,
     });
 

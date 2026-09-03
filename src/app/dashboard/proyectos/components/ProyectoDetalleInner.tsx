@@ -670,21 +670,37 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
   canal,
   inputCls,
 }: {
-  onEnviar: (texto: string, canal: CanalComentarioUI) => Promise<boolean>;
+  onEnviar: (texto: string, canal: CanalComentarioUI, imagenes: File[]) => Promise<boolean>;
   canal: CanalComentarioUI;
   inputCls: string;
 }) {
   const [texto, setTexto] = useState("");
+  const [imagenes, setImagenes] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Previews locales (object URLs) que se liberan al cambiar la selección.
+  useEffect(() => {
+    const urls = imagenes.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [imagenes]);
+
+  const puedeEnviar = (texto.trim().length > 0 || imagenes.length > 0) && !enviando;
+
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!texto.trim() || enviando) return;
+        if (!puedeEnviar) return;
         setEnviando(true);
-        const ok = await onEnviar(texto, canal);
+        const ok = await onEnviar(texto, canal, imagenes);
         setEnviando(false);
-        if (ok) setTexto("");
+        if (ok) {
+          setTexto("");
+          setImagenes([]);
+        }
       }}
       className="space-y-2"
     >
@@ -696,14 +712,154 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         onChange={(e) => setTexto(e.target.value)}
         disabled={enviando}
       />
-      <button
-        type="submit"
-        disabled={enviando || !texto.trim()}
-        className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {enviando ? "Publicando…" : "Publicar"}
-      </button>
+      {imagenes.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {imagenes.map((f, i) => (
+            <div key={i} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previews[i]}
+                alt={f.name}
+                className="h-20 w-20 rounded-lg border border-slate-200 object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => setImagenes((prev) => prev.filter((_, idx) => idx !== i))}
+                disabled={enviando}
+                aria-label={`Quitar ${f.name}`}
+                title="Quitar"
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-white shadow hover:bg-slate-900"
+              >
+                <span className="text-xs leading-none">×</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
+          if (files.length > 0) setImagenes((prev) => [...prev, ...files].slice(0, 10));
+          e.target.value = "";
+        }}
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={!puedeEnviar}
+          className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {enviando ? "Publicando…" : "Publicar"}
+        </button>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={enviando}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-60"
+          title="Adjuntar imagen"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="m21 15-3.5-3.5a2 2 0 0 0-2.8 0L6 21" />
+          </svg>
+          Imagen
+        </button>
+      </div>
     </form>
+  );
+});
+
+/**
+ * Miniatura de una imagen adjunta a un comentario. Pide un signed URL de corta
+ * duración por su path (validado en el server), muestra la vista previa —click =
+ * abrir en grande— y permite descargar.
+ */
+const ComentarioImagen = memo(function ComentarioImagen({
+  projectId,
+  adjunto,
+}: {
+  projectId: string;
+  adjunto: { path: string; nombre?: string };
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [falló, setFalló] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetchWithSupabaseSession(
+          `/api/proyectos/${projectId}/comentarios/adjuntos?path=${encodeURIComponent(adjunto.path)}`,
+          { cache: "no-store" }
+        );
+        const j = (await res.json()) as { success?: boolean; data?: { url?: string } };
+        if (!cancel && res.ok && j.success && j.data?.url) setUrl(j.data.url);
+        else if (!cancel) setFalló(true);
+      } catch {
+        if (!cancel) setFalló(true);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [projectId, adjunto.path]);
+
+  async function descargar() {
+    const res = await fetchWithSupabaseSession(
+      `/api/proyectos/${projectId}/comentarios/adjuntos?path=${encodeURIComponent(adjunto.path)}&download=1`,
+      { cache: "no-store" }
+    );
+    const j = (await res.json()) as { success?: boolean; data?: { url?: string } };
+    if (res.ok && j.success && j.data?.url) {
+      const a = document.createElement("a");
+      a.href = j.data.url;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  }
+
+  return (
+    <div className="group relative">
+      {url ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" title="Ver imagen">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={adjunto.nombre ?? "imagen"}
+            className="max-h-44 rounded-lg border border-slate-200 object-cover"
+          />
+        </a>
+      ) : falló ? (
+        <div className="flex h-24 w-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-[10px] text-slate-400">
+          No se pudo cargar
+        </div>
+      ) : (
+        <div className="h-24 w-24 animate-pulse rounded-lg border border-slate-200 bg-slate-100" />
+      )}
+      {url ? (
+        <button
+          type="button"
+          onClick={() => void descargar()}
+          aria-label="Descargar imagen"
+          title="Descargar"
+          className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-slate-600 opacity-0 shadow-sm transition-opacity hover:text-[#3F8E91] group-hover:opacity-100"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+      ) : null}
+    </div>
   );
 });
 
@@ -1317,13 +1473,38 @@ export default function ProyectoDetalleInner({
   }, [variant, sp, canalesComentarioVisibles]);
 
   const agregarComentario = useCallback(
-    async (texto: string, canal: CanalComentarioUI): Promise<boolean> => {
+    async (texto: string, canal: CanalComentarioUI, imagenes: File[]): Promise<boolean> => {
       const comentario = texto.trim();
-      if (!comentario) return false;
+      if (!comentario && imagenes.length === 0) return false;
+      // Las imágenes se suben primero al storage; el comentario guarda sus refs.
+      const adjuntos: Array<{ path: string; nombre: string; mime_type: string; size_bytes: number }> = [];
+      for (const file of imagenes) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const up = await fetchWithSupabaseSession(
+          `/api/proyectos/${projectId}/comentarios/adjuntos`,
+          { method: "POST", body: fd }
+        );
+        const uj = (await up.json()) as {
+          success?: boolean;
+          error?: string;
+          data?: { path?: string; nombre?: string; mime_type?: string; size_bytes?: number };
+        };
+        if (!up.ok || !uj.success || !uj.data?.path) {
+          setErr(uj.error ?? `No se pudo subir "${file.name}"`);
+          return false;
+        }
+        adjuntos.push({
+          path: uj.data.path,
+          nombre: uj.data.nombre ?? file.name,
+          mime_type: uj.data.mime_type ?? file.type,
+          size_bytes: uj.data.size_bytes ?? file.size,
+        });
+      }
       const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comentario, canal }),
+        body: JSON.stringify({ comentario, canal, adjuntos }),
       });
       const j = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || !j.success) {
@@ -2971,6 +3152,9 @@ export default function ProyectoDetalleInner({
                   : "comercial") as CanalComentarioUI;
                 // Reenviar es para quien ve ambos canales (PM/QA/Admin).
                 const puedeReenviar = canalesComentarioVisibles.length > 1;
+                const adjuntos = (
+                  c as { adjuntos?: Array<{ path: string; nombre?: string }> | null }
+                ).adjuntos ?? [];
                 return (
                   <li
                     key={cid}
@@ -3097,6 +3281,13 @@ export default function ProyectoDetalleInner({
                         {textoOriginal ? (
                           <div className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
                             {textoOriginal}
+                          </div>
+                        ) : null}
+                        {adjuntos.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {adjuntos.map((a, i) => (
+                              <ComentarioImagen key={a.path ?? i} projectId={projectId} adjunto={a} />
+                            ))}
                           </div>
                         ) : null}
                         {reenvio ? (

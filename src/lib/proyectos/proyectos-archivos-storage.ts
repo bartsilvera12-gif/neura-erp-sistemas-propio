@@ -56,6 +56,21 @@ export function buildProyectoArchivoPath(
   return `${empresaId}/${proyectoId}/${unique}-${sanitizeFileNameForPath(originalName)}`;
 }
 
+/** Prefijo de storage de las imágenes adjuntas a comentarios del proyecto. */
+export function comentarioAdjuntoPrefix(empresaId: string, proyectoId: string): string {
+  return `${empresaId}/${proyectoId}/comentarios/`;
+}
+
+/** Path para una imagen adjunta a un comentario, namespaced y con prefijo aleatorio. */
+export function buildComentarioAdjuntoPath(
+  empresaId: string,
+  proyectoId: string,
+  originalName: string
+): string {
+  const unique = crypto.randomUUID();
+  return `${comentarioAdjuntoPrefix(empresaId, proyectoId)}${unique}-${sanitizeFileNameForPath(originalName)}`;
+}
+
 const PREVIEWABLE_PREFIXES = ["image/", "text/", "audio/", "video/"];
 const PREVIEWABLE_EXACT = new Set(["application/pdf"]);
 

@@ -171,6 +171,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       actorId: auth.usuarioCatalogId,
       actorNombre: autorNombre,
       texto: texto || (reenvio ? String(reenvio.texto ?? "") : ""),
+      esReenvio,
     });
 
     const row = Array.isArray(data) ? data[0] : data;

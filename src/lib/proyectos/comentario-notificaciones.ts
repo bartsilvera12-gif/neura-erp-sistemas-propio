@@ -75,6 +75,13 @@ export async function notificarComentarioProyecto(
     actorId: string | null;
     actorNombre?: string | null;
     texto: string;
+    /**
+     * `true` si es un reenvío. Un reenvío es una acción deliberada de "poner esto
+     * frente al equipo del canal destino", así que avisa al asignado de ese canal
+     * MÁS la supervisión (todos los PMs y QAs), no sólo al asignado. Así el PM se
+     * entera cuando le reenvían algo a desarrollo.
+     */
+    esReenvio?: boolean;
   }
 ): Promise<void> {
   try {
@@ -101,17 +108,23 @@ export async function notificarComentarioProyecto(
       esRolAdminEmpresaOGlobal(actor?.rol) ||
       proyecto.qa_responsable_id === args.actorId;
 
+    const asignadoDestino =
+      args.canal === "comercial"
+        ? proyecto.responsable_comercial_id
+        : proyecto.responsable_tecnico_id;
+
     const destinatarios = new Set<string>();
     // Los admins reciben siempre.
     for (const id of admins) destinatarios.add(id);
 
-    if (actorEsElevado) {
-      // PM/QA/admin -> el asignado del canal correspondiente.
-      const asignado =
-        args.canal === "comercial"
-          ? proyecto.responsable_comercial_id
-          : proyecto.responsable_tecnico_id;
-      if (asignado) destinatarios.add(asignado);
+    if (args.esReenvio) {
+      // Reenvío: asignado del canal destino + toda la supervisión (PM + QA).
+      if (asignadoDestino) destinatarios.add(asignadoDestino);
+      for (const id of pms) destinatarios.add(id);
+      for (const id of qas) destinatarios.add(id);
+    } else if (actorEsElevado) {
+      // PM/QA/admin comenta -> el asignado del canal correspondiente.
+      if (asignadoDestino) destinatarios.add(asignadoDestino);
     } else {
       // Comercial/técnico (o cualquiera no elevado) -> PM + QA globales.
       for (const id of pms) destinatarios.add(id);
@@ -125,7 +138,7 @@ export async function notificarComentarioProyecto(
     const seccion = args.canal === "comercial" ? "Comercial" : "Desarrollo";
     const extracto = args.texto.trim().replace(/\s+/g, " ").slice(0, 120);
     const titulo = `Comentario · ${proyecto.titulo}`;
-    const cuerpo = `${autor} en ${seccion}: ${extracto}`;
+    const cuerpo = `${autor} ${args.esReenvio ? "reenvió en" : "en"} ${seccion}: ${extracto}`;
 
     const filas = [...destinatarios].map((usuarioId) => ({
       empresa_id: args.empresaId,

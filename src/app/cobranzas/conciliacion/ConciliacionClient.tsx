@@ -57,6 +57,8 @@ export default function ConciliacionClient() {
   const [anularTarget, setAnularTarget] = useState<Cobro | null>(null);
   const [anularMotivo, setAnularMotivo] = useState("");
   const [anularBusy, setAnularBusy] = useState(false);
+  // Animación de aprobación: spinner → check.
+  const [aprobarAnim, setAprobarAnim] = useState<null | "loading" | "done">(null);
 
   // Selector de meses (filtra por fecha de la transferencia, del lado del cliente).
   const mesActual = useMemo(() => new Date().toISOString().slice(0, 7), []);
@@ -132,15 +134,26 @@ export default function ConciliacionClient() {
       if (!motivo?.trim()) { setError("Se requiere un motivo para rechazar."); return; }
       body = { motivo };
     }
-    const r = await apiFetch(`/api/cobranzas/conciliacion/${id}/${tipo}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
+    if (tipo === "aprobar") setAprobarAnim("loading");
+    let r: Response;
+    try {
+      r = await apiFetch(`/api/cobranzas/conciliacion/${id}/${tipo}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+    } catch (e) {
+      setAprobarAnim(null);
+      setError(e instanceof Error ? e.message : "Error de red");
+      return;
+    }
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j?.success) { setError(j?.error ?? `Error ${r.status}`); return; }
+    if (!r.ok || !j?.success) { setAprobarAnim(null); setError(j?.error ?? `Error ${r.status}`); return; }
     if (tipo === "aprobar") {
       setOk(j.data?.es_anticipo
         ? "Aprobada. La factura aún no tiene DTE aprobado → se registró como Anticipo de Clientes."
         : "Aprobada y contabilizada (Debe Banco / Haber Clientes).");
+      // Spinner → check, y cierra solo.
+      setAprobarAnim("done");
+      window.setTimeout(() => setAprobarAnim(null), 1200);
     } else setOk("Transferencia rechazada.");
     cargar();
   }
@@ -354,6 +367,33 @@ export default function ConciliacionClient() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {aprobarAnim && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/25">
+          <div className="cb-aprob-card flex w-44 flex-col items-center gap-3 rounded-2xl bg-white px-6 py-7 shadow-xl">
+            {aprobarAnim === "loading" ? (
+              <span className="cb-spinner" />
+            ) : (
+              <svg viewBox="0 0 56 56" className="cb-check" aria-hidden>
+                <circle className="cb-check-circle" cx="28" cy="28" r="26" />
+                <path className="cb-check-mark" d="M16 29 l8 8 l16 -17" />
+              </svg>
+            )}
+            <p className="text-sm font-semibold text-slate-700">{aprobarAnim === "loading" ? "Aprobando…" : "¡Aprobado!"}</p>
+          </div>
+          <style>{`
+            .cb-aprob-card { animation: cbPop .18s ease-out; }
+            @keyframes cbPop { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+            .cb-spinner { display:block; width:56px; height:56px; border-radius:9999px; border:5px solid rgba(79,174,178,.22); border-top-color:#4FAEB2; animation: cbSpin .7s linear infinite; }
+            @keyframes cbSpin { to { transform: rotate(360deg) } }
+            .cb-check { width:56px; height:56px; }
+            .cb-check-circle { fill:#22c55e; transform-box: fill-box; transform-origin: center; animation: cbPunch .45s cubic-bezier(.65,0,.45,1); }
+            .cb-check-mark { fill:none; stroke:#fff; stroke-width:5; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:46; stroke-dashoffset:46; animation: cbDraw .4s .14s ease-out forwards; }
+            @keyframes cbPunch { 0%{transform:scale(.5)} 60%{transform:scale(1.12)} 100%{transform:scale(1)} }
+            @keyframes cbDraw { to { stroke-dashoffset:0 } }
+          `}</style>
         </div>
       )}
 

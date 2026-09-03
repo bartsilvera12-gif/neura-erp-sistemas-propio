@@ -877,37 +877,17 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   /** Generación de la carga en vuelo: solo la más nueva aplica su resultado (anti-carrera). */
   const loadGenRef = useRef(0);
 
-  const load = useCallback(async () => {
-    if (alcance === null) return; // esperar a resolver el default por nivel
-    // Guardián de generación: si mientras esta carga está en vuelo se dispara otra (ej. al escribir
-    // una búsqueda), la respuesta que llegue TARDE NO debe pisar a la más nueva. Sin esto, una carga
-    // inicial (búsqueda vacía, lenta) podía resolver DESPUÉS de la búsqueda y borrar el resultado
-    // buscado (peor aún si era un entregado viejo, que sin búsqueda se oculta).
-    const ticket = ++loadGenRef.current;
-    setLoading(true);
-    setErr(null);
-    const sp = new URLSearchParams();
-    // El texto NO viaja al servidor: se filtra en memoria (ver
-    // `proyectosVisibles`). Mandarlo obligaba a un fetch por tecla y, peor,
-    // el `ilike` de Postgres distingue acentos: "marilia" no encontraba
-    // "MARÍLIA". Los filtros de abajo sí son del servidor porque son
-    // igualdades exactas sobre columnas indexadas.
-    if (filtroEstado) sp.set("estado_id", filtroEstado);
-    if (filtroTipo) sp.set("tipo_id", filtroTipo);
-    if (filtroRc) sp.set("responsable_comercial_id", filtroRc);
-    if (filtroRt) sp.set("responsable_tecnico_id", filtroRt);
-    if (alcance === "mios") sp.set("mios", "1");
-
-    const [rEst, rPr, rTipos, rUsers, rPrioridades] = await Promise.all([
+  // Catálogos (estados, tipos, usuarios, prioridades): cambian rara vez y NO
+  // dependen de los filtros. Se cargan una sola vez. Antes se re-descargaban los
+  // 5 endpoints juntos en cada cambio de filtro y en cada evento de realtime.
+  const loadCatalogos = useCallback(async () => {
+    const [rEst, rTipos, rUsers, rPrioridades] = await Promise.all([
       fetchWithSupabaseSession("/api/proyectos/estados", { cache: "no-store" }),
-      fetchWithSupabaseSession(`/api/proyectos?${sp.toString()}`, { cache: "no-store" }),
       fetchWithSupabaseSession("/api/proyectos/tipos", { cache: "no-store" }),
       fetchWithSupabaseSession("/api/usuarios/empresa-activos", { cache: "no-store" }),
       fetchWithSupabaseSession("/api/configuracion/proyectos/prioridades", { cache: "no-store" }),
     ]);
-
-    const jEst = (await rEst.json().catch(() => ({}))) as { success?: boolean; data?: EstadoRow[]; error?: string };
-    const jPr = (await rPr.json().catch(() => ({}))) as { success?: boolean; data?: ProyectoCard[]; error?: string };
+    const jEst = (await rEst.json().catch(() => ({}))) as { success?: boolean; data?: EstadoRow[] };
     const jTipos = (await rTipos.json().catch(() => ({}))) as {
       success?: boolean;
       data?: { id: string; nombre: string }[];
@@ -917,25 +897,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       success?: boolean;
       data?: { prioridades?: PrioridadConfig[] };
     };
-
-    // Si mientras se resolvían las consultas se lanzó otra carga (búsqueda/filtro/realtime), esta
-    // quedó vieja: no aplicamos su resultado ni su estado de error para no pisar a la más nueva.
-    if (ticket !== loadGenRef.current) return;
-
-    if (!rEst.ok || !jEst.success) {
-      setErr(jEst.error ?? "No se pudieron cargar estados");
-      setLoading(false);
-      return;
-    }
-    if (!rPr.ok || !jPr.success) {
-      setErr(jPr.error ?? "No se pudieron cargar proyectos");
-      setLoading(false);
-      return;
-    }
-    setEstados(jEst.data ?? []);
-    // Se guarda lo que vino tal cual: qué se muestra lo decide `proyectosVisibles`.
-    setProyectos((jPr.data ?? []) as ProyectoCard[]);
-
+    if (rEst.ok && jEst.success) setEstados(jEst.data ?? []);
     if (jTipos.success && jTipos.data) setTipoOpts(jTipos.data);
     if (jUsers.usuarios) setUserOpts(jUsers.usuarios);
     if (rPrioridades.ok && jPrioridades.success && jPrioridades.data?.prioridades) {
@@ -943,20 +905,68 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     } else {
       setPrioridadesConfig([]);
     }
+  }, []);
 
+  // Lista de proyectos: depende de los filtros (igualdades exactas, indexadas).
+  // El texto NO viaja al servidor: se filtra en memoria (ver `proyectosVisibles`).
+  // Guardián de generación anti-carrera: si mientras carga se dispara otra
+  // (búsqueda/filtro/realtime), la respuesta que llegue TARDE no pisa a la nueva.
+  const loadProyectos = useCallback(async () => {
+    if (alcance === null) return; // esperar a resolver el default por nivel
+    const ticket = ++loadGenRef.current;
+    setLoading(true);
+    setErr(null);
+    const sp = new URLSearchParams();
+    if (filtroEstado) sp.set("estado_id", filtroEstado);
+    if (filtroTipo) sp.set("tipo_id", filtroTipo);
+    if (filtroRc) sp.set("responsable_comercial_id", filtroRc);
+    if (filtroRt) sp.set("responsable_tecnico_id", filtroRt);
+    if (alcance === "mios") sp.set("mios", "1");
+
+    const rPr = await fetchWithSupabaseSession(`/api/proyectos?${sp.toString()}`, { cache: "no-store" });
+    const jPr = (await rPr.json().catch(() => ({}))) as { success?: boolean; data?: ProyectoCard[]; error?: string };
+
+    if (ticket !== loadGenRef.current) return;
+    if (!rPr.ok || !jPr.success) {
+      setErr(jPr.error ?? "No se pudieron cargar proyectos");
+      setLoading(false);
+      return;
+    }
+    // Se guarda lo que vino tal cual: qué se muestra lo decide `proyectosVisibles`.
+    setProyectos((jPr.data ?? []) as ProyectoCard[]);
     setLoading(false);
   }, [filtroEstado, filtroTipo, filtroRc, filtroRt, alcance]);
 
+  // Catálogos una sola vez (deps estables); la lista en el mount y en cada cambio de filtro.
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadCatalogos();
+  }, [loadCatalogos]);
+  useEffect(() => {
+    void loadProyectos();
+  }, [loadProyectos]);
 
-  // Realtime: cualquier cambio en proyectos del tenant refresca el Kanban.
-  // proyecto_tareas también dispara re-fetch porque afecta el avance %.
-  const loadRef = useRef(load);
+  // Realtime: sólo re-carga la LISTA (no los catálogos) y COALESCIDO. Antes cada
+  // edición de tarea / movimiento de tarjeta de cualquiera disparaba una recarga
+  // completa de 5 endpoints en todos los tableros abiertos; ahora se junta en un
+  // solo refetch de /api/proyectos con debounce.
+  const loadProyectosRef = useRef(loadProyectos);
   useEffect(() => {
-    loadRef.current = load;
-  }, [load]);
+    loadProyectosRef.current = loadProyectos;
+  }, [loadProyectos]);
+  const realtimeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReloadProyectos = useCallback(() => {
+    if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+    realtimeTimerRef.current = setTimeout(() => {
+      realtimeTimerRef.current = null;
+      void loadProyectosRef.current?.();
+    }, 400);
+  }, []);
+  useEffect(
+    () => () => {
+      if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!dataSchema) return;
@@ -967,19 +977,19 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       .on(
         "postgres_changes",
         { event: "*", schema: dataSchema, table: "proyectos" },
-        () => void loadRef.current?.()
+        () => scheduleReloadProyectos()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: dataSchema, table: "proyecto_tareas" },
-        () => void loadRef.current?.()
+        () => scheduleReloadProyectos()
       )
       .subscribe();
 
     return () => {
       void sb.removeChannel(channel);
     };
-  }, [dataSchema]);
+  }, [dataSchema, scheduleReloadProyectos]);
 
   const tokensBusqueda = useMemo(() => tokenizarBusqueda(q), [q]);
 
@@ -1109,7 +1119,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
         return false;
       }
       setMovingProjectId(null);
-      await load();
+      // La tarjeta ya se movió optimistamente; la reconciliación va coalescida
+      // (junto con el eco de realtime del propio cambio), sin bloquear.
+      scheduleReloadProyectos();
       return true;
     } catch (e) {
       setProyectos(previousProjects);
@@ -1554,9 +1566,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           setModalProjectId(null);
           setModalInitialTab(undefined);
           setModalInitialCanal(undefined);
-          void load();
+          void loadProyectos();
         }}
-        onUpdated={() => void load()}
+        onUpdated={() => void loadProyectos()}
         dataSchema={dataSchema}
       />
 
@@ -1565,7 +1577,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
         onClose={() => setNuevoModalOpen(false)}
         onCreated={(id) => {
           setNuevoModalOpen(false);
-          void load();
+          void loadProyectos();
           abrirDetalle(id);
         }}
       />

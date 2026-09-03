@@ -2859,11 +2859,6 @@ export default function ProyectoDetalleInner({
                 </div>
               ) : null}
             </div>
-            <p className="text-xs text-slate-400">
-              {canalComentario === "desarrollo"
-                ? "Canal desarrollador ↔ PM y QA."
-                : "Canal comercial ↔ PM."}
-            </p>
             <NuevoComentarioForm
               onEnviar={agregarComentario}
               canal={canalComentario}

@@ -14,6 +14,10 @@ import {
   sendOutboundTextMessage,
   sendTextViaBaileysBridge,
 } from "@/lib/chat/outbound-send-dispatch";
+import {
+  resolveMetaMessagingSendContext,
+  sendMetaMessagingText,
+} from "@/lib/chat/meta-messaging-send-service";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema, isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
@@ -116,27 +120,42 @@ export async function POST(request: NextRequest) {
 
     let sendResult: Awaited<ReturnType<typeof sendOutboundTextMessage>>;
     try {
-      // Canal WhatsApp por QR (Baileys): enviar por el puente. Si no es baileys,
-      // devuelve null y seguimos por el camino Meta/YCloud de siempre.
-      const baileys = await resolveBaileysContextFromIds(
-        supabase,
-        { contactId: conv.contact_id, channelId: conv.channel_id },
-        { dataSchema, empresaId: conv.empresa_id }
-      );
-      if (baileys) {
-        sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, message);
+      // Canal social (Messenger / Instagram Direct): enviar por la Graph API de Meta.
+      // Si el canal NO es social, devuelve null y seguimos por el camino WhatsApp de siempre.
+      const metaMsg = await resolveMetaMessagingSendContext(supabase, {
+        channelId: conv.channel_id,
+        contactId: conv.contact_id,
+      });
+      if (metaMsg) {
+        sendResult = await sendMetaMessagingText({
+          pageId: metaMsg.pageId,
+          accessToken: metaMsg.accessToken,
+          recipientId: metaMsg.recipientId,
+          text: message,
+        });
       } else {
-        const outbound = await resolveOutboundTextContextFromIds(
+        // Canal WhatsApp por QR (Baileys): enviar por el puente. Si no es baileys,
+        // devuelve null y seguimos por el camino Meta/YCloud de siempre.
+        const baileys = await resolveBaileysContextFromIds(
           supabase,
           { contactId: conv.contact_id, channelId: conv.channel_id },
           { dataSchema, empresaId: conv.empresa_id }
         );
-        if (outbound.provider === "ycloud") {
-          console.info("[api/chat/send] ycloud_outbound", { conversationId });
+        if (baileys) {
+          sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, message);
+        } else {
+          const outbound = await resolveOutboundTextContextFromIds(
+            supabase,
+            { contactId: conv.contact_id, channelId: conv.channel_id },
+            { dataSchema, empresaId: conv.empresa_id }
+          );
+          if (outbound.provider === "ycloud") {
+            console.info("[api/chat/send] ycloud_outbound", { conversationId });
+          }
+          sendResult = await sendOutboundTextMessage(outbound, message, {
+            replyToWamid: replyToWamid || null,
+          });
         }
-        sendResult = await sendOutboundTextMessage(outbound, message, {
-          replyToWamid: replyToWamid || null,
-        });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Datos de envío incompletos";

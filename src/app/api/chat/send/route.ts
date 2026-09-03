@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
       });
       if (metaMsg) {
         sendResult = await sendMetaMessagingText({
+          type: metaMsg.type,
           pageId: metaMsg.pageId,
           accessToken: metaMsg.accessToken,
           recipientId: metaMsg.recipientId,

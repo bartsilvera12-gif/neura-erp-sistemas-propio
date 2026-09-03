@@ -64,9 +64,11 @@ export type MetaMessagingSendResult =
   | { ok: false; error: string; raw?: unknown };
 
 export type SendMetaMessagingTextInput = {
-  /** Page ID de Facebook (para Messenger e Instagram, la página vinculada). */
+  /** "facebook" → Messenger (graph.facebook.com); "instagram" → IG Direct (graph.instagram.com). */
+  type: "facebook" | "instagram";
+  /** ID del emisor: Page ID (Messenger) o IG account id (Instagram). */
   pageId: string;
-  /** Page access token de larga duración. */
+  /** Token del canal (page token para FB; IG user token para Instagram). */
   accessToken: string;
   /** PSID (Messenger) o IGSID (Instagram) del destinatario. */
   recipientId: string;
@@ -82,7 +84,7 @@ export async function sendMetaMessagingText(
   const text = input.text;
 
   if (!pageId || !token) {
-    return { ok: false, error: "Canal sin page_id o page_access_token. Revisá la configuración del canal." };
+    return { ok: false, error: "Canal sin id o token. Revisá la configuración del canal." };
   }
   if (!recipient) {
     return { ok: false, error: "Destinatario sin identificador (PSID/IGSID)." };
@@ -91,7 +93,11 @@ export async function sendMetaMessagingText(
     return { ok: false, error: "Mensaje vacío." };
   }
 
-  const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}/messages`;
+  // Messenger e Instagram usan hosts distintos; el resto del contrato es igual.
+  const host = input.type === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+  const url =
+    `https://${host}/${GRAPH_VERSION}/${encodeURIComponent(pageId)}/messages` +
+    `?access_token=${encodeURIComponent(token)}`;
   const payload = {
     recipient: { id: recipient },
     messaging_type: "RESPONSE",
@@ -101,10 +107,7 @@ export async function sendMetaMessagingText(
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     const raw = (await r.json().catch(() => ({}))) as Record<string, unknown>;

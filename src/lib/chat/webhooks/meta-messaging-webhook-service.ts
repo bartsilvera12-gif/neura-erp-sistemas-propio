@@ -55,8 +55,9 @@ async function fetchProfileName(
 ): Promise<string | null> {
   if (!pageAccessToken) return null;
   try {
+    const host = type === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
     const fields = type === "instagram" ? "name,username" : "name";
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(
+    const url = `https://${host}/${GRAPH_VERSION}/${encodeURIComponent(
       userId
     )}?fields=${fields}&access_token=${encodeURIComponent(pageAccessToken)}`;
     const r = await fetch(url, { method: "GET" });

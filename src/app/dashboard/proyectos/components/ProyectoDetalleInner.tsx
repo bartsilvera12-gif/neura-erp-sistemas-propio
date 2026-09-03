@@ -68,6 +68,14 @@ export type DetalleResp = {
   current_user_id?: string | null;
   current_user_rol?: string | null;
   current_user_puede_eliminar?: boolean;
+  /** Canales de comentarios que este usuario puede ver/escribir (comercial/desarrollo). */
+  comentarios_canales_visibles?: string[];
+};
+
+type CanalComentarioUI = "comercial" | "desarrollo";
+const CANAL_COMENTARIO_LABEL: Record<CanalComentarioUI, string> = {
+  comercial: "Comercial",
+  desarrollo: "Desarrollo",
 };
 
 const ESTADO_ENTREGADO_CODIGO = "publicado";
@@ -641,9 +649,11 @@ export type ProyectoDetalleInnerProps = {
  */
 const NuevoComentarioForm = memo(function NuevoComentarioForm({
   onEnviar,
+  canal,
   inputCls,
 }: {
-  onEnviar: (texto: string) => Promise<boolean>;
+  onEnviar: (texto: string, canal: CanalComentarioUI) => Promise<boolean>;
+  canal: CanalComentarioUI;
   inputCls: string;
 }) {
   const [texto, setTexto] = useState("");
@@ -654,7 +664,7 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         e.preventDefault();
         if (!texto.trim() || enviando) return;
         setEnviando(true);
-        const ok = await onEnviar(texto);
+        const ok = await onEnviar(texto, canal);
         setEnviando(false);
         if (ok) setTexto("");
       }}
@@ -663,7 +673,7 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
       <textarea
         className={`${inputCls} min-h-[88px]`}
         rows={3}
-        placeholder="Comentario interno"
+        placeholder={canal === "desarrollo" ? "Comentario para PM / QA" : "Comentario para el PM"}
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
         disabled={enviando}
@@ -731,6 +741,9 @@ export default function ProyectoDetalleInner({
   const [comEditandoId, setComEditandoId] = useState<string | null>(null);
   const [comEditTexto, setComEditTexto] = useState("");
   const [comActionId, setComActionId] = useState<string | null>(null);
+  // Canal de comentarios activo (comercial ↔ PM / desarrollo ↔ PM+QA). Se
+  // muestra un switch sólo si el usuario ve ambos; si ve uno, se fija ahí.
+  const [canalComentario, setCanalComentario] = useState<CanalComentarioUI>("comercial");
   const [tareaTitulo, setTareaTitulo] = useState("");
   const [tareaDescripcion, setTareaDescripcion] = useState("");
   const [tareaResponsableId, setTareaResponsableId] = useState("");
@@ -1247,14 +1260,31 @@ export default function ProyectoDetalleInner({
     }
   }, [recargarQaResumen, tab]);
 
+  // Canales de comentarios que el usuario puede ver (los decide el server).
+  const canalesComentarioVisibles = useMemo<CanalComentarioUI[]>(() => {
+    const raw = data?.comentarios_canales_visibles;
+    const arr = Array.isArray(raw)
+      ? raw.filter((x): x is CanalComentarioUI => x === "comercial" || x === "desarrollo")
+      : [];
+    return arr.length > 0 ? arr : ["comercial"];
+  }, [data?.comentarios_canales_visibles]);
+
+  // Si el canal activo no está entre los visibles (p. ej. un técnico que sólo ve
+  // desarrollo), se cae al primero permitido.
+  useEffect(() => {
+    if (!canalesComentarioVisibles.includes(canalComentario)) {
+      setCanalComentario(canalesComentarioVisibles[0]);
+    }
+  }, [canalesComentarioVisibles, canalComentario]);
+
   const agregarComentario = useCallback(
-    async (texto: string): Promise<boolean> => {
+    async (texto: string, canal: CanalComentarioUI): Promise<boolean> => {
       const comentario = texto.trim();
       if (!comentario) return false;
       const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comentario }),
+        body: JSON.stringify({ comentario, canal }),
       });
       const j = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || !j.success) {
@@ -2796,13 +2826,56 @@ export default function ProyectoDetalleInner({
 
         {tab === "comentarios" ? (
           <div className={`space-y-4 ${panelCls}`}>
-            <div className="flex items-center gap-2">
-              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <h2 className="text-sm font-semibold text-slate-900">Comentarios internos</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
+                <h2 className="text-sm font-semibold text-slate-900">
+                  {canalesComentarioVisibles.length > 1
+                    ? "Comentarios internos"
+                    : `Comentarios · ${CANAL_COMENTARIO_LABEL[canalComentario]}`}
+                </h2>
+              </div>
+              {/* Switch de canal: sólo para quien ve ambos (PM, QA, admin). El
+                  comercial/técnico ve una sola sección, sin switch. */}
+              {canalesComentarioVisibles.length > 1 ? (
+                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
+                  {canalesComentarioVisibles.map((canal) => {
+                    const activo = canal === canalComentario;
+                    return (
+                      <button
+                        key={canal}
+                        type="button"
+                        onClick={() => setCanalComentario(canal)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          activo
+                            ? "bg-white text-[#2F6E71] shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        {CANAL_COMENTARIO_LABEL[canal]}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-            <NuevoComentarioForm onEnviar={agregarComentario} inputCls={inputCls} />
+            <p className="text-xs text-slate-400">
+              {canalComentario === "desarrollo"
+                ? "Canal desarrollador ↔ PM y QA."
+                : "Canal comercial ↔ PM."}
+            </p>
+            <NuevoComentarioForm
+              onEnviar={agregarComentario}
+              canal={canalComentario}
+              inputCls={inputCls}
+            />
             <ul className="space-y-3">
-              {(data.comentarios ?? []).map((c) => {
+              {(data.comentarios ?? [])
+                .filter(
+                  (c) =>
+                    String((c as { canal?: string }).canal ?? "comercial") === canalComentario
+                )
+                .map((c) => {
                 const cid = String(c.id ?? "");
                 const autorId = String((c as { usuario_id?: string }).usuario_id ?? "");
                 const esAutor =
@@ -2882,9 +2955,11 @@ export default function ProyectoDetalleInner({
                   </li>
                 );
               })}
-              {(data.comentarios ?? []).length === 0 ? (
+              {(data.comentarios ?? []).filter(
+                (c) => String((c as { canal?: string }).canal ?? "comercial") === canalComentario
+              ).length === 0 ? (
                 <li className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  Aún no hay comentarios.
+                  Aún no hay comentarios en esta sección.
                 </li>
               ) : null}
             </ul>

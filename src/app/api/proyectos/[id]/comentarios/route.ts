@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import {
+  esCanalComentario,
+  permisoComentariosDe,
+} from "@/lib/proyectos/comentarios-permisos";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -16,11 +20,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   try {
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    // Filtro por canal en el SERVIDOR: un comercial no debe recibir los
+    // comentarios de desarrollo (y viceversa) ni siquiera en la respuesta.
+    const permiso = await permisoComentariosDe(sb, auth.empresaId, auth.usuarioCatalogId, pid);
     const { data, error } = await sb
       .from("proyecto_comentarios")
       .select("*")
       .eq("empresa_id", auth.empresaId)
       .eq("proyecto_id", pid)
+      .in("canal", permiso.canales)
       .order("created_at", { ascending: false });
 
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
@@ -57,17 +65,33 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!pid) return NextResponse.json(errorResponse("id obligatorio"), { status: 400 });
 
   try {
-    const body = (await request.json().catch(() => null)) as { comentario?: string } | null;
+    const body = (await request.json().catch(() => null)) as
+      | { comentario?: string; canal?: string }
+      | null;
     const texto = typeof body?.comentario === "string" ? body.comentario.trim() : "";
     if (!texto) return NextResponse.json(errorResponse("comentario obligatorio"), { status: 400 });
+    if (!esCanalComentario(body?.canal)) {
+      return NextResponse.json(errorResponse("canal inválido"), { status: 400 });
+    }
+    const canal = body.canal;
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+
+    // Sólo se puede escribir en un canal que el usuario puede ver.
+    const permiso = await permisoComentariosDe(sb, auth.empresaId, auth.usuarioCatalogId, pid);
+    if (!permiso.canales.includes(canal)) {
+      return NextResponse.json(
+        errorResponse("No tenés acceso a ese canal de comentarios"),
+        { status: 403 }
+      );
+    }
 
     const insert = {
       empresa_id: auth.empresaId,
       proyecto_id: pid,
       usuario_id: auth.usuarioCatalogId,
       comentario: texto,
+      canal,
     };
 
     const { data, error } = await sb.from("proyecto_comentarios").insert(insert).select("*");

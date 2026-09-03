@@ -10,6 +10,7 @@ import {
   insertHistorialSubestadoDesarrollo,
 } from "@/lib/proyectos/historial-actions";
 import { esSubestadoValidoParaTipo } from "@/lib/proyectos/subestados-desarrollo";
+import { permisoComentariosDe } from "@/lib/proyectos/comentarios-permisos";
 import {
   ETAPA_FINAL,
   ETAPA_INICIAL,
@@ -52,7 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // (pid, empresaId). Ninguna de las listas necesita la fila del proyecto, así
     // que se piden todas juntas (antes la fila iba sola en una ola previa). Sólo
     // los enriquecidos de la Wave 2 dependen de estos resultados.
-    const [proyectoRes, hist, tareas, comentarios, archivos, cambios] = await Promise.all([
+    const [proyectoRes, hist, tareas, comentarios, archivos, cambios, permisoComentarios] = await Promise.all([
       sb.from("proyectos").select("*").eq("empresa_id", empresaId).eq("id", pid).maybeSingle(),
       sb
         .from("proyecto_estado_historial")
@@ -81,6 +82,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         .eq("proyecto_id", pid)
         .order("created_at", { ascending: false }),
       listProyectoCambios(sb, empresaId, pid).catch(() => []),
+      permisoComentariosDe(sb, empresaId, auth.usuarioCatalogId, pid),
     ]);
 
     if (proyectoRes.error) return NextResponse.json(errorResponse(proyectoRes.error.message), { status: 400 });
@@ -90,7 +92,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const histRows = (hist.data ?? []) as HistorialRow[];
     const sla = computeSlaTotales(histRows);
 
-    const comRows = (comentarios.data ?? []) as { usuario_id: string }[];
+    // Filtro por canal en el servidor: sólo viajan los comentarios de los canales
+    // que el usuario puede ver (comercial no ve desarrollo y viceversa).
+    const comRows = ((comentarios.data ?? []) as { usuario_id: string; canal?: string }[]).filter(
+      (c) => permisoComentarios.canales.some((k) => k === (c.canal ?? "comercial"))
+    );
     const tareaRows = (tareas.data ?? []) as Array<{
       created_by?: string | null;
       status_changed_by?: string | null;
@@ -162,6 +168,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         sla,
         tareas: tareasRich,
         comentarios: comentariosRich,
+        comentarios_canales_visibles: permisoComentarios.canales,
         archivos: archivosRich,
         cambios,
         avance_pct: avance,

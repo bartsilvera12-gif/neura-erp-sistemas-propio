@@ -410,6 +410,24 @@ const IconPencil = () => (
   </svg>
 );
 
+const IconReenviar = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="13"
+    height="13"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <polyline points="15 14 20 9 15 4" />
+    <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
+  </svg>
+);
+
 const IconTrash = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -741,6 +759,9 @@ export default function ProyectoDetalleInner({
   const [comEditandoId, setComEditandoId] = useState<string | null>(null);
   const [comEditTexto, setComEditTexto] = useState("");
   const [comActionId, setComActionId] = useState<string | null>(null);
+  // Reenvío de comentario: qué comentario se está reenviando y la nota opcional.
+  const [comReenviandoId, setComReenviandoId] = useState<string | null>(null);
+  const [comReenvioNota, setComReenvioNota] = useState("");
   // Canal de comentarios activo (comercial ↔ PM / desarrollo ↔ PM+QA). Se
   // muestra un switch sólo si el usuario ve ambos; si ve uno, se fija ahí.
   const [canalComentario, setCanalComentario] = useState<CanalComentarioUI>("comercial");
@@ -1357,6 +1378,43 @@ export default function ProyectoDetalleInner({
   function cancelarEdicionComentario() {
     setComEditandoId(null);
     setComEditTexto("");
+  }
+
+  function iniciarReenvioComentario(cid: string) {
+    // No se puede editar y reenviar a la vez.
+    setComEditandoId(null);
+    setComReenviandoId(cid);
+    setComReenvioNota("");
+  }
+
+  function cancelarReenvioComentario() {
+    setComReenviandoId(null);
+    setComReenvioNota("");
+  }
+
+  // Reenvía el comentario `cid` al OTRO canal (comercial ↔ desarrollo), con la
+  // nota opcional arriba. El server arma el snapshot del original (autor, texto,
+  // fecha) y dispara la notificación al destinatario del canal destino.
+  async function reenviarComentario(cid: string, canalOrigen: CanalComentarioUI) {
+    if (comActionId) return;
+    const destino: CanalComentarioUI = canalOrigen === "desarrollo" ? "comercial" : "desarrollo";
+    setComActionId(cid);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canal: destino, comentario: comReenvioNota.trim(), reenviar_de: cid }),
+      });
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        setErr(j.error ?? "No se pudo reenviar el comentario");
+        return;
+      }
+      cancelarReenvioComentario();
+      scheduleReload();
+    } finally {
+      setComActionId(null);
+    }
   }
 
   async function guardarEdicionComentario(cid: string) {
@@ -2894,8 +2952,25 @@ export default function ProyectoDetalleInner({
                 const esAutor =
                   !!data.current_user_id && autorId === data.current_user_id;
                 const enEdicion = comEditandoId === cid;
+                const enReenvio = comReenviandoId === cid;
                 const enAccion = comActionId === cid;
                 const textoOriginal = String(c.comentario ?? "");
+                const reenvio = (
+                  c as {
+                    reenvio?: {
+                      autor_nombre?: string | null;
+                      texto?: string;
+                      fecha?: string;
+                      canal_origen?: string;
+                    } | null;
+                  }
+                ).reenvio ?? null;
+                const canalDelComentario = (String((c as { canal?: string }).canal ?? "comercial") ===
+                "desarrollo"
+                  ? "desarrollo"
+                  : "comercial") as CanalComentarioUI;
+                // Reenviar es para quien ve ambos canales (PM/QA/Admin).
+                const puedeReenviar = canalesComentarioVisibles.length > 1;
                 return (
                   <li
                     key={cid}
@@ -2907,28 +2982,49 @@ export default function ProyectoDetalleInner({
                       </span>
                       <span className="text-slate-300">·</span>
                       <span>{formatFechaPyFull(String(c.created_at ?? ""))}</span>
-                      {esAutor && !enEdicion ? (
+                      {reenvio ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-[#4FAEB2]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#3F8E91]">
+                          Reenviado
+                        </span>
+                      ) : null}
+                      {(puedeReenviar || esAutor) && !enEdicion && !enReenvio ? (
                         <span className="ml-auto flex items-center gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => iniciarEdicionComentario(cid, textoOriginal)}
-                            disabled={enAccion}
-                            aria-label="Editar comentario"
-                            title="Editar"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <IconPencil />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void eliminarComentario(cid)}
-                            disabled={enAccion}
-                            aria-label="Eliminar comentario"
-                            title="Eliminar"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {enAccion ? <IconSpinner /> : <IconTrash />}
-                          </button>
+                          {puedeReenviar ? (
+                            <button
+                              type="button"
+                              onClick={() => iniciarReenvioComentario(cid)}
+                              disabled={enAccion}
+                              aria-label="Reenviar comentario al otro canal"
+                              title="Reenviar al otro canal"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <IconReenviar />
+                            </button>
+                          ) : null}
+                          {esAutor ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => iniciarEdicionComentario(cid, textoOriginal)}
+                                disabled={enAccion}
+                                aria-label="Editar comentario"
+                                title="Editar"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <IconPencil />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void eliminarComentario(cid)}
+                                disabled={enAccion}
+                                aria-label="Eliminar comentario"
+                                title="Eliminar"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {enAccion ? <IconSpinner /> : <IconTrash />}
+                              </button>
+                            </>
+                          ) : null}
                         </span>
                       ) : null}
                     </div>
@@ -2960,9 +3056,67 @@ export default function ProyectoDetalleInner({
                           </button>
                         </div>
                       </div>
+                    ) : enReenvio ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="rounded-lg border border-[#4FAEB2]/30 bg-[#4FAEB2]/5 px-3 py-2 text-xs text-slate-600">
+                          Reenviando a{" "}
+                          <span className="font-semibold text-[#2F6E71]">
+                            {canalDelComentario === "desarrollo" ? "Comercial" : "Desarrollo"}
+                          </span>
+                          . El mensaje se envía tal cual, con su autor y fecha.
+                        </div>
+                        <textarea
+                          className={`${inputCls} min-h-[72px]`}
+                          rows={3}
+                          placeholder="Nota (opcional) para poner arriba del reenvío…"
+                          value={comReenvioNota}
+                          onChange={(e) => setComReenvioNota(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={cancelarReenvioComentario}
+                            disabled={enAccion}
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void reenviarComentario(cid, canalDelComentario)}
+                            disabled={enAccion}
+                            className="rounded-xl bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                          >
+                            {enAccion ? "Reenviando…" : "Reenviar"}
+                          </button>
+                        </div>
+                      </div>
                     ) : (
-                      <div className="mt-1.5 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
-                        {textoOriginal}
+                      <div className="mt-1.5 space-y-2">
+                        {textoOriginal ? (
+                          <div className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
+                            {textoOriginal}
+                          </div>
+                        ) : null}
+                        {reenvio ? (
+                          <div className="rounded-lg border-l-2 border-slate-300 bg-slate-50 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
+                              <span className="font-semibold text-slate-600">
+                                {reenvio.autor_nombre ?? "—"}
+                              </span>
+                              <span className="text-slate-300">·</span>
+                              <span>{formatFechaPyFull(String(reenvio.fecha ?? ""))}</span>
+                              <span className="text-slate-300">·</span>
+                              <span className="italic">
+                                de {reenvio.canal_origen === "desarrollo" ? "Desarrollo" : "Comercial"}
+                              </span>
+                            </div>
+                            <div className="mt-1 whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
+                              {reenvio.texto ?? ""}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </li>

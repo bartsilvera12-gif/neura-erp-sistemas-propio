@@ -107,9 +107,12 @@ export async function sendMessageViaYCloud(params: {
     text: { body: params.text },
   };
   const reply = params.replyToWamid?.trim();
-  if (reply) {
-    // YCloud (WhatsApp Cloud API): responder a un mensaje = context.messageId (el WAMID).
-    payload.context = { messageId: reply };
+  // YCloud v2: la cita usa `context.message_id` (snake_case) y DEBE ser un WAMID real
+  // (empieza con `wamid.`). Con `messageId` (camelCase) YCloud lo ignoraba y el mensaje
+  // no se entregaba. Si el id no es un WAMID (p. ej. mensaje de coexistencia sin WAMID),
+  // se envía SIN cita en vez de romper la entrega.
+  if (reply && reply.startsWith("wamid.")) {
+    payload.context = { message_id: reply };
   }
   return postYCloudWhatsappMessage(params.apiKey, payload);
 }

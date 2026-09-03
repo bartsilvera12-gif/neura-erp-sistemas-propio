@@ -10,6 +10,8 @@ export default function ProyectoDetalleModal({
   onUpdated,
   dataSchema,
   proyectoPreview,
+  initialTab,
+  initialCanal,
 }: {
   projectId: string | null;
   open: boolean;
@@ -18,6 +20,9 @@ export default function ProyectoDetalleModal({
   dataSchema: string;
   /** Fila del tablero para pintar la cabecera al instante (ver ProyectoDetalleInner). */
   proyectoPreview?: (Record<string, unknown> & { id: string }) | null;
+  /** Solapa/canal iniciales al abrir por deep-link de notificación. */
+  initialTab?: string;
+  initialCanal?: string;
 }) {
   const [dirty, setDirty] = useState(false);
 
@@ -79,6 +84,8 @@ export default function ProyectoDetalleModal({
           onDirtyChange={setDirty}
           dataSchema={dataSchema}
           proyectoPreview={proyectoPreview}
+          initialTab={initialTab}
+          initialCanal={initialCanal}
         />
       </div>
     </div>

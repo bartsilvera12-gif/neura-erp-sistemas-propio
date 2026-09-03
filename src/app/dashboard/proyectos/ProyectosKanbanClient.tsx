@@ -13,6 +13,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -771,7 +772,33 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   const [tipoOpts, setTipoOpts] = useState<{ id: string; nombre: string }[]>([]);
   const [userOpts, setUserOpts] = useState<{ id: string; nombre?: string }[]>([]);
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
+  // Solapa / canal con los que abrir el modal cuando se llega por un deep-link
+  // de notificación (?proyecto=…&tab=…&cc=…). En aperturas normales van vacíos.
+  const [modalInitialTab, setModalInitialTab] = useState<string | undefined>(undefined);
+  const [modalInitialCanal, setModalInitialCanal] = useState<string | undefined>(undefined);
   const [nuevoModalOpen, setNuevoModalOpen] = useState(false);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Abre el proyecto limpiando cualquier estado inicial (aperturas por click).
+  const abrirDetalle = useCallback((id: string) => {
+    setModalInitialTab(undefined);
+    setModalInitialCanal(undefined);
+    setModalProjectId(id);
+  }, []);
+
+  // Deep-link de notificación: ?proyecto=<id>&tab=comentarios&cc=<canal> abre el
+  // modal del proyecto en la solapa/canal indicados. Luego limpia la query para
+  // que un refresh no lo reabra.
+  useEffect(() => {
+    const pid = searchParams?.get("proyecto");
+    if (!pid) return;
+    setModalInitialTab(searchParams.get("tab") ?? undefined);
+    setModalInitialCanal(searchParams.get("cc") ?? undefined);
+    setModalProjectId(pid);
+    router.replace("/dashboard/proyectos", { scroll: false });
+  }, [searchParams, router]);
   /** Paginación de la vista Lista (elevado desde ProyectosLista para mostrar el control en la barra). */
   const [pageSize, setPageSize] = useState<ListPageSize>(25);
   /** Rango de FECHA DE ENTREGA. Vacío = sin recorte: se ven todos los entregados. */
@@ -1438,7 +1465,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           estados={estados}
           estadoActivoIds={estadoActivoIds}
           prioridadByCodigo={prioridadByCodigo}
-          onOpen={setModalProjectId}
+          onOpen={abrirDetalle}
           onMove={handleMove}
           movingProjectId={movingProjectId}
           pageSize={pageSize}
@@ -1471,7 +1498,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
                         estados={estados}
                         estadoActivoIds={estadoActivoIds}
                         prioridadConfig={prioridadByCodigo.get(p.prioridad)}
-                        onOpen={setModalProjectId}
+                        onOpen={abrirDetalle}
                         onMove={handleMove}
                         moving={movingProjectId === p.id}
                       />
@@ -1510,6 +1537,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       <ProyectoDetalleModal
         projectId={modalProjectId}
         open={modalProjectId != null}
+        // Solapa/canal iniciales sólo cuando se abre por deep-link de notificación.
+        initialTab={modalInitialTab}
+        initialCanal={modalInitialCanal}
         // La fila ya está en memoria del tablero: se la pasamos para que la
         // cabecera del detalle se pinte al instante mientras llega el GET.
         proyectoPreview={
@@ -1522,6 +1552,8 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
         // tiene que apagarse sin que el usuario refresque la página.
         onClose={() => {
           setModalProjectId(null);
+          setModalInitialTab(undefined);
+          setModalInitialCanal(undefined);
           void load();
         }}
         onUpdated={() => void load()}
@@ -1534,7 +1566,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
         onCreated={(id) => {
           setNuevoModalOpen(false);
           void load();
-          setModalProjectId(id);
+          abrirDetalle(id);
         }}
       />
     </div>

@@ -427,9 +427,10 @@ export default function NotificacionesBell() {
                   : n.tipo === "cobro_pendiente"
                   ? "/cobranzas/conciliacion"
                   : n.tipo === "comentario_proyecto" && n.proyecto_id
-                  ? // Directo a la solapa Comentarios, abriendo la sección del canal
-                    // (para PM/QA que ven ambas). `cc` = canal del comentario.
-                    `/dashboard/proyectos/${n.proyecto_id}?tab=comentarios${
+                  ? // Abre el MODAL del proyecto en el Kanban, directo en la solapa
+                    // Comentarios y en la sección del canal (para PM/QA que ven
+                    // ambas). El Kanban lee ?proyecto/tab/cc y abre el modal.
+                    `/dashboard/proyectos?proyecto=${n.proyecto_id}&tab=comentarios${
                       n.metadata?.canal ? `&cc=${n.metadata.canal}` : ""
                     }`
                   : n.proyecto_id

@@ -655,6 +655,10 @@ export type ProyectoDetalleInnerProps = {
    * completo, en vez de bloquear toda la tarjeta con un spinner.
    */
   proyectoPreview?: (Record<string, unknown> & { id: string }) | null;
+  /** Solapa inicial (variant modal), p. ej. al abrir por un deep-link de notificación. */
+  initialTab?: string;
+  /** Canal inicial de Comentarios (variant modal), para abrir la sección correcta. */
+  initialCanal?: string;
 };
 
 /**
@@ -871,11 +875,14 @@ export default function ProyectoDetalleInner({
   onDirtyChange,
   dataSchema,
   proyectoPreview,
+  initialTab,
+  initialCanal,
 }: ProyectoDetalleInnerProps) {
   const router = useRouter();
   const sp = useSearchParams();
   const tabUrl = variant === "page" ? normalizeTab(sp?.get("tab")) : null;
-  const [modalTab, setModalTab] = useState<TabId>("resumen");
+  // En modal, la solapa inicial puede venir de un deep-link de notificación.
+  const [modalTab, setModalTab] = useState<TabId>(() => normalizeTab(initialTab));
 
   const tab = variant === "page" ? (tabUrl ?? "resumen") : modalTab;
 
@@ -1460,8 +1467,9 @@ export default function ProyectoDetalleInner({
   // cambia de sección a mano.
   const ccAplicadoRef = useRef(false);
   useEffect(() => {
-    if (variant !== "page" || ccAplicadoRef.current) return;
-    const cc = sp?.get("cc");
+    if (ccAplicadoRef.current) return;
+    // En page viene por la URL (?cc=…); en modal, por el prop del deep-link.
+    const cc = variant === "page" ? sp?.get("cc") : initialCanal;
     if (cc === "comercial" || cc === "desarrollo") {
       if (canalesComentarioVisibles.includes(cc)) {
         setCanalComentario(cc);
@@ -1470,7 +1478,7 @@ export default function ProyectoDetalleInner({
     } else {
       ccAplicadoRef.current = true;
     }
-  }, [variant, sp, canalesComentarioVisibles]);
+  }, [variant, sp, initialCanal, canalesComentarioVisibles]);
 
   const agregarComentario = useCallback(
     async (texto: string, canal: CanalComentarioUI, imagenes: File[]): Promise<boolean> => {

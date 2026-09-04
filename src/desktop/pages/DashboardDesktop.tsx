@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import PanelProyectosPanel from "@/components/proyectos/PanelProyectosPanel";
+import SlaProyectosClient from "@/app/dashboard/proyectos/sla/SlaProyectosClient";
 import { getConfig } from "@/lib/config/storage";
 import { getUsuarios } from "@/lib/usuarios/storage";
 import { getUsuariosActivosEmpresa } from "@/lib/usuarios/empresa";
@@ -2665,8 +2666,12 @@ export default function DashboardPage() {
   const nivel = usuarioActivo?.nivel ?? "administrador";
 
   const baseTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
-  // "Proyectos" (panel gerencial) siempre disponible en el dashboard.
-  const effectiveTabs: TabDash[] = baseTabs.includes("proyectos") ? baseTabs : [...baseTabs, "proyectos"];
+  // "Proyectos" (panel gerencial) y "SLA" (dashboard SLA) siempre disponibles en
+  // el dashboard; SLA queda inmediatamente a la derecha de Proyectos.
+  const conProyectos: TabDash[] = baseTabs.includes("proyectos") ? baseTabs : [...baseTabs, "proyectos"];
+  const effectiveTabs: TabDash[] = conProyectos.includes("sla_proyectos")
+    ? conProyectos
+    : conProyectos.flatMap((t) => (t === "proyectos" ? ["proyectos", "sla_proyectos"] : [t]));
   const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
 
   const TAB_META: Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }> = {
@@ -2682,6 +2687,16 @@ export default function DashboardPage() {
           <rect x="7" y="10" width="3" height="7" />
           <rect x="12" y="6" width="3" height="11" />
           <rect x="17" y="13" width="3" height="4" />
+        </svg>
+      ),
+    },
+    sla_proyectos: {
+      label: "SLA",
+      Icon: ({ className = "h-4 w-4" }: IconProps) => (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+          <path d="M12 3a9 9 0 1 0 9 9" />
+          <path d="M12 12l5-3" />
+          <path d="M12 12v-4" />
         </svg>
       ),
     },
@@ -2896,6 +2911,8 @@ export default function DashboardPage() {
       )}
 
       {tab === "proyectos" && <PanelProyectosPanel />}
+
+      {tab === "sla_proyectos" && <SlaProyectosClient />}
 
     </div>
   );

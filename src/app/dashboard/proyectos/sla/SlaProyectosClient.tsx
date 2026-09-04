@@ -599,15 +599,15 @@ export default function SlaProyectosClient() {
               ) : (
                 <>
                   <div className="flex items-center gap-2">
-                    <div className="h-[150px] w-[150px] shrink-0">
+                    <div className="h-[128px] w-[128px] shrink-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
                             data={donut}
                             dataKey="value"
                             nameKey="label"
-                            innerRadius={44}
-                            outerRadius={72}
+                            innerRadius={38}
+                            outerRadius={61}
                             paddingAngle={1}
                             strokeWidth={0}
                             labelLine={false}
@@ -623,10 +623,10 @@ export default function SlaProyectosClient() {
                     </div>
                     <div className="min-w-0 flex-1 space-y-1.5">
                       {donut.map((s) => (
-                        <div key={s.key} className="flex items-center gap-1.5 text-[11px]">
+                        <div key={s.key} className="flex items-center gap-1.5 text-[10px] whitespace-nowrap">
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
                           <span className="text-slate-500">{s.label}</span>
-                          <span className="ml-auto font-medium text-slate-600">
+                          <span className="ml-auto whitespace-nowrap font-medium tabular-nums text-slate-600">
                             {s.value} ({data.monitoreados > 0 ? Math.round((s.value / data.monitoreados) * 100) : 0}%)
                           </span>
                         </div>

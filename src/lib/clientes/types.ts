@@ -59,6 +59,8 @@ export interface Cliente {
   /** Display enriquecido desde `zentra_erp.usuarios` para listados; no reemplaza la FK. */
   vendedor_usuario_nombre?: string | null;
   vendedor_usuario_email?:  string | null;
+  /** Project Manager del cliente (FK usuarios, es_project_manager). NULL = sin asignar. */
+  project_manager_id?: string | null;
 
   origen:              OrigenCliente;
   prospecto_id?:       number;          // ID del prospecto CRM de origen

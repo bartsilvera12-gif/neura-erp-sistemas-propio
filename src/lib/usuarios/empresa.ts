@@ -6,6 +6,7 @@ export interface UsuarioEmpresa {
   email: string;
   rol: string | null;
   estado: string | null;
+  es_project_manager: boolean;
 }
 
 type UsuariosEmpresaResponse = {
@@ -42,6 +43,7 @@ export async function getUsuariosActivosEmpresa(): Promise<UsuarioEmpresa[]> {
       email: typeof r.email === "string" ? r.email : "",
       rol: typeof r.rol === "string" ? r.rol : null,
       estado: typeof r.estado === "string" ? r.estado : null,
+      es_project_manager: r.es_project_manager === true,
     }))
     .filter((u) => u.id.trim() !== "");
 }

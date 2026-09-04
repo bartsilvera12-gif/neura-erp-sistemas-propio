@@ -449,6 +449,12 @@ export function construirPatchActualizacionCliente(datos: ActualizarClienteInput
         ? null
         : datos.vendedor_usuario_id;
   }
+  if (datos.project_manager_id !== undefined) {
+    patch.project_manager_id =
+      datos.project_manager_id === null || datos.project_manager_id === ""
+        ? null
+        : datos.project_manager_id;
+  }
   if (datos.estado !== undefined) patch.estado = datos.estado ?? null;
   if (datos.tipo_servicio_cliente !== undefined) patch.tipo_servicio_cliente = datos.tipo_servicio_cliente ?? null;
   patch.updated_at = new Date().toISOString();

@@ -9,6 +9,8 @@ type UsuarioActivoRow = {
   estado: string | null;
   /** Marca a la persona de QA: su tarjeta del tablero usa las etapas de QA. */
   es_qa?: boolean | null;
+  /** Marca a la persona de Project Manager (para asignarla como PM de un cliente). */
+  es_project_manager?: boolean | null;
 };
 
 /**
@@ -32,7 +34,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabaseSr
       .from("usuarios")
-      .select("id, nombre, email, rol, estado, es_qa")
+      .select("id, nombre, email, rol, estado, es_qa, es_project_manager")
       .eq("empresa_id", empresaId)
       .ilike("estado", "activo")
       .order("nombre", { ascending: true })
@@ -49,6 +51,7 @@ export async function GET(request: Request) {
       rol: u.rol ?? null,
       estado: u.estado,
       es_qa: u.es_qa === true,
+      es_project_manager: u.es_project_manager === true,
     }));
 
     return NextResponse.json({ usuarios });

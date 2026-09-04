@@ -55,6 +55,7 @@ export const CAMPOS_AUDITABLES = [
   "condicion_pago",
   "moneda_preferida",
   "vendedor_usuario_id",
+  "project_manager_id",
 ] as const;
 
 /** Compara antes/después y devuelve { changed_fields, before, after } solo de lo que cambió. */

@@ -163,6 +163,7 @@ const CAMPO_HISTORIAL: Record<string, string> = {
   condicion_pago: "Condición de pago",
   moneda_preferida: "Moneda",
   vendedor_usuario_id: "Vendedor",
+  project_manager_id: "Project Manager",
 };
 
 function resumenCambiosHistorial(detalle: Record<string, unknown> | null | undefined): {
@@ -344,6 +345,7 @@ export default function ClienteDetalleClient({
     moneda_preferida:      "GS" as "GS" | "USD",
     vendedor_asignado:     "",
     vendedor_usuario_id:   "",
+    project_manager_id:    "",
     tipo_servicio_cliente: "" as string,
     estado:                "activo" as Cliente["estado"],
     sifen_receptor_manual: false,
@@ -537,6 +539,7 @@ export default function ClienteDetalleClient({
         moneda_preferida:     c.moneda_preferida    ?? "GS",
         vendedor_asignado:    c.vendedor_asignado   ?? "",
         vendedor_usuario_id:  c.vendedor_usuario_id ?? "",
+        project_manager_id:   c.project_manager_id  ?? "",
         tipo_servicio_cliente: c.tipo_servicio_cliente ?? "",
         estado:               c.estado,
         sifen_receptor_manual: Boolean(c.sifen_receptor_manual),
@@ -820,6 +823,7 @@ export default function ClienteDetalleClient({
         moneda_preferida:    form.moneda_preferida,
         vendedor_asignado:   form.vendedor_asignado.trim().toUpperCase() || undefined,
         vendedor_usuario_id: form.vendedor_usuario_id.trim() || null,
+        project_manager_id:  form.project_manager_id.trim() || null,
         tipo_servicio_cliente: tipoTs || null,
         estado:              form.estado,
         ...sifenManualPayload,
@@ -1976,6 +1980,34 @@ export default function ClienteDetalleClient({
                   <div>
                     <label className={labelClass}>Vendedor asignado (texto libre)</label>
                     <input type="text" name="vendedor_asignado" value={form.vendedor_asignado} onChange={handleChange} className={`${inputClass} uppercase`} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass}>Project Manager</label>
+                    <select
+                      name="project_manager_id"
+                      value={form.project_manager_id}
+                      onChange={(e) => setForm((p) => ({ ...p, project_manager_id: e.target.value }))}
+                      className={inputClass}
+                    >
+                      <option value="">— Sin asignar —</option>
+                      {usuariosEmpresa
+                        .filter((u) => u.es_project_manager)
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {(u.nombre ?? "").trim() || u.email}
+                          </option>
+                        ))}
+                    </select>
+                    {usuariosEmpresaError ? (
+                      <p className="mt-1 text-xs text-red-600">{usuariosEmpresaError}</p>
+                    ) : usuariosEmpresa.filter((u) => u.es_project_manager).length === 0 ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        No hay Project Managers configurados (se marcan en Usuarios).
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

@@ -37,6 +37,7 @@ import {
   Timer,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { nombreCorto } from "@/lib/format/nombres";
 import CountUp from "@/components/reactbits/CountUp";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 
@@ -117,11 +118,14 @@ const SEMAFORO_META: Record<Semaforo, { label: string; color: string; pill: stri
   vencido: { label: "Vencido", color: ROJO, pill: "bg-rose-50 text-rose-700" },
 };
 
+/**
+ * Etiqueta compacta del SLA, en una sola línea. El signo distingue vencido de
+ * pendiente: sin él, "14 días" se leía igual estando vencido que faltando.
+ */
 function slaDiasLabel(dias: number | null): string {
   if (dias == null) return "—";
-  if (dias < 0) return `${Math.abs(dias)} ${Math.abs(dias) === 1 ? "día" : "días"}`;
   if (dias === 0) return "Hoy";
-  return `${dias} ${dias === 1 ? "día" : "días"}`;
+  return dias < 0 ? `−${Math.abs(dias)}d` : `${dias}d`;
 }
 
 /** Título de tarjeta con el ícono de ayuda del diseño. */
@@ -307,6 +311,12 @@ export default function SlaProyectosClient() {
       { key: "vencido", label: "Vencidos", value: data.vencidos, color: ROJO },
     ].filter((s) => s.value > 0);
   }, [data]);
+
+  // Nombres cortos para el eje del gráfico (los completos rompen el layout).
+  const porTecnicoChart = useMemo(
+    () => (data?.por_tecnico ?? []).slice(0, 5).map((t) => ({ ...t, corto: nombreCorto(t.nombre) })),
+    [data?.por_tecnico]
+  );
 
   const exportarExcel = useCallback(() => {
     if (!data) return;
@@ -639,9 +649,10 @@ export default function SlaProyectosClient() {
                 <>
                   <ResponsiveContainer width="100%" height={168}>
                     <BarChart
-                      data={data.por_tecnico.slice(0, 5)}
+                      data={porTecnicoChart}
                       layout="vertical"
-                      margin={{ left: 0, right: 34, top: 4, bottom: 0 }}
+                      margin={{ left: 0, right: 36, top: 10, bottom: 0 }}
+                      barCategoryGap="28%"
                     >
                       <CartesianGrid horizontal={false} stroke="#f1f5f9" />
                       <XAxis
@@ -653,16 +664,20 @@ export default function SlaProyectosClient() {
                         axisLine={false}
                         tickLine={false}
                       />
+                      {/* Nombre corto en UNA línea: con el nombre completo el texto
+                          se partía en tres renglones y el primero quedaba cortado. */}
                       <YAxis
                         type="category"
-                        dataKey="nombre"
-                        width={96}
+                        dataKey="corto"
+                        width={92}
                         tick={{ fontSize: 10, fill: "#64748b" }}
                         axisLine={false}
                         tickLine={false}
+                        interval={0}
                       />
+                      <Tooltip formatter={(v: number) => [`${v}%`, "Cumplimiento"]} />
                       <ReferenceLine x={90} stroke="#cbd5e1" strokeDasharray="3 3" />
-                      <Bar dataKey="cumplimiento_pct" fill={TEAL} radius={[0, 3, 3, 0]} barSize={11}>
+                      <Bar dataKey="cumplimiento_pct" fill={TEAL} radius={[0, 3, 3, 0]} barSize={12}>
                         <LabelList
                           dataKey="cumplimiento_pct"
                           position="right"
@@ -787,43 +802,61 @@ export default function SlaProyectosClient() {
                   <p className="text-sm text-slate-400">No hay proyectos críticos en este momento.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-[12px]">
+                    <table className="w-full table-auto text-[12px]">
                       <thead>
-                        <tr className="text-left text-[10px] text-slate-400">
-                          <th className="pb-2 font-medium">Proyecto</th>
-                          <th className="pb-2 font-medium">Cliente</th>
-                          <th className="pb-2 font-medium">Estado</th>
-                          <th className="pb-2 font-medium">Resp. técnico</th>
-                          <th className="pb-2 font-medium">Fecha prometida</th>
-                          <th className="pb-2 font-medium">SLA</th>
-                          <th className="pb-2 font-medium">Semáforo</th>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 [&>th]:whitespace-nowrap [&>th]:pb-2 [&>th]:font-medium">
+                          <th>Proyecto</th>
+                          <th>Cliente</th>
+                          <th>Estado</th>
+                          <th>Resp. técnico</th>
+                          <th>Fecha prometida</th>
+                          <th>SLA</th>
+                          <th>Semáforo</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {data.criticos.slice(0, 5).map((c) => {
                           const meta = SEMAFORO_META[c.semaforo];
+                          const tecnico = nombreCorto(c.responsable_tecnico);
                           return (
-                            <tr key={c.id} className="text-slate-600">
-                              <td className="py-2 font-medium text-slate-700">{c.titulo}</td>
-                              <td className="py-2 uppercase text-slate-500">{c.cliente}</td>
-                              <td className="py-2">
+                            <tr key={c.id} className="align-middle text-slate-600 [&>td]:py-2.5">
+                              <td className="max-w-[150px] truncate font-medium text-slate-700" title={c.titulo}>
+                                {c.titulo}
+                              </td>
+                              <td className="max-w-[140px] truncate text-slate-500" title={c.cliente}>
+                                {c.cliente}
+                              </td>
+                              <td>
                                 <span
-                                  className="inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium"
+                                  className="inline-block max-w-[130px] truncate whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-medium"
                                   style={{ background: `${c.estado_color}1f`, color: c.estado_color }}
+                                  title={c.estado_nombre}
                                 >
                                   {c.estado_nombre}
                                 </span>
                               </td>
-                              <td className="py-2">{c.responsable_tecnico}</td>
-                              <td className="py-2">{fmtFecha(c.fecha_prometida)}</td>
-                              <td className="py-2">
-                                <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${meta.pill}`}>
+                              <td className="whitespace-nowrap" title={c.responsable_tecnico}>
+                                {tecnico}
+                              </td>
+                              <td className="whitespace-nowrap tabular-nums">{fmtFecha(c.fecha_prometida)}</td>
+                              <td>
+                                <span
+                                  className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold tabular-nums ${meta.pill}`}
+                                  title={
+                                    c.dias_restantes != null && c.dias_restantes < 0
+                                      ? `Vencido hace ${Math.abs(c.dias_restantes)} día(s)`
+                                      : "Días hasta la fecha prometida"
+                                  }
+                                >
                                   {slaDiasLabel(c.dias_restantes)}
                                 </span>
                               </td>
-                              <td className="py-2">
-                                <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: meta.color }}>
-                                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
+                              <td>
+                                <span
+                                  className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px]"
+                                  style={{ color: meta.color }}
+                                >
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: meta.color }} />
                                   {meta.label}
                                 </span>
                               </td>

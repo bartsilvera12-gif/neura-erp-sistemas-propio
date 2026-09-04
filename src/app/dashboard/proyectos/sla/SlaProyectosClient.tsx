@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -22,7 +22,6 @@ import * as XLSX from "xlsx";
 import {
   AlertCircle,
   AlertTriangle,
-  CalendarDays,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -37,7 +36,7 @@ import {
   Timer,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { nombreCorto } from "@/lib/format/nombres";
+import { nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 import CountUp from "@/components/reactbits/CountUp";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 
@@ -50,7 +49,11 @@ type Semaforo = "al_dia" | "en_riesgo" | "vencido";
 
 type SlaData = {
   fecha_ref: string;
+  fecha_desde: string | null;
+  fecha_hasta: string;
   dias_riesgo: number;
+  responsables_comercial: Opcion[];
+  responsables_tecnico: Opcion[];
   monitoreados: number;
   cumplimiento_pct: number;
   vencidos: number;
@@ -168,8 +171,128 @@ function FiltroPill({
   );
 }
 
-const selectCls =
-  "w-full cursor-pointer appearance-none truncate bg-transparent pr-5 text-right text-[13px] text-slate-400 focus:outline-none";
+/**
+ * Selector con la estética de la píldora del diseño: etiqueta y valor en la
+ * misma caja, y un desplegable propio. Reemplaza al `<select>` nativo, que
+ * mostraba una lista sin estilo, en mayúsculas y difícil de recorrer. Con más
+ * de 8 opciones habilita un buscador.
+ */
+function PillSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = "Todos",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Opcion[];
+  placeholder?: string;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!abierto) return;
+    function onDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setAbierto(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setAbierto(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [abierto]);
+
+  const seleccionada = options.find((o) => o.id === value) ?? null;
+  const buscable = options.length > 8;
+  const filtradas = q.trim()
+    ? options.filter((o) => o.nombre.toLowerCase().includes(q.trim().toLowerCase()))
+    : options;
+
+  return (
+    <div
+      ref={ref}
+      className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <span className="shrink-0 text-[13px] font-medium text-slate-600">{label}</span>
+      <button
+        type="button"
+        onClick={() => {
+          setAbierto((v) => !v);
+          setQ("");
+        }}
+        className="flex min-w-0 flex-1 items-center justify-end gap-1 focus:outline-none"
+        title={seleccionada?.nombre ?? placeholder}
+      >
+        <span className={`truncate text-[13px] ${seleccionada ? "text-slate-700" : "text-slate-400"}`}>
+          {seleccionada ? seleccionada.nombre : placeholder}
+        </span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {abierto ? (
+        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          {buscable ? (
+            <div className="border-b border-slate-100 p-2">
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar…"
+                className="w-full rounded-lg bg-slate-50 px-2.5 py-1.5 text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none"
+              />
+            </div>
+          ) : null}
+          <ul className="max-h-56 overflow-y-auto py-1">
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("");
+                  setAbierto(false);
+                }}
+                className={`w-full px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-50 ${
+                  !value ? "font-semibold text-[#2F6E71]" : "text-slate-600"
+                }`}
+              >
+                {placeholder}
+              </button>
+            </li>
+            {filtradas.map((o) => (
+              <li key={o.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(o.id);
+                    setAbierto(false);
+                  }}
+                  title={o.nombre}
+                  className={`block w-full truncate px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-50 ${
+                    value === o.id ? "font-semibold text-[#2F6E71]" : "text-slate-600"
+                  }`}
+                >
+                  {o.nombre}
+                </button>
+              </li>
+            ))}
+            {filtradas.length === 0 ? (
+              <li className="px-3 py-2 text-center text-[11px] text-slate-400">Sin resultados</li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 type KpiTono = {
   circulo: string;
@@ -240,7 +363,8 @@ function deltaDuracion(ms: number | null): string | null {
 }
 
 export default function SlaProyectosClient() {
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10));
+  const [desde, setDesde] = useState("");
   const [fEstado, setFEstado] = useState("");
   const [fTipo, setFTipo] = useState("");
   const [fRc, setFRc] = useState("");
@@ -248,30 +372,26 @@ export default function SlaProyectosClient() {
 
   const [estados, setEstados] = useState<Opcion[]>([]);
   const [tipos, setTipos] = useState<Opcion[]>([]);
-  const [usuarios, setUsuarios] = useState<Opcion[]>([]);
 
   const [data, setData] = useState<SlaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [actualizado, setActualizado] = useState<Date | null>(null);
 
+  // Estados y tipos salen de sus catálogos; los responsables vienen del propio
+  // dashboard (separados por rol según su asignación real en proyectos).
   useEffect(() => {
     let cancel = false;
     (async () => {
-      const [rEst, rTip, rUsers] = await Promise.all([
+      const [rEst, rTip] = await Promise.all([
         fetchWithSupabaseSession("/api/proyectos/estados", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/proyectos/tipos", { cache: "no-store" }),
-        fetchWithSupabaseSession("/api/usuarios/empresa-activos", { cache: "no-store" }),
       ]);
       const jEst = (await rEst.json().catch(() => ({}))) as { data?: Opcion[] };
       const jTip = (await rTip.json().catch(() => ({}))) as { data?: Opcion[] };
-      const jUsers = (await rUsers.json().catch(() => ({}))) as {
-        usuarios?: { id: string; nombre?: string | null; email?: string | null }[];
-      };
       if (cancel) return;
       setEstados(jEst.data ?? []);
       setTipos(jTip.data ?? []);
-      setUsuarios((jUsers.usuarios ?? []).map((u) => ({ id: u.id, nombre: (u.nombre ?? "").trim() || u.email || "—" })));
     })();
     return () => {
       cancel = true;
@@ -282,7 +402,8 @@ export default function SlaProyectosClient() {
     setLoading(true);
     setErr(null);
     const sp = new URLSearchParams();
-    if (fecha) sp.set("fecha", fecha);
+    if (desde) sp.set("desde", desde);
+    if (hasta) sp.set("hasta", hasta);
     if (fEstado) sp.set("estado_id", fEstado);
     if (fTipo) sp.set("tipo_id", fTipo);
     if (fRc) sp.set("responsable_comercial_id", fRc);
@@ -297,7 +418,7 @@ export default function SlaProyectosClient() {
     setData(j.data);
     setActualizado(new Date());
     setLoading(false);
-  }, [fecha, fEstado, fTipo, fRc, fRt]);
+  }, [desde, hasta, fEstado, fTipo, fRc, fRt]);
 
   useEffect(() => {
     void cargar();
@@ -311,6 +432,16 @@ export default function SlaProyectosClient() {
       { key: "vencido", label: "Vencidos", value: data.vencidos, color: ROJO },
     ].filter((s) => s.value > 0);
   }, [data]);
+
+  // Opciones de responsables, capitulares (el catálogo los guarda en MAYÚSCULAS).
+  const comerciales = useMemo<Opcion[]>(
+    () => (data?.responsables_comercial ?? []).map((o) => ({ id: o.id, nombre: nombreCapitular(o.nombre) })),
+    [data?.responsables_comercial]
+  );
+  const tecnicos = useMemo<Opcion[]>(
+    () => (data?.responsables_tecnico ?? []).map((o) => ({ id: o.id, nombre: nombreCapitular(o.nombre) })),
+    [data?.responsables_tecnico]
+  );
 
   // Nombres cortos para el eje del gráfico (los completos rompen el layout).
   const porTecnicoChart = useMemo(
@@ -471,59 +602,29 @@ export default function SlaProyectosClient() {
       </div>
 
       {/* Filtros */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <FiltroPill label="Fecha">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <FiltroPill label="Desde">
           <input
             type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
+            value={desde}
+            max={hasta || undefined}
+            onChange={(e) => setDesde(e.target.value)}
             className="w-full cursor-pointer bg-transparent text-right text-[13px] text-slate-500 focus:outline-none"
           />
         </FiltroPill>
-        <FiltroPill label="Estado">
-          <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className={selectCls}>
-            <option value="">Todos</option>
-            {estados.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.nombre}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+        <FiltroPill label="Hasta">
+          <input
+            type="date"
+            value={hasta}
+            min={desde || undefined}
+            onChange={(e) => setHasta(e.target.value)}
+            className="w-full cursor-pointer bg-transparent text-right text-[13px] text-slate-500 focus:outline-none"
+          />
         </FiltroPill>
-        <FiltroPill label="Tipo">
-          <select value={fTipo} onChange={(e) => setFTipo(e.target.value)} className={selectCls}>
-            <option value="">Todos</option>
-            {tipos.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.nombre}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-        </FiltroPill>
-        <FiltroPill label="Resp. comercial">
-          <select value={fRc} onChange={(e) => setFRc(e.target.value)} className={selectCls}>
-            <option value="">Todos</option>
-            {usuarios.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.nombre}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-        </FiltroPill>
-        <FiltroPill label="Resp. técnico">
-          <select value={fRt} onChange={(e) => setFRt(e.target.value)} className={selectCls}>
-            <option value="">Todos</option>
-            {usuarios.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.nombre}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-        </FiltroPill>
+        <PillSelect label="Estado" value={fEstado} onChange={setFEstado} options={estados} />
+        <PillSelect label="Tipo" value={fTipo} onChange={setFTipo} options={tipos} />
+        <PillSelect label="Resp. comercial" value={fRc} onChange={setFRc} options={comerciales} />
+        <PillSelect label="Resp. técnico" value={fRt} onChange={setFRt} options={tecnicos} />
       </div>
 
       {err ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{err}</div> : null}
@@ -705,15 +806,10 @@ export default function SlaProyectosClient() {
                   <ResponsiveContainer width="100%" height={168}>
                     <BarChart data={data.por_estado} margin={{ top: 16, right: 4, left: -18, bottom: 0 }}>
                       <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                      <XAxis
-                        dataKey="nombre"
-                        tick={{ fontSize: 8, fill: "#94a3b8" }}
-                        interval={0}
-                        axisLine={false}
-                        tickLine={false}
-                        height={30}
-                        tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
-                      />
+                      {/* Sin etiquetas en el eje: con 6 estados de nombre largo
+                          se encimaban unas sobre otras, y la leyenda de abajo ya
+                          identifica cada barra por color. */}
+                      <XAxis dataKey="nombre" tick={false} axisLine={false} tickLine={false} height={4} />
                       <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                       <Tooltip formatter={(v: number) => [`${v} proyectos`, "Cantidad"]} />
                       <Bar dataKey="cantidad" radius={[3, 3, 0, 0]} barSize={26}>

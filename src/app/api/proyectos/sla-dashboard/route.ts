@@ -56,17 +56,21 @@ export async function GET(request: Request) {
 
   try {
     const sp = new URL(request.url).searchParams;
-    const fechaRaw = sp.get("fecha"); // YYYY-MM-DD, "as of"
+    const esFecha = (s: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const desdeRaw = sp.get("desde");
+    // `fecha` se mantiene como alias de `hasta` por compatibilidad.
+    const hastaRaw = sp.get("hasta") ?? sp.get("fecha");
     const fEstado = sp.get("estado_id");
     const fTipo = sp.get("tipo_id");
     const fRc = sp.get("responsable_comercial_id");
     const fRt = sp.get("responsable_tecnico_id");
 
-    // Instante de referencia: fin del día elegido, o ahora si es hoy / vacío.
+    // `hasta` es el corte: fin de ese día, o ahora si es hoy / vacío. `desde` es
+    // el límite inferior del período (por fecha de ingreso del proyecto).
     const hoyIso = new Date().toISOString().slice(0, 10);
-    const fecha = fechaRaw && /^\d{4}-\d{2}-\d{2}$/.test(fechaRaw) ? fechaRaw : hoyIso;
-    const refMs =
-      fecha === hoyIso ? Date.now() : new Date(`${fecha}T23:59:59`).getTime();
+    const hasta = esFecha(hastaRaw) ? hastaRaw : hoyIso;
+    const desde = esFecha(desdeRaw) ? desdeRaw : null;
+    const refMs = hasta === hoyIso ? Date.now() : new Date(`${hasta}T23:59:59`).getTime();
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
     const emp = auth.empresaId;
@@ -90,6 +94,11 @@ export async function GET(request: Request) {
         if (fTipo) q = q.eq("tipo_id", fTipo);
         if (fRc) q = q.eq("responsable_comercial_id", fRc);
         if (fRt) q = q.eq("responsable_tecnico_id", fRt);
+        // Período por fecha de ingreso. El tope sólo se aplica al mirar una
+        // fecha pasada; con "hasta = hoy" no hace falta y así no se descartan
+        // los proyectos que no tienen `fecha_ingreso` cargada.
+        if (desde) q = q.gte("fecha_ingreso", `${desde}T00:00:00`);
+        if (hasta !== hoyIso) q = q.lte("fecha_ingreso", `${hasta}T23:59:59`);
         return q.limit(5000);
       })(),
     ]);
@@ -101,17 +110,41 @@ export async function GET(request: Request) {
     const estadoById = new Map(estados.map((e) => [e.id, e]));
     const proyectos = (proyectosBase.data ?? []) as ProyectoRow[];
 
-    // ---- Nombres (clientes + usuarios técnicos) para display ----
+    // ---- Nombres (clientes + usuarios) y opciones de responsables ----
+    // Quién es "comercial" y quién "técnico" se toma de la ASIGNACIÓN REAL en
+    // proyectos, no de `usuarios.rol` (que es el permiso del ERP) ni de `area`
+    // (que está cargada de forma poco confiable). Se lee SIN los filtros de
+    // pantalla para que las opciones del selector no se achiquen al filtrar.
     const clienteIds = [...new Set(proyectos.map((p) => p.cliente_id).filter((x): x is string => !!x))];
-    const tecnicoIds = [...new Set(proyectos.map((p) => p.responsable_tecnico_id).filter((x): x is string => !!x))];
+
+    const { data: asignaciones } = await sb
+      .from("proyectos")
+      .select("responsable_comercial_id, responsable_tecnico_id")
+      .eq("empresa_id", emp)
+      .eq("archivado", false)
+      .limit(5000);
+
+    const comercialIds = new Set<string>();
+    const tecnicoIds = new Set<string>();
+    for (const a of (asignaciones ?? []) as {
+      responsable_comercial_id?: string | null;
+      responsable_tecnico_id?: string | null;
+    }[]) {
+      if (a.responsable_comercial_id) comercialIds.add(a.responsable_comercial_id);
+      if (a.responsable_tecnico_id) tecnicoIds.add(a.responsable_tecnico_id);
+    }
+    // Los técnicos del set filtrado ya están dentro del set completo, pero por
+    // las dudas (datos viejos) se agregan igual.
+    for (const p of proyectos) if (p.responsable_tecnico_id) tecnicoIds.add(p.responsable_tecnico_id);
+    const usuarioIds = [...new Set([...comercialIds, ...tecnicoIds])];
 
     const catalog = createServiceRoleClient();
-    const [cliRes, tecRes] = await Promise.all([
+    const [cliRes, usrRes] = await Promise.all([
       clienteIds.length > 0
         ? sb.from("clientes").select("id, empresa, nombre_contacto").eq("empresa_id", emp).in("id", clienteIds)
         : Promise.resolve({ data: [] as { id: string; empresa?: string | null; nombre_contacto?: string | null }[] }),
-      tecnicoIds.length > 0
-        ? catalog.from("usuarios").select("id, nombre").eq("empresa_id", emp).in("id", tecnicoIds)
+      usuarioIds.length > 0
+        ? catalog.from("usuarios").select("id, nombre").eq("empresa_id", emp).in("id", usuarioIds)
         : Promise.resolve({ data: [] as { id: string; nombre?: string | null }[] }),
     ]);
     const clienteNombre = new Map<string, string>();
@@ -119,9 +152,16 @@ export async function GET(request: Request) {
       clienteNombre.set(c.id, (c.empresa ?? "").trim() || (c.nombre_contacto ?? "").trim() || "—");
     }
     const tecnicoNombre = new Map<string, string>();
-    for (const u of tecRes.data ?? []) {
+    for (const u of usrRes.data ?? []) {
       tecnicoNombre.set(u.id, (u.nombre ?? "").trim() || "—");
     }
+    const opciones = (ids: Set<string>) =>
+      [...ids]
+        .map((id) => ({ id, nombre: tecnicoNombre.get(id) ?? "—" }))
+        .filter((o) => o.nombre !== "—")
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const responsables_comercial = opciones(comercialIds);
+    const responsables_tecnico = opciones(tecnicoIds);
 
     // ---- Clasificación por proyecto ----
     function clasificar(
@@ -342,8 +382,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       successResponse({
-        fecha_ref: fecha,
+        fecha_ref: hasta,
+        fecha_desde: desde,
+        fecha_hasta: hasta,
         dias_riesgo: DIAS_RIESGO,
+        responsables_comercial,
+        responsables_tecnico,
         monitoreados,
         cumplimiento_pct: cumplimientoPct,
         vencidos,

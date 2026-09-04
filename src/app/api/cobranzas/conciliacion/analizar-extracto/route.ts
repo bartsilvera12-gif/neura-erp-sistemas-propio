@@ -24,15 +24,6 @@ export async function POST(request: NextRequest) {
     const form = await request.formData();
     const file = form.get("file");
     const mes = String(form.get("mes") ?? "").trim();
-    // DEBUG temporal: qué llega realmente en la subida.
-    console.warn("[analizar-extracto] debug", {
-      keys: [...form.keys()],
-      fileKind: file === null ? "null" : file instanceof File ? "File" : typeof file,
-      fileName: file instanceof File ? file.name : (typeof file === "string" ? `str:${file.slice(0, 40)}` : null),
-      fileSize: file instanceof File ? file.size : null,
-      contentType: request.headers.get("content-type"),
-      contentLength: request.headers.get("content-length"),
-    });
     if (mes && !/^\d{4}-\d{2}$/.test(mes)) {
       return NextResponse.json(errorResponse("Mes inválido (YYYY-MM)"), { status: 400 });
     }

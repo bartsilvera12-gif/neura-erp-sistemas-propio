@@ -1119,7 +1119,7 @@ export default function ClienteDetalleClient({
   const nombre = clienteNombre(cliente);
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 max-w-7xl">
 
       {/* ── Breadcrumb ────────────────────────────────────────────────────── */}
       <button
@@ -2284,8 +2284,8 @@ export default function ClienteDetalleClient({
                           <td className="px-4 py-3 align-top">
                             <SifenEstadoBadge estadoSifen={sifenPorFactura[f.id]?.estado_sifen ?? null} />
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex flex-wrap items-center justify-end gap-2">
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <div className="flex flex-nowrap items-center justify-end gap-2">
                               {f.saldo > 0 && (
                                 <button
                                   type="button"

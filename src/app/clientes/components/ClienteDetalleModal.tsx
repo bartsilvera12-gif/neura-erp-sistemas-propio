@@ -53,7 +53,7 @@ export default function ClienteDetalleModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="cliente-detalle-titulo"
-        className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col overflow-hidden rounded-none border-0 border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15 sm:h-[92dvh] sm:max-h-[1000px] sm:rounded-2xl sm:border"
+        className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden rounded-none border-0 border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15 sm:h-[92dvh] sm:max-h-[1000px] sm:rounded-2xl sm:border"
       >
         <span
           aria-hidden="true"

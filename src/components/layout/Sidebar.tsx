@@ -185,6 +185,15 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: FolderKanban,
   },
   {
+    // Dashboard SLA del módulo Proyectos. Reusa el permiso del módulo Proyectos
+    // (slug), key propia y única, ruta bajo /dashboard/proyectos (gate heredado).
+    key: "sla_proyectos",
+    slug: "proyectos",
+    label: "SLA Proyectos",
+    href: "/dashboard/proyectos/sla",
+    icon: Activity,
+  },
+  {
     // Reporte gerencial de producción. Reusa el permiso del módulo Proyectos (slug),
     // key propia y única. El gate fino (gerencia/admin) lo aplica la API.
     key: "produccion",
@@ -228,7 +237,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   {
     id: "comercial",
     title: "Comercial",
-    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos"],
+    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos", "sla_proyectos"],
   },
   {
     id: "finanzas",

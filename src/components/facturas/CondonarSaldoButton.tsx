@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 /**
@@ -82,7 +83,7 @@ export function CondonarSaldoButton({
         Condonar saldo
       </button>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
           role="dialog"
@@ -133,7 +134,8 @@ export function CondonarSaldoButton({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

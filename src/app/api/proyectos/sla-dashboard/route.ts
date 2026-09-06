@@ -208,11 +208,13 @@ export async function GET(request: Request) {
       let vencidos = 0;
       let enRiesgo = 0;
       let alDia = 0;
+      let entregados = 0;
       let total = 0;
       for (const p of proyectos) {
         if (!existiaEn(p, atMs)) continue;
         total += 1;
         const c = clasificar(p, atMs);
+        if (c.entregado) entregados += 1;
         if (c.semaforo === "vencido") vencidos += 1;
         else if (c.semaforo === "en_riesgo") enRiesgo += 1;
         else alDia += 1;
@@ -222,6 +224,9 @@ export async function GET(request: Request) {
         vencidos,
         en_riesgo: enRiesgo,
         al_dia: alDia,
+        // Entregados = ya cerrados a la fecha de corte. Es un subconjunto de
+        // `monitoreados`, no una categoría aparte del semáforo.
+        entregados,
         cumplimiento_pct: total > 0 ? Math.round(((total - vencidos) / total) * 100) : 100,
       };
     }
@@ -231,7 +236,14 @@ export async function GET(request: Request) {
 
     const hoy = resumenEn(refMs);
     const ayer = resumenEn(refMs - 86400000);
-    const { monitoreados, vencidos, en_riesgo: enRiesgo, al_dia: alDia, cumplimiento_pct: cumplimientoPct } = hoy;
+    const {
+      monitoreados,
+      vencidos,
+      en_riesgo: enRiesgo,
+      al_dia: alDia,
+      entregados,
+      cumplimiento_pct: cumplimientoPct,
+    } = hoy;
 
     // ---- Pausados / esperando cliente ----
     const estadoEspera = new Set(
@@ -328,34 +340,6 @@ export async function GET(request: Request) {
     const resolucionAyerMs = resolucionEn(refMs - 86400000);
     const respuestaAyerMs = respuestaEn(refMs - 86400000);
 
-    // ---- Tendencia de cumplimiento últimos 7 días (reconstruida por fecha) ----
-    const tendencia: { fecha: string; cumplimiento_pct: number }[] = [];
-    for (let off = 6; off >= 0; off--) {
-      const dMs = refMs - off * 86400000;
-      const dIso = new Date(dMs).toISOString().slice(0, 10);
-      let total = 0;
-      let cumple = 0;
-      for (const p of proyectos) {
-        const creado = p.fecha_ingreso
-          ? Date.parse(p.fecha_ingreso)
-          : p.created_at
-            ? Date.parse(p.created_at)
-            : NaN;
-        if (!Number.isFinite(creado) || creado > dMs) continue; // aún no existía
-        const entrega = p.primera_entrega_at
-          ? Date.parse(p.primera_entrega_at)
-          : p.fecha_entrega
-            ? Date.parse(p.fecha_entrega)
-            : NaN;
-        if (Number.isFinite(entrega) && entrega <= dMs) continue; // ya entregado a esa fecha
-        total += 1;
-        const fp = p.fecha_prometida ? Date.parse(p.fecha_prometida) : NaN;
-        // A esa fecha estaba a tiempo si no había fecha o todavía no vencía.
-        if (!Number.isFinite(fp) || fp >= dMs) cumple += 1;
-      }
-      tendencia.push({ fecha: dIso, cumplimiento_pct: total > 0 ? Math.round((cumple / total) * 100) : 100 });
-    }
-
     // ---- Proyectos críticos / próximos vencimientos (en curso, con fecha) ----
     const criticos = proyectos
       .map((p) => ({ p, c: clas.get(p.id)! }))
@@ -393,6 +377,7 @@ export async function GET(request: Request) {
         vencidos,
         en_riesgo: enRiesgo,
         al_dia: alDia,
+        entregados,
         pausados,
         tiempo_respuesta_ms,
         tiempo_resolucion_ms,
@@ -402,6 +387,7 @@ export async function GET(request: Request) {
           cumplimiento_pp: cumplimientoPct - ayer.cumplimiento_pct,
           vencidos: vencidos - ayer.vencidos,
           en_riesgo: enRiesgo - ayer.en_riesgo,
+          entregados: entregados - ayer.entregados,
           respuesta_ms:
             tiempo_respuesta_ms != null && respuestaAyerMs != null
               ? tiempo_respuesta_ms - respuestaAyerMs
@@ -413,7 +399,6 @@ export async function GET(request: Request) {
         },
         por_estado,
         por_tecnico,
-        tendencia,
         criticos,
       })
     );

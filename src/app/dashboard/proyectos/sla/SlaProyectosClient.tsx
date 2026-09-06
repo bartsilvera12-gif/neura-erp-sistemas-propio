@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -31,6 +29,7 @@ import {
   FolderOpen,
   Info,
   PauseCircle,
+  PackageCheck,
   Percent,
   RefreshCw,
   Timer,
@@ -59,6 +58,7 @@ type SlaData = {
   vencidos: number;
   en_riesgo: number;
   al_dia: number;
+  entregados: number;
   pausados: number;
   tiempo_respuesta_ms: number | null;
   tiempo_resolucion_ms: number | null;
@@ -67,12 +67,12 @@ type SlaData = {
     cumplimiento_pp: number;
     vencidos: number;
     en_riesgo: number;
+    entregados: number;
     respuesta_ms: number | null;
     resolucion_ms: number | null;
   };
   por_estado: { estado_id: string; nombre: string; color: string; cantidad: number }[];
   por_tecnico: { usuario_id: string; nombre: string; total: number; cumplimiento_pct: number }[];
-  tendencia: { fecha: string; cumplimiento_pct: number }[];
   criticos: {
     id: string;
     titulo: string;
@@ -107,12 +107,6 @@ function fmtFecha(iso: string | null): string {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "—";
   return d.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function fmtDiaEje(iso: string): string {
-  const d = new Date(`${iso}T12:00:00`);
-  if (!Number.isFinite(d.getTime())) return iso;
-  return d.toLocaleDateString("es-PY", { day: "numeric", month: "short" });
 }
 
 const SEMAFORO_META: Record<Semaforo, { label: string; color: string; pill: string }> = {
@@ -464,6 +458,7 @@ export default function SlaProyectosClient() {
         ["Al día", data.al_dia],
         ["En riesgo", data.en_riesgo],
         ["Vencidos", data.vencidos],
+        ["Entregados", data.entregados],
         ["Pausados", data.pausados],
         ["Tiempo prom. respuesta", fmtDur(data.tiempo_respuesta_ms)],
         ["Tiempo prom. resolución", fmtDur(data.tiempo_resolucion_ms)],
@@ -498,11 +493,6 @@ export default function SlaProyectosClient() {
         ]),
       ]),
       "Críticos"
-    );
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet([["Fecha", "% cumplimiento"], ...data.tendencia.map((t) => [t.fecha, t.cumplimiento_pct])]),
-      "Tendencia"
     );
     XLSX.writeFile(wb, `SLA-Proyectos-${data.fecha_ref}.xlsx`);
   }, [data]);
@@ -547,6 +537,7 @@ export default function SlaProyectosClient() {
         <div class="kpi"><div class="v">${data.cumplimiento_pct}%</div><div class="l">% cumplimiento SLA</div></div>
         <div class="kpi"><div class="v">${data.vencidos}</div><div class="l">Vencidos</div></div>
         <div class="kpi"><div class="v">${data.en_riesgo}</div><div class="l">En riesgo</div></div>
+        <div class="kpi"><div class="v">${data.entregados}</div><div class="l">Entregados</div></div>
         <div class="kpi"><div class="v">${fmtDur(data.tiempo_respuesta_ms)}</div><div class="l">Tiempo prom. respuesta</div></div>
         <div class="kpi"><div class="v">${fmtDur(data.tiempo_resolucion_ms)}</div><div class="l">Tiempo prom. resolución</div></div>
       </div>
@@ -630,15 +621,15 @@ export default function SlaProyectosClient() {
       {err ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{err}</div> : null}
 
       {loading && !data ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="h-[118px] animate-pulse rounded-xl border border-slate-200 bg-slate-100/70" />
           ))}
         </div>
       ) : data ? (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
             <Kpi
               icon={FolderOpen}
               tono={TONO.teal}
@@ -673,6 +664,14 @@ export default function SlaProyectosClient() {
               deltaBueno={data.vs_ayer.en_riesgo <= 0}
             />
             <Kpi
+              icon={PackageCheck}
+              tono={TONO.teal}
+              label="Entregados"
+              numero={data.entregados}
+              delta={deltaTexto(data.vs_ayer.entregados, "")}
+              deltaBueno={data.vs_ayer.entregados >= 0}
+            />
+            <Kpi
               icon={Clock}
               tono={TONO.azul}
               label="Tiempo prom. respuesta"
@@ -690,8 +689,8 @@ export default function SlaProyectosClient() {
             />
           </div>
 
-          {/* Gráficos: 4 en una fila, como el diseño */}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {/* Gráficos: 3 en una fila */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {/* Semáforo SLA */}
             <Card>
               <CardTitle>Semáforo SLA</CardTitle>
@@ -834,58 +833,6 @@ export default function SlaProyectosClient() {
                   </div>
                 </>
               )}
-            </Card>
-
-            {/* Tendencia de cumplimiento */}
-            <Card>
-              <CardTitle>Tendencia de cumplimiento (últimos 7 días)</CardTitle>
-              <ResponsiveContainer width="100%" height={168}>
-                <AreaChart data={data.tendencia} margin={{ top: 18, right: 10, left: -18, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="slaArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={TEAL} stopOpacity={0.28} />
-                      <stop offset="100%" stopColor={TEAL} stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                  <XAxis
-                    dataKey="fecha"
-                    tickFormatter={fmtDiaEje}
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    domain={[0, 100]}
-                    ticks={[0, 25, 50, 75, 100]}
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    tickFormatter={(v) => `${v}%`}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip formatter={(v: number) => [`${v}%`, "Cumplimiento"]} labelFormatter={(l) => fmtDiaEje(String(l))} />
-                  <Area
-                    type="monotone"
-                    dataKey="cumplimiento_pct"
-                    stroke={TEAL}
-                    strokeWidth={2}
-                    fill="url(#slaArea)"
-                    dot={{ r: 3, fill: "#fff", stroke: TEAL, strokeWidth: 2 }}
-                    activeDot={{ r: 4 }}
-                  >
-                    <LabelList
-                      dataKey="cumplimiento_pct"
-                      position="top"
-                      formatter={(v: number) => `${v}%`}
-                      style={{ fontSize: 9, fill: "#64748b", fontWeight: 600 }}
-                    />
-                  </Area>
-                </AreaChart>
-              </ResponsiveContainer>
-              <div className="mt-1 flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
-                <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: TEAL }} />
-                % cumplimiento SLA
-              </div>
             </Card>
           </div>
 

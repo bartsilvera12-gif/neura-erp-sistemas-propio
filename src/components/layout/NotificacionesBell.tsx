@@ -173,7 +173,10 @@ export default function NotificacionesBell() {
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
-      const res = await fetchWithSupabaseSession("/api/notificaciones?limit=20", {
+      // `solo_no_leidas`: la campanita es una bandeja de pendientes, no un
+      // historial. Lo ya leído deja de aparecer; lo que pasó queda en el
+      // historial del proyecto, que es donde se busca a propósito.
+      const res = await fetchWithSupabaseSession("/api/notificaciones?limit=20&solo_no_leidas=1", {
         cache: "no-store",
       });
       const j = (await res.json().catch(() => null)) as ApiResp | null;
@@ -300,22 +303,18 @@ export default function NotificacionesBell() {
 
   const marcarLeidas = useCallback(
     async (payload: { ids?: string[]; todas?: boolean }) => {
-      // Optimista: el contador baja al instante y la recarga confirma.
+      // Optimista: la notificación se va de la lista al instante y la recarga
+      // confirma. Los avisos DERIVADOS se quedan: no son filas que se puedan
+      // marcar, se calculan en vivo y volverían en el próximo poll — sacarlos
+      // los haría parpadear.
       if (payload.todas) {
-        // Los avisos derivados no se marcan: siguen encendidos hasta que el
-        // proyecto avanza. Marcarlos acá sólo los apagaría hasta la recarga.
-        setItems((prev) =>
-          prev.map((n) => (n.derivada ? n : { ...n, leida_at: n.leida_at ?? new Date().toISOString() }))
-        );
-        // Quedan encendidos los avisos derivados, que no se apagan a mano.
+        setItems((prev) => prev.filter((n) => n.derivada));
         setNoLeidas(derivadasRef.current);
       } else if (payload.ids && payload.ids.length > 0) {
         const ids = payload.ids;
         const set = new Set(ids);
-        setItems((prev) =>
-          prev.map((n) => (set.has(n.id) ? { ...n, leida_at: n.leida_at ?? new Date().toISOString() } : n))
-        );
-        setNoLeidas((n) => Math.max(0, n - ids.length));
+        setItems((prev) => prev.filter((n) => n.derivada || !set.has(n.id)));
+        setNoLeidas((n) => Math.max(derivadasRef.current, n - ids.length));
       }
       try {
         await fetchWithSupabaseSession("/api/notificaciones/marcar-leidas", {
@@ -380,7 +379,7 @@ export default function NotificacionesBell() {
           <ul className="max-h-[26rem] divide-y divide-slate-100 overflow-y-auto">
             {items.length === 0 ? (
               <li className="px-4 py-8 text-center text-sm text-slate-400">
-                {cargando ? "Cargando…" : "No tenés notificaciones."}
+                {cargando ? "Cargando…" : "Estás al día. No hay notificaciones pendientes."}
               </li>
             ) : (
               items.map((n) => {

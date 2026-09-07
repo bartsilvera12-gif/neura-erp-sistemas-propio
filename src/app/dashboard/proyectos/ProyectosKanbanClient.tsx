@@ -1,5 +1,6 @@
 "use client";
 
+import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 import {
   DndContext,
   DragOverlay,
@@ -1723,19 +1724,26 @@ function ProjectCardViewBase({
             </span>
           ) : null}
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-xl bg-slate-50/80 px-3 py-2 text-[11px] text-slate-700">
-          <MetaItem label="Com." value={p.responsable_comercial?.nombre ?? "—"} />
-          <MetaItem label="Téc." value={p.responsable_tecnico?.nombre ?? "—"} />
-          {/* El PM sale de la ficha del cliente y se sincroniza solo; se muestra
-              acá porque es la persona a la que hay que escribirle cuando algo
-              del proyecto se traba. */}
-          <div className="col-span-2">
-            <MetaItem label="PM" value={p.project_manager?.nombre ?? "—"} />
-          </div>
-          <MetaItem label="Ingreso" value={fmtDate(p.fecha_ingreso)} />
-          <MetaItem label="Prometido" value={fmtDate(p.fecha_prometida)} />
-          <div className="col-span-2">
-            <MetaItem label="Actividad" value={fmtDateTime(p.last_activity_at)} />
+        <div className="mt-3 space-y-1.5 rounded-xl bg-slate-50/80 px-3 py-2.5">
+          {/* Las tres personas del proyecto, una por línea. El PM sale de la
+              ficha del cliente y se sincroniza solo; está acá porque es a quien
+              hay que escribirle cuando algo se traba. */}
+          <PersonaMeta rol="PM" nombre={p.project_manager?.nombre} />
+          <PersonaMeta rol="Téc" nombre={p.responsable_tecnico?.nombre} />
+          <PersonaMeta rol="Com" nombre={p.responsable_comercial?.nombre} />
+
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-slate-200/70 pt-1.5 text-[10.5px]">
+            <FechaMeta label="Ingreso" value={fmtDate(p.fecha_ingreso)} />
+            {/* Sin fecha prometida se dice que falta, en vez de un guión que se
+                lee como "no aplica": es un dato pendiente de cargar. */}
+            <FechaMeta
+              label="Prometido"
+              value={fmtDate(p.fecha_prometida)}
+              alerta={!p.fecha_prometida}
+            />
+            <div className="col-span-2">
+              <FechaMeta label="Actividad" value={fmtDateTime(p.last_activity_at)} />
+            </div>
           </div>
         </div>
       </button>
@@ -1787,11 +1795,69 @@ function ProjectCardViewBase({
 
 const ProjectCardView = memo(ProjectCardViewBase);
 
-function MetaItem({ label, value }: { label: string; value: string }) {
+/** Paleta de los avatares. El color sale del texto: la misma persona, el mismo color. */
+const COLORES_PERSONA = ["#4FAEB2", "#8b5cf6", "#f59e0b", "#ec4899", "#22c55e", "#0ea5e9"];
+
+function colorDePersona(nombre: string): string {
+  let h = 0;
+  for (let i = 0; i < nombre.length; i++) h = (h * 31 + nombre.charCodeAt(i)) >>> 0;
+  return COLORES_PERSONA[h % COLORES_PERSONA.length];
+}
+
+/**
+ * Una persona del proyecto: rol, avatar y nombre en UNA línea.
+ *
+ * Antes eran nombres completos en mayúsculas que ocupaban tres renglones cada
+ * uno —"EMMANUEL MAXIMILIANO GUILLEN MARTINEZ"— y empujaban las fechas fuera de
+ * la vista. Se muestra nombre y primer apellido, que es como se lo nombra en la
+ * oficina, y el completo queda en el `title`.
+ */
+function PersonaMeta({ rol, nombre }: { rol: string; nombre?: string | null }) {
+  const completo = (nombre ?? "").trim();
+  if (!completo) {
+    return (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="w-7 shrink-0 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+          {rol}
+        </span>
+        <span className="text-[11px] text-slate-300">Sin asignar</span>
+      </div>
+    );
+  }
+  const color = colorDePersona(completo);
+  return (
+    <div className="flex min-w-0 items-center gap-1.5" title={`${rol}: ${nombreCapitular(completo)}`}>
+      <span className="w-7 shrink-0 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+        {rol}
+      </span>
+      <span
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
+        style={{ background: `${color}22`, color }}
+      >
+        {inicialesNombre(completo)}
+      </span>
+      <span className="min-w-0 truncate text-[11px] font-medium text-slate-700">
+        {nombreCorto(completo)}
+      </span>
+    </div>
+  );
+}
+
+function FechaMeta({
+  label,
+  value,
+  alerta,
+}: {
+  label: string;
+  value: string;
+  alerta?: boolean;
+}) {
   return (
     <div className="min-w-0">
-      <span className="font-semibold text-slate-500">{label}</span>{" "}
-      <span className="break-words text-slate-800">{value}</span>
+      <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <div className={`truncate tabular-nums ${alerta ? "font-semibold text-amber-600" : "text-slate-700"}`}>
+        {alerta ? "A definir" : value}
+      </div>
     </div>
   );
 }

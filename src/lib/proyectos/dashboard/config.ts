@@ -21,6 +21,9 @@
  */
 export const CODIGOS_RESPONSABILIDAD_TECNICA = ["desarrollo", "cambios_solicitados"] as const;
 
+/** La columna de desarrollo propiamente dicha, sin los cambios solicitados. */
+export const CODIGO_DESARROLLO = "desarrollo";
+
 /**
  * Estados de revisión de QA. Cada ENTRADA a uno de ellos es una ronda.
  *

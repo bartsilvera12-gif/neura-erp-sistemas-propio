@@ -29,9 +29,9 @@ import {
   AlertCircle,
   CheckCircle2,
   ClipboardCheck,
+  Code2,
   Flag,
   Hourglass,
-  Lock,
   RefreshCw,
   Timer,
   Users,
@@ -67,7 +67,7 @@ type Data = {
     vencen_pronto: number;
     vencidos: number;
     bloqueados: number;
-    estancados: number;
+    en_desarrollo: number;
     esperando_cliente: number;
     esperando_qa: number;
     listos_entregar: number;
@@ -342,8 +342,8 @@ export default function DashboardPmClient() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <Kpi icon={Timer} tono={TONO.ambar} label="Vencen pronto" sublabel="≤ 3 días" numero={data.kpis.vencen_pronto} />
               <Kpi icon={AlertCircle} tono={TONO.rojo} label="Vencidos" numero={data.kpis.vencidos} />
-              <Kpi icon={Lock} tono={TONO.gris} label="Bloqueados" numero={data.kpis.bloqueados} />
-              <Kpi icon={Hourglass} tono={TONO.naranja} label="Estancados" numero={data.kpis.estancados} />
+              <Kpi icon={Hourglass} tono={TONO.gris} label="Estancados" numero={data.kpis.bloqueados} />
+              <Kpi icon={Code2} tono={TONO.violeta} label="En desarrollo" numero={data.kpis.en_desarrollo} />
               <Kpi icon={Users} tono={TONO.violeta} label="Esperando cliente" numero={data.kpis.esperando_cliente} />
               <Kpi icon={CheckCircle2} tono={TONO.azul} label="Esperando QA" numero={data.kpis.esperando_qa} />
               <Kpi icon={Flag} tono={TONO.verde} label="Listos para entregar" numero={data.kpis.listos_entregar} />

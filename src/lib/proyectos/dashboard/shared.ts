@@ -20,6 +20,7 @@ import {
   CODIGOS_LISTO_ENTREGAR,
   CODIGOS_QA,
   CODIGOS_RESPONSABILIDAD_TECNICA,
+  CODIGO_DESARROLLO,
   CODIGO_ENTREGADO,
   DIAS_VENCE_PRONTO,
   MS_SIN_MOVIMIENTO,
@@ -599,7 +600,14 @@ export function cuentaParaWip(p: ProyectoMetrica): boolean {
   return p.responsabilidad_tecnica || p.en_qa;
 }
 
-/** KPIs que comparten las dos pantallas. Se calculan una sola vez. */
+/**
+ * KPIs que comparten las dos pantallas. Se calculan una sola vez.
+ *
+ * `bloqueados` se muestra como "Estancados", que es como el equipo llama a un
+ * proyecto detenido. El campo mantiene su nombre porque describe el criterio
+ * real —bandera de bloqueo o estado de tipo pausado— y porque `estancado` a
+ * nivel proyecto significa otra cosa: pasarse del objetivo de horas del estado.
+ */
 export function kpisComunes(proyectos: ProyectoMetrica[], wipAlto: number) {
   const activos = proyectos.filter((p) => !p.entregado && !p.cancelado);
   return {
@@ -608,7 +616,7 @@ export function kpisComunes(proyectos: ProyectoMetrica[], wipAlto: number) {
     ).length,
     vencidos: activos.filter((p) => p.dias_restantes != null && p.dias_restantes < 0).length,
     bloqueados: activos.filter((p) => p.bloqueado).length,
-    estancados: activos.filter((p) => p.estancado).length,
+    en_desarrollo: activos.filter((p) => p.estado_codigo === CODIGO_DESARROLLO).length,
     esperando_cliente: activos.filter((p) => p.espera_cliente).length,
     esperando_qa: activos.filter((p) => p.en_qa).length,
     listos_entregar: activos.filter((p) => p.listo_entregar).length,

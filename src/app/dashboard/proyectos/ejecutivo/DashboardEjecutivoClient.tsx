@@ -35,12 +35,12 @@ import {
   CalendarRange,
   CheckCircle2,
   Clock,
+  Code2,
   Download,
   LineChart,
   Quote,
   Flag,
   Hourglass,
-  Lock,
   RefreshCw,
   Timer,
   Users,
@@ -78,7 +78,7 @@ type Data = {
     vencen_pronto: number;
     vencidos: number;
     bloqueados: number;
-    estancados: number;
+    en_desarrollo: number;
     esperando_cliente: number;
     esperando_qa: number;
     listos_entregar: number;
@@ -295,8 +295,8 @@ export default function DashboardEjecutivoClient() {
       ["Indicador", "Valor"],
       ["Vencen pronto", data.kpis.vencen_pronto],
       ["Vencidos", data.kpis.vencidos],
-      ["Bloqueados", data.kpis.bloqueados],
-      ["Estancados", data.kpis.estancados],
+      ["Estancados", data.kpis.bloqueados],
+      ["En desarrollo", data.kpis.en_desarrollo],
       ["Esperando cliente", data.kpis.esperando_cliente],
       ["Esperando QA", data.kpis.esperando_qa],
       ["Listos para entregar", data.kpis.listos_entregar],
@@ -412,8 +412,8 @@ export default function DashboardEjecutivoClient() {
                 numero={data.kpis.vencen_pronto}
               />
               <Kpi icon={AlertCircle} tono={TONO.rojo} label="Vencidos" numero={data.kpis.vencidos} />
-              <Kpi icon={Lock} tono={TONO.gris} label="Bloqueados" numero={data.kpis.bloqueados} />
-              <Kpi icon={Hourglass} tono={TONO.naranja} label="Estancados" numero={data.kpis.estancados} />
+              <Kpi icon={Hourglass} tono={TONO.gris} label="Estancados" numero={data.kpis.bloqueados} />
+              <Kpi icon={Code2} tono={TONO.violeta} label="En desarrollo" numero={data.kpis.en_desarrollo} />
               <Kpi
                 icon={Users}
                 tono={TONO.violeta}

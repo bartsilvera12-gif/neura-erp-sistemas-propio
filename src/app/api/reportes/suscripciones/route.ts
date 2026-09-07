@@ -164,6 +164,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 4c) Serie de FACTURADO (emitido) de suscripciones — últimos 6 meses, para la tendencia del MRR.
+    const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    const periodos6: { ym: string; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(Date.UTC(yy, mm - 1 - i, 1));
+      periodos6.push({ ym: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, label: MESES_CORTOS[d.getUTCMonth()] });
+    }
+    const emitidoPorPeriodo = new Map<string, number>(periodos6.map((p) => [p.ym, 0]));
+    {
+      const { data } = await supabase
+        .from("facturas")
+        .select("monto, estado, periodo_facturado")
+        .eq("empresa_id", empresaId)
+        .eq("tipo", "suscripcion")
+        .in("periodo_facturado", periodos6.map((p) => p.ym));
+      for (const f of (data ?? []) as { monto: number | null; estado: string | null; periodo_facturado: string | null }[]) {
+        if (String(f.estado ?? "").trim().toLowerCase() === "anulado") continue;
+        const per = String(f.periodo_facturado ?? "");
+        if (emitidoPorPeriodo.has(per)) emitidoPorPeriodo.set(per, (emitidoPorPeriodo.get(per) ?? 0) + (Number(f.monto) || 0));
+      }
+    }
+    const serie_mrr = periodos6.map((p) => ({ periodo: p.ym, label: p.label, monto: Math.round(emitidoPorPeriodo.get(p.ym) ?? 0) }));
+
     // 4b) COBRADO de suscripciones A LA FECHA DEL DÍA: pagos imputados a facturas tipo=suscripcion,
     //     este mes (1 → hoy) vs mes anterior (1 → mismo día), para comparar el ritmo de cobro.
     const hoy = new Intl.DateTimeFormat("en-CA", {
@@ -257,6 +280,7 @@ export async function GET(request: NextRequest) {
         total_mes_anterior: Math.round(totalMesAnterior),
         cobrado_mes: Math.round(cobradoMes),
         cobrado_mes_anterior: Math.round(cobradoMesAnterior),
+        serie_mrr,
         rows,
       })
     );

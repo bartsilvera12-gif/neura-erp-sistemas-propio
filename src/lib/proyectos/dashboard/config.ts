@@ -21,8 +21,14 @@
  */
 export const CODIGOS_RESPONSABILIDAD_TECNICA = ["desarrollo", "cambios_solicitados"] as const;
 
-/** Estados de revisión de QA. Cada ENTRADA a uno de ellos es una ronda de QA. */
-export const CODIGOS_QA = ["qa", "revision_interna"] as const;
+/**
+ * Estados de revisión de QA. Cada ENTRADA a uno de ellos es una ronda.
+ *
+ * Sólo la columna QA. "Revisión interna" viene en la semilla original pero la
+ * empresa no la usa como paso de QA, y contarla infliaría las rondas de todos
+ * los proyectos viejos. Si algún día se usa, se agrega acá.
+ */
+export const CODIGOS_QA = ["qa"] as const;
 
 /**
  * Estados "listo para entregar": el trabajo terminó pero la entrega no se

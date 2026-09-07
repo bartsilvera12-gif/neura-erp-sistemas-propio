@@ -5,6 +5,7 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { tipoEsMixto, tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
+import { msLaborables, MS_JORNADA } from "@/lib/proyectos/reloj-laboral";
 
 /**
  * GET /api/proyectos/panel — Panel GERENCIAL de proyectos.
@@ -263,6 +264,7 @@ export async function GET(request: Request) {
     }
     // ── Agregaciones ──
     const now = Date.now();
+    const nowIso = new Date(now).toISOString();
     const ymActual = ymEnAsuncion(new Date());
     const entregaYm = (pid: string): string | null => {
       const ms = entregaMs.get(pid);
@@ -281,17 +283,22 @@ export async function GET(request: Request) {
       const eid = String(p.estado_id ?? "");
       const meta = estMeta.get(eid);
       const entered = entradaEstadoActual.get(String(p.id));
-      const diasEnEstado = entered != null ? Math.max(0, Math.floor((now - entered) / 86400000)) : null;
+      // Tiempo LABORAL, igual que el resto del módulo: la empresa trabaja de
+      // lunes a viernes de 8 a 17 y los sábados de 8 a 12. Medir calendario acá
+      // hacía que este panel marcara vencidos que el Kanban no, sobre el mismo
+      // proyecto y el mismo objetivo.
+      const transc = entered != null ? msLaborables(new Date(entered).toISOString(), nowIso) : null;
+      const diasEnEstado = transc != null ? Math.max(0, Math.floor(transc / MS_JORNADA)) : null;
       let slaVencido = false;
       let slaTexto = "sin SLA";
       if (meta && meta.cuentaSla && meta.slaHoras != null && !meta.final) {
         const objMs = meta.slaHoras * 3600 * 1000;
-        if (entered != null) {
-          const transc = now - entered;
+        if (transc != null) {
           slaVencido = transc > objMs;
+          const jornadas = (ms: number) => Math.max(0, Math.ceil(ms / MS_JORNADA));
           slaTexto = slaVencido
-            ? `Vencido (${Math.floor((transc - objMs) / 86400000)}d)`
-            : `${Math.max(0, Math.ceil((objMs - transc) / 86400000))}d restantes`;
+            ? `Vencido (${jornadas(transc - objMs)}j)`
+            : `${jornadas(objMs - transc)}j restantes`;
         }
       } else if (meta?.final) {
         slaTexto = "—";
@@ -327,7 +334,8 @@ export async function GET(request: Request) {
       agg.presupuesto += presupuestoDe(p);
       if (meta && meta.cuentaSla && meta.slaHoras != null && !meta.final) {
         const entered = entradaEstadoActual.get(String(p.id));
-        if (entered != null && now - entered > meta.slaHoras * 3600 * 1000) agg.vencidos += 1;
+        const transc = entered != null ? msLaborables(new Date(entered).toISOString(), nowIso) : null;
+        if (transc != null && transc > meta.slaHoras * 3600 * 1000) agg.vencidos += 1;
       }
       porEstadoMap.set(eid, agg);
     }

@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import SlaProyectosClient from "@/app/dashboard/proyectos/sla/SlaProyectosClient";
-import DashboardPmClient from "@/app/dashboard/proyectos/pm/DashboardPmClient";
 import { getConfig } from "@/lib/config/storage";
 import { getUsuarios } from "@/lib/usuarios/storage";
 import { getUsuariosActivosEmpresa } from "@/lib/usuarios/empresa";
@@ -2524,14 +2522,12 @@ const PERIODO_OPTS: { id: Periodo; label: string }[] = [
 
 const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas"];
 
-/**
- * Vistas de proyectos que se agregan siempre, fuera del scope de `dashboard_views`.
- *
- * "Proyectos" (panel gerencial) y "Ejecutivo" ya no están acá: se mudaron al
- * módulo Dirección, que es de acceso restringido. El Dashboard lo ve toda la
- * empresa y esos dos tableros son de Dirección.
+/*
+ * Los cuatro tableros de proyectos —panel gerencial, Ejecutivo, PM y SLA— se
+ * mudaron al módulo Tableros, que es de acceso restringido. El Dashboard lo ve
+ * toda la empresa y esa información no es para todos, así que acá quedan sólo
+ * las vistas que vienen del catálogo `dashboard_views`.
  */
-const VISTAS_PROYECTOS: TabDash[] = ["dashboard_pm", "sla_proyectos"];
 
 type DashScope =
   | { kind: "pending" }
@@ -2613,13 +2609,7 @@ export default function DashboardPage() {
     if (dashScope.kind !== "scoped") return;
     const params = new URLSearchParams(window.location.search);
     const t = params.get("tab");
-    // Las vistas de proyectos se agregan aparte del scope de DB.
-    const next =
-      t &&
-      isDashboardTabSlug(t) &&
-      (VISTAS_PROYECTOS.includes(t) || dashScope.tabs.includes(t))
-        ? t
-        : dashScope.defaultTab;
+    const next = t && isDashboardTabSlug(t) && dashScope.tabs.includes(t) ? t : dashScope.defaultTab;
     setTab(next);
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", `?tab=${next}`);
@@ -2677,10 +2667,7 @@ export default function DashboardPage() {
   const nivel = usuarioActivo?.nivel ?? "administrador";
 
   const baseTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
-  const effectiveTabs: TabDash[] = [
-    ...baseTabs.filter((t) => !VISTAS_PROYECTOS.includes(t)),
-    ...VISTAS_PROYECTOS,
-  ];
+  const effectiveTabs: TabDash[] = baseTabs;
   const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
 
   const TAB_META: Partial<Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }>> = {
@@ -2688,25 +2675,6 @@ export default function DashboardPage() {
     financiero: { label: "Financiero", Icon: Icon.Financiero },
     inventario: { label: "Inventario", Icon: Icon.Inventario },
     ventas: { label: "Ventas", Icon: Icon.Ventas },
-    dashboard_pm: {
-      label: "PM",
-      Icon: ({ className = "h-4 w-4" }: IconProps) => (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-          <path d="M9 11l3 3 8-8" />
-          <path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" />
-        </svg>
-      ),
-    },
-    sla_proyectos: {
-      label: "SLA",
-      Icon: ({ className = "h-4 w-4" }: IconProps) => (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-          <path d="M12 3a9 9 0 1 0 9 9" />
-          <path d="M12 12l5-3" />
-          <path d="M12 12v-4" />
-        </svg>
-      ),
-    },
   };
 
   if (!config) {
@@ -2917,10 +2885,6 @@ export default function DashboardPage() {
           periodo={periodo}
         />
       )}
-
-      {tab === "dashboard_pm" && <DashboardPmClient />}
-
-      {tab === "sla_proyectos" && <SlaProyectosClient />}
 
     </div>
   );

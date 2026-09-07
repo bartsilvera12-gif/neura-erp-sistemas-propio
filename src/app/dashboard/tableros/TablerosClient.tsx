@@ -3,9 +3,10 @@
 /**
  * Tableros — los tableros reservados de Desarrollo.
  *
- * Junta las lecturas de cartera que antes vivían como pestañas del Dashboard:
- * el panel gerencial de Proyectos y el Dashboard Ejecutivo. Se mudaron acá
- * porque el Dashboard lo ve toda la empresa y esta información no.
+ * Junta los cuatro tableros que antes vivían como pestañas del Dashboard:
+ * Ejecutivo (la lectura de Directorio), PM (dónde intervenir hoy), el panel
+ * gerencial de Proyectos y el SLA. Se mudaron acá porque el Dashboard lo ve
+ * toda la empresa y esta información no.
  *
  * El acceso NO lo decide esta pantalla: el módulo `tableros` es restringido
  * (ver `lib/modulos/modulos-restringidos.ts`) y sólo lo ve quien tenga una fila
@@ -15,16 +16,21 @@
  */
 
 import { useEffect, useState } from "react";
-import { BarChart3, LineChart, Lock } from "lucide-react";
+import { Activity, BarChart3, ClipboardCheck, LineChart, Lock } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import PanelProyectosPanel from "@/components/proyectos/PanelProyectosPanel";
 import DashboardEjecutivoClient from "@/app/dashboard/proyectos/ejecutivo/DashboardEjecutivoClient";
+import DashboardPmClient from "@/app/dashboard/proyectos/pm/DashboardPmClient";
+import SlaProyectosClient from "@/app/dashboard/proyectos/sla/SlaProyectosClient";
 
-type Tab = "ejecutivo" | "proyectos";
+type Tab = "ejecutivo" | "pm" | "proyectos" | "sla";
 
+/** Orden de lectura: del resumen a lo operativo. */
 const TABS: { id: Tab; label: string; Icon: typeof LineChart }[] = [
   { id: "ejecutivo", label: "Ejecutivo", Icon: LineChart },
+  { id: "pm", label: "PM", Icon: ClipboardCheck },
   { id: "proyectos", label: "Proyectos", Icon: BarChart3 },
+  { id: "sla", label: "SLA", Icon: Activity },
 ];
 
 export default function TablerosClient() {
@@ -94,7 +100,10 @@ export default function TablerosClient() {
         ))}
       </div>
 
-      {tab === "ejecutivo" ? <DashboardEjecutivoClient /> : <PanelProyectosPanel />}
+      {tab === "ejecutivo" ? <DashboardEjecutivoClient /> : null}
+      {tab === "pm" ? <DashboardPmClient /> : null}
+      {tab === "proyectos" ? <PanelProyectosPanel /> : null}
+      {tab === "sla" ? <SlaProyectosClient /> : null}
     </div>
   );
 }

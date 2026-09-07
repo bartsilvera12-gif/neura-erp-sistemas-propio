@@ -1,4 +1,5 @@
 import { isErpRolSupervisor } from "@/lib/usuarios/erp-rol-normalize";
+import { esModuloRestringido } from "./modulos-restringidos";
 
 export type ModuloRow = { id: string; nombre: string; slug: string };
 
@@ -56,20 +57,44 @@ async function modulosRowsByIds(
  * - super_admin → catálogo completo
  * - admin / administrador de empresa → todos los módulos activos de empresa_modulos
  * - resto (supervisor, usuario, etc.) → intersección empresa (activo) ∩ usuario_modulos
+ *
+ * Excepción: los módulos RESTRINGIDOS (ver `modulos-restringidos.ts`) no siguen
+ * ninguna de esas reglas. Sólo aparecen para quien tenga una fila explícita en
+ * `usuario_modulos`, cualquiera sea su rol — si no, un tablero de Dirección se
+ * abriría solo para todos los administradores de la empresa.
  */
 export async function resolveEffectiveModules(
   supabase: ModulosSupabase,
   usuario: { id: string; empresa_id: string | null; rol: string | null }
 ): Promise<ModuloRow[]> {
   const rol = (usuario.rol ?? "").trim();
+
+  /** Ids de módulos concedidos a mano a este usuario. */
+  async function concedidosAlUsuario(): Promise<Set<string>> {
+    const { data } = await supabase.from("usuario_modulos").select("modulo_id").eq("usuario_id", usuario.id);
+    return new Set(
+      ((data ?? []) as { modulo_id?: unknown }[])
+        .map((r) => (r.modulo_id != null ? String(r.modulo_id) : ""))
+        .filter((x) => x.length > 0)
+    );
+  }
+
+  /** Saca los módulos restringidos que este usuario no tenga concedidos. */
+  async function quitarRestringidos(filas: ModuloRow[]): Promise<ModuloRow[]> {
+    if (!filas.some((m) => esModuloRestringido(m.slug))) return filas;
+    const concedidos = await concedidosAlUsuario();
+    return filas.filter((m) => !esModuloRestringido(m.slug) || concedidos.has(m.id));
+  }
   if (rol === "super_admin") {
     const { data, error } = await supabase.from("modulos").select("id, nombre, slug").order("slug");
     if (error) throw new Error(error.message);
-    return (data ?? []).map((m: { id?: unknown; nombre?: unknown; slug?: unknown }) => ({
-      id: m.id as string,
-      nombre: (m.nombre as string) ?? "",
-      slug: (m.slug as string) ?? "",
-    }));
+    return quitarRestringidos(
+      (data ?? []).map((m: { id?: unknown; nombre?: unknown; slug?: unknown }) => ({
+        id: m.id as string,
+        nombre: (m.nombre as string) ?? "",
+        slug: (m.slug as string) ?? "",
+      }))
+    );
   }
 
   if (!usuario.empresa_id) {
@@ -100,7 +125,7 @@ export async function resolveEffectiveModules(
   if (effectiveEmpresaModuloIds.length === 0) return [];
 
   if (esRolAdminEmpresa(usuario.rol)) {
-    return modulosRowsByIds(supabase, effectiveEmpresaModuloIds);
+    return quitarRestringidos(await modulosRowsByIds(supabase, effectiveEmpresaModuloIds));
   }
 
   const { data: umData, error: errUm } = await supabase
@@ -137,7 +162,7 @@ export async function resolveEffectiveModules(
 
   if (moduloIds.length === 0) return [];
 
-  return modulosRowsByIds(supabase, moduloIds);
+  return quitarRestringidos(await modulosRowsByIds(supabase, moduloIds));
 }
 
 /** Filtra modulo_ids contra los habilitados para la empresa. */

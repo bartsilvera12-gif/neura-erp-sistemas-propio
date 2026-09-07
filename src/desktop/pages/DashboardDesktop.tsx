@@ -2,9 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import PanelProyectosPanel from "@/components/proyectos/PanelProyectosPanel";
 import SlaProyectosClient from "@/app/dashboard/proyectos/sla/SlaProyectosClient";
-import DashboardEjecutivoClient from "@/app/dashboard/proyectos/ejecutivo/DashboardEjecutivoClient";
 import DashboardPmClient from "@/app/dashboard/proyectos/pm/DashboardPmClient";
 import { getConfig } from "@/lib/config/storage";
 import { getUsuarios } from "@/lib/usuarios/storage";
@@ -2524,7 +2522,16 @@ const PERIODO_OPTS: { id: Periodo; label: string }[] = [
   { id: "anio", label: "Año"       },
 ];
 
-const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas", "proyectos"];
+const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas"];
+
+/**
+ * Vistas de proyectos que se agregan siempre, fuera del scope de `dashboard_views`.
+ *
+ * "Proyectos" (panel gerencial) y "Ejecutivo" ya no están acá: se mudaron al
+ * módulo Dirección, que es de acceso restringido. El Dashboard lo ve toda la
+ * empresa y esos dos tableros son de Dirección.
+ */
+const VISTAS_PROYECTOS: TabDash[] = ["dashboard_pm", "sla_proyectos"];
 
 type DashScope =
   | { kind: "pending" }
@@ -2606,15 +2613,11 @@ export default function DashboardPage() {
     if (dashScope.kind !== "scoped") return;
     const params = new URLSearchParams(window.location.search);
     const t = params.get("tab");
-    // "proyectos" siempre está disponible (se agrega aparte del scope de DB).
+    // Las vistas de proyectos se agregan aparte del scope de DB.
     const next =
       t &&
       isDashboardTabSlug(t) &&
-      (t === "proyectos" ||
-        t === "dashboard_ejecutivo" ||
-        t === "dashboard_pm" ||
-        t === "sla_proyectos" ||
-        dashScope.tabs.includes(t))
+      (VISTAS_PROYECTOS.includes(t) || dashScope.tabs.includes(t))
         ? t
         : dashScope.defaultTab;
     setTab(next);
@@ -2674,42 +2677,17 @@ export default function DashboardPage() {
   const nivel = usuarioActivo?.nivel ?? "administrador";
 
   const baseTabs: TabDash[] = dashScope.kind === "scoped" ? dashScope.tabs : TAB_VALID;
-  // "Proyectos" (panel gerencial) y "SLA" (dashboard SLA) siempre disponibles en
-  // el dashboard; SLA queda inmediatamente a la derecha de Proyectos.
-  const conProyectos: TabDash[] = baseTabs.includes("proyectos") ? baseTabs : [...baseTabs, "proyectos"];
-  // Las tres vistas de proyectos van juntas y en este orden, inmediatamente a
-  // la derecha de "Proyectos": Ejecutivo (Directorio), PM (acción) y SLA.
-  const VISTAS_PROYECTOS: TabDash[] = ["dashboard_ejecutivo", "dashboard_pm", "sla_proyectos"];
-  const effectiveTabs: TabDash[] = conProyectos.flatMap((t) =>
-    t === "proyectos" ? ["proyectos", ...VISTAS_PROYECTOS.filter((v) => !conProyectos.includes(v))] : [t]
-  );
+  const effectiveTabs: TabDash[] = [
+    ...baseTabs.filter((t) => !VISTAS_PROYECTOS.includes(t)),
+    ...VISTAS_PROYECTOS,
+  ];
   const showTabNav = !(dashScope.kind === "scoped" && effectiveTabs.length === 1);
 
-  const TAB_META: Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }> = {
+  const TAB_META: Partial<Record<TabDash, { label: string; Icon: (props: IconProps) => React.ReactElement }>> = {
     comercial: { label: "Comercial", Icon: Icon.Comercial },
     financiero: { label: "Financiero", Icon: Icon.Financiero },
     inventario: { label: "Inventario", Icon: Icon.Inventario },
     ventas: { label: "Ventas", Icon: Icon.Ventas },
-    proyectos: {
-      label: "Proyectos",
-      Icon: ({ className = "h-4 w-4" }: IconProps) => (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-          <path d="M3 3v18h18" />
-          <rect x="7" y="10" width="3" height="7" />
-          <rect x="12" y="6" width="3" height="11" />
-          <rect x="17" y="13" width="3" height="4" />
-        </svg>
-      ),
-    },
-    dashboard_ejecutivo: {
-      label: "Ejecutivo",
-      Icon: ({ className = "h-4 w-4" }: IconProps) => (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-          <path d="M3 3v18h18" />
-          <path d="m19 9-5 5-4-4-3 3" />
-        </svg>
-      ),
-    },
     dashboard_pm: {
       label: "PM",
       Icon: ({ className = "h-4 w-4" }: IconProps) => (
@@ -2870,6 +2848,7 @@ export default function DashboardPage() {
         <nav className="flex w-full flex-wrap gap-1 rounded-2xl border border-[#4FAEB2]/45 bg-white p-1.5 shadow-sm sm:w-fit">
           {effectiveTabs.map((tid) => {
             const meta = TAB_META[tid];
+            if (!meta) return null;
             const TabIcon = meta.Icon;
             const active = tab === tid;
             return (
@@ -2938,10 +2917,6 @@ export default function DashboardPage() {
           periodo={periodo}
         />
       )}
-
-      {tab === "proyectos" && <PanelProyectosPanel />}
-
-      {tab === "dashboard_ejecutivo" && <DashboardEjecutivoClient />}
 
       {tab === "dashboard_pm" && <DashboardPmClient />}
 

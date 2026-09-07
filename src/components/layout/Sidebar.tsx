@@ -29,6 +29,7 @@ import {
   MessageCircle,
   History,
   Activity,
+  Crown,
   TrendingUp,
   ScrollText,
   ListChecks,
@@ -178,6 +179,17 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: SendHorizontal,
   },
   {
+    // Dirección: módulo RESTRINGIDO (ver `lib/modulos/modulos-restringidos.ts`).
+    // Sólo lo ve quien tenga una fila explícita en `usuario_modulos`, ni siquiera
+    // los otros administradores de la empresa. Esconder el ítem no es el
+    // permiso: el gate real lo aplican el resolver de módulos y la API.
+    key: "direccion",
+    slug: "direccion",
+    label: "Dirección",
+    href: "/dashboard/direccion",
+    icon: Crown,
+  },
+  {
     key: "proyectos",
     slug: "proyectos",
     label: "Proyectos",
@@ -233,7 +245,7 @@ const MENU_STRUCTURE: MenuItem[] = [
  * acá cae automáticamente en la familia "Otros" (red de seguridad: nada se oculta).
  */
 const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
-  { id: "inicio", title: "Inicio", itemKeys: ["dashboard", "gerencia"] },
+  { id: "inicio", title: "Inicio", itemKeys: ["dashboard", "direccion", "gerencia"] },
   {
     id: "comercial",
     title: "Comercial",

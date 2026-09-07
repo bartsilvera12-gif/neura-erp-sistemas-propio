@@ -3,6 +3,7 @@ import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-po
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { getConfigContable, generarAsientoEnTx, getAsientoConDetalles, ContabilidadError, type AsientoLineaInput } from "@/lib/contabilidad/asientos-pg";
 import { clienteDisplayNameSql } from "@/lib/clientes/display-name";
+import { resolverReferencia } from "@/lib/cobranzas/referencia-familiar";
 
 /**
  * Conciliación bancaria — transferencias pendientes de aprobación (SOLO transferencias).
@@ -68,7 +69,10 @@ export async function registrarTransferencia(schemaRaw: string, empresaId: strin
   if (!(Number(d.monto) > 0)) throw new ConciliacionError("El monto debe ser mayor a 0.");
   if (!String(d.banco_origen ?? "").trim()) throw new ConciliacionError("Falta el banco de origen.");
   if (!String(d.titular ?? "").trim()) throw new ConciliacionError("Falta el titular.");
-  if (!String(d.numero_operacion ?? "").trim()) throw new ConciliacionError("Falta el número de operación.");
+  // Banco Familiar (y otros sin comprobante) no traen N° de operación: se genera uno único
+  // para no dejar placeholders "000000" que rompen la conciliación asistida.
+  const numeroOp = resolverReferencia(d.banco_origen, d.numero_operacion);
+  if (!numeroOp) throw new ConciliacionError("Falta el número de operación.");
 
   // Factura válida + saldo suficiente (control blando; el firme es al aprobar).
   const { rows: fr } = await pool().query<{ estado: string; saldo: string; cliente_id: string | null }>(
@@ -79,7 +83,7 @@ export async function registrarTransferencia(schemaRaw: string, empresaId: strin
   if (Number(d.monto) > Number(fr[0].saldo)) throw new ConciliacionError(`El monto (${d.monto}) supera el saldo de la factura (${fr[0].saldo}).`);
 
   const bancoNorm = normBanco(d.banco_origen);
-  const opNorm = normNumeroOp(d.numero_operacion);
+  const opNorm = normNumeroOp(numeroOp);
   if (!opNorm) throw new ConciliacionError("El número de operación no es válido.");
 
   try {
@@ -89,7 +93,7 @@ export async function registrarTransferencia(schemaRaw: string, empresaId: strin
        VALUES ($1::uuid,$2::uuid,$3::uuid,$4::numeric,$5::date,$6,$7,$8,$9,$10,'pendiente',$11::uuid,$12::uuid)
        RETURNING ${COLS}`,
       [empresaId, d.factura_id, fr[0].cliente_id, d.monto, d.fecha, d.banco_origen.trim(), bancoNorm,
-       d.titular.trim(), d.numero_operacion.trim(), opNorm, d.idempotency_key, d.created_by]
+       d.titular.trim(), numeroOp, opNorm, d.idempotency_key, d.created_by]
     );
     return rows[0];
   } catch (e) {
@@ -135,12 +139,15 @@ export async function registrarTransferenciaMultiple(
 
   if (!String(d.banco_origen ?? "").trim()) throw new ConciliacionError("Falta el banco de origen.");
   if (!String(d.titular ?? "").trim()) throw new ConciliacionError("Falta el titular.");
-  if (!String(d.numero_operacion ?? "").trim()) throw new ConciliacionError("Falta el número de operación.");
+  // Familiar/sin comprobante: una única referencia generada, COMPARTIDA por todas las facturas
+  // de esta misma transferencia (así agrupan correctamente en la conciliación asistida).
+  const numeroOp = resolverReferencia(d.banco_origen, d.numero_operacion);
+  if (!numeroOp) throw new ConciliacionError("Falta el número de operación.");
   const items = (d.items ?? []).filter((it) => it && it.factura_id && Number(it.monto) > 0);
   if (items.length === 0) throw new ConciliacionError("Seleccioná al menos una factura con monto.");
 
   const bancoNorm = normBanco(d.banco_origen);
-  const opNorm = normNumeroOp(d.numero_operacion);
+  const opNorm = normNumeroOp(numeroOp);
   if (!opNorm) throw new ConciliacionError("El número de operación no es válido.");
 
   const client = await pool().connect();
@@ -167,7 +174,7 @@ export async function registrarTransferenciaMultiple(
            VALUES ($1::uuid,$2::uuid,$3::uuid,$4::numeric,$5::date,$6,$7,$8,$9,$10,'pendiente',$11::uuid,$12::uuid)
            RETURNING ${COLS}`,
           [empresaId, it.factura_id, f.cliente_id, it.monto, d.fecha, d.banco_origen.trim(), bancoNorm,
-           d.titular.trim(), d.numero_operacion.trim(), opNorm, it.idempotency_key, d.created_by]
+           d.titular.trim(), numeroOp, opNorm, it.idempotency_key, d.created_by]
         );
         out.push(rows[0]);
       } catch (e) {

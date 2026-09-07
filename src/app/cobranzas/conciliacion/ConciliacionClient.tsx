@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import SmartCombobox, { type ComboOption } from "@/components/ui/SmartCombobox";
+import { bancoSinReferencia, generarReferenciaBanco } from "@/lib/cobranzas/referencia-familiar";
 
 interface Cobro {
   id: string; factura_id: string; monto: string | number; fecha: string; banco_origen: string;
@@ -509,7 +510,21 @@ function ModalRegistrar({ facturas, onClose, onSaved }: { facturas: Factura[]; o
   const [banco, setBanco] = useState("");
   const [titular, setTitular] = useState("");
   const [numeroOp, setNumeroOp] = useState("");
+  // El N° de operación fue autogenerado (banco sin comprobante, ej. Familiar).
+  const [opAuto, setOpAuto] = useState(false);
   const [archivo, setArchivo] = useState<File | null>(null);
+
+  // Al elegir un banco sin comprobante (Familiar) y sin operación real cargada, generamos una
+  // referencia única. Si cambia a un banco que sí trae comprobante, limpiamos la autogenerada.
+  function onBancoChange(nuevo: string) {
+    setBanco(nuevo);
+    if (bancoSinReferencia(nuevo)) {
+      if (!numeroOp.trim() || opAuto) { setNumeroOp(generarReferenciaBanco(nuevo)); setOpAuto(true); }
+    } else if (opAuto) {
+      setNumeroOp(""); setOpAuto(false);
+    }
+  }
+  function onNumeroOpChange(v: string) { setNumeroOp(v); setOpAuto(false); }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [idem] = useState(uuid);
@@ -563,12 +578,13 @@ function ModalRegistrar({ facturas, onClose, onSaved }: { facturas: Factura[]; o
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Banco de origen *</label>
-              <input value={banco} onChange={(e) => setBanco(e.target.value)} placeholder="Ej: Itaú" className={INPUT} /></div>
+              <input value={banco} onChange={(e) => onBancoChange(e.target.value)} placeholder="Ej: Itaú / Familiar" className={INPUT} /></div>
             <div><label className="mb-1 block text-xs font-semibold text-slate-500">Titular *</label>
               <input value={titular} onChange={(e) => setTitular(e.target.value)} placeholder="Nombre del titular" className={INPUT} /></div>
           </div>
           <div><label className="mb-1 block text-xs font-semibold text-slate-500">N° de operación *</label>
-            <input value={numeroOp} onChange={(e) => setNumeroOp(e.target.value)} placeholder="Comprobante / nro de transacción" className={INPUT} /></div>
+            <input value={numeroOp} onChange={(e) => onNumeroOpChange(e.target.value)} placeholder="Comprobante / nro de transacción" className={INPUT} />
+            {opAuto && <p className="mt-1 text-[11px] text-[#3F8E91]">Referencia generada automáticamente (este banco no emite comprobante). Podés editarla si tenés una.</p>}</div>
           <div><label className="mb-1 block text-xs font-semibold text-slate-500">Comprobante (opcional)</label>
             {!archivo ? (
               <button type="button" onClick={() => fileRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm font-semibold text-[#3F8E91] hover:bg-[#4FAEB2]/5">📎 Adjuntar imagen o PDF</button>

@@ -232,15 +232,27 @@ function pickCol(headers: string[], aliases: string[]): number {
   return -1;
 }
 
+/** Convierte un serial de fecha de Excel (días desde 1899-12-30) a YYYY-MM-DD, en UTC. */
+function serialExcelAYmd(n: number): string | null {
+  if (!Number.isFinite(n) || n <= 20000 || n >= 90000) return null; // rango ~1954..2146
+  const d = new Date(Math.round((n - 25569) * 86400000)); // 25569 = 1899-12-30 → 1970-01-01
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 function fechaDeCelda(v: unknown): string | null {
   if (v instanceof Date && !Number.isNaN(v.getTime())) {
     return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
   }
+  // Serial numérico de Excel (ej. FECHAMOVI = 46266 → 2026-09-01).
+  if (typeof v === "number") return serialExcelAYmd(v);
   const s = String(v ?? "").trim();
   let m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   m = s.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
   if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  // String que en realidad es un serial ("46266").
+  if (/^\d{5}$/.test(s)) return serialExcelAYmd(Number(s));
   return null;
 }
 
@@ -406,7 +418,11 @@ function agruparPorOperacion(aprobados: AprobadoLite[]): AprobadoLite[] {
   const solos: AprobadoLite[] = [];
   for (const a of aprobados) {
     const op = normRef(a.numero_operacion);
-    if (op.length >= 5) {
+    // Agrupar SOLO por operaciones reales: ≥5 y no un placeholder (000000, 00000, todos iguales).
+    // Antes, varios cobros distintos con op "000000" se sumaban como una sola transferencia
+    // fantasma (ej. RUTH + O&M + FLORENCIA = 1.540.000 que no existía en el banco).
+    const agrupable = op.length >= 5 && !/^(.)\1*$/.test(op);
+    if (agrupable) {
       const arr = porOp.get(op) ?? [];
       arr.push(a);
       porOp.set(op, arr);

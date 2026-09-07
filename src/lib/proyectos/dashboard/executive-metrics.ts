@@ -139,6 +139,26 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     cantidad: porTipo.get(t) ?? 0,
   })).filter((b) => b.cantidad > 0);
 
+  // El detalle, no sólo el conteo: con cuatro proyectos detenidos, saber CUÁLES
+  // y por qué vale más que un anillo de un solo color.
+  const bloqueos_detalle = [...bloqueados]
+    .sort((a, b) => (b.tiempo_en_estado_ms ?? 0) - (a.tiempo_en_estado_ms ?? 0))
+    .slice(0, 12)
+    .map((p) => {
+      const tipo = categoriaBloqueo(p);
+      return {
+        id: p.id,
+        titulo: p.titulo,
+        cliente: p.cliente,
+        tipo,
+        tipo_label: BLOQUEO_TIPO_LABEL[tipo],
+        motivo: p.bloqueo_motivo,
+        estado_nombre: p.estado_nombre,
+        desde: p.estado_desde,
+        tiempo_ms: p.tiempo_en_estado_ms,
+      };
+    });
+
   return {
     vista: "ejecutivo" as const,
     kpis: kpisComunes(proyectos, wipAlto),
@@ -153,6 +173,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     calidad,
     criticos,
     bloqueos_por_tipo,
+    bloqueos_detalle,
     bloqueados_total: bloqueados.length,
     opciones: {
       tipos: ds.tipos.map((t) => ({ id: t.id, nombre: t.nombre })),

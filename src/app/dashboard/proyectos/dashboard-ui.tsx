@@ -255,9 +255,21 @@ export function EstadoPill({ nombre, color }: { nombre: string; color: string })
   );
 }
 
-export function Pill({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+export function Pill({
+  children,
+  className = "",
+  style,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** Para píldoras pintadas con el color configurado del estado o del tipo. */
+  style?: React.CSSProperties;
+}) {
   return (
-    <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${className}`}>
+    <span
+      className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${className}`}
+      style={style}
+    >
       {children}
     </span>
   );

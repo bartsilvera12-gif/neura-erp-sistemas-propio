@@ -58,6 +58,7 @@ import {
   TablaWrap,
   VERDE,
   fmtDias,
+  fmtDur,
   fmtFecha,
   type Opcion,
 } from "../dashboard-ui";
@@ -101,6 +102,17 @@ type Data = {
     semaforo: "vencido" | "critico" | "en_riesgo";
   }[];
   bloqueos_por_tipo: { tipo: string; label: string; cantidad: number }[];
+  bloqueos_detalle: {
+    id: string;
+    titulo: string;
+    cliente: string;
+    tipo: string;
+    tipo_label: string;
+    motivo: string | null;
+    estado_nombre: string;
+    desde: string | null;
+    tiempo_ms: number | null;
+  }[];
   bloqueados_total: number;
   opciones: { tipos: Opcion[]; estados: Opcion[]; tecnicos: Opcion[] };
   atribucion_parcial: boolean;
@@ -651,51 +663,67 @@ export default function DashboardEjecutivoClient() {
               </Card>
 
               <Card>
-                <CardTitle>Bloqueos por tipo</CardTitle>
-                {bloqueosDonut.length === 0 ? (
-                  <p className="text-sm text-slate-400">Sin bloqueos activos</p>
+                <CardTitle
+                  right={
+                    <span className="whitespace-nowrap text-[10px] text-slate-400">
+                      {data.bloqueados_total} detenidos
+                    </span>
+                  }
+                >
+                  Bloqueos y pausas
+                </CardTitle>
+                {data.bloqueos_detalle.length === 0 ? (
+                  <p className="text-sm text-slate-400">Nada detenido</p>
                 ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="relative h-[132px] w-[132px] shrink-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={bloqueosDonut}
-                            dataKey="value"
-                            nameKey="label"
-                            innerRadius={40}
-                            outerRadius={64}
-                            paddingAngle={1}
-                            strokeWidth={0}
-                            labelLine={false}
-                          >
-                            {bloqueosDonut.map((b) => (
-                              <Cell key={b.tipo} fill={COLOR_BLOQUEO[b.tipo] ?? TEAL} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(v: number, n: string) => [`${v}`, n]} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-[19px] font-bold leading-none text-slate-800">
-                          {data.bloqueados_total}
-                        </span>
-                        <span className="text-[10px] text-slate-400">bloqueados</span>
-                      </div>
+                  <>
+                    {/* El desglose por tipo, en una línea: con pocos proyectos un
+                        anillo de un solo color no dice nada que esto no diga. */}
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {data.bloqueos_por_tipo.map((b) => (
+                        <Pill
+                          key={b.tipo}
+                          className="border"
+                          style={{
+                            background: `${COLOR_BLOQUEO[b.tipo] ?? TEAL}14`,
+                            color: COLOR_BLOQUEO[b.tipo] ?? TEAL,
+                            borderColor: `${COLOR_BLOQUEO[b.tipo] ?? TEAL}33`,
+                          }}
+                        >
+                          {b.label} · {b.cantidad}
+                        </Pill>
+                      ))}
                     </div>
-                    <ul className="min-w-0 flex-1 space-y-1">
-                      {bloqueosDonut.map((b) => (
-                        <li key={b.tipo} className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-600">
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: COLOR_BLOQUEO[b.tipo] ?? TEAL }}
-                          />
-                          <span className="flex-1">{b.label}</span>
-                          <span className="font-semibold tabular-nums text-slate-700">{b.cantidad}</span>
+                    <ul className="space-y-1.5">
+                      {data.bloqueos_detalle.map((b) => (
+                        <li key={b.id} className="rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <Link
+                              href={`/dashboard/proyectos?proyecto=${b.id}`}
+                              className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-slate-700 hover:underline"
+                              title={b.titulo}
+                            >
+                              {b.titulo}
+                            </Link>
+                            <span className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-slate-400">
+                              {fmtDur(b.tiempo_ms)}
+                            </span>
+                          </div>
+                          <div className="truncate text-[10px] text-slate-400" title={b.cliente}>
+                            {b.cliente}
+                          </div>
+                          {/* Sin motivo cargado se dice que falta, en vez de
+                              repetir el estado y aparentar que hay una razón. */}
+                          <div className="mt-0.5 text-[10.5px]">
+                            {b.motivo ? (
+                              <span className="text-slate-600">{b.motivo}</span>
+                            ) : (
+                              <span className="italic text-slate-300">Sin motivo cargado</span>
+                            )}
+                          </div>
                         </li>
                       ))}
                     </ul>
-                  </div>
+                  </>
                 )}
               </Card>
             </div>

@@ -102,6 +102,8 @@ function firmaDatos(v: {
   clienteId: string;
   responsableComercialId: string;
   projectManagerId: string;
+  bloqueoTipo: string;
+  bloqueoMotivo: string;
   prioridad: string;
   fechaPrometida: string;
 }): string {
@@ -114,6 +116,8 @@ function firmaDatos(v: {
     cliente_id: v.clienteId,
     responsable_comercial_id: v.responsableComercialId,
     project_manager_id: v.projectManagerId,
+    bloqueo_tipo: v.bloqueoTipo,
+    bloqueo_motivo: v.bloqueoMotivo,
     prioridad: v.prioridad,
     fecha_prometida: v.fechaPrometida,
   });
@@ -1052,6 +1056,14 @@ export default function ProyectoDetalleInner({
    * que ir a otra persona, o cuando el proyecto todavía no tiene cliente.
    */
   const [projectManagerId, setProjectManagerId] = useState("");
+  /**
+   * Por qué está detenido el proyecto. El tipo agrupa (cliente / interno /
+   * tercero) y el motivo lo cuenta. Hasta ahora la columna existía en la base
+   * pero no había dónde cargarla, así que el dashboard sólo podía mostrar el
+   * estado — que dice que está pausado, no por qué.
+   */
+  const [bloqueoTipo, setBloqueoTipo] = useState("");
+  const [bloqueoMotivo, setBloqueoMotivo] = useState("");
   const [prioridad, setPrioridad] = useState("normal");
   const [fechaPrometida, setFechaPrometida] = useState("");
   const [clientes, setClientes] = useState<{ id: string; empresa?: string | null; nombre_contacto?: string | null }[]>([]);
@@ -1101,6 +1113,8 @@ export default function ProyectoDetalleInner({
     const cli = typeof p.cliente_id === "string" ? p.cliente_id : "";
     const rc = typeof p.responsable_comercial_id === "string" ? p.responsable_comercial_id : "";
     const pm = typeof p.project_manager_id === "string" ? p.project_manager_id : "";
+    const bt = typeof p.bloqueo_tipo === "string" ? p.bloqueo_tipo : "";
+    const bm = typeof p.bloqueo_motivo === "string" ? p.bloqueo_motivo : "";
     const prio = typeof p.prioridad === "string" ? p.prioridad : "normal";
     // Fecha Y hora: se recorta a lo que entiende `datetime-local`.
     const fProm = typeof p.fecha_prometida === "string" ? isoAInputDatetimeLocal(p.fecha_prometida) : "";
@@ -1109,6 +1123,8 @@ export default function ProyectoDetalleInner({
     setClienteId(cli);
     setResponsableComercialId(rc);
     setProjectManagerId(pm);
+    setBloqueoTipo(bt);
+    setBloqueoMotivo(bm);
     setPrioridad(prio);
     setFechaPrometida(fProm);
     setDatosSnapshot(
@@ -1121,6 +1137,8 @@ export default function ProyectoDetalleInner({
         clienteId: cli,
         responsableComercialId: rc,
         projectManagerId: pm,
+        bloqueoTipo: bt,
+        bloqueoMotivo: bm,
         prioridad: prio,
         fechaPrometida: fProm,
       })
@@ -1370,6 +1388,8 @@ export default function ProyectoDetalleInner({
         clienteId,
         responsableComercialId,
         projectManagerId,
+        bloqueoTipo,
+        bloqueoMotivo,
         prioridad,
         fechaPrometida,
       }),
@@ -1382,6 +1402,8 @@ export default function ProyectoDetalleInner({
       clienteId,
       responsableComercialId,
       projectManagerId,
+      bloqueoTipo,
+      bloqueoMotivo,
       prioridad,
       fechaPrometida,
     ]
@@ -1418,6 +1440,8 @@ export default function ProyectoDetalleInner({
         cliente_id: clienteId || null,
         responsable_comercial_id: responsableComercialId || null,
         project_manager_id: projectManagerId || null,
+        bloqueo_tipo: bloqueoTipo || null,
+        bloqueo_motivo: bloqueoMotivo.trim() === "" ? null : bloqueoMotivo.trim(),
         prioridad,
         // El input ya trae fecha Y hora local; se pasa a ISO para guardar el
         // instante exacto. Antes se forzaba el mediodía y la hora que eligiera
@@ -2622,6 +2646,35 @@ export default function ProyectoDetalleInner({
                       vacioLabel="Hereda del cliente"
                     />
                   </div>
+                </div>
+                <div className="block text-sm">
+                  <span className={labelCls}>Motivo de pausa o bloqueo</span>
+                  <div className="mt-1.5">
+                    <FancySelect
+                      ariaLabel="Tipo de bloqueo"
+                      value={bloqueoTipo}
+                      onChange={setBloqueoTipo}
+                      options={[
+                        { value: "", label: "Sin clasificar" },
+                        { value: "cliente", label: "Cliente" },
+                        { value: "interno", label: "Interno" },
+                        { value: "tercero", label: "Tercero" },
+                      ]}
+                    />
+                  </div>
+                  {/*
+                    El texto libre acompaña al tipo: el tipo agrupa en el
+                    dashboard, el texto explica el caso concreto. Sin esto, un
+                    proyecto pausado sólo podía decir "Pausado", que es el
+                    estado y no el motivo.
+                  */}
+                  <input
+                    value={bloqueoMotivo}
+                    onChange={(e) => setBloqueoMotivo(e.target.value)}
+                    placeholder="Ej.: falta contenido del cliente"
+                    className={inputCls}
+                    aria-label="Motivo del bloqueo"
+                  />
                 </div>
                 <div className="block text-sm">
                   <span className={labelCls}>Prioridad</span>

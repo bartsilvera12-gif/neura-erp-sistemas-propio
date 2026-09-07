@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import {
+  candidatosMencionDe,
   esCanalComentario,
   permisoComentariosDe,
 } from "@/lib/proyectos/comentarios-permisos";
@@ -72,6 +73,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           comentario?: string;
           canal?: string;
           reenviar_de?: string;
+          menciones?: string[];
           adjuntos?: Array<{ path?: string; nombre?: string; mime_type?: string; size_bytes?: number }>;
         }
       | null;
@@ -110,6 +112,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
     const catalog = createServiceRoleClient();
+
+    // Menciones: ids de usuario, no nombres. El nombre puede cambiar o
+    // repetirse —en esta empresa hay dos Iván y dos Ayala— y la mención tiene
+    // que seguir apuntando a la persona correcta.
+    const mencionesPedidas = Array.isArray(body?.menciones)
+      ? [...new Set((body.menciones as unknown[]).filter((m): m is string => typeof m === "string" && !!m.trim()))]
+      : [];
 
     // Sólo se puede escribir en un canal que el usuario puede ver.
     const permiso = await permisoComentariosDe(sb, auth.empresaId, auth.usuarioCatalogId, pid);
@@ -164,6 +173,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       };
     }
 
+    // Sólo se puede mencionar a quien PUEDE VER el canal. Se valida acá y no en
+    // el navegador: mencionar a alguien que no lo ve sería avisarle de algo que
+    // después no puede abrir, y el body se arma a mano con dos líneas.
+    let menciones: string[] = [];
+    if (mencionesPedidas.length > 0) {
+      const candidatos = await candidatosMencionDe(sb, auth.empresaId, pid, canal);
+      const validos = new Set(candidatos.map((c) => c.id));
+      menciones = mencionesPedidas.filter((m) => validos.has(m) && m !== auth.usuarioCatalogId);
+    }
+
     const insert = {
       empresa_id: auth.empresaId,
       proyecto_id: pid,
@@ -174,6 +193,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       canal,
       ...(reenvio ? { reenvio } : {}),
       ...(adjuntos.length > 0 ? { adjuntos } : {}),
+      ...(menciones.length > 0 ? { menciones } : {}),
     };
 
     const { data, error } = await sb.from("proyecto_comentarios").insert(insert).select("*");
@@ -221,6 +241,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         (reenvio ? String(reenvio.texto ?? "") : "") ||
         (adjuntos.length > 0 ? "📷 Imagen" : ""),
       esReenvio,
+      menciones,
     });
 
     const row = Array.isArray(data) ? data[0] : data;

@@ -14,7 +14,8 @@ import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
 import { PersonaSearchSelect } from "@/app/dashboard/proyectos/components/PersonaSearchSelect";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
-import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
+import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
+import type { CandidatoMencion } from "@/lib/proyectos/comentarios-permisos";
 import { isoAInputDatetimeLocal } from "@/lib/format/hora-py";
 import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraSelect";
 import { HistorialLinea } from "@/app/dashboard/proyectos/components/HistorialLinea";
@@ -722,16 +723,68 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
   onEnviar,
   canal,
   inputCls,
+  candidatos,
 }: {
-  onEnviar: (texto: string, canal: CanalComentarioUI, imagenes: File[]) => Promise<boolean>;
+  onEnviar: (
+    texto: string,
+    canal: CanalComentarioUI,
+    imagenes: File[],
+    menciones: string[]
+  ) => Promise<boolean>;
   canal: CanalComentarioUI;
   inputCls: string;
+  /** A quién se puede mencionar en este canal. Lo decide el servidor. */
+  candidatos: CandidatoMencion[];
 }) {
   const [texto, setTexto] = useState("");
   const [imagenes, setImagenes] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  /** Menciones ya elegidas. Se guardan por id, no por el texto escrito. */
+  const [menciones, setMenciones] = useState<CandidatoMencion[]>([]);
+  /** Texto tipeado después del `@` que está abierto, o `null` si no hay ninguno. */
+  const [consulta, setConsulta] = useState<string | null>(null);
+
+  /**
+   * Detecta un `@` en curso: el que está justo antes del cursor y todavía no se
+   * cerró con un espacio. Sólo cuenta si arranca palabra, para no disparar el
+   * menú dentro de un correo.
+   */
+  function detectarArroba(valor: string, cursor: number) {
+    const antes = valor.slice(0, cursor);
+    const i = antes.lastIndexOf("@");
+    if (i < 0) return null;
+    if (i > 0 && !/[\s(]/.test(antes[i - 1])) return null;
+    const frag = antes.slice(i + 1);
+    if (/\s/.test(frag)) return null;
+    return { inicio: i, frag };
+  }
+
+  const sugeridos = (() => {
+    if (consulta == null) return [];
+    const q = consulta.trim().toLowerCase();
+    const ya = new Set(menciones.map((m) => m.id));
+    return candidatos
+      .filter((c) => !ya.has(c.id))
+      .filter((c) => (q ? c.nombre.toLowerCase().includes(q) : true))
+      .slice(0, 6);
+  })();
+
+  function elegir(c: CandidatoMencion) {
+    const area = areaRef.current;
+    const cursor = area?.selectionStart ?? texto.length;
+    const at = detectarArroba(texto, cursor);
+    const nombre = nombreCorto(c.nombre);
+    const nuevo = at
+      ? `${texto.slice(0, at.inicio)}@${nombre} ${texto.slice(cursor)}`
+      : `${texto}@${nombre} `;
+    setTexto(nuevo);
+    setMenciones((prev) => (prev.some((m) => m.id === c.id) ? prev : [...prev, c]));
+    setConsulta(null);
+    requestAnimationFrame(() => area?.focus());
+  }
 
   // Previews locales (object URLs) que se liberan al cambiar la selección.
   useEffect(() => {
@@ -748,25 +801,46 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         e.preventDefault();
         if (!puedeEnviar) return;
         setEnviando(true);
-        const ok = await onEnviar(texto, canal, imagenes);
+        // Sólo viajan las menciones que siguen escritas: si borró el @Nombre
+        // del texto, no tiene sentido notificar a esa persona.
+        const vigentes = menciones.filter((m) => texto.includes(`@${nombreCorto(m.nombre)}`));
+        const ok = await onEnviar(texto, canal, imagenes, vigentes.map((m) => m.id));
         setEnviando(false);
         if (ok) {
           setTexto("");
           setImagenes([]);
+          setMenciones([]);
         }
       }}
       className="space-y-2"
     >
+      <div className="relative">
       <textarea
+        ref={areaRef}
         className={`${inputCls} min-h-[88px]`}
         rows={3}
         placeholder={
           canal === "desarrollo"
-            ? "Comentario para PM / QA (podés pegar una imagen)"
-            : "Comentario para el PM (podés pegar una imagen)"
+            ? "Comentario para PM / QA · @ para mencionar"
+            : "Comentario para el PM · @ para mencionar"
         }
         value={texto}
-        onChange={(e) => setTexto(e.target.value)}
+        onChange={(e) => {
+          setTexto(e.target.value);
+          const at = detectarArroba(e.target.value, e.target.selectionStart ?? 0);
+          setConsulta(at ? at.frag : null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && consulta != null) {
+            e.preventDefault();
+            setConsulta(null);
+          }
+          // Enter elige la primera sugerencia: es lo que uno espera del menú.
+          if (e.key === "Enter" && sugeridos.length > 0) {
+            e.preventDefault();
+            elegir(sugeridos[0]);
+          }
+        }}
         onPaste={(e) => {
           // Pegar imágenes del portapapeles (captura de pantalla, copiar imagen).
           const items = e.clipboardData?.items;
@@ -790,6 +864,32 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         }}
         disabled={enviando}
       />
+      {sugeridos.length > 0 ? (
+        <ul className="absolute bottom-full left-0 z-30 mb-1 w-64 overflow-hidden rounded-xl border border-[#4FAEB2]/25 bg-white p-1 shadow-xl">
+          {sugeridos.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  // `onMouseDown`: con `onClick` el textarea pierde el foco antes
+                  // y el cursor se va, así que la inserción caería en otro lado.
+                  e.preventDefault();
+                  elegir(c);
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                <span className="min-w-0 truncate">{nombreCapitular(c.nombre)}</span>
+                {c.etiqueta ? (
+                  <span className="shrink-0 rounded-full bg-[#4FAEB2]/12 px-1.5 text-[9px] font-bold uppercase text-[#2F6E71]">
+                    {c.etiqueta}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      </div>
       {imagenes.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {imagenes.map((f, i) => (
@@ -1376,6 +1476,34 @@ export default function ProyectoDetalleInner({
     };
   }, []);
 
+  /**
+   * A quién se puede mencionar en el canal abierto. Se pide al servidor porque
+   * quién ve cada canal es una decisión de permisos: resolverlo en el navegador
+   * permitiría ofrecer a alguien que después no puede abrir el comentario.
+   */
+  const [candidatosMencion, setCandidatosMencion] = useState<CandidatoMencion[]>([]);
+  useEffect(() => {
+    let cancel = false;
+    setCandidatosMencion([]);
+    fetchWithSupabaseSession(
+      `/api/proyectos/${projectId}/comentarios/menciones?canal=${canalComentario}`,
+      { cache: "no-store" }
+    )
+      .then(async (r) => {
+        const j = (await r.json().catch(() => ({}))) as {
+          data?: { candidatos?: CandidatoMencion[] };
+        };
+        if (!cancel) setCandidatosMencion(j?.data?.candidatos ?? []);
+      })
+      .catch(() => {
+        // Sin lista el comentario se publica igual; sólo no se puede mencionar.
+        if (!cancel) setCandidatosMencion([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [projectId, canalComentario]);
+
   const projectManagers = useMemo(
     () => usuarios.filter((u) => u.es_project_manager === true),
     [usuarios]
@@ -1609,7 +1737,12 @@ export default function ProyectoDetalleInner({
   }, [variant, sp, initialCanal, canalesComentarioVisibles]);
 
   const agregarComentario = useCallback(
-    async (texto: string, canal: CanalComentarioUI, imagenes: File[]): Promise<boolean> => {
+    async (
+      texto: string,
+      canal: CanalComentarioUI,
+      imagenes: File[],
+      menciones: string[]
+    ): Promise<boolean> => {
       const comentario = texto.trim();
       if (!comentario && imagenes.length === 0) return false;
       // Las imágenes se suben primero al storage; el comentario guarda sus refs.
@@ -1640,7 +1773,7 @@ export default function ProyectoDetalleInner({
       const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comentario, canal, adjuntos }),
+        body: JSON.stringify({ comentario, canal, adjuntos, menciones }),
       });
       const j = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || !j.success) {
@@ -3343,6 +3476,7 @@ export default function ProyectoDetalleInner({
               onEnviar={agregarComentario}
               canal={canalComentario}
               inputCls={inputCls}
+              candidatos={candidatosMencion}
             />
             <ul className="space-y-3">
               {(data.comentarios ?? [])

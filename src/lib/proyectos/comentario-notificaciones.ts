@@ -82,6 +82,13 @@ export async function notificarComentarioProyecto(
      * entera cuando le reenvían algo a desarrollo.
      */
     esReenvio?: boolean;
+    /**
+     * Ids mencionados con @ en el comentario. Reciben SIEMPRE, aunque el ruteo
+     * normal del canal no los incluya: mencionar a alguien es pedirle
+     * explícitamente que mire, y ese pedido no puede depender de si además le
+     * tocaba por su rol.
+     */
+    menciones?: string[];
   }
 ): Promise<void> {
   try {
@@ -131,7 +138,13 @@ export async function notificarComentarioProyecto(
       for (const id of qas) destinatarios.add(id);
     }
 
-    if (args.actorId) destinatarios.delete(args.actorId);
+    const mencionados = new Set((args.menciones ?? []).filter(Boolean));
+    for (const id of mencionados) destinatarios.add(id);
+
+    if (args.actorId) {
+      destinatarios.delete(args.actorId);
+      mencionados.delete(args.actorId);
+    }
     if (destinatarios.size === 0) return;
 
     const autor = (args.actorNombre ?? "").trim() || "Alguien";
@@ -139,17 +152,23 @@ export async function notificarComentarioProyecto(
     const extracto = args.texto.trim().replace(/\s+/g, " ").slice(0, 120);
     const titulo = `Comentario · ${proyecto.titulo}`;
     const cuerpo = `${autor} ${args.esReenvio ? "reenvió en" : "en"} ${seccion}: ${extracto}`;
+    // Al mencionado se le dice que lo mencionaron: si recibe el mismo texto que
+    // todos, la mención se pierde entre el resto de los avisos del proyecto.
+    const cuerpoMencion = `${autor} te mencionó en ${seccion}: ${extracto}`;
 
-    const filas = [...destinatarios].map((usuarioId) => ({
-      empresa_id: args.empresaId,
-      usuario_id: usuarioId,
-      tipo: "comentario_proyecto",
-      titulo,
-      cuerpo,
-      proyecto_id: args.proyectoId,
-      actor_id: args.actorId,
-      metadata: { canal: args.canal },
-    }));
+    const filas = [...destinatarios].map((usuarioId) => {
+      const mencionado = mencionados.has(usuarioId);
+      return {
+        empresa_id: args.empresaId,
+        usuario_id: usuarioId,
+        tipo: "comentario_proyecto",
+        titulo: mencionado ? `Te mencionaron · ${proyecto.titulo}` : titulo,
+        cuerpo: mencionado ? cuerpoMencion : cuerpo,
+        proyecto_id: args.proyectoId,
+        actor_id: args.actorId,
+        metadata: { canal: args.canal, mencion: mencionado },
+      };
+    });
 
     const { error } = await sb.from("usuario_notificaciones").insert(filas);
     if (error) {

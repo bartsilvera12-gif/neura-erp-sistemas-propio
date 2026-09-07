@@ -32,6 +32,8 @@ import { consumoPct, nivelSlv, type NivelSlv } from "./semaforo";
 import { agruparHistorial, slvTecnicoDeProyecto, type SegmentoHistorial } from "./technical-slv";
 import { qaDeProyecto, type QaProyecto } from "./qa-metrics";
 import { motivo, scorePrioridad, type Motivo } from "./priority-score";
+import { enPeriodo } from "./periodo";
+export { enPeriodo } from "./periodo";
 
 const PAGINA = 1000;
 /** Techo de seguridad: 50k filas de historial son ~5.000 proyectos con 10 transiciones. */
@@ -247,8 +249,8 @@ export async function cargarDataset(
       if (filtros.tipoId) q = q.eq("tipo_id", filtros.tipoId);
       if (filtros.estadoId) q = q.eq("estado_id", filtros.estadoId);
       if (filtros.tecnicoId) q = q.eq("responsable_tecnico_id", filtros.tecnicoId);
-      if (filtros.desde) q = q.gte("fecha_ingreso", `${filtros.desde}T00:00:00`);
-      if (hasta !== hoyIso) q = q.lte("fecha_ingreso", `${hasta}T23:59:59`);
+      // El período NO se aplica acá: no es un recorte por fecha de ingreso.
+      // Ver `enPeriodo` más abajo — depende de si el proyecto está cerrado.
       return q.order("fecha_ingreso", { ascending: false }).range(a, b);
     });
 
@@ -549,9 +551,9 @@ export async function cargarDataset(
     };
   });
 
-  const filtrados = filtros.pmId
-    ? proyectos.filter((p) => p.project_manager_id === filtros.pmId)
-    : proyectos;
+  const filtrados = proyectos
+    .filter((p) => enPeriodo(p, filtros.desde, filtros.hasta))
+    .filter((p) => (filtros.pmId ? p.project_manager_id === filtros.pmId : true));
 
   const tecnicosOpciones = [
     ...new Set(

@@ -12,6 +12,7 @@ import { slvTecnicoDeProyecto, type SegmentoHistorial } from "@/lib/proyectos/da
 import { qaDeProyecto, resumirQa } from "@/lib/proyectos/dashboard/qa-metrics";
 import { calcularWip } from "@/lib/proyectos/dashboard/workload";
 import { consumoPct, nivelSlv, nivelWip } from "@/lib/proyectos/dashboard/semaforo";
+import { enPeriodo } from "@/lib/proyectos/dashboard/periodo";
 
 // --- Andamiaje mínimo --------------------------------------------------------
 
@@ -219,6 +220,26 @@ console.log("\nCASOS 9 y 10 · cumplimiento de fecha prometida");
   check("denominador = 2 (sin cancelados ni sin fecha)", base.length, 2);
   check("entregado tarde cuenta como incumplimiento", base.length - enFecha, 1);
   check("cumplimiento = 50 %", Math.round((enFecha / base.length) * 100), 50);
+}
+
+// --- Período: en curso + cerrados dentro del rango --------------------------
+console.log('\nPeríodo · qué entra con "desde el 1 del mes"');
+{
+  const D = "2026-09-01";
+  const H = "2026-09-30";
+  const enCurso = { entregado: false, cancelado: false, fecha_entrega: null };
+  const entregadoEsteMes = { entregado: true, cancelado: false, fecha_entrega: "2026-09-04T10:00:00Z" };
+  const entregadoMesPasado = { entregado: true, cancelado: false, fecha_entrega: "2026-08-20T10:00:00Z" };
+  const canceladoEsteMes = { entregado: false, cancelado: true, fecha_entrega: "2026-09-02T10:00:00Z" };
+  const cerradoSinFecha = { entregado: true, cancelado: false, fecha_entrega: null };
+
+  check("el trabajo en curso entra siempre", enPeriodo(enCurso, D, H), true);
+  check("entra lo entregado dentro del período", enPeriodo(entregadoEsteMes, D, H), true);
+  check("queda fuera lo entregado antes", enPeriodo(entregadoMesPasado, D, H), false);
+  check("un cancelado también se ubica por su cierre", enPeriodo(canceladoEsteMes, D, H), true);
+  check("cerrado sin fecha queda fuera, no se le inventa una", enPeriodo(cerradoSinFecha, D, H), false);
+  check("sin período entra todo", enPeriodo(entregadoMesPasado, null, null), true);
+  check("el borde del primer día entra", enPeriodo({ ...entregadoEsteMes, fecha_entrega: "2026-09-01T00:30:00-03:00" }, D, H), true);
 }
 
 // --- Cierre ------------------------------------------------------------------

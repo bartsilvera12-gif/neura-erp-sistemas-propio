@@ -161,19 +161,15 @@ function hoyIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/**
- * El período arranca VACÍO a propósito.
- *
- * Antes venía con el 1 del mes en curso y eso rompía la lectura: el filtro es
- * por fecha de INGRESO, así que "Carga del equipo" mostraba un solo técnico y
- * los KPI de vencidos y bloqueados sólo contaban proyectos entrados este mes.
- * La mitad de este tablero es una foto del estado de HOY, y esa foto no se
- * puede recortar por cuándo entró cada proyecto. Quien quiera un período lo
- * elige.
- */
+/** Primer día del mes en curso: el período con el que arranca el tablero. */
+function inicioMes(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+}
+
 
 export default function DashboardEjecutivoClient() {
-  const [desde, setDesde] = useState("");
+  const [desde, setDesde] = useState(inicioMes);
   const [hasta, setHasta] = useState(hoyIso);
   const [fTipo, setFTipo] = useState("");
   const [fEstado, setFEstado] = useState("");
@@ -220,17 +216,15 @@ export default function DashboardEjecutivoClient() {
   );
 
   /**
-   * Qué población está mirando el tablero.
-   *
-   * Se dice en pantalla porque el filtro Desde–Hasta es por fecha de INGRESO, y
-   * eso no es evidente: sin período, "Entregado" es el acumulado histórico, no
-   * lo entregado este mes. Un número grande sin su alcance al lado se lee mal.
+   * Qué población está mirando el tablero: todo el trabajo en curso más lo que
+   * se cerró dentro del período. Se dice en pantalla porque un "112" y un "23"
+   * en la misma tarjeta, sin su alcance al lado, se leen como si fueran lo mismo.
    */
   const alcance = useMemo(() => {
     if (!desde && !hasta) return "Cartera completa";
-    if (desde && hasta) return `Ingresados ${fmtFecha(desde)} – ${fmtFecha(hasta)}`;
-    if (desde) return `Ingresados desde ${fmtFecha(desde)}`;
-    return `Ingresados hasta ${fmtFecha(hasta)}`;
+    if (desde && hasta) return `En curso + entregados ${fmtFecha(desde)} – ${fmtFecha(hasta)}`;
+    if (desde) return `En curso + entregados desde ${fmtFecha(desde)}`;
+    return `En curso + entregados hasta ${fmtFecha(hasta)}`;
   }, [desde, hasta]);
 
   const bloqueosDonut = useMemo(

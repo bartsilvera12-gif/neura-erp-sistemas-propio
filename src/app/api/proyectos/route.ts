@@ -111,7 +111,10 @@ export async function GET(request: Request) {
       if (!yo) {
         rows = [];
       } else {
-        const contarPor = (campo: "responsable_tecnico_id" | "responsable_comercial_id" | "qa_responsable_id") =>
+        // El PM cuenta como responsable: la cartera de un Project Manager es
+        // suya tanto como la de un técnico es la suya. Sin esto "Mías" salía
+        // vacío para las PM, que son responsables de la mitad de los proyectos.
+        const contarPor = (campo: "responsable_tecnico_id" | "responsable_comercial_id" | "qa_responsable_id" | "project_manager_id") =>
           sb
             .from("proyectos")
             .select("id", { count: "exact", head: true })
@@ -119,26 +122,32 @@ export async function GET(request: Request) {
             .eq("archivado", false)
             .eq(campo, yo);
 
-        const [cTecnico, cComercial, cQa] = await Promise.all([
+        const [cTecnico, cComercial, cQa, cPm] = await Promise.all([
           contarPor("responsable_tecnico_id"),
           contarPor("responsable_comercial_id"),
           contarPor("qa_responsable_id"),
+          contarPor("project_manager_id"),
         ]);
         const esTecnico = (cTecnico.count ?? 0) > 0;
         const esComercial = (cComercial.count ?? 0) > 0;
         const esQa = (cQa.count ?? 0) > 0;
-        const funcionUnica = [esTecnico, esComercial, esQa].filter(Boolean).length === 1;
+        const esPm = (cPm.count ?? 0) > 0;
+        const funcionUnica = [esTecnico, esComercial, esQa, esPm].filter(Boolean).length === 1;
 
         rows = rows.filter((r) => {
           const rcid = typeof r.responsable_comercial_id === "string" ? r.responsable_comercial_id : "";
           const rtid = typeof r.responsable_tecnico_id === "string" ? r.responsable_tecnico_id : "";
           const qaid = typeof r.qa_responsable_id === "string" ? r.qa_responsable_id : "";
+          const pmid = typeof r.project_manager_id === "string" ? r.project_manager_id : "";
+          // Con una sola función, "Mías" filtra estrictamente por ella: a un
+          // técnico no le sirve ver proyectos donde figura por otro motivo.
           if (funcionUnica) {
             if (esTecnico) return rtid === yo;
             if (esComercial) return rcid === yo;
-            return qaid === yo;
+            if (esQa) return qaid === yo;
+            return pmid === yo;
           }
-          return rcid === yo || rtid === yo || qaid === yo;
+          return rcid === yo || rtid === yo || qaid === yo || pmid === yo;
         });
       }
     }

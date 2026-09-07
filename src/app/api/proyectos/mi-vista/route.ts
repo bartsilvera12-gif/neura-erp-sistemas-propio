@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     const esPm = (urow as { es_project_manager?: boolean | null } | null)?.es_project_manager === true;
     const esGerencia = isErpRolAdministrador(auth.rol) || isErpRolSupervisor(auth.rol) || esPm;
 
-    const contarPor = (campo: "responsable_tecnico_id" | "responsable_comercial_id" | "qa_responsable_id") =>
+    const contarPor = (campo: "responsable_tecnico_id" | "responsable_comercial_id" | "qa_responsable_id" | "project_manager_id") =>
       sb
         .from("proyectos")
         .select("id", { count: "exact", head: true })
@@ -40,13 +40,15 @@ export async function GET(request: Request) {
         .eq("archivado", false)
         .eq(campo, yo);
 
-    const [cTec, cCom, cQa] = await Promise.all([
+    const [cTec, cCom, cQa, cPm] = await Promise.all([
       contarPor("responsable_tecnico_id"),
       contarPor("responsable_comercial_id"),
       contarPor("qa_responsable_id"),
+      contarPor("project_manager_id"),
     ]);
+    // El PM también es responsable: su cartera es "lo suyo".
     const esResponsable =
-      (cTec.count ?? 0) > 0 || (cCom.count ?? 0) > 0 || (cQa.count ?? 0) > 0;
+      (cTec.count ?? 0) > 0 || (cCom.count ?? 0) > 0 || (cQa.count ?? 0) > 0 || (cPm.count ?? 0) > 0;
 
     const alcance_default: "todos" | "mios" = esGerencia || !esResponsable ? "todos" : "mios";
 

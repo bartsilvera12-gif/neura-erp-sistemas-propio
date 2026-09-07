@@ -15,7 +15,7 @@ import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
-import { msLaborables, MS_JORNADA } from "@/lib/proyectos/reloj-laboral";
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import {
   CODIGOS_LISTO_ENTREGAR,
   CODIGOS_QA,
@@ -486,8 +486,8 @@ export async function cargarDataset(
       else if (nivel === "en_riesgo") motivos.push(motivo("slv_riesgo", `SLV ${pct}%`));
       if (sinMovimiento) motivos.push(motivo("sin_movimiento", "Sin movimiento técnico"));
       if (estancado && tiempoEnEstado != null) {
-        const jornadas = Math.round((tiempoEnEstado / MS_JORNADA) * 10) / 10;
-        motivos.push(motivo("estancado", `${jornadas} jornadas en ${estado?.nombre ?? "el estado"}`));
+        const horas = Math.round(tiempoEnEstado / 3600_000);
+        motivos.push(motivo("estancado", `${horas} h en ${estado?.nombre ?? "el estado"}`));
       }
       if (qa.rondas >= 2) motivos.push(motivo("reingreso_qa", `${qa.rondas} rondas de QA`));
       if (esperaCliente) motivos.push(motivo("espera_cliente", "Esperando al cliente"));

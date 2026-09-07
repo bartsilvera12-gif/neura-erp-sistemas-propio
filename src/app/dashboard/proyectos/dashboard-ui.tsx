@@ -284,14 +284,21 @@ export function fmtFecha(iso: string | null): string {
   return d.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-/** Duración laboral legible: `4 h`, `2,5 jornadas`. */
+/**
+ * Duración laboral legible, SIEMPRE en horas: `45 min`, `4,5 h`, `444 h`.
+ *
+ * Antes pasaba a jornadas por encima de las nueve horas y eso obligaba a hacer
+ * una cuenta mental para comparar dos celdas de la misma columna. En un tablero
+ * de desarrollo la unidad de trabajo es la hora, así que se muestran horas y
+ * listo. Por debajo de diez se usa un decimal, porque ahí la diferencia entre
+ * 4 y 4,5 importa; por encima el decimal es ruido.
+ */
 export function fmtDur(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) return "—";
   const horas = ms / 3600_000;
   if (horas < 1) return `${Math.max(0, Math.round(ms / 60_000))} min`;
-  if (horas < 9) return `${Math.round(horas)} h`;
-  const jornadas = Math.round((horas / 9) * 10) / 10;
-  return `${jornadas.toString().replace(".", ",")} ${jornadas === 1 ? "jornada" : "jornadas"}`;
+  if (horas < 10) return `${(Math.round(horas * 10) / 10).toString().replace(".", ",")} h`;
+  return `${Math.round(horas)} h`;
 }
 
 /** Días a la fecha prometida, con signo: `−4d` vencido, `+2d` por vencer. */

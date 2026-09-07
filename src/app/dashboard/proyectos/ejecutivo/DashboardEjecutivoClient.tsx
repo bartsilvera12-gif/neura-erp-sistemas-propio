@@ -81,7 +81,7 @@ type Data = {
   total_proyectos: number;
   por_estado: { estado_id: string; nombre: string; color: string; cantidad: number }[];
   cumplimiento: { pct: number | null; en_fecha: number; con_atraso: number; en_curso: number };
-  lead_time_jornadas: number | null;
+  lead_time_horas: number | null;
   wip: Wip[];
   tiempo_por_estado: { estado_id: string; nombre: string; color: string; horas: number | null }[];
   calidad: {
@@ -268,7 +268,7 @@ export default function DashboardEjecutivoClient() {
       ["Entregados en fecha", data.cumplimiento.en_fecha],
       ["Entregados con atraso", data.cumplimiento.con_atraso],
       ["En curso", data.cumplimiento.en_curso],
-      ["Lead time promedio (jornadas)", data.lead_time_jornadas ?? ""],
+      ["Lead time promedio (horas)", data.lead_time_horas ?? ""],
       ["First pass QA (%)", data.calidad.first_pass_pct ?? ""],
       ["Con reingresos de QA (%)", data.calidad.con_reingreso_pct ?? ""],
       ["Promedio de rondas de QA", data.calidad.promedio_rondas ?? ""],
@@ -476,10 +476,10 @@ export default function DashboardEjecutivoClient() {
                 <CardTitle>Lead time promedio</CardTitle>
                 <div className="flex h-[150px] flex-col items-center justify-center">
                   <span className="text-[34px] font-bold leading-none tracking-tight text-slate-800">
-                    {data.lead_time_jornadas != null
-                      ? data.lead_time_jornadas.toString().replace(".", ",")
+                    {data.lead_time_horas != null
+                      ? data.lead_time_horas.toString().replace(".", ",")
                       : "—"}
-                    <span className="ml-1 text-[16px] font-semibold text-slate-500">jornadas</span>
+                    <span className="ml-1 text-[16px] font-semibold text-slate-500">horas</span>
                   </span>
                   <span className="mt-2 text-center text-[11px] text-slate-400">
                     Del ingreso a la primera entrega, en horas laborales

@@ -8,7 +8,6 @@ import "server-only";
  * PM, que es la pantalla de acción).
  */
 
-import { MS_JORNADA } from "@/lib/proyectos/reloj-laboral";
 import { BLOQUEO_CATEGORIAS, BLOQUEO_TIPO_LABEL, categoriaBloqueo } from "./config";
 import { resumirQa } from "./qa-metrics";
 import { nivelWip } from "./semaforo";
@@ -95,10 +94,10 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     en_curso: activos.length,
   };
 
-  // ---- C. Lead time (ingreso -> primera entrega, en jornadas) ---------------
+  // ---- C. Lead time (ingreso -> primera entrega, en horas laborales) --------
   const leads = proyectos.map((p) => p.lead_time_ms).filter((x): x is number => x != null);
-  const lead_time_jornadas =
-    leads.length > 0 ? Math.round((leads.reduce((a, b) => a + b, 0) / leads.length / MS_JORNADA) * 10) / 10 : null;
+  const lead_time_horas =
+    leads.length > 0 ? horas(leads.reduce((a, b) => a + b, 0) / leads.length) : null;
 
   // ---- E. Tiempo promedio en cada estado -----------------------------------
   const tiempo_por_estado = estados
@@ -167,7 +166,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     por_estado,
     total_proyectos: proyectos.length,
     cumplimiento,
-    lead_time_jornadas,
+    lead_time_horas,
     wip,
     tiempo_por_estado,
     calidad,

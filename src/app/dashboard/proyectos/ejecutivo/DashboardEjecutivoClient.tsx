@@ -219,6 +219,20 @@ export default function DashboardEjecutivoClient() {
     [data?.wip]
   );
 
+  /**
+   * Qué población está mirando el tablero.
+   *
+   * Se dice en pantalla porque el filtro Desde–Hasta es por fecha de INGRESO, y
+   * eso no es evidente: sin período, "Entregado" es el acumulado histórico, no
+   * lo entregado este mes. Un número grande sin su alcance al lado se lee mal.
+   */
+  const alcance = useMemo(() => {
+    if (!desde && !hasta) return "Cartera completa";
+    if (desde && hasta) return `Ingresados ${fmtFecha(desde)} – ${fmtFecha(hasta)}`;
+    if (desde) return `Ingresados desde ${fmtFecha(desde)}`;
+    return `Ingresados hasta ${fmtFecha(hasta)}`;
+  }, [desde, hasta]);
+
   const bloqueosDonut = useMemo(
     () => (data?.bloqueos_por_tipo ?? []).map((b) => ({ ...b, value: b.cantidad })),
     [data?.bloqueos_por_tipo]
@@ -382,7 +396,13 @@ export default function DashboardEjecutivoClient() {
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               {/* A. Proyectos por estado */}
               <Card>
-                <CardTitle>Proyectos por estado</CardTitle>
+                <CardTitle
+                  right={
+                    <span className="whitespace-nowrap text-[10px] text-slate-400">{alcance}</span>
+                  }
+                >
+                  Proyectos por estado
+                </CardTitle>
                 {donut.length === 0 ? (
                   <p className="text-sm text-slate-400">Sin datos</p>
                 ) : (

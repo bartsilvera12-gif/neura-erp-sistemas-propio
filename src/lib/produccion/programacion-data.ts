@@ -10,6 +10,7 @@ import {
   esResponsabilidadArea,
   umbralEstancadoSegundos,
 } from "@/lib/produccion/umbrales";
+import { clienteDisplayNameSql } from "@/lib/clientes/display-name";
 
 /**
  * Reporte Gerencial de Producción / Programación (read-only). Cruza el eje comercial
@@ -207,7 +208,7 @@ export async function getProduccionReport(empresaId: string, period?: string): P
     `SELECT p.id, p.estado_id, p.etapa_desarrollo, p.etapa_desarrollo_at, p.etapa_finalizado_at,
             p.tecnico_asignado_at, p.responsable_tecnico_id, p.fecha_ingreso, p.fecha_prometida,
             p.monto_vendido, p.updated_at, p.created_at,
-            coalesce(nullif(c.empresa, ''), c.nombre_contacto) AS cliente_nombre
+            ${clienteDisplayNameSql("c")} AS cliente_nombre
        FROM ${P} p
        LEFT JOIN ${C} c ON c.id = p.cliente_id
       WHERE p.empresa_id = $1 AND p.archivado = false`,
@@ -271,7 +272,7 @@ export async function getProduccionReport(empresaId: string, period?: string): P
       `SELECT p.id, p.estado_id, p.etapa_desarrollo, p.etapa_desarrollo_at, p.etapa_finalizado_at,
               p.tecnico_asignado_at, p.responsable_tecnico_id, p.fecha_ingreso, p.fecha_prometida,
               p.monto_vendido, p.updated_at, p.created_at,
-              coalesce(nullif(c.empresa, ''), c.nombre_contacto) AS cliente_nombre
+              ${clienteDisplayNameSql("c")} AS cliente_nombre
          FROM ${P} p LEFT JOIN ${C} c ON c.id = p.cliente_id
         WHERE p.empresa_id = $1 AND p.id = ANY($2::uuid[])`,
       [empresaId, entregadoIds]

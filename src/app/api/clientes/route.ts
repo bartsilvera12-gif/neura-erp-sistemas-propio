@@ -8,6 +8,7 @@ import { getClientesSupabaseFromAuthWithRol } from "@/lib/clientes/clientes-serv
 import { fetchPerfilTributarioActivosMap } from "@/lib/clientes/tributario-server";
 import { ensureSemillasCatalogoTipos, tipoServicioSlugValido } from "@/lib/clientes/tipo-servicio-catalogo";
 import { buscarDuplicadosCliente } from "@/lib/clientes/dedupe";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { registrarHistorialCliente } from "@/lib/clientes/historial";
 
 /** Une `plan_activo` (nombre) a cada fila de cliente según suscripción activa más reciente. */
@@ -256,7 +257,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Anti-duplicados (backend): bloquear si ya existe por documento o nombre principal.
-    const nombrePrincipal = (typeof empresa === "string" && empresa.trim()) || nombre_contacto.trim();
+    const nombrePrincipal = nombreClienteDisplay({ empresa, nombre_contacto }, nombre_contacto.trim());
     const documentoPrincipal = (typeof ruc === "string" && ruc.trim()) || (typeof documento === "string" && documento.trim()) || null;
     const duplicados = await buscarDuplicadosCliente(supabase, auth.empresa_id, {
       nombre: nombrePrincipal,

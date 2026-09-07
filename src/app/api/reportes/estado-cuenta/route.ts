@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { toCalendarDateStr } from "@/lib/fechas/calendario";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 /**
  * GET /api/reportes/estado-cuenta?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
@@ -239,17 +240,13 @@ export async function GET(request: NextRequest) {
       const rows = await selectInBatches(
         supabase,
         "clientes",
-        "id, empresa, nombre_contacto",
+        "id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social",
         "id",
         clienteIds
       );
       for (const c of rows) {
         const id = String((c as AnyRow).id);
-        const nombre =
-          (((c as AnyRow).empresa as string) ?? "").trim() ||
-          (((c as AnyRow).nombre_contacto as string) ?? "").trim() ||
-          "—";
-        clienteNombre[id] = nombre;
+        clienteNombre[id] = nombreClienteDisplay(c as Record<string, unknown>, "—");
       }
     }
 

@@ -19,6 +19,7 @@ import {
   Target,
   Users,
 } from "lucide-react";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -33,7 +34,7 @@ function estiloTarea(t: MarketingTask, hoyYmd: string): string {
 }
 
 function nombreClienteOps(c: MarketingOpsClienteResumen): string {
-  return (c.empresa ?? c.nombre_contacto ?? c.nombre ?? "Cliente").trim() || "Cliente";
+  return nombreClienteDisplay(c, "Cliente");
 }
 
 export default function MarketingOpsPage() {

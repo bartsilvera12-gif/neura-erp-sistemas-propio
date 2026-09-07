@@ -1,4 +1,5 @@
 import "server-only";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 /** Normaliza documento (RUC/cédula): solo alfanumérico, mayúsculas. */
 export function normalizarDocumento(v: unknown): string {
@@ -54,14 +55,14 @@ export async function buscarDuplicadosCliente(
     const cid = String(c.id ?? "");
     if (!cid || (input.excluirClienteId && cid === input.excluirClienteId)) continue;
     const cdoc = normalizarDocumento((c.ruc as string) || (c.documento as string));
-    const cname = normalizarNombre((c.empresa as string) || (c.nombre as string));
+    const cname = normalizarNombre(nombreClienteDisplay(c, ""));
     const matchDoc = !!docN && cdoc === docN;
     const matchName = !!nameN && cname === nameN;
     if (!matchDoc && !matchName) continue;
     const estado = String(c.estado ?? "activo");
     out.push({
       cliente_id: cid,
-      nombre: String((c.empresa as string) || (c.nombre as string) || "").trim(),
+      nombre: nombreClienteDisplay(c, "").trim(),
       documento: ((c.ruc as string) || (c.documento as string) || null) as string | null,
       estado,
       activo: estado.trim().toLowerCase() === "activo",

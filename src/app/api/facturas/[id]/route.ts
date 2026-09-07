@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFacturasSupabaseFromAuth } from "@/lib/facturacion/facturas-service-client";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 
 /**
@@ -47,14 +48,12 @@ export async function GET(
     const row = factura as { cliente_id: string };
     const { data: cli } = await supabase
       .from("clientes")
-      .select("nombre_contacto, empresa")
+      .select("tipo_cliente, nombre_contacto, empresa, nombre, razon_social")
       .eq("id", row.cliente_id)
       .maybeSingle();
 
-    const c = cli as { nombre_contacto?: string; empresa?: string } | null;
-    const empresa = (c?.empresa ?? "").trim();
-    const nombre = (c?.nombre_contacto ?? "").trim();
-    const cliente_display = empresa || nombre || "Cliente";
+    const c = cli as Record<string, unknown> | null;
+    const cliente_display = nombreClienteDisplay(c, "Cliente");
 
     return NextResponse.json(
       successResponse({

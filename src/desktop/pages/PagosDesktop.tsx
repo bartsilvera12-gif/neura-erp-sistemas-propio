@@ -11,6 +11,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import type { Cliente } from "@/lib/clientes/types";
 import type { Factura } from "@/lib/gestion-clientes/types";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 // ── Estilos base ──────────────────────────────────────────────────────────────
 
@@ -216,7 +217,7 @@ export default function PagosPage() {
     };
     const nombreDe = (f: Factura) => {
       const c = clientes.find((x) => String(x.id) === String(f.cliente_id));
-      return ((c?.empresa ?? c?.nombre_contacto) ?? "").toString().toLowerCase();
+      return nombreClienteDisplay(c, "").toLowerCase();
     };
     const q = filtroNombre.trim().toLowerCase();
     const porNombre = (f: Factura) => q === "" || nombreDe(f).includes(q);
@@ -292,7 +293,7 @@ export default function PagosPage() {
   );
 
   const clienteMapNombre = useMemo(
-    () => Object.fromEntries(clientes.map((c) => [c.id, (c.empresa ?? c.nombre_contacto) || "—"])),
+    () => Object.fromEntries(clientes.map((c) => [c.id, nombreClienteDisplay(c, "—")])),
     [clientes]
   );
   /** Mapa clienteId → vendedor asignado (nombre del usuario resuelto, o el texto libre). */

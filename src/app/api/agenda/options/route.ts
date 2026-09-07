@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireAgendaApiAccess } from "@/lib/agenda/agenda-auth";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 /** Tipos de cita sugeridos (Fase 1A: estáticos; catálogo configurable en Fase 1.1). */
 const TIPOS_SUGERIDOS = [
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
         .order("nombre", { ascending: true }),
       sb
         .from("clientes")
-        .select("id,empresa,nombre_contacto,telefono")
+        .select("id,tipo_cliente,empresa,nombre_contacto,nombre,razon_social,telefono")
         .eq("empresa_id", empresaId)
         .order("nombre_contacto", { ascending: true })
         .limit(1000),
@@ -55,10 +56,7 @@ export async function GET(request: Request) {
 
     const clientes = ((clientesR.data ?? []) as Record<string, unknown>[]).map((c) => ({
       id: String(c.id),
-      nombre:
-        ((c.nombre_contacto as string | null)?.trim() ||
-          (c.empresa as string | null)?.trim() ||
-          null) ?? null,
+      nombre: nombreClienteDisplay(c, "") || null,
       telefono: (c.telefono as string | null) ?? null,
     }));
 

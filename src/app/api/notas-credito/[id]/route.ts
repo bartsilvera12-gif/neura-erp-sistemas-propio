@@ -3,14 +3,13 @@ import { getTenantSupabaseFromAuthWithRol } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import type { NotaCreditoGlobalDetailDTO, NotaCreditoEventoAuditoriaDTO } from "@/lib/nota-credito/types";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 function clienteDisplay(c: Record<string, unknown> | null): { id: string; display: string; ruc: string | null } {
   if (!c) return { id: "", display: "—", ruc: null };
-  const emp = String(c.empresa ?? "").trim();
-  const nom = String(c.nombre_contacto ?? "").trim();
   return {
     id: String(c.id ?? ""),
-    display: emp || nom || "—",
+    display: nombreClienteDisplay(c, "—"),
     ruc: c.ruc == null || String(c.ruc).trim() === "" ? null : String(c.ruc).trim(),
   };
 }
@@ -50,7 +49,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const row = nc as { cliente_id: string; factura_id: string };
     const [{ data: ne }, { data: cli }, { data: fac }, { data: evs }] = await Promise.all([
       supabase.from("nota_credito_electronica").select("*").eq("nota_credito_id", nid).eq("empresa_id", auth.empresa_id).maybeSingle(),
-      supabase.from("clientes").select("id, empresa, nombre_contacto, ruc").eq("id", row.cliente_id).eq("empresa_id", auth.empresa_id).maybeSingle(),
+      supabase.from("clientes").select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social, ruc").eq("id", row.cliente_id).eq("empresa_id", auth.empresa_id).maybeSingle(),
       supabase.from("facturas").select("id, numero_factura, fecha, monto, moneda").eq("id", row.factura_id).eq("empresa_id", auth.empresa_id).maybeSingle(),
       supabase
         .from("nota_credito_evento")

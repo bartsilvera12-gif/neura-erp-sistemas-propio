@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import type { AgendaCitaEnriquecida, AgendaCitaRow, AgendaUsuarioRef } from "@/lib/agenda/types";
 import { responsablesPorCita } from "@/lib/agenda/responsables";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 function uniq(ids: (string | null | undefined)[]): string[] {
   return [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))];
@@ -43,7 +44,7 @@ export async function enrichAgendaRows(
     clienteIds.length
       ? sb
           .from("clientes")
-          .select("id,empresa,nombre_contacto,telefono")
+          .select("id,tipo_cliente,empresa,nombre_contacto,nombre,razon_social,telefono")
           .eq("empresa_id", empresaId)
           .in("id", clienteIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
@@ -74,7 +75,7 @@ export async function enrichAgendaRows(
       out.cliente = c
         ? {
             id: c.id,
-            nombre: (c.nombre_contacto?.trim() || c.empresa?.trim() || null) ?? null,
+            nombre: nombreClienteDisplay(c, "") || null,
             telefono: c.telefono ?? null,
           }
         : { id: r.cliente_id, nombre: null, telefono: null };

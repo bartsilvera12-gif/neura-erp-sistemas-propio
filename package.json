@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check:cliente-nombre": "tsx scripts/check-cliente-display-name.ts",
     "test:modulos": "tsx scripts/test-modulos-kevin.ts",
     "test:emitir-factura": "tsx scripts/test-emitir-factura-inicial.ts",
     "db:push-rls": "tsx scripts/run-rls-migration.ts",

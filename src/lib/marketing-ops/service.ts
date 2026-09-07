@@ -64,7 +64,7 @@ async function clienteMap(
   if (uniq.length === 0) return map;
   const { data } = await sb
     .from("clientes")
-    .select("id, nombre, empresa, nombre_contacto")
+    .select("id, tipo_cliente, nombre, empresa, nombre_contacto, razon_social")
     .eq("empresa_id", empresaId)
     .in("id", uniq);
   for (const c of (data ?? []) as { id: string; nombre: string | null; empresa: string | null; nombre_contacto: string | null }[]) {

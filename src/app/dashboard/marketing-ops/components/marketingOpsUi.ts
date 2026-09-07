@@ -4,6 +4,7 @@ import {
   MARKETING_OPS_ESTADOS_PUBLICACION,
   MARKETING_OPS_PRIORIDADES,
 } from "@/lib/marketing-ops/types";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 export const PRIORIDAD_OPTIONS = MARKETING_OPS_PRIORIDADES.map((value) => ({
   value,
@@ -91,7 +92,7 @@ export function prioridadDotClass(value: string): string {
 }
 
 export function clienteLabel(cliente?: { empresa?: string | null; nombre_contacto?: string | null; nombre?: string | null } | null): string {
-  return (cliente?.empresa ?? cliente?.nombre_contacto ?? cliente?.nombre ?? "Sin cliente").trim() || "Sin cliente";
+  return nombreClienteDisplay(cliente, "Sin cliente");
 }
 
 export function fmtDate(value?: string | null): string {

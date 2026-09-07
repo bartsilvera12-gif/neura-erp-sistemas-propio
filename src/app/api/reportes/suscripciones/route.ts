@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 /**
  * GET /api/reportes/suscripciones
@@ -99,8 +100,7 @@ export async function GET(request: NextRequest) {
           (c.baja_operativa_at == null || String(c.baja_operativa_at).trim() === "") &&
           !ESTADOS_CLIENTE_INACTIVO.has(estado);
         cliMap.set(String(c.id), {
-          nombre:
-            (String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || "(sin nombre)"),
+          nombre: nombreClienteDisplay(c, "(sin nombre)"),
           tipo: String(c.tipo_servicio_cliente ?? "").trim().toLowerCase(),
           vendedorTexto: String(c.vendedor_asignado ?? "").trim(),
           vendedorUid: String(c.vendedor_usuario_id ?? "").trim(),

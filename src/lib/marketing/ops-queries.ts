@@ -3,6 +3,7 @@ import type { PlanMarketingPlantilla } from "@/lib/planes/types";
 import type { MarketingTask } from "./types";
 import type { TaskRow } from "./storage";
 import { rowToTask } from "./storage";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 function planMarketingOperativo(p: {
   es_plan_marketing?: boolean | null;
@@ -235,8 +236,8 @@ export async function loadMarketingOpsDashboard(opts: {
   });
 
   clientes.sort((a, b) => {
-    const na = (a.empresa ?? a.nombre_contacto ?? a.nombre ?? "").toLowerCase();
-    const nb = (b.empresa ?? b.nombre_contacto ?? b.nombre ?? "").toLowerCase();
+    const na = nombreClienteDisplay(a, "").toLowerCase();
+    const nb = nombreClienteDisplay(b, "").toLowerCase();
     return na.localeCompare(nb, "es");
   });
 

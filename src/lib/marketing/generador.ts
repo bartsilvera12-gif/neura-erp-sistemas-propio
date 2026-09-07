@@ -2,6 +2,7 @@ import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { getCurrentUser } from "@/lib/auth";
 import type { PlanMarketingItem, PlanMarketingPlantilla } from "@/lib/planes/types";
 import { TIPOS_CONTENIDO } from "./types";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 const DIAS_SEMANA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
@@ -149,7 +150,7 @@ export async function previewSyncMarketing(opts: {
 
   const clienteMap = new Map((clientes ?? []).map((c) => [c.id, c]));
   const clienteNombre = (cid: string) =>
-    clienteMap.get(cid)?.empresa ?? clienteMap.get(cid)?.nombre_contacto ?? "Cliente";
+    nombreClienteDisplay(clienteMap.get(cid), "Cliente");
 
   const { data: existentes } = await opts.supabaseClient
     .from("marketing_tasks")
@@ -357,7 +358,7 @@ export async function generarTareasMarketing(opts: {
 
   const clienteMap = new Map((clientes ?? []).map((c) => [c.id, c]));
   const clienteNombre = (cid: string) =>
-    clienteMap.get(cid)?.empresa ?? clienteMap.get(cid)?.nombre_contacto ?? "Cliente";
+    nombreClienteDisplay(clienteMap.get(cid), "Cliente");
 
   // 3. Tareas existentes del mes (batch para ocupados)
   const { data: existentes } = await client
@@ -513,7 +514,7 @@ export async function regenerarTareasClienteMes(opts: {
     .eq("id", opts.cliente_id)
     .single();
 
-  const nombreCliente = (cliente?.empresa ?? cliente?.nombre_contacto ?? "Cliente").trim() || "Cliente";
+  const nombreCliente = nombreClienteDisplay(cliente, "Cliente");
 
   // 5. Generar nuevas tareas según plantilla
   const errores: string[] = [];

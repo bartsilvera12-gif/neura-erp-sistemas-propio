@@ -237,6 +237,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           ? body.responsable_tecnico_id
           : null;
     }
+    // Clasificación del bloqueo. `bloqueado` y `bloqueo_motivo` ya existían; el
+    // tipo es lo que permite agrupar los bloqueos en el dashboard sin adivinar
+    // leyendo el texto libre del motivo.
+    if ("bloqueo_tipo" in body) {
+      const t = typeof body.bloqueo_tipo === "string" ? body.bloqueo_tipo.trim() : "";
+      if (t && !["cliente", "interno", "tercero"].includes(t)) {
+        return NextResponse.json(errorResponse("Tipo de bloqueo inválido"), { status: 400 });
+      }
+      patch.bloqueo_tipo = t || null;
+    }
+    // Objetivo de SLV técnico del proyecto (catálogo `proyecto_slv_objetivos`).
+    // En null se resuelve por el tipo de proyecto.
+    if ("slv_objetivo_id" in body) {
+      patch.slv_objetivo_id =
+        typeof body.slv_objetivo_id === "string" && body.slv_objetivo_id ? body.slv_objetivo_id : null;
+    }
     if (typeof body.fecha_prometida === "string" || body.fecha_prometida === null) {
       patch.fecha_prometida =
         typeof body.fecha_prometida === "string" && body.fecha_prometida.trim()

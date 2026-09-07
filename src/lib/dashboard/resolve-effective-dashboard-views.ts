@@ -17,6 +17,8 @@ const DASH_SLUGS = new Set([
   "ventas",
   "proyectos",
   "sla_proyectos",
+  "dashboard_ejecutivo",
+  "dashboard_pm",
 ]);
 export type DashboardTabSlug =
   | "comercial"
@@ -24,7 +26,9 @@ export type DashboardTabSlug =
   | "inventario"
   | "ventas"
   | "proyectos"
-  | "sla_proyectos";
+  | "sla_proyectos"
+  | "dashboard_ejecutivo"
+  | "dashboard_pm";
 
 export function isDashboardTabSlug(s: string): s is DashboardTabSlug {
   return DASH_SLUGS.has(s);

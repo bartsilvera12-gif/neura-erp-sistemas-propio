@@ -60,7 +60,7 @@ async function modulosRowsByIds(
  *
  * Excepción: los módulos RESTRINGIDOS (ver `modulos-restringidos.ts`) no siguen
  * ninguna de esas reglas. Sólo aparecen para quien tenga una fila explícita en
- * `usuario_modulos`, cualquiera sea su rol — si no, un tablero de Dirección se
+ * `usuario_modulos`, cualquiera sea su rol — si no, un tablero reservado se
  * abriría solo para todos los administradores de la empresa.
  */
 export async function resolveEffectiveModules(

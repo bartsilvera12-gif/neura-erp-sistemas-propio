@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * Dirección — el tablero reservado.
+ * Tableros — los tableros reservados de Desarrollo.
  *
- * Junta las dos lecturas de cartera que antes vivían como pestañas del
- * Dashboard: el panel gerencial de Proyectos y el Dashboard Ejecutivo. Se
- * mudaron acá porque el Dashboard lo ve toda la empresa y esta información es
- * de Dirección.
+ * Junta las lecturas de cartera que antes vivían como pestañas del Dashboard:
+ * el panel gerencial de Proyectos y el Dashboard Ejecutivo. Se mudaron acá
+ * porque el Dashboard lo ve toda la empresa y esta información no.
  *
- * El acceso NO lo decide esta pantalla: el módulo `direccion` es restringido
+ * El acceso NO lo decide esta pantalla: el módulo `tableros` es restringido
  * (ver `lib/modulos/modulos-restringidos.ts`) y sólo lo ve quien tenga una fila
  * explícita en `usuario_modulos`. Esta página además lo verifica contra la API,
  * porque esconder un ítem del menú nunca fue un permiso: la URL se escribe a
@@ -28,7 +27,7 @@ const TABS: { id: Tab; label: string; Icon: typeof LineChart }[] = [
   { id: "proyectos", label: "Proyectos", Icon: BarChart3 },
 ];
 
-export default function DireccionClient() {
+export default function TablerosClient() {
   const [tab, setTab] = useState<Tab>("ejecutivo");
   const [acceso, setAcceso] = useState<"cargando" | "ok" | "denegado">("cargando");
 
@@ -41,7 +40,7 @@ export default function DireccionClient() {
         const j = (await r.json().catch(() => [])) as { slug?: string }[] | { error?: string };
         if (cancel) return;
         const lista = Array.isArray(j) ? j : [];
-        const tiene = lista.some((m) => (m.slug ?? "").trim().toLowerCase() === "direccion");
+        const tiene = lista.some((m) => (m.slug ?? "").trim().toLowerCase() === "tableros");
         setAcceso(tiene ? "ok" : "denegado");
       })
       .catch(() => {
@@ -69,7 +68,7 @@ export default function DireccionClient() {
         </span>
         <p className="text-sm font-medium text-slate-700">Este módulo es de acceso restringido</p>
         <p className="max-w-sm text-xs text-slate-400">
-          Si necesitás entrar, pedí que te habiliten el módulo Dirección.
+          Si necesitás entrar, pedí que te habiliten el módulo Tableros.
         </p>
       </div>
     );

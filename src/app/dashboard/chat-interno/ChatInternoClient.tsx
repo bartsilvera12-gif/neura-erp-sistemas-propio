@@ -66,6 +66,8 @@ type Mensaje = {
   cita: Cita | null;
   reacciones: Record<string, string[]>;
   menciones: string[];
+  /** Pintado al instante, todavia sin respuesta del servidor. */
+  pendiente?: boolean;
 };
 
 /** Lista corta a propósito: se lee de un vistazo, un selector completo no. */
@@ -128,6 +130,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [enBusqueda, setEnBusqueda] = useState(false);
   /** Miembros de la sala abierta: alimentan el menú de menciones. */
   const [miembrosSala, setMiembrosSala] = useState<{ usuario_id: string; nombre: string }[]>([]);
+  /** Mi nombre y mi id, para pintar el mensaje antes de que el servidor conteste. */
+  const [yo, setYo] = useState<{ usuario_id: string; nombre: string } | null>(null);
   const [mencionados, setMencionados] = useState<{ id: string; nombre: string }[]>([]);
   const [consultaMencion, setConsultaMencion] = useState<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -167,22 +171,34 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
   }, []);
 
-  const cargarMensajes = useCallback(async (id: string, q?: string) => {
-    setCargandoMsgs(true);
+  /**
+   * `silencioso`: refresco de fondo (realtime, o reconciliar despues de enviar).
+   * No prende el cartel de "Cargando…" ni espera al POST de lectura, que no
+   * cambia nada de lo que se ve.
+   */
+  const cargarMensajes = useCallback(async (id: string, q?: string, silencioso = false) => {
+    if (!silencioso) setCargandoMsgs(true);
     try {
       const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
       const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/mensajes${qs}`, {
         cache: "no-store",
       });
       const j = (await r.json().catch(() => ({}))) as { data?: { mensajes?: Mensaje[] } };
-      setMensajes(j?.data?.mensajes ?? []);
+      const llegaron = j?.data?.mensajes ?? [];
+      // Los pendientes se conservan hasta que el servidor los devuelva: si no,
+      // el mensaje recien escrito parpadearia y desapareceria.
+      setMensajes((prev) => {
+        const confirmados = new Set(llegaron.map((m) => m.id));
+        const enVuelo = prev.filter((m) => m.pendiente && !confirmados.has(m.id));
+        return [...llegaron, ...enVuelo];
+      });
       // Buscar no es leer la conversación: no marca nada como visto.
       if (!q) {
-        await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, { method: "POST" });
+        void fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, { method: "POST" });
         setSalas((prev) => prev.map((s) => (s.id === id ? { ...s, no_leidos: 0 } : s)));
       }
     } finally {
-      setCargandoMsgs(false);
+      if (!silencioso) setCargandoMsgs(false);
     }
   }, []);
 
@@ -212,7 +228,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           data?: { miembros?: { usuario_id: string; nombre: string; propio: boolean }[] };
         };
         if (!cancel) {
-          setMiembrosSala((j?.data?.miembros ?? []).filter((m) => !m.propio));
+          const todos = j?.data?.miembros ?? [];
+          setMiembrosSala(todos.filter((m) => !m.propio));
+          setYo(todos.find((m) => m.propio) ?? null);
         }
       })
       .catch(() => {
@@ -232,7 +250,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         "postgres_changes",
         { event: "INSERT", schema: "neura", table: "chat_interno_mensajes", filter: `sala_id=eq.${salaId}` },
         () => {
-          void cargarMensajes(salaId);
+          void cargarMensajes(salaId, undefined, true);
           void cargarSalas();
         }
       )
@@ -343,35 +361,86 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     requestAnimationFrame(() => area?.focus());
   }
 
+  /**
+   * Envio optimista: el mensaje aparece y el cuadro se vacia en el mismo
+   * momento en que apretas Enter. Escribir no puede quedar esperando a la red
+   * — el POST y el refresco corren atras, y si falla se retira el mensaje y se
+   * devuelve el texto tal como estaba.
+   */
   async function enviar() {
     if (!salaId) return;
-    if (!texto.trim() && adjuntos.length === 0) return;
+    const cuerpo = texto;
+    const files = adjuntos;
+    const responde = citando;
+    if (!cuerpo.trim() && files.length === 0) return;
+
+    const menciones = mencionados
+      // Sólo las que siguen escritas: si borró el @Nombre, no se notifica.
+      .filter((m) => cuerpo.includes(`@${nombreCorto(m.nombre)}`))
+      .map((m) => m.id);
+
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimista: Mensaje = {
+      id: tempId,
+      usuario_id: yo?.usuario_id ?? null,
+      autor: yo?.nombre ?? "Yo",
+      texto: cuerpo.trim() || null,
+      adjuntos: files,
+      created_at: new Date().toISOString(),
+      editado_at: null,
+      eliminado: false,
+      propio: true,
+      responde_a: responde?.id ?? null,
+      cita: responde ? { autor: responde.autor, texto: responde.texto } : null,
+      reacciones: {},
+      menciones,
+      pendiente: true,
+    };
+
+    setMensajes((prev) => [...prev, optimista]);
+    setTexto("");
+    setAdjuntos([]);
+    setCitando(null);
+    setMencionados([]);
+    setConsultaMencion(null);
     setEnviando(true);
+
     try {
       const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/mensajes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          texto,
-          adjuntos,
-          responde_a: citando?.id ?? undefined,
-          // Sólo las que siguen escritas: si borró el @Nombre, no se notifica.
-          menciones: mencionados
-            .filter((m) => texto.includes(`@${nombreCorto(m.nombre)}`))
-            .map((m) => m.id),
+          texto: cuerpo,
+          adjuntos: files,
+          responde_a: responde?.id ?? undefined,
+          menciones,
         }),
       });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      const j = (await r.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        data?: { id?: string };
+      };
       if (!r.ok || !j.success) {
+        setMensajes((prev) => prev.filter((m) => m.id !== tempId));
+        setTexto(cuerpo);
+        setAdjuntos(files);
+        setCitando(responde);
         setErr(j.error ?? "No se pudo enviar");
         return;
       }
-      setTexto("");
-      setAdjuntos([]);
-      setCitando(null);
-      setMencionados([]);
-      await cargarMensajes(salaId);
+      // Ya tiene id real: deja de ser pendiente y el refresco lo reconoce.
+      setMensajes((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, id: j.data?.id ?? m.id, pendiente: false } : m))
+      );
+      void cargarMensajes(salaId, undefined, true);
       void cargarSalas();
+    } catch {
+      setMensajes((prev) => prev.filter((m) => m.id !== tempId));
+      setTexto(cuerpo);
+      setAdjuntos(files);
+      setCitando(responde);
+      setErr("No se pudo enviar");
     } finally {
       setEnviando(false);
     }
@@ -668,8 +737,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               : "rounded-bl-sm border border-slate-200 bg-white text-slate-700"
                           }`}
                         >
-                          {!m.propio && !seguido ? (
-                            <div className="mb-0.5 text-[10.5px] font-bold" style={{ color: c }}>
+                          {!seguido ? (
+                            <div
+                              className={`mb-0.5 text-[10.5px] font-bold ${
+                                m.propio ? "text-right text-white/85" : ""
+                              }`}
+                              style={m.propio ? undefined : { color: c }}
+                            >
                               {nombreCorto(m.autor)}
                             </div>
                           ) : null}
@@ -757,8 +831,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               m.propio ? "text-white/70" : "text-slate-400"
                             }`}
                           >
-                            {m.editado_at ? "editado · " : ""}
-                            {hora(m.created_at)}
+                            {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
+                            {m.pendiente ? "" : hora(m.created_at)}
                           </div>
 
                           {Object.keys(m.reacciones).length > 0 ? (
@@ -781,7 +855,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
                         {/* Acciones: aparecen al pasar el mouse, para no
                             competir con el texto en reposo. */}
-                        {!m.eliminado && !enBusqueda ? (
+                        {!m.eliminado && !enBusqueda && !m.pendiente ? (
                           <div className="flex items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100">
                             <div className="flex items-center rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow-sm">
                               {EMOJIS.map((e) => (

@@ -193,33 +193,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 
     const creado = data as { id: string; created_at: string };
-    // La bandeja ordena por esto; se actualiza acá y no con un trigger para que
-    // el orden ya esté bien en la misma respuesta.
-    await sb
-      .from("chat_interno_salas")
-      .update({ ultimo_mensaje_at: creado.created_at, updated_at: creado.created_at })
-      .eq("id", salaId)
-      .eq("empresa_id", empresaId);
 
-    // Quien escribe ya leyó lo suyo.
-    await sb
-      .from("chat_interno_miembros")
-      .update({ ultima_lectura_at: creado.created_at })
-      .eq("sala_id", salaId)
-      .eq("usuario_id", usuarioId);
+    // Todo lo que sigue es independiente entre sí, así que va junto: en serie
+    // eran cuatro viajes a la base antes de contestar, y escribir se sentía
+    // lento por trabajo que a quien escribe no le importa esperar.
+    const catalog2 = createServiceRoleClient();
+    const [, , salaRes, yoRes] = await Promise.all([
+      // La bandeja ordena por esto; se actualiza acá y no con un trigger para
+      // que el orden ya esté bien en la misma respuesta.
+      sb
+        .from("chat_interno_salas")
+        .update({ ultimo_mensaje_at: creado.created_at, updated_at: creado.created_at })
+        .eq("id", salaId)
+        .eq("empresa_id", empresaId),
+      // Quien escribe ya leyó lo suyo.
+      sb
+        .from("chat_interno_miembros")
+        .update({ ultima_lectura_at: creado.created_at })
+        .eq("sala_id", salaId)
+        .eq("usuario_id", usuarioId),
+      sb.from("chat_interno_salas").select("nombre, tipo").eq("id", salaId).maybeSingle(),
+      catalog2.from("usuarios").select("nombre").eq("id", usuarioId).maybeSingle(),
+    ]);
+    const sala = salaRes.data;
+    const yo = yoRes.data;
 
     // El aviso va al final y no bloquea: el mensaje ya está guardado.
-    const { data: sala } = await sb
-      .from("chat_interno_salas")
-      .select("nombre, tipo")
-      .eq("id", salaId)
-      .maybeSingle();
-    const catalog2 = createServiceRoleClient();
-    const { data: yo } = await catalog2
-      .from("usuarios")
-      .select("nombre")
-      .eq("id", usuarioId)
-      .maybeSingle();
     await notificarMensajeChat(sb, {
       empresaId,
       salaId,

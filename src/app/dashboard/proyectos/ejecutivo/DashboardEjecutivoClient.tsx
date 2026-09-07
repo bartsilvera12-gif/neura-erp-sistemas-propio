@@ -31,8 +31,10 @@ import {
   AlertCircle,
   AlertTriangle,
   CalendarRange,
+  CheckCircle2,
   Download,
   LineChart,
+  Quote,
   Flag,
   Hourglass,
   Lock,
@@ -135,6 +137,18 @@ const COLOR_BLOQUEO: Record<string, string> = {
   // no es un bloqueo interno, y meterlo ahí lo escondía.
   pausa: "#64748b",
 };
+
+/**
+ * Cuánto pesa una detención, por el tiempo que lleva. Una pausa de tres horas y
+ * una de dos semanas no son el mismo problema, y en una lista de cuatro filas
+ * el color es lo único que lo dice de un vistazo.
+ */
+function severidadDetencion(ms: number | null): string {
+  const horas = ms == null ? 0 : ms / 3600_000;
+  if (horas >= 90) return "bg-rose-50 text-rose-600";
+  if (horas >= 36) return "bg-orange-50 text-orange-600";
+  return "bg-slate-100 text-slate-500";
+}
 
 const SEMAFORO_PILL: Record<Data["criticos"][number]["semaforo"], string> = {
   vencido: "bg-rose-50 text-rose-700",
@@ -241,11 +255,6 @@ export default function DashboardEjecutivoClient() {
     if (desde) return `En curso + entregados desde ${fmtFecha(desde)}`;
     return `En curso + entregados hasta ${fmtFecha(hasta)}`;
   }, [desde, hasta]);
-
-  const bloqueosDonut = useMemo(
-    () => (data?.bloqueos_por_tipo ?? []).map((b) => ({ ...b, value: b.cantidad })),
-    [data?.bloqueos_por_tipo]
-  );
 
   /**
    * Descarga del resumen en CSV. Es el formato que abre Excel sin pedir nada y
@@ -681,55 +690,85 @@ export default function DashboardEjecutivoClient() {
                   Bloqueos y pausas
                 </CardTitle>
                 {data.bloqueos_detalle.length === 0 ? (
-                  <p className="text-sm text-slate-400">Nada detenido</p>
+                  <div className="flex h-[150px] flex-col items-center justify-center gap-1.5 text-center">
+                    <CheckCircle2 className="h-6 w-6 text-emerald-400" />
+                    <p className="text-[12px] font-medium text-slate-500">Nada detenido</p>
+                  </div>
                 ) : (
                   <>
-                    {/* El desglose por tipo, en una línea: con pocos proyectos un
+                    {/* Desglose por tipo en una línea: con pocos proyectos un
                         anillo de un solo color no dice nada que esto no diga. */}
-                    <div className="mb-2 flex flex-wrap gap-1.5">
+                    <div className="mb-2.5 flex flex-wrap gap-1.5">
                       {data.bloqueos_por_tipo.map((b) => (
-                        <Pill
+                        <span
                           key={b.tipo}
-                          className="border"
+                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
                           style={{
-                            background: `${COLOR_BLOQUEO[b.tipo] ?? TEAL}14`,
+                            background: `${COLOR_BLOQUEO[b.tipo] ?? TEAL}18`,
                             color: COLOR_BLOQUEO[b.tipo] ?? TEAL,
-                            borderColor: `${COLOR_BLOQUEO[b.tipo] ?? TEAL}33`,
                           }}
                         >
-                          {b.label} · {b.cantidad}
-                        </Pill>
+                          <span
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{ background: COLOR_BLOQUEO[b.tipo] ?? TEAL }}
+                          />
+                          {b.label}
+                          <span className="tabular-nums opacity-70">{b.cantidad}</span>
+                        </span>
                       ))}
                     </div>
-                    <ul className="space-y-1.5">
-                      {data.bloqueos_detalle.map((b) => (
-                        <li key={b.id} className="rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-1.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <Link
-                              href={`/dashboard/proyectos?proyecto=${b.id}`}
-                              className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-slate-700 hover:underline"
-                              title={b.titulo}
-                            >
-                              {b.titulo}
-                            </Link>
-                            <span className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-slate-400">
-                              {fmtDur(b.tiempo_ms)}
-                            </span>
-                          </div>
-                          <div className="truncate text-[10px] text-slate-400" title={b.cliente}>
-                            {b.cliente}
-                          </div>
-                          {/* Sin motivo cargado se dice que falta, en vez de
-                              repetir el estado y aparentar que hay una razón. */}
-                          <div className="mt-0.5 text-[10.5px]">
-                            {b.motivo ? (
-                              <span className="text-slate-600">{b.motivo}</span>
-                            ) : (
-                              <span className="italic text-slate-300">Sin motivo cargado</span>
-                            )}
-                          </div>
-                        </li>
-                      ))}
+                    <ul className="space-y-2">
+                      {data.bloqueos_detalle.map((b) => {
+                        const color = COLOR_BLOQUEO[b.tipo] ?? TEAL;
+                        return (
+                          <li
+                            key={b.id}
+                            className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md"
+                          >
+                            {/* Franja del color del tipo: identifica la causa sin
+                                gastar una columna de texto. */}
+                            <span
+                              aria-hidden
+                              className="absolute inset-y-0 left-0 w-[3px]"
+                              style={{ background: color }}
+                            />
+                            <div className="py-2 pl-3 pr-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <Link
+                                  href={`/dashboard/proyectos?proyecto=${b.id}`}
+                                  className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800 hover:text-[#2F6E71] hover:underline"
+                                  title={b.titulo}
+                                >
+                                  {b.titulo}
+                                </Link>
+                                <span
+                                  className={`shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${severidadDetencion(b.tiempo_ms)}`}
+                                >
+                                  {fmtDur(b.tiempo_ms)}
+                                </span>
+                              </div>
+                              <div
+                                className="truncate text-[10.5px] uppercase tracking-wide text-slate-400"
+                                title={b.cliente}
+                              >
+                                {b.cliente}
+                              </div>
+                              <div className="mt-1 flex items-start gap-1.5">
+                                <Quote className="mt-0.5 h-3 w-3 shrink-0 text-slate-300" />
+                                {/* Sin motivo cargado se dice que falta, en vez de
+                                    repetir el estado y aparentar que hay una razón. */}
+                                {b.motivo ? (
+                                  <span className="text-[11px] leading-snug text-slate-600">{b.motivo}</span>
+                                ) : (
+                                  <span className="text-[11px] italic leading-snug text-slate-300">
+                                    Sin motivo cargado
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </>
                 )}

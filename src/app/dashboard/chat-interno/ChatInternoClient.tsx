@@ -11,13 +11,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ChevronLeft,
   Loader2,
   Mic,
   Paperclip,
+  Pencil,
   Plus,
+  Reply,
   Search,
   Send,
   Square,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -46,6 +50,8 @@ type Adjunto = {
   url?: string | null;
 };
 
+type Cita = { autor: string; texto: string | null };
+
 type Mensaje = {
   id: string;
   usuario_id: string | null;
@@ -53,9 +59,17 @@ type Mensaje = {
   texto: string | null;
   adjuntos: Adjunto[];
   created_at: string;
+  editado_at: string | null;
   eliminado: boolean;
   propio: boolean;
+  responde_a: string | null;
+  cita: Cita | null;
+  reacciones: Record<string, string[]>;
+  menciones: string[];
 };
+
+/** Lista corta a propósito: se lee de un vistazo, un selector completo no. */
+const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
 
 type UsuarioOpcion = { id: string; nombre: string; area: string };
 
@@ -89,7 +103,13 @@ function pesoLegible(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function ChatInternoClient() {
+/**
+ * `mobile`: en pantalla chica los dos paneles no entran uno al lado del otro,
+ * así que se muestra uno por vez — la bandeja, o la conversación con un botón
+ * para volver. Misma lógica, otro esqueleto: duplicar el componente sería
+ * duplicar también cada arreglo futuro.
+ */
+export default function ChatInternoClient({ mobile = false }: { mobile?: boolean } = {}) {
   const [salas, setSalas] = useState<Sala[]>([]);
   const [salaId, setSalaId] = useState<string | null>(null);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
@@ -100,6 +120,17 @@ export default function ChatInternoClient() {
 
   const [texto, setTexto] = useState("");
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
+  /** Mensaje que se está respondiendo, o `null`. */
+  const [citando, setCitando] = useState<Mensaje | null>(null);
+  /** Mensaje en edición: su id y el texto en curso. */
+  const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
+  const [busca, setBusca] = useState("");
+  const [enBusqueda, setEnBusqueda] = useState(false);
+  /** Miembros de la sala abierta: alimentan el menú de menciones. */
+  const [miembrosSala, setMiembrosSala] = useState<{ usuario_id: string; nombre: string }[]>([]);
+  const [mencionados, setMencionados] = useState<{ id: string; nombre: string }[]>([]);
+  const [consultaMencion, setConsultaMencion] = useState<string | null>(null);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -136,16 +167,20 @@ export default function ChatInternoClient() {
     }
   }, []);
 
-  const cargarMensajes = useCallback(async (id: string) => {
+  const cargarMensajes = useCallback(async (id: string, q?: string) => {
     setCargandoMsgs(true);
     try {
-      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/mensajes`, {
+      const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/mensajes${qs}`, {
         cache: "no-store",
       });
       const j = (await r.json().catch(() => ({}))) as { data?: { mensajes?: Mensaje[] } };
       setMensajes(j?.data?.mensajes ?? []);
-      await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, { method: "POST" });
-      setSalas((prev) => prev.map((s) => (s.id === id ? { ...s, no_leidos: 0 } : s)));
+      // Buscar no es leer la conversación: no marca nada como visto.
+      if (!q) {
+        await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, { method: "POST" });
+        setSalas((prev) => prev.map((s) => (s.id === id ? { ...s, no_leidos: 0 } : s)));
+      }
     } finally {
       setCargandoMsgs(false);
     }
@@ -158,7 +193,35 @@ export default function ChatInternoClient() {
   useEffect(() => {
     if (salaId) void cargarMensajes(salaId);
     else setMensajes([]);
+    setCitando(null);
+    setEditando(null);
+    setBusca("");
+    setEnBusqueda(false);
+    setMencionados([]);
   }, [salaId, cargarMensajes]);
+
+  useEffect(() => {
+    if (!salaId) {
+      setMiembrosSala([]);
+      return;
+    }
+    let cancel = false;
+    fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/miembros`, { cache: "no-store" })
+      .then(async (r) => {
+        const j = (await r.json().catch(() => ({}))) as {
+          data?: { miembros?: { usuario_id: string; nombre: string; propio: boolean }[] };
+        };
+        if (!cancel) {
+          setMiembrosSala((j?.data?.miembros ?? []).filter((m) => !m.propio));
+        }
+      })
+      .catch(() => {
+        if (!cancel) setMiembrosSala([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [salaId]);
 
   // Realtime: un mensaje nuevo en la sala abierta se agrega sin recargar.
   useEffect(() => {
@@ -206,6 +269,80 @@ export default function ChatInternoClient() {
     }
   }
 
+  async function reaccionar(msgId: string, emoji: string) {
+    // Optimista: la reacción se ve al instante y el servidor confirma. En un
+    // chat, esperar el ida y vuelta para ver tu propio 👍 se siente roto.
+    await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${msgId}/reaccion`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emoji }),
+    });
+    if (salaId) void cargarMensajes(salaId, enBusqueda ? busca : undefined);
+  }
+
+  async function borrarMensaje(msgId: string) {
+    if (!window.confirm("¿Eliminar este mensaje? Queda el aviso de que fue eliminado.")) return;
+    const r = await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${msgId}`, {
+      method: "DELETE",
+    });
+    const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+    if (!r.ok || !j.success) {
+      setErr(j.error ?? "No se pudo eliminar");
+      return;
+    }
+    if (salaId) void cargarMensajes(salaId, enBusqueda ? busca : undefined);
+  }
+
+  async function guardarEdicion() {
+    if (!editando) return;
+    const r = await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${editando.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto: editando.texto }),
+    });
+    const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+    if (!r.ok || !j.success) {
+      setErr(j.error ?? "No se pudo editar");
+      return;
+    }
+    setEditando(null);
+    if (salaId) void cargarMensajes(salaId, enBusqueda ? busca : undefined);
+  }
+
+  /** El `@` abierto antes del cursor, si hay uno sin cerrar. */
+  function detectarArroba(valor: string, cursor: number) {
+    const antes = valor.slice(0, cursor);
+    const i = antes.lastIndexOf("@");
+    if (i < 0) return null;
+    if (i > 0 && !/[\s(]/.test(antes[i - 1])) return null;
+    const frag = antes.slice(i + 1);
+    if (/\s/.test(frag)) return null;
+    return { inicio: i, frag };
+  }
+
+  const sugeridosMencion =
+    consultaMencion == null
+      ? []
+      : miembrosSala
+          .filter((m) => !mencionados.some((x) => x.id === m.usuario_id))
+          .filter((m) =>
+            consultaMencion.trim()
+              ? m.nombre.toLowerCase().includes(consultaMencion.trim().toLowerCase())
+              : true
+          )
+          .slice(0, 6);
+
+  function elegirMencion(m: { usuario_id: string; nombre: string }) {
+    const area = areaRef.current;
+    const cursor = area?.selectionStart ?? texto.length;
+    const at = detectarArroba(texto, cursor);
+    const corto = nombreCorto(m.nombre);
+    setTexto(at ? `${texto.slice(0, at.inicio)}@${corto} ${texto.slice(cursor)}` : `${texto}@${corto} `);
+    setMencionados((p) => (p.some((x) => x.id === m.usuario_id) ? p : [...p, { id: m.usuario_id, nombre: m.nombre }]));
+    setConsultaMencion(null);
+    requestAnimationFrame(() => area?.focus());
+  }
+
   async function enviar() {
     if (!salaId) return;
     if (!texto.trim() && adjuntos.length === 0) return;
@@ -214,7 +351,15 @@ export default function ChatInternoClient() {
       const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/mensajes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto, adjuntos }),
+        body: JSON.stringify({
+          texto,
+          adjuntos,
+          responde_a: citando?.id ?? undefined,
+          // Sólo las que siguen escritas: si borró el @Nombre, no se notifica.
+          menciones: mencionados
+            .filter((m) => texto.includes(`@${nombreCorto(m.nombre)}`))
+            .map((m) => m.id),
+        }),
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!r.ok || !j.success) {
@@ -223,6 +368,8 @@ export default function ChatInternoClient() {
       }
       setTexto("");
       setAdjuntos([]);
+      setCitando(null);
+      setMencionados([]);
       await cargarMensajes(salaId);
       void cargarSalas();
     } finally {
@@ -308,10 +455,24 @@ export default function ChatInternoClient() {
     buscaUsuario.trim() ? u.nombre.toLowerCase().includes(buscaUsuario.trim().toLowerCase()) : true
   );
 
+  // En mobile sólo se ve un panel: la conversación si hay una abierta.
+  const verBandeja = !mobile || !salaId;
+  const verConversacion = !mobile || !!salaId;
+
   return (
-    <div className="flex h-[calc(100dvh-190px)] min-h-[520px] gap-3">
+    <div
+      className={
+        mobile
+          ? "flex h-[calc(100dvh-150px)] min-h-[420px]"
+          : "flex h-[calc(100dvh-190px)] min-h-[520px] gap-3"
+      }
+    >
       {/* --- Bandeja ---------------------------------------------------------- */}
-      <aside className="flex w-72 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <aside
+        className={`${verBandeja ? "flex" : "hidden"} ${
+          mobile ? "w-full" : "w-72 shrink-0"
+        } flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white`}
+      >
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
           <h2 className="text-[13px] font-semibold text-slate-700">Conversaciones</h2>
           <button
@@ -376,16 +537,34 @@ export default function ChatInternoClient() {
       </aside>
 
       {/* --- Conversación ------------------------------------------------------ */}
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <section
+        className={`${verConversacion ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white`}
+      >
         {!salaActual ? (
           <div className="flex flex-1 items-center justify-center px-6 text-center text-[13px] text-slate-400">
             Elegí una conversación o creá una nueva.
           </div>
         ) : (
           <>
-            <header className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-2.5">
+            <header className="flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5 sm:px-4">
+              {mobile ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSalaId(null);
+                    setCitando(null);
+                    setEditando(null);
+                    setBusca("");
+                    setEnBusqueda(false);
+                  }}
+                  aria-label="Volver a las conversaciones"
+                  className="-ml-1 shrink-0 rounded-lg p-1 text-slate-500 hover:bg-slate-50"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              ) : null}
               <span
-                className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold"
+                className={`${mobile ? "hidden" : "flex"} h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold`}
                 style={{ background: `${colorDe(salaActual.nombre)}22`, color: colorDe(salaActual.nombre) }}
               >
                 {salaActual.tipo === "grupo" ? (
@@ -394,7 +573,7 @@ export default function ChatInternoClient() {
                   inicialesNombre(salaActual.nombre)
                 )}
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h2 className="truncate text-[13.5px] font-semibold text-slate-800">
                   {nombreCapitular(salaActual.nombre)}
                 </h2>
@@ -404,7 +583,46 @@ export default function ChatInternoClient() {
                     : "Conversación directa"}
                 </p>
               </div>
+              <div className="flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-50 px-2 py-1.5 focus-within:ring-1 focus-within:ring-[#4FAEB2]/40">
+                <Search className="h-3.5 w-3.5 text-slate-400" />
+                <input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && busca.trim()) {
+                      setEnBusqueda(true);
+                      void cargarMensajes(salaActual.id, busca);
+                    }
+                    if (e.key === "Escape") {
+                      setBusca("");
+                      setEnBusqueda(false);
+                      void cargarMensajes(salaActual.id);
+                    }
+                  }}
+                  placeholder="Buscar…"
+                  className="w-28 bg-transparent text-[12px] focus:outline-none sm:w-40"
+                />
+                {enBusqueda ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBusca("");
+                      setEnBusqueda(false);
+                      void cargarMensajes(salaActual.id);
+                    }}
+                    aria-label="Salir de la búsqueda"
+                  >
+                    <X className="h-3.5 w-3.5 text-slate-400" />
+                  </button>
+                ) : null}
+              </div>
             </header>
+            {enBusqueda ? (
+              <div className="border-b border-amber-100 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-700">
+                Resultados de la búsqueda · {mensajes.length}. Salí con Escape para volver a la
+                conversación.
+              </div>
+            ) : null}
 
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50/60 px-4 py-3">
               {cargandoMsgs && mensajes.length === 0 ? (
@@ -432,7 +650,7 @@ export default function ChatInternoClient() {
                           <span className="h-px flex-1 bg-slate-200" />
                         </div>
                       ) : null}
-                      <div className={`flex gap-2 ${m.propio ? "justify-end" : "justify-start"}`}>
+                      <div className={`group flex gap-2 ${m.propio ? "justify-end" : "justify-start"}`}>
                         {!m.propio ? (
                           <span
                             className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
@@ -455,8 +673,47 @@ export default function ChatInternoClient() {
                               {nombreCorto(m.autor)}
                             </div>
                           ) : null}
+                          {m.cita ? (
+                            <div
+                              className={`mb-1 rounded-lg border-l-2 px-2 py-1 text-[11px] ${
+                                m.propio
+                                  ? "border-white/50 bg-white/15 text-white/85"
+                                  : "border-[#4FAEB2] bg-slate-50 text-slate-500"
+                              }`}
+                            >
+                              <span className="block font-semibold">{nombreCorto(m.cita.autor)}</span>
+                              <span className="line-clamp-2">
+                                {m.cita.texto ?? "Mensaje eliminado"}
+                              </span>
+                            </div>
+                          ) : null}
                           {m.eliminado ? (
                             <p className="text-[12px] italic opacity-60">Mensaje eliminado</p>
+                          ) : editando?.id === m.id ? (
+                            <div className="space-y-1.5">
+                              <textarea
+                                autoFocus
+                                rows={2}
+                                value={editando.texto}
+                                onChange={(e) => setEditando({ id: m.id, texto: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    void guardarEdicion();
+                                  }
+                                  if (e.key === "Escape") setEditando(null);
+                                }}
+                                className="w-full resize-none rounded-lg px-2 py-1 text-[12.5px] text-slate-800 focus:outline-none"
+                              />
+                              <div className="flex justify-end gap-2 text-[11px]">
+                                <button type="button" onClick={() => setEditando(null)} className="opacity-80">
+                                  Cancelar
+                                </button>
+                                <button type="button" onClick={() => void guardarEdicion()} className="font-bold">
+                                  Guardar
+                                </button>
+                              </div>
+                            </div>
                           ) : (
                             <>
                               {m.texto ? (
@@ -500,9 +757,75 @@ export default function ChatInternoClient() {
                               m.propio ? "text-white/70" : "text-slate-400"
                             }`}
                           >
+                            {m.editado_at ? "editado · " : ""}
                             {hora(m.created_at)}
                           </div>
+
+                          {Object.keys(m.reacciones).length > 0 ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {Object.entries(m.reacciones).map(([emoji, quienes]) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => void reaccionar(m.id, emoji)}
+                                  className={`rounded-full px-1.5 py-0.5 text-[11px] leading-none ${
+                                    m.propio ? "bg-white/20" : "bg-slate-100"
+                                  }`}
+                                >
+                                  {emoji} <span className="text-[9.5px]">{quienes.length}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
+
+                        {/* Acciones: aparecen al pasar el mouse, para no
+                            competir con el texto en reposo. */}
+                        {!m.eliminado && !enBusqueda ? (
+                          <div className="flex items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100">
+                            <div className="flex items-center rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow-sm">
+                              {EMOJIS.map((e) => (
+                                <button
+                                  key={e}
+                                  type="button"
+                                  onClick={() => void reaccionar(m.id, e)}
+                                  title={`Reaccionar ${e}`}
+                                  className="px-0.5 text-[13px] leading-none transition-transform hover:scale-125"
+                                >
+                                  {e}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setCitando(m)}
+                              title="Responder"
+                              className="rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm hover:text-[#4FAEB2]"
+                            >
+                              <Reply className="h-3 w-3" />
+                            </button>
+                            {m.propio ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditando({ id: m.id, texto: m.texto ?? "" })}
+                                  title="Editar"
+                                  className="rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm hover:text-[#4FAEB2]"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void borrarMensaje(m.id)}
+                                  title="Eliminar"
+                                  className="rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm hover:text-rose-600"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -513,6 +836,21 @@ export default function ChatInternoClient() {
 
             {/* --- Redacción ---------------------------------------------------- */}
             <div className="border-t border-slate-100 px-3 py-2.5">
+              {citando ? (
+                <div className="mb-2 flex items-start gap-2 rounded-lg border-l-2 border-[#4FAEB2] bg-slate-50 px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-[10.5px] font-semibold text-[#2F6E71]">
+                      Respondiendo a {nombreCorto(citando.autor)}
+                    </span>
+                    <span className="line-clamp-2 text-[11px] text-slate-500">
+                      {citando.texto ?? "Archivo adjunto"}
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => setCitando(null)} aria-label="Cancelar respuesta">
+                    <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-700" />
+                  </button>
+                </div>
+              ) : null}
               {adjuntos.length > 0 ? (
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   {adjuntos.map((a) => (
@@ -555,11 +893,54 @@ export default function ChatInternoClient() {
                 >
                   {grabando ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </button>
+                <div className="relative flex-1">
+                {sugeridosMencion.length > 0 ? (
+                  <ul className="absolute bottom-full left-0 z-30 mb-1 w-60 overflow-hidden rounded-xl border border-[#4FAEB2]/25 bg-white p-1 shadow-xl">
+                    {sugeridosMencion.map((m) => (
+                      <li key={m.usuario_id}>
+                        <button
+                          type="button"
+                          // `onMouseDown`: con `onClick` el textarea pierde el
+                          // foco antes y el cursor se va a otro lado.
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            elegirMencion(m);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-50"
+                        >
+                          <span
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
+                            style={{ background: `${colorDe(m.nombre)}22`, color: colorDe(m.nombre) }}
+                          >
+                            {inicialesNombre(m.nombre)}
+                          </span>
+                          <span className="min-w-0 truncate">{nombreCapitular(m.nombre)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <textarea
+                  ref={areaRef}
                   rows={1}
                   value={texto}
-                  onChange={(e) => setTexto(e.target.value)}
+                  onChange={(e) => {
+                    setTexto(e.target.value);
+                    const at = detectarArroba(e.target.value, e.target.selectionStart ?? 0);
+                    setConsultaMencion(at ? at.frag : null);
+                  }}
                   onKeyDown={(e) => {
+                    if (e.key === "Escape" && consultaMencion != null) {
+                      e.preventDefault();
+                      setConsultaMencion(null);
+                      return;
+                    }
+                    // Con el menú abierto, Enter elige la sugerencia.
+                    if (e.key === "Enter" && !e.shiftKey && sugeridosMencion.length > 0) {
+                      e.preventDefault();
+                      elegirMencion(sugeridosMencion[0]);
+                      return;
+                    }
                     // Enter envía; Shift+Enter hace salto de línea, como en Bitrix.
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -576,9 +957,10 @@ export default function ChatInternoClient() {
                       void subirArchivos(imgs);
                     }
                   }}
-                  placeholder="Escribí un mensaje…"
-                  className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+                  placeholder="Escribí un mensaje… · @ para mencionar"
+                  className="max-h-32 min-h-[36px] w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                 />
+                </div>
                 <button
                   type="button"
                   onClick={() => void enviar()}

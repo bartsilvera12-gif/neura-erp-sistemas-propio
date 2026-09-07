@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { notificarMensajeChat } from "@/lib/chat-interno/notificar";
 import {
   esMiembro,
   firmarAdjuntos,
@@ -24,14 +25,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { miembro } = await esMiembro(sb, salaId, usuarioId);
     if (!miembro) return NextResponse.json(errorResponse("No sos miembro de esta sala"), { status: 403 });
 
-    const antesDe = new URL(request.url).searchParams.get("antes_de");
+    const sp = new URL(request.url).searchParams;
+    const antesDe = sp.get("antes_de");
+    const busca = (sp.get("q") ?? "").trim();
+
     let q = sb
       .from("chat_interno_mensajes")
-      .select("id, usuario_id, texto, adjuntos, created_at, editado_at, eliminado_at")
+      .select(
+        "id, usuario_id, texto, adjuntos, created_at, editado_at, eliminado_at, responde_a, reacciones, menciones"
+      )
       .eq("sala_id", salaId)
       .order("created_at", { ascending: false })
       .limit(PAGINA);
     if (antesDe) q = q.lt("created_at", antesDe);
+    // Buscar es otra vista de la misma conversación: se filtra por texto y se
+    // ignora la paginación por fecha, que responde a otra pregunta.
+    if (busca) q = sb
+      .from("chat_interno_mensajes")
+      .select(
+        "id, usuario_id, texto, adjuntos, created_at, editado_at, eliminado_at, responde_a, reacciones, menciones"
+      )
+      .eq("sala_id", salaId)
+      .is("eliminado_at", null)
+      .ilike("texto", `%${busca.replace(/[%_]/g, "")}%`)
+      .order("created_at", { ascending: false })
+      .limit(PAGINA);
 
     const { data, error } = await q;
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
@@ -47,6 +65,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     );
 
     const urls = await firmarAdjuntos(sb, filas as { adjuntos?: unknown }[]);
+
+    // Los mensajes citados pueden estar fuera de esta página: se traen aparte,
+    // sólo con lo que hace falta para pintar la cita.
+    const citados = [
+      ...new Set(filas.map((m) => m.responde_a).filter((x): x is string => typeof x === "string")),
+    ];
+    const { data: originales } = citados.length
+      ? await sb
+          .from("chat_interno_mensajes")
+          .select("id, usuario_id, texto, eliminado_at")
+          .in("id", citados)
+      : { data: [] as Record<string, unknown>[] };
+    const citaDe = new Map(
+      ((originales ?? []) as Record<string, unknown>[]).map((o) => [
+        String(o.id),
+        {
+          autor: o.usuario_id ? nombreDe.get(String(o.usuario_id)) ?? "—" : "—",
+          texto: o.eliminado_at ? null : ((o.texto as string | null) ?? null),
+        },
+      ])
+    );
 
     const mensajes = filas
       .map((m) => {
@@ -65,6 +104,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           editado_at: (m.editado_at as string | null) ?? null,
           eliminado: borrado,
           propio: m.usuario_id === usuarioId,
+          responde_a: (m.responde_a as string | null) ?? null,
+          cita: m.responde_a ? citaDe.get(String(m.responde_a)) ?? null : null,
+          reacciones: (m.reacciones as Record<string, string[]> | null) ?? {},
+          menciones: Array.isArray(m.menciones) ? (m.menciones as string[]) : [],
         };
       })
       .reverse();
@@ -94,6 +137,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const body = (await request.json().catch(() => ({}))) as {
       texto?: string;
       adjuntos?: ChatAdjunto[];
+      responde_a?: string;
+      menciones?: string[];
     };
     const texto = (body.texto ?? "").trim();
     const adjuntos = Array.isArray(body.adjuntos)
@@ -104,6 +149,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json(errorResponse("Escribí algo o adjuntá un archivo"), { status: 400 });
     }
 
+    // Sólo se cita un mensaje de ESTA sala: con el id de otro se podría filtrar
+    // texto ajeno dentro de una conversación donde no corresponde.
+    let respondeA: string | null = null;
+    if (typeof body.responde_a === "string" && body.responde_a) {
+      const { data: orig } = await sb
+        .from("chat_interno_mensajes")
+        .select("id")
+        .eq("id", body.responde_a)
+        .eq("sala_id", salaId)
+        .maybeSingle();
+      respondeA = (orig as { id?: string } | null)?.id ?? null;
+    }
+
+    // Sólo se menciona a miembros de la sala: a los demás el aviso los llevaría
+    // a una conversación que no pueden abrir.
+    let menciones: string[] = [];
+    const pedidas = Array.isArray(body.menciones)
+      ? [...new Set(body.menciones.filter((m): m is string => typeof m === "string" && !!m))]
+      : [];
+    if (pedidas.length > 0) {
+      const { data: miembros } = await sb
+        .from("chat_interno_miembros")
+        .select("usuario_id")
+        .eq("sala_id", salaId);
+      const enSala = new Set(((miembros ?? []) as { usuario_id: string }[]).map((m) => m.usuario_id));
+      menciones = pedidas.filter((m) => enSala.has(m) && m !== usuarioId);
+    }
+
     const { data, error } = await sb
       .from("chat_interno_mensajes")
       .insert({
@@ -112,6 +185,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         usuario_id: usuarioId,
         texto: texto || null,
         ...(adjuntos.length > 0 ? { adjuntos } : {}),
+        ...(respondeA ? { responde_a: respondeA } : {}),
+        ...(menciones.length > 0 ? { menciones } : {}),
       })
       .select("id, created_at")
       .single();
@@ -132,6 +207,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .update({ ultima_lectura_at: creado.created_at })
       .eq("sala_id", salaId)
       .eq("usuario_id", usuarioId);
+
+    // El aviso va al final y no bloquea: el mensaje ya está guardado.
+    const { data: sala } = await sb
+      .from("chat_interno_salas")
+      .select("nombre, tipo")
+      .eq("id", salaId)
+      .maybeSingle();
+    const catalog2 = createServiceRoleClient();
+    const { data: yo } = await catalog2
+      .from("usuarios")
+      .select("nombre")
+      .eq("id", usuarioId)
+      .maybeSingle();
+    await notificarMensajeChat(sb, {
+      empresaId,
+      salaId,
+      salaNombre: String((sala as { nombre?: string } | null)?.nombre ?? "Chat"),
+      salaTipo: String((sala as { tipo?: string } | null)?.tipo ?? "grupo"),
+      autorId: usuarioId,
+      autorNombre: String((yo as { nombre?: string } | null)?.nombre ?? "Alguien"),
+      texto,
+      menciones,
+    });
 
     return NextResponse.json(successResponse({ id: creado.id }), { status: 201 });
   } catch (e) {

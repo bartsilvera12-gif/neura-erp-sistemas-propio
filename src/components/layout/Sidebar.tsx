@@ -30,6 +30,7 @@ import {
   History,
   Activity,
   Gauge,
+  MessagesSquare,
   TrendingUp,
   ScrollText,
   ListChecks,
@@ -179,6 +180,15 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: SendHorizontal,
   },
   {
+    // Chat interno del equipo. Módulo RESTRINGIDO: en prueba, sólo para quien
+    // tenga la concesión explícita en `usuario_modulos`.
+    key: "chat_interno",
+    slug: "chat_interno",
+    label: "Chat interno",
+    href: "/dashboard/chat-interno",
+    icon: MessagesSquare,
+  },
+  {
     // Tableros: módulo RESTRINGIDO (ver `lib/modulos/modulos-restringidos.ts`).
     // Sólo lo ve quien tenga una fila explícita en `usuario_modulos`, ni siquiera
     // los otros administradores de la empresa. Esconder el ítem no es el
@@ -236,7 +246,7 @@ const MENU_STRUCTURE: MenuItem[] = [
  * acá cae automáticamente en la familia "Otros" (red de seguridad: nada se oculta).
  */
 const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
-  { id: "inicio", title: "Inicio", itemKeys: ["dashboard", "tableros", "gerencia"] },
+  { id: "inicio", title: "Inicio", itemKeys: ["dashboard", "tableros", "chat_interno", "gerencia"] },
   {
     id: "comercial",
     title: "Comercial",

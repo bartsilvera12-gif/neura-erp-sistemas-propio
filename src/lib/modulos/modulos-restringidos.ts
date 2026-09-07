@@ -12,7 +12,7 @@
  * Sigue siendo administrable —se agrega o se quita una fila— y no hay ningún
  * nombre de persona escrito en el código.
  */
-export const MODULOS_RESTRINGIDOS = new Set(["tableros"]);
+export const MODULOS_RESTRINGIDOS = new Set(["tableros", "chat_interno"]);
 
 export function esModuloRestringido(slug: string | null | undefined): boolean {
   return MODULOS_RESTRINGIDOS.has((slug ?? "").trim().toLowerCase());

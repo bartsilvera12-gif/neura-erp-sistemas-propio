@@ -2,6 +2,7 @@ import "server-only";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { getConfigContable, generarAsientoEnTx, getAsientoConDetalles, ContabilidadError, type AsientoLineaInput } from "@/lib/contabilidad/asientos-pg";
+import { clienteDisplayNameSql } from "@/lib/clientes/display-name";
 
 /**
  * Conciliación bancaria — transferencias pendientes de aprobación (SOLO transferencias).
@@ -218,7 +219,7 @@ export async function listCobrosPendientes(schemaRaw: string, empresaId: string,
             c.aprobado_by, c.aprobado_at, c.rechazado_by, c.rechazado_at,
             c.anulado_by, c.anulado_at, c.motivo_anulacion, c.created_by,
             f.numero_factura, f.saldo AS saldo_factura, f.vendedor_usuario_id,
-            COALESCE(NULLIF(btrim(cl.razon_social),''), NULLIF(btrim(cl.nombre),''), NULLIF(btrim(cl.empresa),'')) AS cliente_nombre
+            ${clienteDisplayNameSql("cl")} AS cliente_nombre
        FROM ${tC} c
        LEFT JOIN ${tF} f ON f.id = c.factura_id
        LEFT JOIN ${tCl} cl ON cl.id = c.cliente_id

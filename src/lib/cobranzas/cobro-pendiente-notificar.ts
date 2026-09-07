@@ -5,6 +5,7 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { sendEmail } from "@/lib/email/mailer";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://sistemas.neura.com.py").replace(/\/+$/, "");
 
@@ -79,11 +80,10 @@ export async function notificarCobroPendiente(
       if (data.clienteId) {
         const { data: cl } = await sb
           .from("clientes")
-          .select("razon_social, nombre, empresa")
+          .select("tipo_cliente, empresa, nombre_contacto, nombre, razon_social")
           .eq("id", data.clienteId)
           .maybeSingle();
-        const c = cl as { razon_social?: string | null; nombre?: string | null; empresa?: string | null } | null;
-        clienteNombre = (c?.razon_social?.trim() || c?.nombre?.trim() || c?.empresa?.trim() || null) ?? null;
+        clienteNombre = cl ? (nombreClienteDisplay(cl as Record<string, unknown>, "") || null) : null;
       }
       if (cobros.length === 1 && cobros[0].facturaId) {
         const { data: fa } = await sb

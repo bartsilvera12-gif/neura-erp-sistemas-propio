@@ -4,12 +4,16 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { registrarPago } from "@/lib/pagos/registrar-pago";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 type RowFacturaPago = { id?: string; numero_factura?: string | null; cliente_id?: string | null };
 type RowClientePago = {
   id: string;
+  tipo_cliente?: string | null;
   empresa?: string | null;
   nombre_contacto?: string | null;
+  nombre?: string | null;
+  razon_social?: string | null;
   tipo_servicio_cliente?: string | null;
 };
 
@@ -207,7 +211,7 @@ export async function GET(request: NextRequest) {
         factura_numero: factura?.numero_factura ?? "—",
         /** Id del cliente para linkear al vendedor asignado (mapa client-side). */
         cliente_id: clienteId,
-        cliente_nombre: cliente ? (cliente.empresa ?? cliente.nombre_contacto ?? "—") : "—",
+        cliente_nombre: cliente ? nombreClienteDisplay(cliente, "—") : "—",
         /** Nombre legible; slug en `clientes.tipo_servicio_cliente` + catálogo. */
         cliente_tipo_nombre: labelTipoCliente(cliente),
         /** Slug normalizado para filtrar en UI sin reconsultar. */

@@ -1,6 +1,7 @@
 import "server-only";
 import type { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { telefonoSignificativo } from "@/lib/telefono";
 
 type Sb = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
@@ -455,7 +456,7 @@ export async function cargarCobranzas(
   hoyYmd: string
 ): Promise<{ resumen: CobranzasResumen; clientes: ClienteCobranza[] }> {
   const [clientesRows, facturasRows, suscInfo, catalogoTipos, promesaPorCliente] = await Promise.all([
-    fetchAll(sb, "clientes", "id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at, telefono", empresaId),
+    fetchAll(sb, "clientes", "id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social, tipo_servicio_cliente, created_at, estado, deleted_at, telefono", empresaId),
     fetchAll(sb, "facturas", "id, cliente_id, suscripcion_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
     cargarSuscripcionInfo(sb, empresaId),
     cargarCatalogoTipos(sb, empresaId),
@@ -503,8 +504,7 @@ export async function cargarCobranzas(
     const grupos = agruparPorServicio(facts, suscInfo, catalogoTipos, c?.tipo_servicio_cliente as string, hoyYmd, soloCuotasSuscripcion(empresaId));
     const servicios = grupos.map(aggServicio).filter((s) => s.total_adeudado > 0);
     if (servicios.length === 0) continue;
-    const label =
-      String(c?.empresa ?? "").trim() || String(c?.nombre_contacto ?? "").trim() || cid.slice(0, 8);
+    const label = nombreClienteDisplay(c, cid.slice(0, 8));
     clientes.push({
       cliente_id: cid,
       cliente_label: label,
@@ -560,7 +560,7 @@ export async function cargarDetalleCliente(
 ): Promise<DetalleCobranza | null> {
   const { data: cRows } = await sb
     .from("clientes")
-    .select("id, empresa, nombre_contacto, tipo_servicio_cliente, created_at, estado, deleted_at, telefono")
+    .select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social, tipo_servicio_cliente, created_at, estado, deleted_at, telefono")
     .eq("empresa_id", empresaId)
     .eq("id", clienteId)
     .limit(1);
@@ -643,8 +643,7 @@ export async function cargarDetalleCliente(
       created_at: r.created_at != null ? String(r.created_at) : null,
     }))
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
-  const label =
-    String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || clienteId.slice(0, 8);
+  const label = nombreClienteDisplay(c, clienteId.slice(0, 8));
 
   const tipoResumen =
     servicios.length === 1 ? servicios[0]!.tipo : servicios.length > 1 ? `Varios (${servicios.length})` : "Sin clasificar";

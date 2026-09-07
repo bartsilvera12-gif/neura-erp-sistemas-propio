@@ -27,6 +27,7 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { isErpRolSupervisor, isErpRolVendedor } from "@/lib/usuarios/erp-rol-normalize";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 type LineaPreview = {
   tipo: "pago" | "factura_emitida" | "factura_pagada";
@@ -363,15 +364,8 @@ export async function GET(request: Request) {
     const clienteAlta = new Map<string, string | null>();
     for (const c of clientesRows) {
       const id = String(c.id ?? "");
-      // Mismo criterio que el módulo de Clientes (clienteNombre): para empresas el nombre del CLIENTE
-      // es la empresa; para personas, el nombre_contacto. Antes mostraba el contacto para todos, lo
-      // que confundía (p. ej. empresa "HUGO SÁNCHEZ" aparecía como su contacto "TOBIAS").
-      const empresaNom = String(c.empresa ?? "").trim();
-      const contactoNom = String(c.nombre_contacto ?? "").trim();
-      const nom =
-        (String(c.tipo_cliente ?? "") === "empresa" && empresaNom ? empresaNom : contactoNom || empresaNom) ||
-        id.slice(0, 8);
-      clienteNombre.set(id, nom);
+      // Nombre para mostrar: helper canónico type-aware (empresa→empresa, persona→contacto).
+      clienteNombre.set(id, nombreClienteDisplay(c, id.slice(0, 8)));
       const v = c.vendedor_usuario_id;
       clienteVendedor.set(id, typeof v === "string" && v.trim() ? v.trim() : null);
       clienteAlta.set(id, c.created_at != null ? String(c.created_at).slice(0, 10) : null);

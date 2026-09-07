@@ -30,6 +30,13 @@ export interface ClienteNombreParts {
   razon_social?: string | null;
 }
 
+/**
+ * Entrada aceptada por los helpers: la forma tipada `ClienteNombreParts` o una fila cruda de
+ * la DB (`Record<string, unknown>`). Los valores se normalizan igual, así los callers que ya
+ * tienen `Record<string, unknown>` (queries genéricas) no necesitan castear.
+ */
+export type ClienteNombreInput = ClienteNombreParts | Record<string, unknown> | null | undefined;
+
 /** Trim + colapsa vacío a null. */
 function norm(v: unknown): string | null {
   const s = (v ?? "").toString().trim();
@@ -40,7 +47,7 @@ function norm(v: unknown): string | null {
  * Nombre del cliente para MOSTRAR en cualquier pantalla o listado.
  * @param fallback texto cuando no hay ningún nombre cargado (default "Cliente").
  */
-export function nombreClienteDisplay(c: ClienteNombreParts | null | undefined, fallback = "Cliente"): string {
+export function nombreClienteDisplay(c: ClienteNombreInput, fallback = "Cliente"): string {
   const empresa = norm(c?.empresa);
   // `nombre` y `nombre_contacto` son la misma cosa en la DB; tomamos la que exista.
   const contacto = norm(c?.nombre_contacto) ?? norm(c?.nombre);
@@ -60,7 +67,7 @@ export function nombreClienteDisplay(c: ClienteNombreParts | null | undefined, f
  * Útil para subtítulos y como campo de búsqueda. Devuelve null si coincide con el display
  * (p. ej. en personas, donde el contacto ES el nombre principal) o si no hay contacto.
  */
-export function nombreClienteContacto(c: ClienteNombreParts | null | undefined): string | null {
+export function nombreClienteContacto(c: ClienteNombreInput): string | null {
   const contacto = norm(c?.nombre_contacto) ?? norm(c?.nombre);
   if (!contacto) return null;
   const display = nombreClienteDisplay(c, "");

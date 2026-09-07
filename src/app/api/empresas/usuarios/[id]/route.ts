@@ -166,7 +166,7 @@ export async function GET(
     const { data: usuario, error } = await supabase
       .from("usuarios")
       .select(
-        "id, nombre, email, telefono, fecha_nacimiento, fecha_ingreso, tipo_contrato, salario_base, porcentaje_comision, ips, area, rol, estado, es_qa, es_project_manager, notificar_entregas, created_at, empresa_id"
+        "id, nombre, email, telefono, fecha_nacimiento, fecha_ingreso, tipo_contrato, salario_base, porcentaje_comision, ips, area, rol, estado, es_qa, es_project_manager, es_tecnico, notificar_entregas, created_at, empresa_id"
       )
       .eq("id", id)
       .single();
@@ -335,6 +335,7 @@ export async function PATCH(
       rol: rolBody,
       es_qa,
       es_project_manager,
+      es_tecnico,
       notificar_entregas,
     } = body;
 
@@ -414,6 +415,9 @@ export async function PATCH(
     // `es_qa` es una función (no un rol): se puede cambiar con el mismo permiso que el nivel de acceso.
     if (es_qa !== undefined && puede_editar_rol) updates.es_qa = Boolean(es_qa);
     // Misma regla que `es_qa`: función del puesto, no permiso.
+    if (es_tecnico !== undefined && puede_editar_rol) {
+      updates.es_tecnico = Boolean(es_tecnico);
+    }
     if (es_project_manager !== undefined && puede_editar_rol) {
       updates.es_project_manager = Boolean(es_project_manager);
     }

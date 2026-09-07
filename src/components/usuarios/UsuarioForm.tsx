@@ -49,6 +49,8 @@ export type UsuarioFormValues = {
   es_qa: boolean;
   /** Función Project Manager: aparece en Gestión PM y puede tener cartera de clientes. */
   es_project_manager: boolean;
+  /** Función técnica: aparece en el selector de responsable técnico de un proyecto. */
+  es_tecnico: boolean;
   notificar_entregas: boolean;
   password: string;
   password2: string;
@@ -76,6 +78,7 @@ export function emptyUsuarioForm(): UsuarioFormValues {
     estado: "activo",
     es_qa: false,
     es_project_manager: false,
+    es_tecnico: false,
     notificar_entregas: false,
     password: "",
     password2: "",
@@ -343,6 +346,26 @@ export function UsuarioFormFields({
                 <span className="mt-0.5 block text-xs font-normal text-slate-400">
                   Cuando un proyecto entra a QA, se le asigna automáticamente a esta persona. Es una función,
                   no cambia el nivel de permisos.
+                </span>
+              </label>
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2.5">
+              <input
+                type="checkbox"
+                id="es_tecnico"
+                name="es_tecnico"
+                checked={form.es_tecnico}
+                onChange={onChange}
+                disabled={nivelAccesoDisabled}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#4FAEB2] focus:ring-[#4FAEB2]/30 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <label htmlFor="es_tecnico" className="cursor-pointer text-sm font-medium text-slate-700">
+                Es técnico (desarrollo)
+                <span className="mt-0.5 block text-xs font-normal text-slate-400">
+                  Aparece en el selector de responsable técnico de un proyecto. Es una función, no cambia el
+                  nivel de permisos.
                 </span>
               </label>
             </div>

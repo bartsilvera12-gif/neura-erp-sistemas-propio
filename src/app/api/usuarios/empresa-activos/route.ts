@@ -11,6 +11,7 @@ type UsuarioActivoRow = {
   es_qa?: boolean | null;
   /** Marca a la persona de Project Manager (para asignarla como PM de un cliente). */
   es_project_manager?: boolean | null;
+  es_tecnico?: boolean | null;
 };
 
 /**
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabaseSr
       .from("usuarios")
-      .select("id, nombre, email, rol, estado, es_qa, es_project_manager")
+      .select("id, nombre, email, rol, estado, es_qa, es_project_manager, es_tecnico")
       .eq("empresa_id", empresaId)
       .ilike("estado", "activo")
       .order("nombre", { ascending: true })
@@ -52,6 +53,7 @@ export async function GET(request: Request) {
       estado: u.estado,
       es_qa: u.es_qa === true,
       es_project_manager: u.es_project_manager === true,
+      es_tecnico: u.es_tecnico === true,
     }));
 
     return NextResponse.json({ usuarios });

@@ -78,6 +78,7 @@ export async function POST(req: Request) {
     const rol = String(body.rol ?? "usuario");
     const es_qa = Boolean(body.es_qa);
     const es_project_manager = Boolean(body.es_project_manager);
+    const es_tecnico = Boolean(body.es_tecnico);
     const notificar_entregas = Boolean(body.notificar_entregas);
 
     if (!email || !password || password.length < 6) {
@@ -147,6 +148,7 @@ export async function POST(req: Request) {
       rol,
       es_qa,
       es_project_manager,
+      es_tecnico,
       notificar_entregas,
       auth_user_id: authUserId,
       estado: "activo" as const,

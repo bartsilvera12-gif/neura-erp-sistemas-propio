@@ -128,6 +128,7 @@ type UsuarioActivo = {
   nombre?: string | null;
   email?: string | null;
   es_project_manager?: boolean | null;
+  es_tecnico?: boolean | null;
 };
 type CatalogoCliente = { id: string; empresa?: string | null; nombre_contacto?: string | null };
 
@@ -1377,6 +1378,26 @@ export default function ProyectoDetalleInner({
     [usuarios]
   );
 
+  /**
+   * Sólo quienes tienen la función técnica.
+   *
+   * No se filtra por `area` ni por `rol`: `area` está cargada de forma poco
+   * confiable —la técnica con más proyectos figura en "soporte"— y `rol` es el
+   * permiso del ERP, no la función. La bandera `es_tecnico` se administra en la
+   * ficha del usuario, igual que QA y Project Manager.
+   *
+   * Si el técnico ya asignado perdió la bandera, se lo agrega igual: sacarlo de
+   * la lista haría que al guardar cualquier otro campo se perdiera en silencio.
+   */
+  const tecnicos = useMemo(() => {
+    const lista = usuarios.filter((u) => u.es_tecnico === true);
+    if (responsableTecnicoId && !lista.some((u) => u.id === responsableTecnicoId)) {
+      const actual = usuarios.find((u) => u.id === responsableTecnicoId);
+      if (actual) return [actual, ...lista];
+    }
+    return lista;
+  }, [usuarios, responsableTecnicoId]);
+
   const datosFirma = useMemo(
     () =>
       firmaDatos({
@@ -2620,7 +2641,7 @@ export default function ProyectoDetalleInner({
                   <div className="mt-1.5">
                     <PersonaSearchSelect
                       ariaLabel="Técnico responsable"
-                      personas={usuarios}
+                      personas={tecnicos}
                       value={responsableTecnicoId}
                       onChange={setResponsableTecnicoId}
                       placeholder="—"

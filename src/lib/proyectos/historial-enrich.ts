@@ -7,7 +7,24 @@ import {
   formatDurationHuman,
   slaTipoSnapshotLabel,
 } from "@/lib/proyectos/brief-data";
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { subestadoDesarrolloLabel } from "@/lib/proyectos/subestados-desarrollo";
+
+/**
+ * Cuánto duró un segmento en HORAS DE TRABAJO.
+ *
+ * Un segmento abierto un viernes a las 17 y cerrado el lunes a las 8 son 63 h
+ * corridas y cero de trabajo. `duration_seconds` guarda el calendario y se deja
+ * como está en la base —es el hecho crudo—, pero el historial tiene que hablar
+ * la misma unidad que el SLA y que el contador de la tarjeta.
+ */
+function duracionLaboralSegundos(r: HistorialRowRaw): number | null {
+  if (!r.entered_at) return r.duration_seconds != null ? Number(r.duration_seconds) : null;
+  // Los eventos puntuales (reasignación, sub-etapa) entran y salen en el mismo
+  // instante: su duración es cero y no tiene sentido mostrarla.
+  const ms = msLaborables(r.entered_at, r.exited_at ?? new Date().toISOString());
+  return ms != null ? Math.floor(ms / 1000) : null;
+}
 
 export type HistorialRowRaw = {
   id: string;
@@ -126,9 +143,11 @@ export async function enrichProyectoHistorialRows(
       estado_nuevo_nombre: nueId ? nombreEstado.get(nueId) ?? "—" : "—",
       tipo_sla_label: slaTipoSnapshotLabel(r.tipo_sla_snapshot),
       usuario_cambio_label: usuarioLabel,
-      duration_label: formatDurationHuman(
-        r.duration_seconds != null ? Number(r.duration_seconds) : null
-      ),
+      // Horas de TRABAJO, no corridas: es la misma unidad que el SLA y que el
+      // contador de la tarjeta. `duration_seconds` guarda el calendario y se
+      // deja intacto en la base —es el hecho crudo—, pero mostrarlo acá haría
+      // que el historial y el SLA dijeran cosas distintas del mismo segmento.
+      duration_label: formatDurationHuman(duracionLaboralSegundos(r)),
       evento_tipo: rea ? "reasignacion_tecnico" : sub ? "subestado_desarrollo" : "estado",
       reasignacion_de_label: rea ? nombreDe(rea.de) : null,
       reasignacion_a_label: rea ? nombreDe(rea.a) : null,

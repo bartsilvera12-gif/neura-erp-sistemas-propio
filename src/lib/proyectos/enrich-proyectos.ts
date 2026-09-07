@@ -1,6 +1,7 @@
 import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 
 export type ProyectoEnriquecido = Record<string, unknown> & {
   proyecto_tipo?: { id: string; nombre?: string; codigo?: string } | null;
@@ -131,6 +132,7 @@ export async function enrichProyectosRows(
     historialPorProyecto.set(proyectoId, current);
   }
   const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
 
   return rows.map((r) => {
     const tipo_id = r.tipo_id as string | undefined;
@@ -163,8 +165,13 @@ export async function enrichProyectosRows(
       Number.isFinite(enteredMs) && typeof enteredRaw === "string"
         ? { value: new Date(enteredMs).toISOString(), source: "historial" as const }
         : fallback;
-    const sinceMs = estadoDesde.value ? Date.parse(estadoDesde.value) : Number.NaN;
-    const seconds = Number.isFinite(sinceMs) ? Math.max(0, Math.floor((nowMs - sinceMs) / 1000)) : null;
+    // Tiempo LABORAL en el estado, no corrido: la empresa trabaja de lunes a
+    // viernes de 8 a 17 y los sábados de 8 a 12. Antes esto era `now - desde`,
+    // así que un proyecto que entraba el viernes a las 17 amanecía el lunes con
+    // 63 h encima y podía figurar vencido sin que nadie hubiera trabajado un
+    // minuto. Ver `reloj-laboral.ts`.
+    const laborMs = estadoDesde.value ? msLaborables(estadoDesde.value, nowIso) : null;
+    const seconds = laborMs != null ? Math.max(0, Math.floor(laborMs / 1000)) : null;
     const cuentaSla = estado?.cuenta_sla !== false;
     const objetivoHoras =
       typeof estado?.sla_horas_objetivo === "number" && Number.isFinite(estado.sla_horas_objetivo)

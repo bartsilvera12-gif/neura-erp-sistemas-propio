@@ -1,8 +1,15 @@
 import "server-only";
 
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
+
 export type HistorialRow = {
   entered_at: string;
   exited_at: string | null;
+  /**
+   * Duración de CALENDARIO que quedó guardada al cerrar el segmento. Ya no se
+   * usa para el SLA —ver abajo— pero sigue en el tipo porque es lo que trae la
+   * consulta y lo que muestra el historial crudo.
+   */
   duration_seconds: number | null;
   tipo_sla_snapshot: string | null;
   estado_nuevo_id: string;
@@ -28,16 +35,19 @@ export function computeSlaTotales(
   let tipoAbierto: string | null = null;
   let total = 0;
 
+  const nowIso = new Date(nowMs).toISOString();
+
   for (const r of rows) {
     const tipo = (r.tipo_sla_snapshot ?? "interno").trim();
-    let sec = r.duration_seconds ?? 0;
+    // Se recalcula sobre el horario de trabajo en vez de usar
+    // `duration_seconds`, que es calendario. Un segmento abierto el viernes a
+    // las 17 y cerrado el lunes a las 8 son 63 h corridas y CERO de trabajo:
+    // contarlas como SLA castiga al equipo por el fin de semana.
+    const labor = msLaborables(r.entered_at, r.exited_at ?? nowIso);
+    let sec = labor != null ? Math.floor(labor / 1000) : 0;
     if (r.exited_at == null && r.entered_at) {
-      const entered = Date.parse(r.entered_at);
-      if (Number.isFinite(entered)) {
-        sec = Math.floor((nowMs - entered) / 1000);
-        abierto = sec;
-        tipoAbierto = tipo;
-      }
+      abierto = sec;
+      tipoAbierto = tipo;
     }
     total += sec;
 

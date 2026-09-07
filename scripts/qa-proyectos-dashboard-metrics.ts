@@ -12,6 +12,7 @@ import { slvTecnicoDeProyecto, type SegmentoHistorial } from "@/lib/proyectos/da
 import { qaDeProyecto, resumirQa } from "@/lib/proyectos/dashboard/qa-metrics";
 import { calcularWip } from "@/lib/proyectos/dashboard/workload";
 import { consumoPct, nivelSlv, nivelWip } from "@/lib/proyectos/dashboard/semaforo";
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { enPeriodo } from "@/lib/proyectos/dashboard/periodo";
 
 // --- Andamiaje mínimo --------------------------------------------------------
@@ -240,6 +241,26 @@ console.log('\nPeríodo · qué entra con "desde el 1 del mes"');
   check("cerrado sin fecha queda fuera, no se le inventa una", enPeriodo(cerradoSinFecha, D, H), false);
   check("sin período entra todo", enPeriodo(entregadoMesPasado, null, null), true);
   check("el borde del primer día entra", enPeriodo({ ...entregadoEsteMes, fecha_entrega: "2026-09-01T00:30:00-03:00" }, D, H), true);
+}
+
+// --- Reloj laboral: lun-vie 8 a 17, sáb 8 a 12 ------------------------------
+console.log('\nReloj laboral · el SLA no corre fuera del horario');
+{
+  const h = (ms: number | null) => (ms == null ? null : Math.round((ms / HORA) * 10) / 10);
+  // 2026-09-11 es viernes; 12 sábado; 13 domingo; 14 lunes.
+  check("una jornada completa son 9 h", h(msLaborables(t("2026-09-11", 8), t("2026-09-11", 17))), 9);
+  // Del viernes a las 17 al lunes a las 8 el único trabajo posible es el
+  // sábado de 8 a 12: cuatro horas, no las 63 corridas del calendario.
+  check("del viernes 17 al lunes 8 sólo cuenta el sábado", h(msLaborables(t("2026-09-11", 17), t("2026-09-14", 8))), 4);
+  check("el sábado suma sólo la mañana", h(msLaborables(t("2026-09-12", 0), t("2026-09-12", 23, 59))), 4);
+  check("el domingo no suma", h(msLaborables(t("2026-09-13", 0), t("2026-09-13", 23, 59))), 0);
+  check("fuera de hora no suma", h(msLaborables(t("2026-09-11", 18), t("2026-09-11", 23))), 0);
+  // 1 h del viernes + 4 del sábado + 1 del lunes.
+  check(
+    "del viernes 16 al lunes 9 son 6 h de trabajo",
+    h(msLaborables(t("2026-09-11", 16), t("2026-09-14", 9))),
+    6
+  );
 }
 
 // --- Cierre ------------------------------------------------------------------

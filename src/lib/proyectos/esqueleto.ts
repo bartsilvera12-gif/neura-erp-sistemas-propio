@@ -35,19 +35,25 @@ export const TIPO_CON_ESQUELETO = "web";
 export const ESTADO_CON_ESQUELETO = "desarrollo";
 
 /**
- * Clave dentro de `proyectos.brief_data` que marca el hito cumplido. La escribe
- * el checkbox "Esqueleto entregado al cliente" de la pestaña Datos
- * (`PROYECTO_DATOS_BRIEF_FIELDS` en `brief-data.ts`): `true` cuando está
- * tildado, y la clave se borra al destildar.
+ * Clave dentro de `proyectos.brief_data` que marca el hito cumplido.
+ *
+ * Ya no la escribe nadie a mano. Se marca sola la PRIMERA vez que el proyecto
+ * entra a Revisión Cliente: mostrarle el trabajo al cliente es, por
+ * definición, haber entregado el esqueleto. El checkbox que había en la pestaña
+ * Datos pedía confirmar un hito que el propio flujo ya demostraba, y dependía
+ * de que alguien se acordara de tildarlo.
  */
 export const BRIEF_KEY_ESQUELETO_ENTREGADO = "esqueleto_entregado";
 
+/** Estado cuya primera visita da el esqueleto por entregado. */
+export const ESTADO_CONFIRMA_ESQUELETO = "enviado_cliente";
+
 /**
- * ¿El técnico ya marcó el esqueleto como entregado?
+ * ¿El esqueleto ya se entregó?
  *
- * Sin esta marca el aviso no tendría forma de apagarse: un proyecto que sigue
- * semanas en Desarrollo quedaría con el cartel de vencido para siempre, aunque
- * el esqueleto se haya entregado el primer día.
+ * Sin esta marca el aviso no tendría forma de apagarse: un proyecto que vuelve
+ * a Desarrollo por cambios quedaría con el cartel de vencido de nuevo, aunque
+ * el esqueleto se haya entregado semanas atrás.
  */
 export function esqueletoEntregado(briefData: unknown): boolean {
   if (!briefData || typeof briefData !== "object" || Array.isArray(briefData)) return false;

@@ -8,6 +8,11 @@ import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacio
 import { notificarEntradaQA } from "@/lib/proyectos/qa-notificaciones";
 import { abrirRevisionQA, cerrarRevisionQA } from "@/lib/proyectos/qa-revisiones";
 import { esEstadoPausado, etapaDesdeEstado } from "@/lib/proyectos/estados-tablero";
+import {
+  BRIEF_KEY_ESQUELETO_ENTREGADO,
+  ESTADO_CONFIRMA_ESQUELETO,
+  esqueletoEntregado,
+} from "@/lib/proyectos/esqueleto";
 import { notificarCambioEstado } from "@/lib/proyectos/estado-notificaciones";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 
@@ -36,7 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: proyecto, error: e1 } = await sb
       .from("proyectos")
       .select(
-        "id, titulo, estado_id, responsable_tecnico_id, responsable_comercial_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms, primera_entrega_at"
+        "id, titulo, estado_id, responsable_tecnico_id, responsable_comercial_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms, primera_entrega_at, brief_data"
       )
       .eq("empresa_id", empresaId)
       .eq("id", pid)
@@ -106,6 +111,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       pausado_at?: string | null;
       pausa_acumulada_ms?: number | null;
       primera_entrega_at?: string | null;
+      brief_data?: unknown;
     };
 
     const update: Record<string, unknown> = {
@@ -114,6 +120,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       last_activity_at: now,
       updated_by: auth.usuarioCatalogId,
     };
+
+    // --- Esqueleto entregado, sin que nadie lo tilde -------------------------
+    // Mostrarle el trabajo al cliente es, por definición, haber entregado el
+    // esqueleto. Se marca la primera vez y no se vuelve atrás: si el proyecto
+    // regresa a Desarrollo por cambios, el compromiso de las 48 h ya se cumplió
+    // y el aviso no tiene que reaparecer.
+    if (codigoNuevo === ESTADO_CONFIRMA_ESQUELETO && !esqueletoEntregado(cur.brief_data)) {
+      const brief =
+        cur.brief_data && typeof cur.brief_data === "object" && !Array.isArray(cur.brief_data)
+          ? (cur.brief_data as Record<string, unknown>)
+          : {};
+      update.brief_data = { ...brief, [BRIEF_KEY_ESQUELETO_ENTREGADO]: true };
+    }
 
     // Al entrar al estado QA del tablero, se lo mandamos a la persona de QA: se
     // le asigna sola (si hay una sola en la empresa y el proyecto no tenía QA

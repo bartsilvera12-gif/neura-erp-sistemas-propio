@@ -44,7 +44,7 @@ export function computeSlaTotales(
     // las 17 y cerrado el lunes a las 8 son 63 h corridas y CERO de trabajo:
     // contarlas como SLA castiga al equipo por el fin de semana.
     const labor = msLaborables(r.entered_at, r.exited_at ?? nowIso);
-    let sec = labor != null ? Math.floor(labor / 1000) : 0;
+    const sec = labor != null ? Math.floor(labor / 1000) : 0;
     if (r.exited_at == null && r.entered_at) {
       abierto = sec;
       tipoAbierto = tipo;

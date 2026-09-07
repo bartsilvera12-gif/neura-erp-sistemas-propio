@@ -171,6 +171,36 @@ const COLOR_TIPO_BLOQUEO: Record<string, string> = {
   interno: "bg-rose-50 text-rose-700",
 };
 
+/**
+ * Lee la respuesta con cuidado.
+ *
+ * Cuando algo falla aguas arriba (el gateway, por ejemplo) la respuesta no es
+ * JSON sino una página HTML de error, y volcarla en la tarjeta roja llenaba
+ * media pantalla con el código fuente de Cloudflare. Se muestra un mensaje
+ * corto y el detalle queda en la consola, que es donde sirve.
+ */
+async function leerRespuesta<T>(r: Response): Promise<T> {
+  const texto = await r.text();
+  let j: { success?: boolean; data?: T; error?: string } | null = null;
+  try {
+    j = JSON.parse(texto);
+  } catch {
+    console.error("Respuesta no-JSON del servidor:", texto.slice(0, 2000));
+    throw new Error(
+      r.status >= 500
+        ? `El servidor no respondió correctamente (${r.status}). Probá de nuevo en un momento.`
+        : `Respuesta inesperada del servidor (${r.status}).`
+    );
+  }
+  if (!r.ok || !j?.success || !j.data) {
+    const msg = (j?.error ?? "").trim();
+    // Un error largo o con HTML adentro tampoco va a la pantalla.
+    const limpio = msg && msg.length < 200 && !msg.includes("<") ? msg : "No se pudo cargar el tablero.";
+    throw new Error(limpio);
+  }
+  return j.data;
+}
+
 function hoyIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -197,9 +227,7 @@ export default function DashboardPmClient() {
       if (fEstado) qs.set("estado_id", fEstado);
       if (fTecnico) qs.set("responsable_tecnico_id", fTecnico);
       const r = await fetchWithSupabaseSession(`/api/proyectos/dashboard-pm?${qs}`, { cache: "no-store" });
-      const j = (await r.json()) as { success?: boolean; data?: Data; error?: string };
-      if (!r.ok || !j.success || !j.data) throw new Error(j.error ?? "No se pudo cargar");
-      setData(j.data);
+      setData(await leerRespuesta<Data>(r));
       setActualizado(new Date().toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "No se pudo cargar");

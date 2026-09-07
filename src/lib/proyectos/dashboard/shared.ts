@@ -129,6 +129,15 @@ function nombreDe(map: Map<string, string>, id: string | null | undefined): stri
   return map.get(id) ?? "—";
 }
 
+/**
+ * Máximo de ids por request en un `in.(...)`.
+ *
+ * Los ids viajan en la URL, y con 112 proyectos el request pasaba los 4 KB: el
+ * gateway lo cortaba con un 502 y el dashboard entero moría. Troceando, la URL
+ * queda acotada sin importar cuántos proyectos tenga la empresa.
+ */
+const IDS_POR_LOTE = 40;
+
 /** Trae una tabla completa en páginas de 1000 (el tope de PostgREST). */
 async function traerTodo<T>(
   build: (desde: number, hasta: number) => PromiseLike<{ data: unknown; error: unknown }>
@@ -241,48 +250,57 @@ export async function cargarDataset(
   const proyectosRows = await pedirProyectos(COLUMNAS_NUEVAS).catch(() => pedirProyectos(COLUMNAS_BASE));
 
   const ids = proyectosRows.map((p) => String(p.id));
-  const clienteIds = [
-    ...new Set(proyectosRows.map((p) => p.cliente_id).filter((x): x is string => typeof x === "string")),
-  ];
   const desdeActividad = new Date(Date.now() - DIAS_ACTIVIDAD * 86400000).toISOString();
+
+  /** Ejecuta la consulta por lotes de ids y junta el resultado. */
+  async function porLotes<T>(
+    build: (lote: string[], desde: number, hasta: number) => PromiseLike<{ data: unknown; error: unknown }>
+  ): Promise<T[]> {
+    const out: T[] = [];
+    for (let i = 0; i < ids.length; i += IDS_POR_LOTE) {
+      const lote = ids.slice(i, i + IDS_POR_LOTE);
+      out.push(...(await traerTodo<T>((a, b) => build(lote, a, b))));
+    }
+    return out;
+  }
 
   const [historial, clientesR, tareas, comentarios, asignaciones] = await Promise.all([
     ids.length
-      ? traerTodo<SegmentoHistorial>((a, b) =>
+      ? porLotes<SegmentoHistorial>((lote, a, b) =>
           sb
             .from("proyecto_estado_historial")
             .select("proyecto_id, estado_nuevo_id, entered_at, exited_at, responsable_tecnico_id, metadata")
             .eq("empresa_id", empresaId)
-            .in("proyecto_id", ids)
+            .in("proyecto_id", lote)
             .order("entered_at", { ascending: true })
             .range(a, b)
         )
       : Promise.resolve([] as SegmentoHistorial[]),
-    clienteIds.length
-      ? sb
-          .from("clientes")
-          .select("id, empresa, nombre_contacto, project_manager_id")
-          .eq("empresa_id", empresaId)
-          .in("id", clienteIds)
-      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    // Los clientes se piden completos por empresa: mandar 80 ids por URL es el
+    // mismo problema, y la tabla de clientes es chica.
+    sb
+      .from("clientes")
+      .select("id, empresa, nombre_contacto, project_manager_id")
+      .eq("empresa_id", empresaId)
+      .limit(5000),
     ids.length
-      ? traerTodo<{ proyecto_id: string; updated_at: string }>((a, b) =>
+      ? porLotes<{ proyecto_id: string; updated_at: string }>((lote, a, b) =>
           sb
             .from("proyecto_tareas")
             .select("proyecto_id, updated_at")
             .eq("empresa_id", empresaId)
-            .in("proyecto_id", ids)
+            .in("proyecto_id", lote)
             .gte("updated_at", desdeActividad)
             .range(a, b)
         )
       : Promise.resolve([] as { proyecto_id: string; updated_at: string }[]),
     ids.length
-      ? traerTodo<{ proyecto_id: string; created_at: string }>((a, b) =>
+      ? porLotes<{ proyecto_id: string; created_at: string }>((lote, a, b) =>
           sb
             .from("proyecto_comentarios")
             .select("proyecto_id, created_at")
             .eq("empresa_id", empresaId)
-            .in("proyecto_id", ids)
+            .in("proyecto_id", lote)
             .gte("created_at", desdeActividad)
             .range(a, b)
         )

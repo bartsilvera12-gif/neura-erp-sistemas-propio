@@ -82,7 +82,7 @@ type Data = {
   cumplimiento: { pct: number | null; en_fecha: number; con_atraso: number; en_curso: number };
   lead_time_jornadas: number | null;
   wip: Wip[];
-  tiempo_por_estado: { estado_id: string; nombre: string; color: string; jornadas: number | null }[];
+  tiempo_por_estado: { estado_id: string; nombre: string; color: string; horas: number | null }[];
   calidad: {
     first_pass_pct: number | null;
     con_reingreso_pct: number | null;
@@ -124,18 +124,53 @@ const SEMAFORO_PILL: Record<Data["criticos"][number]["semaforo"], string> = {
   en_riesgo: "bg-amber-50 text-amber-700",
 };
 
+/**
+ * Lee la respuesta con cuidado.
+ *
+ * Cuando algo falla aguas arriba (el gateway, por ejemplo) la respuesta no es
+ * JSON sino una página HTML de error, y volcarla en la tarjeta roja llenaba
+ * media pantalla con el código fuente de Cloudflare. Se muestra un mensaje
+ * corto y el detalle queda en la consola, que es donde sirve.
+ */
+async function leerRespuesta<T>(r: Response): Promise<T> {
+  const texto = await r.text();
+  let j: { success?: boolean; data?: T; error?: string } | null = null;
+  try {
+    j = JSON.parse(texto);
+  } catch {
+    console.error("Respuesta no-JSON del servidor:", texto.slice(0, 2000));
+    throw new Error(
+      r.status >= 500
+        ? `El servidor no respondió correctamente (${r.status}). Probá de nuevo en un momento.`
+        : `Respuesta inesperada del servidor (${r.status}).`
+    );
+  }
+  if (!r.ok || !j?.success || !j.data) {
+    const msg = (j?.error ?? "").trim();
+    // Un error largo o con HTML adentro tampoco va a la pantalla.
+    const limpio = msg && msg.length < 200 && !msg.includes("<") ? msg : "No se pudo cargar el tablero.";
+    throw new Error(limpio);
+  }
+  return j.data;
+}
+
 function hoyIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Primer día del mes en curso: el período que mira Dirección por defecto. */
-function inicioMes(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
+/**
+ * El período arranca VACÍO a propósito.
+ *
+ * Antes venía con el 1 del mes en curso y eso rompía la lectura: el filtro es
+ * por fecha de INGRESO, así que "Carga del equipo" mostraba un solo técnico y
+ * los KPI de vencidos y bloqueados sólo contaban proyectos entrados este mes.
+ * La mitad de este tablero es una foto del estado de HOY, y esa foto no se
+ * puede recortar por cuándo entró cada proyecto. Quien quiera un período lo
+ * elige.
+ */
 
 export default function DashboardEjecutivoClient() {
-  const [desde, setDesde] = useState(inicioMes);
+  const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState(hoyIso);
   const [fTipo, setFTipo] = useState("");
   const [fEstado, setFEstado] = useState("");
@@ -158,9 +193,7 @@ export default function DashboardEjecutivoClient() {
       const r = await fetchWithSupabaseSession(`/api/proyectos/dashboard-ejecutivo?${qs}`, {
         cache: "no-store",
       });
-      const j = (await r.json()) as { success?: boolean; data?: Data; error?: string };
-      if (!r.ok || !j.success || !j.data) throw new Error(j.error ?? "No se pudo cargar");
-      setData(j.data);
+      setData(await leerRespuesta<Data>(r));
       setActualizado(new Date().toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "No se pudo cargar");
@@ -490,12 +523,12 @@ export default function DashboardEjecutivoClient() {
                         tickLine={false}
                         interval={0}
                       />
-                      <Tooltip formatter={(v: number) => [`${v} jornadas`, "Promedio"]} />
-                      <Bar dataKey="jornadas" radius={[0, 3, 3, 0]} barSize={12}>
+                      <Tooltip formatter={(v: number) => [`${v} h`, "Promedio"]} />
+                      <Bar dataKey="horas" radius={[0, 3, 3, 0]} barSize={12}>
                         <LabelList
-                          dataKey="jornadas"
+                          dataKey="horas"
                           position="right"
-                          formatter={(v: number) => `${String(v).replace(".", ",")} j`}
+                          formatter={(v: number) => `${String(v).replace(".", ",")} h`}
                           style={{ fontSize: 10, fill: "#475569", fontWeight: 600 }}
                         />
                         {data.tiempo_por_estado.map((e) => (

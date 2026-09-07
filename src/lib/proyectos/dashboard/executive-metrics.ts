@@ -18,9 +18,16 @@ import { cuentaParaWip, kpisComunes, type Dataset, type ProyectoMetrica } from "
 /** Estados que Dirección mira en "Tiempo promedio en cada estado". */
 const ESTADOS_DESTACADOS = ["cola_produccion", "desarrollo", "qa", "enviado_cliente", "pausado"];
 
-function jornadas(ms: number | null): number | null {
+/**
+ * Tiempo en HORAS laborales.
+ *
+ * Antes esto iba en jornadas y no servía: "0,3 j", "1 j", "0,1 j" — con una
+ * jornada de nueve horas, todo lo que dura menos de un día se aplasta contra
+ * cero y las barras dejan de distinguirse entre sí.
+ */
+function horas(ms: number | null): number | null {
   if (ms == null || !Number.isFinite(ms)) return null;
-  return Math.round((ms / MS_JORNADA) * 10) / 10;
+  return Math.round((ms / 3600_000) * 10) / 10;
 }
 
 function filaCritica(p: ProyectoMetrica) {
@@ -102,10 +109,10 @@ export function construirDashboardEjecutivo(ds: Dataset) {
         estado_id: e.id,
         nombre: e.nombre ?? "—",
         color: e.color ?? "#94a3b8",
-        jornadas: agg && agg.n > 0 ? jornadas(agg.total / agg.n) : null,
+        horas: agg && agg.n > 0 ? horas(agg.total / agg.n) : null,
       };
     })
-    .filter((e) => e.jornadas != null);
+    .filter((e) => e.horas != null);
 
   // ---- F. Calidad del desarrollo -------------------------------------------
   const calidad = resumirQa(proyectos.map((p) => p.qa));

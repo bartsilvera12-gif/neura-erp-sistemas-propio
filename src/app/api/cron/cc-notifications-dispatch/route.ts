@@ -188,11 +188,21 @@ async function handle(req: NextRequest) {
     }
 
     try {
+      // Colapsar por conversación: un contacto que manda seis audios seguidos genera
+      // seis eventos (uno por mensaje entrante, por diseño), y sin esto el asesor ve
+      // seis tarjetas apiladas. Con la misma clave, el sistema operativo reemplaza la
+      // notificación anterior de esa conversación en lugar de acumularla — como WhatsApp.
+      // Sólo si hay conversación: con clave vacía colapsaríamos notificaciones de
+      // conversaciones distintas entre sí, que es peor que no colapsar.
+      const collapseId = ev.conversation_id ?? null;
       const res = await fcm.messaging.sendEachForMulticast({
         tokens,
         notification: { title, body },
         data: { conversationId: ev.conversation_id ?? "", route, type: ev.type, agentId: ev.agent_id ?? "" },
-        android: { priority: "high" },
+        android: { priority: "high", ...(collapseId ? { collapseKey: collapseId } : {}) },
+        ...(collapseId
+          ? { apns: { headers: { "apns-collapse-id": collapseId } } }
+          : {}),
       });
       const toDeactivate: string[] = [];
       res.responses.forEach((r, i) => {

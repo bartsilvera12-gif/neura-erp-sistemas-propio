@@ -217,14 +217,15 @@ export async function cargarDataset(
 
   // ---- Proyectos (con los filtros de pantalla) -----------------------------
   //
-  // `bloqueo_tipo` y `slv_objetivo_id` los agrega la migración de los
-  // dashboards. Si el deploy del código llega antes que la migración, se pide
-  // el set de columnas viejo en vez de romper la pantalla entera: sin esos dos
-  // campos el dashboard sigue siendo correcto, sólo pierde la clasificación del
-  // bloqueo y el objetivo por proyecto (que cae al del tipo).
+  // `bloqueo_tipo`, `slv_objetivo_id` y `project_manager_id` los agregan las
+  // migraciones de los dashboards. Si el deploy del código llega antes que la
+  // migración, se pide el set de columnas viejo en vez de romper la pantalla
+  // entera: sin esos campos el dashboard sigue siendo correcto, sólo pierde la
+  // clasificación del bloqueo, el objetivo por proyecto (que cae al del tipo) y
+  // el PM propio del proyecto (que cae al de su cliente).
   const COLUMNAS_BASE =
     "id, titulo, cliente_id, estado_id, tipo_id, responsable_comercial_id, responsable_tecnico_id, fecha_ingreso, fecha_prometida, fecha_entrega, primera_entrega_at, bloqueado, bloqueo_motivo, created_at";
-  const COLUMNAS_NUEVAS = `${COLUMNAS_BASE}, bloqueo_tipo, slv_objetivo_id`;
+  const COLUMNAS_NUEVAS = `${COLUMNAS_BASE}, bloqueo_tipo, slv_objetivo_id, project_manager_id`;
 
   const pedirProyectos = (columnas: string) =>
     traerTodo<Record<string, unknown>>((a, b) => {
@@ -468,7 +469,11 @@ export async function cargarDataset(
       tecnico: nombreDe(nombres, row.responsable_tecnico_id as string | null),
       responsable_comercial_id:
         typeof row.responsable_comercial_id === "string" ? row.responsable_comercial_id : null,
-      project_manager_id: cli?.pm ?? null,
+      // El PM del proyecto manda; si no tiene, hereda el de la ficha del
+      // cliente. Así los proyectos sin cliente pueden tener responsable y un
+      // cliente puede repartir sus proyectos entre dos PM.
+      project_manager_id:
+        (typeof row.project_manager_id === "string" ? row.project_manager_id : null) ?? cli?.pm ?? null,
       fecha_ingreso: typeof row.fecha_ingreso === "string" ? row.fecha_ingreso : null,
       fecha_prometida: typeof row.fecha_prometida === "string" ? row.fecha_prometida : null,
       fecha_entrega: entregaRaw,

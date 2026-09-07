@@ -237,6 +237,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           ? body.responsable_tecnico_id
           : null;
     }
+    // Project Manager del proyecto. En null se lee como "el PM de su cliente",
+    // que es el valor por defecto de siempre.
+    if ("project_manager_id" in body) {
+      patch.project_manager_id =
+        typeof body.project_manager_id === "string" && body.project_manager_id
+          ? body.project_manager_id
+          : null;
+    }
     // Clasificación del bloqueo. `bloqueado` y `bloqueo_motivo` ya existían; el
     // tipo es lo que permite agrupar los bloqueos en el dashboard sin adivinar
     // leyendo el texto libre del motivo.

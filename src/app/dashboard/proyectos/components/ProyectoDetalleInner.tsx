@@ -100,6 +100,7 @@ function firmaDatos(v: {
   observaciones: string;
   clienteId: string;
   responsableComercialId: string;
+  projectManagerId: string;
   prioridad: string;
   fechaPrometida: string;
 }): string {
@@ -111,12 +112,18 @@ function firmaDatos(v: {
     obs: v.observaciones,
     cliente_id: v.clienteId,
     responsable_comercial_id: v.responsableComercialId,
+    project_manager_id: v.projectManagerId,
     prioridad: v.prioridad,
     fecha_prometida: v.fechaPrometida,
   });
 }
 
-type UsuarioActivo = { id: string; nombre?: string | null; email?: string | null };
+type UsuarioActivo = {
+  id: string;
+  nombre?: string | null;
+  email?: string | null;
+  es_project_manager?: boolean | null;
+};
 type CatalogoCliente = { id: string; empresa?: string | null; nombre_contacto?: string | null };
 
 /**
@@ -1038,6 +1045,12 @@ export default function ProyectoDetalleInner({
    */
   const [clienteId, setClienteId] = useState("");
   const [responsableComercialId, setResponsableComercialId] = useState("");
+  /**
+   * PM del proyecto. Vacío = hereda el de la ficha del cliente, que es como
+   * funcionó siempre; asignarlo acá sólo hace falta cuando este proyecto tiene
+   * que ir a otra persona, o cuando el proyecto todavía no tiene cliente.
+   */
+  const [projectManagerId, setProjectManagerId] = useState("");
   const [prioridad, setPrioridad] = useState("normal");
   const [fechaPrometida, setFechaPrometida] = useState("");
   const [clientes, setClientes] = useState<{ id: string; empresa?: string | null; nombre_contacto?: string | null }[]>([]);
@@ -1086,6 +1099,7 @@ export default function ProyectoDetalleInner({
     const obsCom = typeof p.observaciones_comerciales === "string" ? p.observaciones_comerciales : "";
     const cli = typeof p.cliente_id === "string" ? p.cliente_id : "";
     const rc = typeof p.responsable_comercial_id === "string" ? p.responsable_comercial_id : "";
+    const pm = typeof p.project_manager_id === "string" ? p.project_manager_id : "";
     const prio = typeof p.prioridad === "string" ? p.prioridad : "normal";
     // Fecha Y hora: se recorta a lo que entiende `datetime-local`.
     const fProm = typeof p.fecha_prometida === "string" ? isoAInputDatetimeLocal(p.fecha_prometida) : "";
@@ -1093,6 +1107,7 @@ export default function ProyectoDetalleInner({
     setObservaciones(obsCom);
     setClienteId(cli);
     setResponsableComercialId(rc);
+    setProjectManagerId(pm);
     setPrioridad(prio);
     setFechaPrometida(fProm);
     setDatosSnapshot(
@@ -1104,6 +1119,7 @@ export default function ProyectoDetalleInner({
         observaciones: obsCom,
         clienteId: cli,
         responsableComercialId: rc,
+        projectManagerId: pm,
         prioridad: prio,
         fechaPrometida: fProm,
       })
@@ -1337,6 +1353,11 @@ export default function ProyectoDetalleInner({
     };
   }, []);
 
+  const projectManagers = useMemo(
+    () => usuarios.filter((u) => u.es_project_manager === true),
+    [usuarios]
+  );
+
   const datosFirma = useMemo(
     () =>
       firmaDatos({
@@ -1347,6 +1368,7 @@ export default function ProyectoDetalleInner({
         observaciones,
         clienteId,
         responsableComercialId,
+        projectManagerId,
         prioridad,
         fechaPrometida,
       }),
@@ -1358,6 +1380,7 @@ export default function ProyectoDetalleInner({
       observaciones,
       clienteId,
       responsableComercialId,
+      projectManagerId,
       prioridad,
       fechaPrometida,
     ]
@@ -1393,6 +1416,7 @@ export default function ProyectoDetalleInner({
         observaciones_comerciales: observaciones.trim() === "" ? null : observaciones.trim(),
         cliente_id: clienteId || null,
         responsable_comercial_id: responsableComercialId || null,
+        project_manager_id: projectManagerId || null,
         prioridad,
         // El input ya trae fecha Y hora local; se pasa a ISO para guardar el
         // instante exacto. Antes se forzaba el mediodía y la hora que eligiera
@@ -2575,6 +2599,25 @@ export default function ProyectoDetalleInner({
                       onChange={setResponsableTecnicoId}
                       placeholder="—"
                       vacioLabel="—"
+                    />
+                  </div>
+                </div>
+                <div className="block text-sm">
+                  <span className={labelCls}>Project Manager</span>
+                  <div className="mt-1.5">
+                    {/*
+                      Sólo se listan usuarios con `es_project_manager`: la lista
+                      completa de la empresa convertiría el campo en una fuente
+                      de errores de tipeo. Vacío = hereda el PM de la ficha del
+                      cliente, que sigue siendo el valor por defecto.
+                    */}
+                    <PersonaSearchSelect
+                      ariaLabel="Project Manager"
+                      personas={projectManagers}
+                      value={projectManagerId}
+                      onChange={setProjectManagerId}
+                      placeholder="Hereda del cliente"
+                      vacioLabel="Hereda del cliente"
                     />
                   </div>
                 </div>

@@ -39,6 +39,42 @@ export type ProyectoEnriquecido = Record<string, unknown> & {
   };
 };
 
+/**
+ * Máximo de ids por request en un `in.(...)`.
+ *
+ * Los ids viajan en la URL. Con 114 proyectos el pedido del historial pasaba
+ * los 4 KB y el gateway lo cortaba; como el error se tragaba en silencio, el
+ * enriquecido caía al `updated_at` del proyecto y TODAS las tarjetas mostraban
+ * "Día 1" del período de post-entrega, porque cualquier edición masiva pone esa
+ * fecha en hoy.
+ */
+const IDS_POR_LOTE = 40;
+
+/** Ejecuta la consulta por lotes de ids y junta el resultado. */
+async function enLotes<T>(
+  ids: string[],
+  build: (lote: string[]) => PromiseLike<{ data: unknown; error: unknown }>
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += IDS_POR_LOTE) {
+    const { data, error } = await build(ids.slice(i, i + IDS_POR_LOTE));
+    if (error) {
+      // Se avisa en el log: sin historial el tiempo en estado sale del
+      // `updated_at`, que es una aproximación y no debe pasar desapercibida.
+      console.error("[enrich-proyectos] historial", (error as { message?: string }).message ?? error);
+      continue;
+    }
+    const filas = (data ?? []) as T[];
+    // 1000 es el tope por defecto de PostgREST: si un lote lo alcanza, algo se
+    // quedó afuera y hay que achicar el lote. Se avisa en vez de truncar callado.
+    if (filas.length >= 1000) {
+      console.warn("[enrich-proyectos] lote en el tope de 1000 filas; puede faltar historial");
+    }
+    out.push(...filas);
+  }
+  return out;
+}
+
 function uniq(ids: (string | null | undefined)[]): string[] {
   return [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))];
 }
@@ -78,25 +114,37 @@ export async function enrichProyectosRows(
       ? sb.from("proyecto_tipos").select("id,nombre,codigo").eq("empresa_id", empresaId).in("id", tipoIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     estadoIds.length
-      ? sb
-          .from("proyecto_estados")
-          .select("id,nombre,codigo,color,tipo_sla,cuenta_sla,sla_horas_objetivo,es_estado_final")
-          .eq("empresa_id", empresaId)
-          .in("id", estadoIds)
+      ? enLotes<Record<string, unknown>>(estadoIds, (lote) =>
+          sb
+            .from("proyecto_estados")
+            .select("id,nombre,codigo,color,tipo_sla,cuenta_sla,sla_horas_objetivo,es_estado_final")
+            .eq("empresa_id", empresaId)
+            .in("id", lote)
+        ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     clienteIds.length
-      ? sb.from("clientes").select("id,tipo_cliente,empresa,nombre_contacto,nombre,razon_social,ruc").eq("empresa_id", empresaId).in("id", clienteIds)
+      ? enLotes<Record<string, unknown>>(clienteIds, (lote) =>
+          sb
+            .from("clientes")
+            .select("id,tipo_cliente,empresa,nombre_contacto,nombre,razon_social,ruc")
+            .eq("empresa_id", empresaId)
+            .in("id", lote)
+        ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     userIds.length
-      ? catalog.from("usuarios").select("id,nombre").eq("empresa_id", empresaId).in("id", userIds)
+      ? enLotes<Record<string, unknown>>(userIds, (lote) =>
+          catalog.from("usuarios").select("id,nombre").eq("empresa_id", empresaId).in("id", lote)
+        ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     proyectoIds.length
-      ? sb
-          .from("proyecto_estado_historial")
-          .select("proyecto_id, estado_nuevo_id, entered_at, exited_at")
-          .eq("empresa_id", empresaId)
-          .in("proyecto_id", proyectoIds)
-          .order("entered_at", { ascending: false })
+      ? enLotes<Record<string, unknown>>(proyectoIds, (lote) =>
+          sb
+            .from("proyecto_estado_historial")
+            .select("proyecto_id, estado_nuevo_id, entered_at, exited_at")
+            .eq("empresa_id", empresaId)
+            .in("proyecto_id", lote)
+            .order("entered_at", { ascending: false })
+        ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
 

@@ -267,19 +267,18 @@ export default function ConciliacionClient() {
               <th className="px-3 py-2.5 text-left">Factura</th>
               <th className="px-3 py-2.5 text-left">Cliente</th>
               <th className="px-3 py-2.5 text-left">Banco origen</th>
-              <th className="px-3 py-2.5 text-left">Titular</th>
               <th className="px-3 py-2.5 text-left">N° operación</th>
               <th className="px-3 py-2.5 text-right">Monto</th>
               <th className="px-3 py-2.5 text-center">Estado</th>
-              <th className="px-3 py-2.5 text-left">Aprobó / Rechazó</th>
+              <th className="px-3 py-2.5 text-left">Quién cargó</th>
               <th className="px-3 py-2.5 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">Cargando…</td></tr>
+              <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">Cargando…</td></tr>
             ) : cobrosMostrados.length === 0 ? (
-              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">{busqueda.trim() ? "Sin resultados para la búsqueda." : `Sin transferencias${mes ? " en el mes seleccionado" : ""}.`}</td></tr>
+              <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{busqueda.trim() ? "Sin resultados para la búsqueda." : `Sin transferencias${mes ? " en el mes seleccionado" : ""}.`}</td></tr>
             ) : cobrosMostrados.map((c) => {
               const e = ESTADO[c.estado] ?? { label: c.estado, cls: "bg-slate-100 text-slate-600" };
               return (
@@ -288,7 +287,6 @@ export default function ConciliacionClient() {
                   <td className="px-3 py-2 font-mono text-xs">{c.numero_factura ?? "—"}</td>
                   <td className="px-3 py-2">{c.cliente_nombre ?? "—"}</td>
                   <td className="px-3 py-2">{c.banco_origen}</td>
-                  <td className="px-3 py-2">{c.titular}</td>
                   <td className="px-3 py-2 font-mono text-xs">{c.numero_operacion}</td>
                   <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmt(c.monto)}</td>
                   <td className="px-3 py-2 text-center">
@@ -297,21 +295,8 @@ export default function ConciliacionClient() {
                     {c.estado === "anulado" && c.motivo_anulacion && <span className="mt-0.5 block text-[10px] italic text-slate-400">{c.motivo_anulacion}</span>}
                   </td>
                   <td className="px-3 py-2">
-                    {c.estado === "aprobado" && c.aprobado_por_nombre ? (
-                      <div>
-                        <span className="text-slate-700">{c.aprobado_por_nombre}</span>
-                        {c.aprobado_at && <span className="block text-[10px] text-slate-400">{new Date(c.aprobado_at).toLocaleString("es-PY", { dateStyle: "short", timeStyle: "short" })}</span>}
-                      </div>
-                    ) : c.estado === "rechazado" && c.rechazado_por_nombre ? (
-                      <div>
-                        <span className="text-slate-700">{c.rechazado_por_nombre}</span>
-                        {c.rechazado_at && <span className="block text-[10px] text-slate-400">{new Date(c.rechazado_at).toLocaleString("es-PY", { dateStyle: "short", timeStyle: "short" })}</span>}
-                      </div>
-                    ) : c.estado === "anulado" && c.anulado_por_nombre ? (
-                      <div>
-                        <span className="text-slate-700">Anuló: {c.anulado_por_nombre}</span>
-                        {c.anulado_at && <span className="block text-[10px] text-slate-400">{new Date(c.anulado_at).toLocaleString("es-PY", { dateStyle: "short", timeStyle: "short" })}</span>}
-                      </div>
+                    {c.creado_por_nombre ? (
+                      <span className="text-slate-700">{c.creado_por_nombre}</span>
                     ) : (
                       <span className="text-slate-300">—</span>
                     )}

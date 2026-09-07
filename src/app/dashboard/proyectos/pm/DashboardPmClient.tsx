@@ -28,6 +28,7 @@ import {
 import {
   AlertCircle,
   CheckCircle2,
+  ClipboardCheck,
   Flag,
   Hourglass,
   Lock,
@@ -43,6 +44,7 @@ import {
   AMBAR,
   Card,
   CardTitle,
+  DashboardHeader,
   Estado,
   EstadoPill,
   FiltroPill,
@@ -259,26 +261,45 @@ export default function DashboardPmClient() {
   const pms = useMemo(() => capitular(data?.opciones.pms ?? []), [data?.opciones.pms]);
   const tecnicos = useMemo(() => capitular(data?.opciones.tecnicos ?? []), [data?.opciones.tecnicos]);
 
+  /** Qué cartera se está mirando, para decirlo arriba y no sólo en el filtro. */
+  const carteraLabel = useMemo(() => {
+    if (!pmId) return "Ambas carteras";
+    return pms.find((p) => p.id === pmId)?.nombre ?? "Cartera";
+  }, [pmId, pms]);
+
   const vacio = !!data && data.atencion.length === 0 && data.wip.length === 0;
 
   return (
     <div className="space-y-3">
-      {/* Cabecera */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[26px] font-bold leading-tight tracking-tight text-slate-800">Dashboard PM</h1>
-          <p className="text-[13px] text-slate-500">Tu día, tus proyectos, tus acciones</p>
-          <p className="text-[12px] text-slate-400">Todo lo que necesitás para gestionar tu cartera</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void cargar()}
-          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
-        </button>
-      </div>
+      <DashboardHeader
+        icon={ClipboardCheck}
+        titulo="Dashboard PM"
+        subtitulo="Tu día, tus proyectos, tus acciones"
+        chips={[
+          <>
+            <Users className="h-3 w-3" />
+            {carteraLabel}
+          </>,
+          <>
+            <CheckCircle2 className="h-3 w-3" />
+            {data ? `${data.atencion.length} para atender hoy` : "—"}
+          </>,
+          <>
+            <RefreshCw className="h-3 w-3" />
+            {actualizado ?? "—"}
+          </>,
+        ]}
+        acciones={
+          <button
+            type="button"
+            onClick={() => void cargar()}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </button>
+        }
+      />
 
       {/* Filtros */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -706,7 +727,7 @@ export default function DashboardPmClient() {
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Última actualización: {actualizado ?? "—"}
+                Datos en vivo del módulo Proyectos
               </span>
             </div>
           </>

@@ -173,6 +173,66 @@ export function PillSelect({
   );
 }
 
+/**
+ * Cabecera de un tablero.
+ *
+ * Antes eran tres líneas de texto gris apiladas, del mismo peso, compitiendo
+ * entre sí: el título no se despegaba y el contexto (qué cartera, qué período)
+ * no se veía sin bajar a los filtros. Acá el título manda, el contexto va en
+ * píldoras a la vista y las acciones quedan a la derecha.
+ *
+ * Vive en el módulo compartido para que el Ejecutivo y el PM no se separen
+ * visualmente con el tiempo.
+ */
+export function DashboardHeader({
+  icon: Icon,
+  titulo,
+  subtitulo,
+  chips = [],
+  acciones,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  titulo: string;
+  subtitulo: string;
+  /** Contexto activo: cartera, período, última actualización. */
+  chips?: React.ReactNode[];
+  acciones?: React.ReactNode;
+}) {
+  return (
+    <header className="relative overflow-hidden rounded-2xl border border-[#4FAEB2]/25 bg-gradient-to-r from-[#4FAEB2]/[0.12] via-[#4FAEB2]/[0.04] to-transparent px-4 py-4 sm:px-5">
+      {/* Halo decorativo. `pointer-events-none` para que no coma clics. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-[#4FAEB2]/15 blur-3xl"
+      />
+      <div className="relative flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2] text-white shadow-sm shadow-[#4FAEB2]/40">
+            <Icon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-[24px] font-bold leading-tight tracking-tight text-slate-800">{titulo}</h1>
+            <p className="text-[12.5px] text-slate-500">{subtitulo}</p>
+            {chips.length > 0 ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {chips.map((c, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-[#4FAEB2]/25 bg-white/70 px-2.5 py-0.5 text-[11px] font-medium text-[#2F6E71]"
+                  >
+                    {c}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {acciones ? <div className="flex shrink-0 items-center gap-2">{acciones}</div> : null}
+      </div>
+    </header>
+  );
+}
+
 export type KpiTono = { circulo: string; icono: string };
 
 export const TONO: Record<string, KpiTono> = {

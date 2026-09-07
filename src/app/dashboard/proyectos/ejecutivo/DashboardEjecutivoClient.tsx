@@ -30,7 +30,9 @@ import {
 import {
   AlertCircle,
   AlertTriangle,
+  CalendarRange,
   Download,
+  LineChart,
   Flag,
   Hourglass,
   Lock,
@@ -45,6 +47,7 @@ import {
   AMBAR,
   Card,
   CardTitle,
+  DashboardHeader,
   Estado,
   EstadoPill,
   FiltroPill,
@@ -304,37 +307,42 @@ export default function DashboardEjecutivoClient() {
 
   return (
     <div className="space-y-3">
-      {/* Cabecera */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[26px] font-bold leading-tight tracking-tight text-slate-800">
-            Dashboard Ejecutivo
-          </h1>
-          <p className="text-[13px] text-slate-500">Proyectos · Visión para Directorio</p>
-          <p className="text-[12px] text-slate-400">
-            Estado general, cumplimiento y productividad del área técnica
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void cargar()}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            Actualizar
-          </button>
-          <button
-            type="button"
-            onClick={exportar}
-            disabled={!data}
-            className="flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Descargar
-          </button>
-        </div>
-      </div>
+      <DashboardHeader
+        icon={LineChart}
+        titulo="Dashboard Ejecutivo"
+        subtitulo="Proyectos · visión para Directorio"
+        chips={[
+          <>
+            <CalendarRange className="h-3 w-3" />
+            {alcance}
+          </>,
+          <>
+            <RefreshCw className="h-3 w-3" />
+            {actualizado ?? "—"}
+          </>,
+        ]}
+        acciones={
+          <>
+            <button
+              type="button"
+              onClick={() => void cargar()}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Actualizar
+            </button>
+            <button
+              type="button"
+              onClick={exportar}
+              disabled={!data}
+              className="flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3 py-2 text-[12px] font-semibold text-white shadow-sm shadow-[#4FAEB2]/30 transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Descargar
+            </button>
+          </>
+        }
+      />
 
       {/* Filtros */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -736,7 +744,7 @@ export default function DashboardEjecutivoClient() {
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Última actualización: {actualizado ?? "—"}
+                Datos en vivo del módulo Proyectos
               </span>
             </div>
           </>

@@ -32,7 +32,13 @@ export async function GET(request: Request) {
     });
     const ds = await cargarDataset(sb, auth.empresaId, filtros);
     return NextResponse.json(
-      successResponse({ ...construirDashboardPm(ds), puede_ver_todo: perfil.esAdmin })
+      successResponse({
+        ...construirDashboardPm(ds),
+        puede_ver_todo: perfil.esAdmin,
+        // La cartera que el servidor terminó aplicando, que no siempre es la
+        // que se pidió: a un PM se le fuerza la propia.
+        pm_id: filtros.pmId,
+      })
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "No se pudo armar el dashboard";

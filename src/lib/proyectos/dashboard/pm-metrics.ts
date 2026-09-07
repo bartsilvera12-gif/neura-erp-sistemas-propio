@@ -202,6 +202,7 @@ export function construirDashboardPm(ds: Dataset) {
       tipos: ds.tipos.map((t) => ({ id: t.id, nombre: t.nombre })),
       estados: ds.estados.map((e) => ({ id: e.id, nombre: e.nombre ?? "—" })),
       tecnicos: ds.tecnicosOpciones,
+      pms: ds.pmsOpciones,
     },
     atribucion_parcial: ds.atribucionParcial,
   };

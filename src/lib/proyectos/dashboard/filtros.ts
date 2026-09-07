@@ -17,22 +17,24 @@ function fecha(sp: URLSearchParams, key: string): string | null {
 /**
  * Filtros de pantalla.
  *
- * `mios=1` acota a la cartera del PM que está mirando, y el id sale de la
- * SESIÓN, nunca del query string: si viniera por parámetro, cualquiera podría
- * pedir la cartera de otro PM cambiando la URL.
+ * `pm_id` elige la cartera a mirar; vacío = todas. Quién puede elegir lo decide
+ * el SERVIDOR: sólo quien tiene permiso de ver todo (administración) puede
+ * pedir la cartera de otra persona. A un PM se le fuerza la propia, pida lo que
+ * pida — si el id del query mandara, bastaría cambiar la URL para ver la
+ * cartera ajena.
  */
 export function leerFiltros(
   request: Request,
   ctx: { usuarioId: string; puedeVerTodo: boolean }
 ): Filtros {
   const sp = new URL(request.url).searchParams;
-  const mios = sp.get("mios") === "1";
+  const pedido = texto(sp, "pm_id");
   return {
     desde: fecha(sp, "desde"),
     hasta: fecha(sp, "hasta"),
     tipoId: texto(sp, "tipo_id"),
     estadoId: texto(sp, "estado_id"),
     tecnicoId: texto(sp, "responsable_tecnico_id"),
-    pmId: mios || !ctx.puedeVerTodo ? ctx.usuarioId : null,
+    pmId: ctx.puedeVerTodo ? pedido : ctx.usuarioId,
   };
 }

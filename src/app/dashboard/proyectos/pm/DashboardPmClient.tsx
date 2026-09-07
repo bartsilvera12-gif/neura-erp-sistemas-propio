@@ -37,7 +37,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { nombreCorto } from "@/lib/format/nombres";
+import { nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 import { SLV_META, type NivelSlv } from "@/lib/proyectos/dashboard/semaforo";
 import {
   AMBAR,
@@ -73,6 +73,7 @@ type Data = {
   };
   wip_limite: number;
   puede_ver_todo: boolean;
+  pm_id: string | null;
   atencion: {
     id: string;
     titulo: string;
@@ -140,7 +141,7 @@ type Data = {
     proxima_accion: string;
     responsable: string;
   }[];
-  opciones: { tipos: Opcion[]; estados: Opcion[]; tecnicos: Opcion[] };
+  opciones: { tipos: Opcion[]; estados: Opcion[]; tecnicos: Opcion[]; pms: Opcion[] };
   atribucion_parcial: boolean;
 };
 
@@ -208,7 +209,14 @@ function hoyIso(): string {
 
 export default function DashboardPmClient() {
   const [hasta, setHasta] = useState(hoyIso);
-  const [mios, setMios] = useState(true);
+  /**
+   * Cartera a mirar. Vacío = todas.
+   *
+   * Antes esto era un interruptor "Mis proyectos / Todos" que filtraba por el
+   * usuario de la sesión, y para cualquiera que no fuera PM el tablero salía
+   * vacío: administración no tiene cartera propia. Ahora se elige la persona.
+   */
+  const [pmId, setPmId] = useState("");
   const [fTipo, setFTipo] = useState("");
   const [fEstado, setFEstado] = useState("");
   const [fTecnico, setFTecnico] = useState("");
@@ -223,7 +231,7 @@ export default function DashboardPmClient() {
     try {
       const qs = new URLSearchParams();
       if (hasta) qs.set("hasta", hasta);
-      if (mios) qs.set("mios", "1");
+      if (pmId) qs.set("pm_id", pmId);
       if (fTipo) qs.set("tipo_id", fTipo);
       if (fEstado) qs.set("estado_id", fEstado);
       if (fTecnico) qs.set("responsable_tecnico_id", fTecnico);
@@ -235,7 +243,7 @@ export default function DashboardPmClient() {
     } finally {
       setLoading(false);
     }
-  }, [hasta, mios, fTipo, fEstado, fTecnico]);
+  }, [hasta, pmId, fTipo, fEstado, fTecnico]);
 
   useEffect(() => {
     void cargar();
@@ -245,6 +253,11 @@ export default function DashboardPmClient() {
     () => (data?.wip ?? []).slice(0, 8).map((w) => ({ ...w, corto: nombreCorto(w.nombre) })),
     [data?.wip]
   );
+
+  /** Los nombres llegan en MAYÚSCULAS del catálogo; en una lista gritan. */
+  const capitular = (o: Opcion[]) => o.map((x) => ({ id: x.id, nombre: nombreCapitular(x.nombre) }));
+  const pms = useMemo(() => capitular(data?.opciones.pms ?? []), [data?.opciones.pms]);
+  const tecnicos = useMemo(() => capitular(data?.opciones.tecnicos ?? []), [data?.opciones.tecnicos]);
 
   const vacio = !!data && data.atencion.length === 0 && data.wip.length === 0;
 
@@ -278,27 +291,24 @@ export default function DashboardPmClient() {
           />
         </FiltroPill>
         {/*
-          "Mis proyectos" sale de la cartera real del PM (clientes.project_manager_id).
-          Un PM que no es admin ve su cartera igual, elija lo que elija: el
-          servidor no le devuelve otra cosa.
+          La cartera sale de la asignación real: el PM del proyecto, y si no
+          tiene, el de la ficha de su cliente. Un PM que no es admin ve la suya
+          igual elija lo que elija — el servidor no le devuelve otra cosa.
         */}
-        <FiltroPill label="Cartera">
-          <button
-            type="button"
-            onClick={() => setMios((v) => !v)}
-            disabled={!data?.puede_ver_todo}
-            className="w-full text-right text-[13px] text-slate-700 focus:outline-none disabled:text-slate-400"
-          >
-            {mios ? "Mis proyectos" : "Todos"}
-          </button>
-        </FiltroPill>
+        <PillSelect
+          label="Cartera"
+          value={pmId}
+          onChange={setPmId}
+          options={pms}
+          placeholder="Ambas"
+        />
         <PillSelect label="Tipo" value={fTipo} onChange={setFTipo} options={data?.opciones.tipos ?? []} />
         <PillSelect label="Estado" value={fEstado} onChange={setFEstado} options={data?.opciones.estados ?? []} />
         <PillSelect
           label="Técnico"
           value={fTecnico}
           onChange={setFTecnico}
-          options={data?.opciones.tecnicos ?? []}
+          options={tecnicos}
           placeholder="Todos los técnicos"
         />
       </div>

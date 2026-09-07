@@ -120,6 +120,8 @@ export type Dataset = {
   proyectos: ProyectoMetrica[];
   /** Técnicos con asignación real, SIN aplicar los filtros de pantalla. */
   tecnicosOpciones: { id: string; nombre: string }[];
+  /** Project managers activos de la empresa, para el selector de cartera. */
+  pmsOpciones: { id: string; nombre: string }[];
   wipLimite: number;
   nombreUsuario: (id: string) => string;
   /** Tiempo laboral acumulado por estado, sólo de segmentos cerrados. */
@@ -328,12 +330,27 @@ export async function cargarDataset(
       ].filter((x): x is string => typeof x === "string" && x.length > 0)
     ),
   ];
-  const usuariosR = usuarioIds.length
-    ? await catalogo.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", usuarioIds)
-    : { data: [] as { id: string; nombre: string | null }[] };
+  const [usuariosR, pmsR] = await Promise.all([
+    usuarioIds.length
+      ? catalogo.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", usuarioIds)
+      : Promise.resolve({ data: [] as { id: string; nombre: string | null }[] }),
+    // Los PM salen de la bandera del catálogo, no de tener cartera: una PM sin
+    // clientes asignados igual tiene que poder elegirse en el selector.
+    catalogo
+      .from("usuarios")
+      .select("id, nombre")
+      .eq("empresa_id", empresaId)
+      .eq("es_project_manager", true)
+      .eq("estado", "activo")
+      .order("nombre"),
+  ]);
   const nombres = new Map(
     ((usuariosR.data ?? []) as { id: string; nombre: string | null }[]).map((u) => [u.id, u.nombre ?? "—"])
   );
+  const pmsOpciones = ((pmsR.data ?? []) as { id: string; nombre: string | null }[]).map((u) => ({
+    id: u.id,
+    nombre: u.nombre ?? "—",
+  }));
 
   const clientes = new Map(
     ((clientesR.data ?? []) as Record<string, unknown>[]).map((c) => [
@@ -553,6 +570,7 @@ export async function cargarDataset(
     tipos,
     proyectos: filtrados,
     tecnicosOpciones,
+    pmsOpciones,
     wipLimite: WIP_LIMITE_DEFAULT,
     nombreUsuario: (id: string) => nombres.get(id) ?? "—",
     msPorEstado,

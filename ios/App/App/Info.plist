@@ -22,6 +22,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Neura ERP usa la cámara para adjuntar fotos y videos a las conversaciones de WhatsApp.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Neura ERP usa el micrófono para grabar notas de voz y enviarlas por WhatsApp desde el chat del asesor.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Neura ERP accede a tus fotos para adjuntar imágenes y videos a las conversaciones de WhatsApp.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

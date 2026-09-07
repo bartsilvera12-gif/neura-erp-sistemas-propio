@@ -116,6 +116,9 @@ const COLOR_BLOQUEO: Record<string, string> = {
   cliente: AMBAR,
   tercero: "#8b5cf6",
   interno: ROJO,
+  // Pausado tiene su propia categoría: un proyecto en pausa está detenido, pero
+  // no es un bloqueo interno, y meterlo ahí lo escondía.
+  pausa: "#64748b",
 };
 
 const SEMAFORO_PILL: Record<Data["criticos"][number]["semaforo"], string> = {

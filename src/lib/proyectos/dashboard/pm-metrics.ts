@@ -8,7 +8,7 @@ import "server-only";
  * jugada.
  */
 
-import { BLOQUEO_TIPO_LABEL, type BloqueoTipo } from "./config";
+import { BLOQUEO_TIPO_LABEL, categoriaBloqueo } from "./config";
 import { nivelWip } from "./semaforo";
 import { calcularWip } from "./workload";
 import { cuentaParaWip, kpisComunes, type Dataset, type ProyectoMetrica } from "./shared";
@@ -172,7 +172,7 @@ export function construirDashboardPm(ds: Dataset) {
     .sort((a, b) => (b.tiempo_en_estado_ms ?? 0) - (a.tiempo_en_estado_ms ?? 0))
     .slice(0, 25)
     .map((p) => {
-      const tipo: BloqueoTipo = p.bloqueo_tipo ?? (p.espera_cliente ? "cliente" : "interno");
+      const tipo = categoriaBloqueo(p);
       const { accion, dueno } = proximaAccion(p);
       return {
         id: p.id,

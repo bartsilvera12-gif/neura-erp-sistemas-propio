@@ -9,7 +9,7 @@ import "server-only";
  */
 
 import { MS_JORNADA } from "@/lib/proyectos/reloj-laboral";
-import { BLOQUEO_TIPO_LABEL, type BloqueoTipo } from "./config";
+import { BLOQUEO_CATEGORIAS, BLOQUEO_TIPO_LABEL, categoriaBloqueo } from "./config";
 import { resumirQa } from "./qa-metrics";
 import { nivelWip } from "./semaforo";
 import { calcularWip } from "./workload";
@@ -130,14 +130,14 @@ export function construirDashboardEjecutivo(ds: Dataset) {
   const bloqueados = activos.filter((p) => p.bloqueado);
   const porTipo = new Map<string, number>();
   for (const p of bloqueados) {
-    // Sin clasificación explícita se usa la que dice el ESTADO: un proyecto
-    // parado en una columna `tipo_sla = cliente` está bloqueado por el cliente.
-    const tipo: BloqueoTipo = p.bloqueo_tipo ?? (p.espera_cliente ? "cliente" : "interno");
-    porTipo.set(tipo, (porTipo.get(tipo) ?? 0) + 1);
+    const cat = categoriaBloqueo(p);
+    porTipo.set(cat, (porTipo.get(cat) ?? 0) + 1);
   }
-  const bloqueos_por_tipo = (["cliente", "tercero", "interno"] as BloqueoTipo[])
-    .map((t) => ({ tipo: t, label: BLOQUEO_TIPO_LABEL[t], cantidad: porTipo.get(t) ?? 0 }))
-    .filter((b) => b.cantidad > 0);
+  const bloqueos_por_tipo = BLOQUEO_CATEGORIAS.map((t) => ({
+    tipo: t,
+    label: BLOQUEO_TIPO_LABEL[t],
+    cantidad: porTipo.get(t) ?? 0,
+  })).filter((b) => b.cantidad > 0);
 
   return {
     vista: "ejecutivo" as const,

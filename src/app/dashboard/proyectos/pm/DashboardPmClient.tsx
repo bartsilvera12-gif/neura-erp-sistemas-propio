@@ -169,6 +169,7 @@ const COLOR_TIPO_BLOQUEO: Record<string, string> = {
   cliente: "bg-amber-50 text-amber-700",
   tercero: "bg-violet-50 text-violet-700",
   interno: "bg-rose-50 text-rose-700",
+  pausa: "bg-slate-100 text-slate-700",
 };
 
 /**

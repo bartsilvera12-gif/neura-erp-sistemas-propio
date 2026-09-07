@@ -83,12 +83,40 @@ export const SLV_OBJETIVO_POR_TIPO: Record<string, string> = {
   saas_erp: "erp_estandar",
 };
 
-/** Tipos de bloqueo. `bloqueo_tipo` en `proyectos`; el motivo sigue siendo texto libre. */
+/** Tipos de bloqueo que se cargan a mano en `proyectos.bloqueo_tipo`. */
 export const BLOQUEO_TIPOS = ["cliente", "interno", "tercero"] as const;
 export type BloqueoTipo = (typeof BLOQUEO_TIPOS)[number];
 
-export const BLOQUEO_TIPO_LABEL: Record<BloqueoTipo, string> = {
+/**
+ * Categorías que se MUESTRAN.
+ *
+ * Suma "pausa" a las tres que se cargan a mano. Un proyecto parado en la
+ * columna Pausado está detenido, pero no es un bloqueo interno: meterlo en
+ * "Interno" escondía cuatro proyectos pausados detrás de una etiqueta que no
+ * los describe. La columna de la base sigue teniendo sus tres valores; esto es
+ * sólo cómo se agrupa para leer.
+ */
+export const BLOQUEO_CATEGORIAS = ["cliente", "tercero", "interno", "pausa"] as const;
+export type BloqueoCategoria = (typeof BLOQUEO_CATEGORIAS)[number];
+
+export const BLOQUEO_TIPO_LABEL: Record<BloqueoCategoria, string> = {
   cliente: "Cliente",
   interno: "Interno",
   tercero: "Tercero",
+  pausa: "Pausado",
 };
+
+/**
+ * Categoría de un proyecto detenido. Lo cargado a mano manda; si no hay nada,
+ * lo dice su estado, que es un dato real y no una suposición.
+ */
+export function categoriaBloqueo(p: {
+  bloqueo_tipo: BloqueoTipo | null;
+  espera_cliente: boolean;
+  pausado: boolean;
+}): BloqueoCategoria {
+  if (p.bloqueo_tipo) return p.bloqueo_tipo;
+  if (p.pausado) return "pausa";
+  if (p.espera_cliente) return "cliente";
+  return "interno";
+}

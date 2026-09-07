@@ -86,7 +86,10 @@ export type ProyectoMetrica = {
   /** Tiempo LABORAL en el estado actual. */
   tiempo_en_estado_ms: number | null;
   estado_desde: string | null;
+  /** Detenido: bandera `bloqueado` del proyecto o estado de tipo pausado. */
   bloqueado: boolean;
+  /** Parado específicamente en un estado `tipo_sla = pausado`. */
+  pausado: boolean;
   bloqueo_tipo: BloqueoTipo | null;
   bloqueo_motivo: string | null;
   espera_cliente: boolean;
@@ -502,6 +505,7 @@ export async function cargarDataset(
       tiempo_en_estado_ms: tiempoEnEstado,
       estado_desde: estadoDesde,
       bloqueado: bloqueadoFlag || pausado,
+      pausado,
       bloqueo_tipo: bloqueoTipo,
       bloqueo_motivo: typeof row.bloqueo_motivo === "string" ? row.bloqueo_motivo : null,
       espera_cliente: esperaCliente,

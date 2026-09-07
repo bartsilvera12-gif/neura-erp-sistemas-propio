@@ -8,6 +8,14 @@ import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
+/**
+ * Tipos que alimentan el badge de QA de la tarjeta.
+ *
+ * `qa_aprobado` queda afuera a proposito: es un cierre, no una novedad que el
+ * tecnico tenga que ir a mirar.
+ */
+const TIPOS_NOVEDAD_QA = ["qa_novedad", "qa_rechazado"];
+
 export async function GET(request: Request) {
   const auth = await requireProyectosApiAccess(request);
   if (!auth.ok) {
@@ -144,6 +152,11 @@ export async function GET(request: Request) {
       .eq("empresa_id", empresaId)
       .eq("usuario_id", auth.usuarioCatalogId)
       .is("leida_at", null)
+      // El badge de la tarjeta dice "QA", asi que tiene que contar SOLO QA. Sin
+      // este filtro contaba cualquier aviso del proyecto —un comentario, un
+      // cambio de estado— y un proyecto recien creado, sin nada cargado en QA,
+      // aparecia con "QA 1".
+      .in("tipo", TIPOS_NOVEDAD_QA)
       .not("proyecto_id", "is", null);
 
     const porProyecto = new Map<string, number>();

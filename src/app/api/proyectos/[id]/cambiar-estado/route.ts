@@ -144,6 +144,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       update.pausa_acumulada_ms = base + (msLaborables(cur.pausado_at as string, now) ?? 0);
       update.pausado_at = null;
       update.pausa_motivo = null;
+      // El motivo del bloqueo muere con la pausa: dejarlo cargado haría que un
+      // proyecto ya destrabado siguiera explicando por qué estaba detenido.
+      update.bloqueo_motivo = null;
     }
 
     // --- Ancla fija de la ventana de cambios gratis post-entrega -------------

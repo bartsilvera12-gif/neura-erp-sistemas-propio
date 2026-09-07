@@ -95,12 +95,9 @@ export type ProyectoMetrica = {
   pausado: boolean;
   bloqueo_tipo: BloqueoTipo | null;
   /**
-   * Por qué está detenido.
-   *
-   * La fuente es `pausa_motivo`, que es el campo que el flujo de pausa exige
-   * desde siempre ("Indicá el motivo de la pausa") y el único que tiene datos
-   * reales. `bloqueo_motivo` queda como respaldo para bloqueos cargados por
-   * API sin pasar por una pausa.
+   * Por qué está detenido. Sale de `bloqueo_motivo`, el campo que se carga en la
+   * pestaña Datos de la tarjeta. Pausar desde el tablero también lo escribe, así
+   * que hay un solo lugar donde mirarlo.
    */
   bloqueo_motivo: string | null;
   espera_cliente: boolean;
@@ -249,7 +246,7 @@ export async function cargarDataset(
   // clasificación del bloqueo, el objetivo por proyecto (que cae al del tipo) y
   // el PM propio del proyecto (que cae al de su cliente).
   const COLUMNAS_BASE =
-    "id, titulo, cliente_id, estado_id, tipo_id, responsable_comercial_id, responsable_tecnico_id, fecha_ingreso, fecha_prometida, fecha_entrega, primera_entrega_at, bloqueado, bloqueo_motivo, pausa_motivo, created_at";
+    "id, titulo, cliente_id, estado_id, tipo_id, responsable_comercial_id, responsable_tecnico_id, fecha_ingreso, fecha_prometida, fecha_entrega, primera_entrega_at, bloqueado, bloqueo_motivo, created_at";
   const COLUMNAS_NUEVAS = `${COLUMNAS_BASE}, bloqueo_tipo, slv_objetivo_id, project_manager_id`;
 
   const pedirProyectos = (columnas: string) =>
@@ -536,8 +533,7 @@ export async function cargarDataset(
       pausado,
       bloqueo_tipo: bloqueoTipo,
       bloqueo_motivo:
-        (typeof row.pausa_motivo === "string" && row.pausa_motivo.trim() ? row.pausa_motivo : null) ??
-        (typeof row.bloqueo_motivo === "string" && row.bloqueo_motivo.trim() ? row.bloqueo_motivo : null),
+        typeof row.bloqueo_motivo === "string" && row.bloqueo_motivo.trim() ? row.bloqueo_motivo : null,
       espera_cliente: esperaCliente,
       en_qa: enQa,
       listo_entregar: listoEntregar,

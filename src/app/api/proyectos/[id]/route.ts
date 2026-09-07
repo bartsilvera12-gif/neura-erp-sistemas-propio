@@ -442,6 +442,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             );
           }
           patch.pausa_motivo = motivo;
+          // El campo canónico es `bloqueo_motivo`, que es el que edita la
+          // pestaña Datos y el que lee el dashboard. Pausar desde el tablero lo
+          // escribe también, para no depender de que alguien lo recopie a mano.
+          patch.bloqueo_motivo = motivo;
           // Repausar algo ya pausado sólo corrige el motivo: si resellamos
           // `pausado_at` perdemos el tiempo detenido que va acumulándose.
           if (!estabaPausado) patch.pausado_at = ahora;
@@ -455,11 +459,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           }
           patch.pausado_at = null;
           patch.pausa_motivo = null;
+          patch.bloqueo_motivo = null;
         }
       } else if (typeof body.pausa_motivo === "string") {
         // Editar sólo el texto del motivo, sin tocar el reloj de una pausa ya abierta.
         if (typeof cur.pausado_at === "string" && cur.pausado_at) {
           patch.pausa_motivo = body.pausa_motivo.trim() || null;
+          patch.bloqueo_motivo = patch.pausa_motivo;
         } else {
           // Puede estar en la columna "Pausado" del Kanban sin pausa abierta:
           // pasa con los proyectos que se movieron antes de que el cambio de

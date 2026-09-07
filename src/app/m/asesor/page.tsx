@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 import { attachmentCaptionForDisplay } from "@/lib/chat/message-erp-display";
@@ -22,6 +22,45 @@ function shortTime(iso: string | null): string {
 export default function MAsesorInboxPage() {
   const { conversations: convs, isAgent, isLoading: loading, error, refresh } = useAsesorInbox();
   const [q, setQ] = useState("");
+
+  // ── Deslizar hacia abajo para refrescar ────────────────────────────────────
+  // Sólo se arma cuando la lista ya está arriba del todo (scrollTop <= 0); si no,
+  // el gesto es scroll normal. El arrastre se amortigua a la mitad y tiene tope,
+  // para que se sienta elástico y no se despegue de la pantalla.
+  const PULL_THRESHOLD = 64;
+  const scrollerRef = useRef<HTMLElement | null>(null);
+  const pullStartY = useRef<number | null>(null);
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onPullStart = useCallback((e: React.TouchEvent) => {
+    if (refreshing) return;
+    const el = scrollerRef.current;
+    if (!el || el.scrollTop > 0) return;
+    pullStartY.current = e.touches[0].clientY;
+  }, [refreshing]);
+
+  const onPullMove = useCallback((e: React.TouchEvent) => {
+    const start = pullStartY.current;
+    if (start == null) return;
+    const dy = e.touches[0].clientY - start;
+    if (dy <= 0) {
+      // Cambió de dirección: devolvemos el control al scroll.
+      pullStartY.current = null;
+      setPull(0);
+      return;
+    }
+    setPull(Math.min(dy * 0.5, PULL_THRESHOLD + 26));
+  }, []);
+
+  const onPullEnd = useCallback(() => {
+    const dist = pull;
+    pullStartY.current = null;
+    setPull(0);
+    if (dist < PULL_THRESHOLD || refreshing) return;
+    setRefreshing(true);
+    void Promise.resolve(refresh()).finally(() => setRefreshing(false));
+  }, [pull, refresh, refreshing]);
 
   const filtered = (() => {
     const term = q.trim().toLowerCase();
@@ -62,7 +101,30 @@ export default function MAsesorInboxPage() {
         />
       </header>
 
-      <main className="flex-1 overflow-y-auto">
+      <main
+        ref={scrollerRef}
+        onTouchStart={onPullStart}
+        onTouchMove={onPullMove}
+        onTouchEnd={onPullEnd}
+        onTouchCancel={onPullEnd}
+        // `contain` evita que el rebote elástico del WebView se propague a la página.
+        className="flex-1 overflow-y-auto overscroll-y-contain"
+      >
+        {pull > 0 || refreshing ? (
+          <div
+            className="grid place-items-center overflow-hidden text-[12px] text-slate-400"
+            style={{
+              height: refreshing ? 44 : pull,
+              transition: pull > 0 ? undefined : "height 160ms ease-out",
+            }}
+          >
+            {refreshing
+              ? "Actualizando…"
+              : pull >= PULL_THRESHOLD
+                ? "Soltá para actualizar"
+                : "Deslizá para actualizar"}
+          </div>
+        ) : null}
         {loading ? (
           <div className="p-6 text-center text-slate-400 text-sm animate-pulse">Cargando…</div>
         ) : error && convs.length === 0 ? (

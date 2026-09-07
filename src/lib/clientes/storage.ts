@@ -2,6 +2,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { getCurrentUser } from "@/lib/auth";
 import { getBrowserSupabaseForEmpresaData } from "@/lib/supabase/browser-data-client";
 import type { Cliente, EstadoCliente, NotaCliente, PerfilTributarioCliente } from "./types";
+import { nombreClienteDisplay } from "./display-name";
 
 // ─── Tipo de fila Supabase ────────────────────────────────────────────────────
 // RLS maneja empresa_id automáticamente; no filtrar manualmente en SELECT
@@ -564,7 +565,7 @@ export async function toggleEstado(id: string, estado: EstadoCliente): Promise<v
   await updateCliente(id, { estado });
 }
 
-/** Nombre de display según tipo de cliente. */
+/** Nombre de display según tipo de cliente. Delega en el helper canónico único. */
 export function clienteNombre(c: Cliente): string {
-  return c.tipo_cliente === "empresa" && c.empresa ? c.empresa : c.nombre_contacto;
+  return nombreClienteDisplay(c, "");
 }

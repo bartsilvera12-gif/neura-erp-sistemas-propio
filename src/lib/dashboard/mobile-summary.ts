@@ -1,5 +1,6 @@
 import "server-only";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 export type DashboardMobileSummaryData = {
   ventasMes: number;
@@ -97,11 +98,11 @@ export async function fetchDashboardMobileSummary(
   if (clienteIds.length > 0) {
     const { data: clientes } = await supabase
       .from("clientes")
-      .select("id, empresa, nombre_contacto")
+      .select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social")
       .eq("empresa_id", empresaId)
       .in("id", clienteIds);
-    for (const c of (clientes ?? []) as Array<{ id: string; empresa?: string; nombre_contacto?: string }>) {
-      nombreByCliente.set(c.id, c.empresa?.trim() || c.nombre_contacto?.trim() || "");
+    for (const c of (clientes ?? []) as Array<Record<string, unknown>>) {
+      nombreByCliente.set(String(c.id), nombreClienteDisplay(c, ""));
     }
   }
 

@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { tipoEsMixto, tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 /**
  * GET /api/proyectos/panel — Panel GERENCIAL de proyectos.
@@ -137,10 +138,9 @@ export async function GET(request: Request) {
     const cliLabel = new Map<string, string>();
     for (let i = 0; i < cliIds.length; i += 120) {
       const slice = cliIds.slice(i, i + 120);
-      const { data } = await sb.from("clientes").select("id, empresa, nombre_contacto").in("id", slice);
+      const { data } = await sb.from("clientes").select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social").in("id", slice);
       for (const c of (data ?? []) as Record<string, unknown>[]) {
-        const label = String(c.empresa ?? "").trim() || String(c.nombre_contacto ?? "").trim() || "—";
-        cliLabel.set(String(c.id), label);
+        cliLabel.set(String(c.id), nombreClienteDisplay(c, "—"));
       }
     }
 

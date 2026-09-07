@@ -35,6 +35,7 @@ import {
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 import { useMapNombreTipoServicioCatalogo } from "@/lib/clientes/use-map-nombre-tipo-servicio";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { getEtapas, getEtapaClasses, normalizeEtapaCodigo, type EtapaCrm } from "@/lib/crm/etapas";
 import {
   isDashboardTabSlug,
@@ -910,7 +911,7 @@ function DashComercial({
         const vend = resolverVendedorCliente(c);
         return {
           id: String(c.id),
-          nombre: c.empresa ?? c.nombre_contacto,
+          nombre: nombreClienteDisplay(c, "—"),
           fechaAlta: c.created_at,
           planServicio: etiquetaPlanServicioCliente(c, mapNombreTipoServicio),
           monto,

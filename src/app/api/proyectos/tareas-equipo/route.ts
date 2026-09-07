@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { ETAPA_FINAL, type ProyectoEtapaDesarrollo } from "@/lib/proyectos/etapas-desarrollo";
 import { QA_ETAPAS_ACTIVAS, type ProyectoEtapaQA } from "@/lib/proyectos/etapas-qa";
 import { estadosDeTablero, esEstadoPausado, type EstadoTablero } from "@/lib/proyectos/estados-tablero";
@@ -193,7 +194,7 @@ export async function GET(request: Request) {
 
     const [clientesRes, tiposRes] = await Promise.all([
       clienteIds.length
-        ? sb.from("clientes").select("id, empresa, nombre_contacto").eq("empresa_id", empresaId).in("id", clienteIds)
+        ? sb.from("clientes").select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social").eq("empresa_id", empresaId).in("id", clienteIds)
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       tipoIds.length
         ? sb.from("proyecto_tipos").select("id, nombre, codigo").eq("empresa_id", empresaId).in("id", tipoIds)
@@ -208,12 +209,8 @@ export async function GET(request: Request) {
     }
 
     const clienteNombre = new Map<string, string>();
-    for (const c of (clientesRes.data ?? []) as {
-      id: string;
-      empresa: string | null;
-      nombre_contacto: string | null;
-    }[]) {
-      clienteNombre.set(c.id, (c.empresa ?? "").trim() || (c.nombre_contacto ?? "").trim() || "");
+    for (const c of (clientesRes.data ?? []) as Record<string, unknown>[]) {
+      clienteNombre.set(String(c.id), nombreClienteDisplay(c, ""));
     }
 
     const tipoNombre = new Map<string, string>();

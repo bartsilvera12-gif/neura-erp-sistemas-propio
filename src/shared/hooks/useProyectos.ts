@@ -30,7 +30,7 @@ export type ProyectoCard = Record<string, unknown> & {
     codigo?: string;
     color?: string;
   } | null;
-  cliente?: { empresa?: string | null; nombre_contacto?: string | null } | null;
+  cliente?: { tipo_cliente?: string | null; empresa?: string | null; nombre_contacto?: string | null; nombre?: string | null; razon_social?: string | null } | null;
   responsable_comercial?: { nombre?: string | null } | null;
   responsable_tecnico?: { nombre?: string | null } | null;
 };

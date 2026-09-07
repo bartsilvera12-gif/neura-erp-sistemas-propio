@@ -16,8 +16,11 @@ export type ProyectoEnriquecido = Record<string, unknown> & {
   } | null;
   cliente?: {
     id: string;
+    tipo_cliente?: string | null;
     empresa?: string | null;
     nombre_contacto?: string | null;
+    nombre?: string | null;
+    razon_social?: string | null;
     ruc?: string | null;
   } | null;
   responsable_comercial?: { id: string; nombre?: string | null } | null;
@@ -79,7 +82,7 @@ export async function enrichProyectosRows(
           .in("id", estadoIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     clienteIds.length
-      ? sb.from("clientes").select("id,empresa,nombre_contacto,ruc").eq("empresa_id", empresaId).in("id", clienteIds)
+      ? sb.from("clientes").select("id,tipo_cliente,empresa,nombre_contacto,nombre,razon_social,ruc").eq("empresa_id", empresaId).in("id", clienteIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     userIds.length
       ? catalog.from("usuarios").select("id,nombre").eq("empresa_id", empresaId).in("id", userIds)

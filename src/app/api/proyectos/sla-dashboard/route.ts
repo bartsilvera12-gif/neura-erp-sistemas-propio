@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 
@@ -141,15 +142,15 @@ export async function GET(request: Request) {
     const catalog = createServiceRoleClient();
     const [cliRes, usrRes] = await Promise.all([
       clienteIds.length > 0
-        ? sb.from("clientes").select("id, empresa, nombre_contacto").eq("empresa_id", emp).in("id", clienteIds)
-        : Promise.resolve({ data: [] as { id: string; empresa?: string | null; nombre_contacto?: string | null }[] }),
+        ? sb.from("clientes").select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social").eq("empresa_id", emp).in("id", clienteIds)
+        : Promise.resolve({ data: [] as { id: string; tipo_cliente?: string | null; empresa?: string | null; nombre_contacto?: string | null; nombre?: string | null; razon_social?: string | null }[] }),
       usuarioIds.length > 0
         ? catalog.from("usuarios").select("id, nombre").eq("empresa_id", emp).in("id", usuarioIds)
         : Promise.resolve({ data: [] as { id: string; nombre?: string | null }[] }),
     ]);
     const clienteNombre = new Map<string, string>();
     for (const c of cliRes.data ?? []) {
-      clienteNombre.set(c.id, (c.empresa ?? "").trim() || (c.nombre_contacto ?? "").trim() || "—");
+      clienteNombre.set(c.id, nombreClienteDisplay(c, "—"));
     }
     const tecnicoNombre = new Map<string, string>();
     for (const u of usrRes.data ?? []) {

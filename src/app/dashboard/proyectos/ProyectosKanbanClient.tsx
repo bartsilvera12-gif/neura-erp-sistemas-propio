@@ -21,6 +21,7 @@ import { createBrowserClientForSchema } from "@/lib/supabase";
 import { readSaasBriefData } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
@@ -640,10 +641,7 @@ function ProyectosLista({
               rows.map((p) => {
                 const prio = prioridadByCodigo.get(p.prioridad);
                 const prioStyles = getPriorityCardStyles(p.prioridad);
-                const cli =
-                  (p.cliente?.empresa || "").trim() ||
-                  (p.cliente?.nombre_contacto || "").trim() ||
-                  "";
+                const cli = nombreClienteDisplay(p.cliente, "");
                 const slaVencido = p.sla_estado_actual?.vencido === true;
                 const estado = estadoById.get(p.estado_id);
                 const estadoColor = estado?.color || p.proyecto_estado?.color || "#94a3b8";
@@ -1636,10 +1634,7 @@ function ProjectCardViewBase({
     data: { projectId: p.id, estadoId: p.estado_id },
   });
 
-  const cli =
-    (p.cliente?.empresa || "").trim() ||
-    (p.cliente?.nombre_contacto || "").trim() ||
-    "Sin cliente";
+  const cli = nombreClienteDisplay(p.cliente, "Sin cliente");
   const saasModulesLabel = saasModuleCountLabel(p);
   const priorityStyles = getPriorityCardStyles(p.prioridad);
   const postentrega = getPostentregaInfo(p);

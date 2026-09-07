@@ -1,11 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
-export type ClienteOpt = { id: string; empresa?: string | null; nombre_contacto?: string | null };
+export type ClienteOpt = {
+  id: string;
+  tipo_cliente?: string | null;
+  empresa?: string | null;
+  nombre_contacto?: string | null;
+  nombre?: string | null;
+  razon_social?: string | null;
+};
 
 export function clienteLabel(c: ClienteOpt): string {
-  return (c.empresa || "").trim() || (c.nombre_contacto || "").trim() || c.id.slice(0, 8);
+  return nombreClienteDisplay(c, c.id.slice(0, 8));
 }
 
 type Props = {

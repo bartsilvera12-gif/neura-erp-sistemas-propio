@@ -21,8 +21,10 @@ export interface ProspectoRaw {
 export interface ClienteRaw {
   id: number | string;
   codigo_cliente: string;
+  tipo_cliente?: string;
   empresa?: string;
   nombre_contacto: string;
+  razon_social?: string;
   origen: string;
   created_at: string;
   vendedor_asignado?: string;
@@ -353,8 +355,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       .map((r: Record<string, unknown>) => ({
         id: r.id as string,
         codigo_cliente: `CL-${(r.id as string).slice(0, 8).toUpperCase()}`,
+        tipo_cliente: (r.tipo_cliente as string) ?? undefined,
         empresa: r.empresa as string | undefined,
         nombre_contacto: (r.nombre_contacto as string) ?? (r.nombre as string) ?? "",
+        razon_social: (r.razon_social as string) ?? undefined,
         origen: (r.origen as string) ?? "MANUAL",
         created_at: toIsoTimestampStr(r.created_at as string),
         vendedor_asignado: r.vendedor_asignado as string | undefined,

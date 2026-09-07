@@ -29,6 +29,7 @@ import {
   type BloqueoTipo,
 } from "./config";
 import { consumoPct, nivelSlv, type NivelSlv } from "./semaforo";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { agruparHistorial, slvTecnicoDeProyecto, type SegmentoHistorial } from "./technical-slv";
 import { qaDeProyecto, type QaProyecto } from "./qa-metrics";
 import { motivo, scorePrioridad, type Motivo } from "./priority-score";
@@ -287,7 +288,7 @@ export async function cargarDataset(
     // mismo problema, y la tabla de clientes es chica.
     sb
       .from("clientes")
-      .select("id, empresa, nombre_contacto, project_manager_id")
+      .select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social, project_manager_id")
       .eq("empresa_id", empresaId)
       .limit(5000),
     ids.length
@@ -358,7 +359,7 @@ export async function cargarDataset(
     ((clientesR.data ?? []) as Record<string, unknown>[]).map((c) => [
       String(c.id),
       {
-        nombre: String(c.empresa ?? c.nombre_contacto ?? "—"),
+        nombre: nombreClienteDisplay(c, "—"),
         pm: typeof c.project_manager_id === "string" ? c.project_manager_id : null,
       },
     ])

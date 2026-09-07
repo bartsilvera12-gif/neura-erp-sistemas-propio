@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 
 /**
@@ -197,16 +198,11 @@ export async function GET(request: Request) {
     if (clienteIds.length > 0) {
       const { data: clientes } = await sb
         .from("clientes")
-        .select("id, empresa, nombre_contacto")
+        .select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social")
         .eq("empresa_id", empresaId)
         .in("id", clienteIds);
-      for (const c of (clientes ?? []) as {
-        id: string;
-        empresa: string | null;
-        nombre_contacto: string | null;
-      }[]) {
-        const label = (c.empresa ?? "").trim() || (c.nombre_contacto ?? "").trim() || "—";
-        clienteNombreById.set(c.id, label);
+      for (const c of (clientes ?? []) as Record<string, unknown>[]) {
+        clienteNombreById.set(String(c.id), nombreClienteDisplay(c, "—"));
       }
     }
 

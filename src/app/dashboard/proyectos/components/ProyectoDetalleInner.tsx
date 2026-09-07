@@ -35,6 +35,7 @@ import {
 } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 import { subestadosParaTipo } from "@/lib/proyectos/subestados-desarrollo";
+import { nombreClienteDisplay, nombreClienteContacto } from "@/lib/clientes/display-name";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 
 export type ProyectoCambioCliente = {
@@ -2165,10 +2166,11 @@ export default function ProyectoDetalleInner({
   // El hero del resumen los muestra en dos niveles; `clienteNombre` los pega
   // con " · ", que sirve para una fila pero no para un encabezado.
   const clienteRef = (proyecto?.cliente ?? null) as
-    | { empresa?: string | null; nombre_contacto?: string | null }
+    | { tipo_cliente?: string | null; empresa?: string | null; nombre_contacto?: string | null; nombre?: string | null; razon_social?: string | null }
     | null;
-  const clienteEmpresa = (clienteRef?.empresa ?? "").trim();
-  const clienteContacto = (clienteRef?.nombre_contacto ?? "").trim();
+  // Nombre principal (type-aware) y contacto secundario, vía el helper canónico.
+  const clienteNombrePrincipal = nombreClienteDisplay(clienteRef, "");
+  const clienteContacto = nombreClienteContacto(clienteRef) ?? "";
   /**
    * WhatsApp del contacto. En SaaS vive en `saas_whatsapp_contacto` y en web en
    * la clave general del brief; se toma el primero que tenga valor.
@@ -2392,14 +2394,14 @@ export default function ProyectoDetalleInner({
                   aria-hidden="true"
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2]/12 text-[13px] font-bold text-[#2F6E71]"
                 >
-                  {inicialesNombre(clienteEmpresa || clienteContacto)}
+                  {inicialesNombre(clienteNombrePrincipal || clienteContacto)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-slate-400">Cliente</p>
                   <div className="mt-0.5 text-[15px] font-semibold text-slate-900">
-                    <CopiarTexto valor={clienteEmpresa || clienteContacto} etiqueta="el nombre del cliente" />
+                    <CopiarTexto valor={clienteNombrePrincipal || clienteContacto} etiqueta="el nombre del cliente" />
                   </div>
-                  {clienteEmpresa && clienteContacto ? (
+                  {clienteContacto ? (
                     <div className="mt-0.5 text-[13px] text-slate-500">
                       <CopiarTexto valor={clienteContacto} etiqueta="el contacto" />
                     </div>

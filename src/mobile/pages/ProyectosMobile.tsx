@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AlertCircle, FolderKanban, Plus, Search } from "lucide-react";
 import { useEstadosProyecto, useProyectos, type ProyectoCard } from "@/shared/hooks/useProyectos";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 /**
  * Proyectos mobile — vista por etapa.
@@ -50,7 +51,7 @@ export default function ProyectosMobile() {
       .filter((p) => p.estado_id === estadoActivo.id)
       .filter((p) => {
         if (!q) return true;
-        const cliente = p.cliente?.empresa ?? p.cliente?.nombre_contacto ?? "";
+        const cliente = nombreClienteDisplay(p.cliente, "");
         return p.titulo.toLowerCase().includes(q) || cliente.toLowerCase().includes(q);
       })
       .slice()
@@ -147,7 +148,7 @@ export default function ProyectosMobile() {
 }
 
 function ProyectoCardItem({ proyecto }: { proyecto: ProyectoCard }) {
-  const cliente = proyecto.cliente?.empresa ?? proyecto.cliente?.nombre_contacto ?? "Sin cliente";
+  const cliente = nombreClienteDisplay(proyecto.cliente, "Sin cliente");
   const fechaPrometida = proyecto.fecha_prometida;
   const promExpired = fechaPrometida ? fechaPrometida < new Date().toISOString().slice(0, 10) : false;
   return (

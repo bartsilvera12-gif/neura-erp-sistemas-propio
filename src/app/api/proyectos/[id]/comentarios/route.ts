@@ -168,14 +168,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       empresa_id: auth.empresaId,
       proyecto_id: pid,
       usuario_id: auth.usuarioCatalogId,
-      comentario: texto,
+      // Vacío se guarda como NULL: un reenvío sin nota o una imagen sola no
+      // tienen texto, y "" no es un texto, es la ausencia de uno.
+      comentario: texto || null,
       canal,
       ...(reenvio ? { reenvio } : {}),
       ...(adjuntos.length > 0 ? { adjuntos } : {}),
     };
 
     const { data, error } = await sb.from("proyecto_comentarios").insert(insert).select("*");
-    if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+    if (error) {
+      // El mensaje crudo de Postgres —"violates check constraint chk_..."— no
+      // le dice nada a quien está escribiendo un comentario, y se veía tal cual
+      // en la pantalla. Se traduce lo conocido y el resto queda genérico.
+      const msg = error.message ?? "";
+      if (msg.includes("chk_proyecto_comentarios_contenido")) {
+        return NextResponse.json(
+          errorResponse("Escribí un comentario, adjuntá una imagen o reenviá uno existente"),
+          { status: 400 }
+        );
+      }
+      if (msg.includes("chk_proyecto_comentarios_canal")) {
+        return NextResponse.json(errorResponse("Canal de comentarios inválido"), { status: 400 });
+      }
+      console.error("[proyecto_comentarios] insert", msg);
+      return NextResponse.json(errorResponse("No se pudo publicar el comentario"), { status: 400 });
+    }
 
     await sb
       .from("proyectos")

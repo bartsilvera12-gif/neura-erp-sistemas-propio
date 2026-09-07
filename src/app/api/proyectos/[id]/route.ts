@@ -11,6 +11,7 @@ import {
 } from "@/lib/proyectos/historial-actions";
 import { esSubestadoValidoParaTipo } from "@/lib/proyectos/subestados-desarrollo";
 import { permisoComentariosDe } from "@/lib/proyectos/comentarios-permisos";
+import { pmDelCliente } from "@/lib/proyectos/pm-sincronizacion";
 import {
   ETAPA_FINAL,
   ETAPA_INICIAL,
@@ -237,8 +238,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           ? body.responsable_tecnico_id
           : null;
     }
-    // Project Manager del proyecto. En null se lee como "el PM de su cliente",
-    // que es el valor por defecto de siempre.
+    // Project Manager. Manda la ficha del CLIENTE: no puede haber un PM en el
+    // proyecto y otro distinto en el cliente, porque entonces dos personas creen
+    // ser responsables del mismo trabajo. Lo que venga en el body sólo se
+    // respeta cuando el proyecto no tiene cliente del cual heredar.
+    //
+    // Se resuelve al final del armado del patch, cuando ya se sabe si el cliente
+    // cambió en esta misma edición.
+    let pmPendiente = true;
     if ("project_manager_id" in body) {
       patch.project_manager_id =
         typeof body.project_manager_id === "string" && body.project_manager_id
@@ -574,6 +581,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         patch.subestado_desarrollo = nuevoCod;
         patch.subestado_desarrollo_at = nuevoCod ? new Date().toISOString() : null;
         subestadoChange = { de: actualCod, a: nuevoCod };
+      }
+    }
+
+    // El PM sale del cliente que queda después de esta edición: el nuevo si se
+    // cambió acá, o el que ya tenía. Sin cliente se respeta el valor manual.
+    if (pmPendiente) {
+      pmPendiente = false;
+      let clienteFinal: string | null = null;
+      if ("cliente_id" in patch) {
+        clienteFinal = (patch.cliente_id as string | null) ?? null;
+      } else {
+        const { data: cliActual } = await sb
+          .from("proyectos")
+          .select("cliente_id")
+          .eq("empresa_id", auth.empresaId)
+          .eq("id", pid)
+          .maybeSingle();
+        clienteFinal = (cliActual as { cliente_id?: string | null } | null)?.cliente_id ?? null;
+      }
+      if (clienteFinal) {
+        patch.project_manager_id = await pmDelCliente(sb, auth.empresaId, clienteFinal);
       }
     }
 

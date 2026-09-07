@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sincronizarPmDeClientes } from "@/lib/proyectos/pm-sincronizacion";
 import { isAdmin } from "@/lib/middleware/auth";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
@@ -166,6 +167,14 @@ export async function PATCH(
     }
     if (!data) {
       return NextResponse.json(errorResponse("Cliente no encontrado"), { status: 404 });
+    }
+
+    // Cambiar el PM del cliente arrastra sus proyectos: si la ficha dice una
+    // persona y el tablero otra, dos PM creen ser responsables del mismo
+    // trabajo. Ver `pm-sincronizacion.ts`. No bloqueante: el cliente ya se
+    // guardó y un fallo acá no debe voltear esa operación.
+    if (Object.prototype.hasOwnProperty.call(patch, "project_manager_id")) {
+      await sincronizarPmDeClientes(supabase, auth.empresa_id, [clienteId]);
     }
 
     // Nota: el tipo de servicio es propiedad ÚNICA del cliente (`tipo_servicio_cliente`).

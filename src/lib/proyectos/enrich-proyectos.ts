@@ -26,6 +26,7 @@ export type ProyectoEnriquecido = Record<string, unknown> & {
   } | null;
   responsable_comercial?: { id: string; nombre?: string | null } | null;
   responsable_tecnico?: { id: string; nombre?: string | null } | null;
+  project_manager?: { id: string; nombre?: string | null } | null;
   estado_actual_desde?: string | null;
   estado_actual_desde_fuente?: "historial" | "updated_at" | "created_at" | "fecha_ingreso" | "desconocido";
   tiempo_en_estado_segundos?: number | null;
@@ -66,7 +67,8 @@ export async function enrichProyectosRows(
   const clienteIds = uniq(rows.map((r) => r.cliente_id as string | undefined));
   const uCom = uniq(rows.map((r) => r.responsable_comercial_id as string | undefined));
   const uTec = uniq(rows.map((r) => r.responsable_tecnico_id as string | undefined));
-  const userIds = uniq([...uCom, ...uTec]);
+  const uPm = uniq(rows.map((r) => r.project_manager_id as string | undefined));
+  const userIds = uniq([...uCom, ...uTec, ...uPm]);
   const proyectoIds = uniq(rows.map((r) => r.id as string | undefined));
 
   const catalog = createServiceRoleClient();
@@ -140,6 +142,7 @@ export async function enrichProyectosRows(
     const cliente_id = r.cliente_id as string | undefined;
     const rc = r.responsable_comercial_id as string | undefined;
     const rt = r.responsable_tecnico_id as string | undefined;
+    const pm = r.project_manager_id as string | undefined;
     const pid = r.id as string | undefined;
     const out: ProyectoEnriquecido = { ...r };
     if (tipo_id) out.proyecto_tipo = (tiposMap.get(tipo_id) as ProyectoEnriquecido["proyecto_tipo"]) ?? null;
@@ -152,6 +155,10 @@ export async function enrichProyectosRows(
     if (rt) {
       const u = usersMap.get(rt) as { id: string; nombre?: string } | undefined;
       out.responsable_tecnico = u ? { id: u.id, nombre: u.nombre ?? null } : { id: rt, nombre: null };
+    }
+    if (pm) {
+      const u = usersMap.get(pm) as { id: string; nombre?: string } | undefined;
+      out.project_manager = u ? { id: u.id, nombre: u.nombre ?? null } : { id: pm, nombre: null };
     }
     const estado = out.proyecto_estado;
     const historial = pid ? historialPorProyecto.get(pid) ?? [] : [];

@@ -55,6 +55,7 @@ type ProyectoCard = Record<string, unknown> & {
    * no del proyecto: dos responsables ven badges distintos sobre la misma fila.
    */
   qa_novedades_no_leidas?: number;
+  project_manager?: { id: string; nombre?: string | null } | null;
   proyecto_tipo?: { nombre?: string; codigo?: string } | null;
   proyecto_estado?: {
     nombre?: string;
@@ -1725,6 +1726,12 @@ function ProjectCardViewBase({
         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-xl bg-slate-50/80 px-3 py-2 text-[11px] text-slate-700">
           <MetaItem label="Com." value={p.responsable_comercial?.nombre ?? "—"} />
           <MetaItem label="Téc." value={p.responsable_tecnico?.nombre ?? "—"} />
+          {/* El PM sale de la ficha del cliente y se sincroniza solo; se muestra
+              acá porque es la persona a la que hay que escribirle cuando algo
+              del proyecto se traba. */}
+          <div className="col-span-2">
+            <MetaItem label="PM" value={p.project_manager?.nombre ?? "—"} />
+          </div>
           <MetaItem label="Ingreso" value={fmtDate(p.fecha_ingreso)} />
           <MetaItem label="Prometido" value={fmtDate(p.fecha_prometida)} />
           <div className="col-span-2">

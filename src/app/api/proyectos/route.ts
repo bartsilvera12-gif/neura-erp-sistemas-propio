@@ -5,6 +5,7 @@ import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { insertHistorialCambioEstado } from "@/lib/proyectos/historial-actions";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
+import { pmDelCliente } from "@/lib/proyectos/pm-sincronizacion";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
@@ -242,9 +243,14 @@ export async function POST(request: Request) {
         ? body.metadata
         : {};
 
+    // El PM no se elige al crear: lo pone el cliente. Un proyecto nuevo de un
+    // cliente existente nace en la cartera de quien ya lo atiende.
+    const projectManagerId = await pmDelCliente(sb, empresaId, clienteId);
+
     const insert: Record<string, unknown> = {
       empresa_id: empresaId,
       cliente_id: clienteId,
+      project_manager_id: projectManagerId,
       tipo_id: tipoId,
       estado_id: estadoId,
       titulo,

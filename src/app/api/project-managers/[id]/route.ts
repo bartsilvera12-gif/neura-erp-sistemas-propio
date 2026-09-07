@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { sincronizarPmDeClientes } from "@/lib/proyectos/pm-sincronizacion";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 
 /**
@@ -165,6 +166,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         .in("id", quitar);
       if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
     }
+
+    // Los proyectos de esos clientes van con ellos: si la cartera cambia de
+    // manos y los proyectos se quedan con el PM anterior, el tablero pasa a
+    // decir algo distinto que la ficha.
+    await sincronizarPmDeClientes(sb, auth.empresaId, [...asignar, ...quitar]);
 
     return NextResponse.json(successResponse({ asignados: asignar.length, quitados: quitar.length }));
   } catch (e) {

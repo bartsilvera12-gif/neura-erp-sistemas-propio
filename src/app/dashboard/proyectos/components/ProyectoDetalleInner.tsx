@@ -2630,22 +2630,35 @@ export default function ProyectoDetalleInner({
                 </div>
                 <div className="block text-sm">
                   <span className={labelCls}>Project Manager</span>
-                  <div className="mt-1.5">
-                    {/*
-                      Sólo se listan usuarios con `es_project_manager`: la lista
-                      completa de la empresa convertiría el campo en una fuente
-                      de errores de tipeo. Vacío = hereda el PM de la ficha del
-                      cliente, que sigue siendo el valor por defecto.
-                    */}
-                    <PersonaSearchSelect
-                      ariaLabel="Project Manager"
-                      personas={projectManagers}
-                      value={projectManagerId}
-                      onChange={setProjectManagerId}
-                      placeholder="Hereda del cliente"
-                      vacioLabel="Hereda del cliente"
-                    />
-                  </div>
+                  {/*
+                    Con cliente cargado el PM NO se edita acá: sale de la ficha
+                    del cliente y se sincroniza solo. Dos PM distintos para el
+                    mismo trabajo —uno en el proyecto y otro en el cliente— es
+                    justamente lo que no puede pasar. Se muestra de dónde viene.
+                    Sin cliente sí se elige: no hay de quién heredarlo.
+                  */}
+                  {clienteId ? (
+                    <div className="mt-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                      <div className="text-sm text-slate-800">
+                        {projectManagers.find((u) => u.id === projectManagerId)?.nombre ??
+                          "Sin Project Manager asignado"}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-slate-400">
+                        Se toma de la ficha del cliente. Para cambiarlo, cambiá el PM del cliente.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1.5">
+                      <PersonaSearchSelect
+                        ariaLabel="Project Manager"
+                        personas={projectManagers}
+                        value={projectManagerId}
+                        onChange={setProjectManagerId}
+                        placeholder="Sin asignar"
+                        vacioLabel="Sin asignar"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="block text-sm">
                   <span className={labelCls}>Motivo de pausa o bloqueo</span>

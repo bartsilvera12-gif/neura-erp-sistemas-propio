@@ -82,6 +82,40 @@ const ESTADO_ENTREGADO_CODIGO = "publicado";
 const POSTENTREGA_PERIODO_DIAS = 30;
 const CAMBIOS_SLOTS = [1, 2, 3] as const;
 
+/**
+ * Firma de los campos editables de la pestaña Datos.
+ *
+ * Sirve para dos cosas: saber si hay cambios sin guardar y, después de guardar,
+ * volver a marcar el formulario como limpio. Es UNA sola función a propósito:
+ * cuando cada lado armaba su propio JSON, el del guardado se quedó sin cliente,
+ * responsable comercial, prioridad ni fecha prometida, y entonces la firma
+ * nunca volvía a coincidir: el proyecto quedaba "sucio" para siempre y al
+ * cerrar la tarjeta se pedía confirmación aunque estuviera todo guardado.
+ */
+function firmaDatos(v: {
+  briefForm: unknown;
+  briefLists: unknown;
+  saasForm: unknown;
+  responsableTecnicoId: string;
+  observaciones: string;
+  clienteId: string;
+  responsableComercialId: string;
+  prioridad: string;
+  fechaPrometida: string;
+}): string {
+  return JSON.stringify({
+    bf: v.briefForm,
+    bl: v.briefLists,
+    saas: v.saasForm,
+    responsable_tecnico_id: v.responsableTecnicoId,
+    obs: v.observaciones,
+    cliente_id: v.clienteId,
+    responsable_comercial_id: v.responsableComercialId,
+    prioridad: v.prioridad,
+    fecha_prometida: v.fechaPrometida,
+  });
+}
+
 type UsuarioActivo = { id: string; nombre?: string | null; email?: string | null };
 type CatalogoCliente = { id: string; empresa?: string | null; nombre_contacto?: string | null };
 
@@ -1061,17 +1095,19 @@ export default function ProyectoDetalleInner({
     setResponsableComercialId(rc);
     setPrioridad(prio);
     setFechaPrometida(fProm);
-    setDatosSnapshot(JSON.stringify({
-      bf: merged,
-      bl: lists,
-      saas,
-      responsable_tecnico_id: rt,
-      obs: obsCom,
-      cliente_id: cli,
-      responsable_comercial_id: rc,
-      prioridad: prio,
-      fecha_prometida: fProm,
-    }));
+    setDatosSnapshot(
+      firmaDatos({
+        briefForm: merged,
+        briefLists: lists,
+        saasForm: saas,
+        responsableTecnicoId: rt,
+        observaciones: obsCom,
+        clienteId: cli,
+        responsableComercialId: rc,
+        prioridad: prio,
+        fechaPrometida: fProm,
+      })
+    );
     const draft: Record<number, { realizado: boolean; comentario: string }> = {};
     for (const c of j.data.cambios ?? []) {
       draft[c.nro] = { realizado: c.realizado, comentario: c.comentario ?? "" };
@@ -1301,31 +1337,33 @@ export default function ProyectoDetalleInner({
     };
   }, []);
 
-  const datosDirty = useMemo(() => {
-    const cur = JSON.stringify({
-      bf: briefForm,
-      bl: briefLists,
-      saas: saasForm,
-      responsable_tecnico_id: responsableTecnicoId,
-      obs: observaciones,
-      cliente_id: clienteId,
-      responsable_comercial_id: responsableComercialId,
+  const datosFirma = useMemo(
+    () =>
+      firmaDatos({
+        briefForm,
+        briefLists,
+        saasForm,
+        responsableTecnicoId,
+        observaciones,
+        clienteId,
+        responsableComercialId,
+        prioridad,
+        fechaPrometida,
+      }),
+    [
+      briefForm,
+      briefLists,
+      saasForm,
+      responsableTecnicoId,
+      observaciones,
+      clienteId,
+      responsableComercialId,
       prioridad,
-      fecha_prometida: fechaPrometida,
-    });
-    return datosSnapshot !== "" && cur !== datosSnapshot;
-  }, [
-    briefForm,
-    briefLists,
-    saasForm,
-    responsableTecnicoId,
-    observaciones,
-    clienteId,
-    responsableComercialId,
-    prioridad,
-    fechaPrometida,
-    datosSnapshot,
-  ]);
+      fechaPrometida,
+    ]
+  );
+
+  const datosDirty = datosSnapshot !== "" && datosFirma !== datosSnapshot;
 
   useEffect(() => {
     onDirtyChange?.(datosDirty);
@@ -1372,15 +1410,7 @@ export default function ProyectoDetalleInner({
     // Guardado confirmado por el servidor. El formulario se marca limpio acá,
     // con lo que el usuario acaba de escribir, y NO se espera la recarga: el
     // botón se apaga apenas responde el PATCH.
-    setDatosSnapshot(
-      JSON.stringify({
-        bf: briefForm,
-        bl: briefLists,
-        saas: saasForm,
-        responsable_tecnico_id: responsableTecnicoId,
-        obs: observaciones,
-      })
-    );
+    setDatosSnapshot(datosFirma);
     setGuardandoDatos(false);
 
     // Reconciliación en segundo plano: trae historial, SLA y lo que el servidor

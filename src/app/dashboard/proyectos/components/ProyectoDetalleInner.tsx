@@ -32,6 +32,8 @@ import {
   readSaasBriefData,
   type ProyectoModuloSnapshot,
   type ProyectoSaasBriefForm,
+  PROYECTO_FACTURACION_OPCIONES,
+  facturacionLabel,
 } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 import { subestadosParaTipo } from "@/lib/proyectos/subestados-desarrollo";
@@ -1040,6 +1042,7 @@ export default function ProyectoDetalleInner({
     empresa_nombre: "",
     whatsapp_contacto: "",
     observaciones: "",
+    facturacion: "",
     modulos_necesarios: [],
   });
   const [responsableTecnicoId, setResponsableTecnicoId] = useState("");
@@ -2491,6 +2494,9 @@ export default function ProyectoDetalleInner({
 
                 {esSaas ? (
                   <>
+                    <DatoResumen etiqueta="Facturación del cliente">
+                      {facturacionLabel(saasForm.facturacion) || "—"}
+                    </DatoResumen>
                     <DatoResumen etiqueta="Empresa SaaS / ERP">
                       {saasForm.empresa_nombre.trim() || "—"}
                     </DatoResumen>
@@ -2883,6 +2889,28 @@ export default function ProyectoDetalleInner({
 
             {esSaas ? (
               <div className="grid gap-3 sm:grid-cols-2">
+                <div className="block text-sm sm:col-span-2">
+                  <span className={labelCls}>Facturación del cliente</span>
+                  <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                    {PROYECTO_FACTURACION_OPCIONES.map((o) => {
+                      const activo = saasForm.facturacion === o.value;
+                      return (
+                        <button
+                          key={o.value}
+                          type="button"
+                          onClick={() => updateSaasField("facturacion", o.value)}
+                          className={`rounded-xl border px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${
+                            activo
+                              ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/50"
+                          }`}
+                        >
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <label className="block text-sm">
                   <span className={labelCls}>Nombre de la empresa</span>
                   <input

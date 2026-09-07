@@ -6,6 +6,8 @@ import { insertHistorialCambioEstado } from "@/lib/proyectos/historial-actions";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import { pmDelCliente } from "@/lib/proyectos/pm-sincronizacion";
+import { PROYECTO_SAAS_BRIEF_KEYS, esFacturacionValida } from "@/lib/proyectos/brief-data";
+import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
@@ -242,6 +244,29 @@ export async function POST(request: Request) {
       body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
         ? body.metadata
         : {};
+
+    // La situación de facturación es obligatoria en SaaS/ERP y mixto: define si
+    // el arranque necesita timbrado, certificado y homologación con la DNIT, o
+    // ninguno de los tres. La valida también el servidor porque esconder el
+    // botón en el formulario no es una regla: el POST se puede llamar directo.
+    {
+      const { data: tipoRow } = await sb
+        .from("proyecto_tipos")
+        .select("codigo")
+        .eq("empresa_id", empresaId)
+        .eq("id", tipoId)
+        .maybeSingle();
+      const codigoTipo = String((tipoRow as { codigo?: string } | null)?.codigo ?? "").toLowerCase();
+      if (tipoIncluyeSaas(codigoTipo)) {
+        const fact = (brief_data as Record<string, unknown>)[PROYECTO_SAAS_BRIEF_KEYS.facturacion];
+        if (!esFacturacionValida(fact)) {
+          return NextResponse.json(
+            errorResponse("Indicá la situación de facturación del cliente"),
+            { status: 400 }
+          );
+        }
+      }
+    }
 
     // El PM no se elige al crear: lo pone el cliente. Un proyecto nuevo de un
     // cliente existente nace en la cartera de quien ya lo atiende.

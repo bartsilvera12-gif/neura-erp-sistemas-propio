@@ -19,6 +19,8 @@ export type ProyectoSaasBriefForm = {
   whatsapp_contacto: string;
   observaciones: string;
   modulos_necesarios: ProyectoModuloSnapshot[];
+  /** Situación de facturación del cliente. Vacío en proyectos previos al campo. */
+  facturacion: string;
 };
 
 /** Campos editables en la pestaña "Datos" (proyecto web y compat. con JSON previo). */
@@ -47,7 +49,33 @@ export const PROYECTO_SAAS_BRIEF_KEYS = {
   whatsappContacto: "saas_whatsapp_contacto",
   observaciones: "saas_observaciones",
   modulosNecesarios: "saas_modulos_necesarios",
+  facturacion: "saas_facturacion",
 } as const;
+
+/**
+ * Situación de facturación del cliente para un SaaS/ERP.
+ *
+ * Define qué hay que preparar antes de la puesta en marcha, así que se pide al
+ * crear el proyecto y no después: sin este dato no se sabe si el arranque
+ * necesita timbrado, certificado y homologación con la DNIT, o ninguno de los
+ * tres.
+ */
+export const PROYECTO_FACTURACION_OPCIONES = [
+  { value: "electronica", label: "Facturación electrónica" },
+  { value: "auto_impresor", label: "Auto impresor" },
+  { value: "sin_facturacion", label: "Sin facturación" },
+] as const;
+
+export type ProyectoFacturacion = (typeof PROYECTO_FACTURACION_OPCIONES)[number]["value"];
+
+export function esFacturacionValida(v: unknown): v is ProyectoFacturacion {
+  return PROYECTO_FACTURACION_OPCIONES.some((o) => o.value === v);
+}
+
+/** Etiqueta para mostrar. Vacío cuando el proyecto es anterior al campo. */
+export function facturacionLabel(v: unknown): string {
+  return PROYECTO_FACTURACION_OPCIONES.find((o) => o.value === v)?.label ?? "";
+}
 
 /** Claves que pueden existir con nombres antiguos; al leer se unifican. */
 const BRIEF_ALIASES: Record<string, string> = {
@@ -138,6 +166,9 @@ export function readSaasBriefData(raw: unknown): ProyectoSaasBriefForm {
         ? String(brief[PROYECTO_SAAS_BRIEF_KEYS.observaciones])
         : "",
     modulos_necesarios: modulos,
+    facturacion: esFacturacionValida(brief[PROYECTO_SAAS_BRIEF_KEYS.facturacion])
+      ? String(brief[PROYECTO_SAAS_BRIEF_KEYS.facturacion])
+      : "",
   };
 }
 
@@ -291,6 +322,8 @@ export function applySaasFormToExisting(
   else delete next[PROYECTO_SAAS_BRIEF_KEYS.observaciones];
   if (modulos.length > 0) next[PROYECTO_SAAS_BRIEF_KEYS.modulosNecesarios] = modulos;
   else delete next[PROYECTO_SAAS_BRIEF_KEYS.modulosNecesarios];
+  if (esFacturacionValida(form.facturacion)) next[PROYECTO_SAAS_BRIEF_KEYS.facturacion] = form.facturacion;
+  else delete next[PROYECTO_SAAS_BRIEF_KEYS.facturacion];
 
   return next;
 }

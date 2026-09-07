@@ -11,8 +11,10 @@ import {
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
+  PROYECTO_FACTURACION_OPCIONES,
   applyBriefFormToExisting,
   applySaasFormToExisting,
+  esFacturacionValida,
   type ProyectoModuloSnapshot,
 } from "@/lib/proyectos/brief-data";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
@@ -72,6 +74,12 @@ export default function ProyectoNuevoForm({
   // teléfono del cliente elegido y queda editable.
   const [contactoWhatsapp, setContactoWhatsapp] = useState("");
   const [saasObservaciones, setSaasObservaciones] = useState("");
+  /**
+   * Situación de facturación del cliente. Obligatoria en SaaS/ERP y mixto:
+   * define si el arranque necesita timbrado, certificado y homologación con
+   * la DNIT, o ninguno de los tres. Preguntarlo después es descubrirlo tarde.
+   */
+  const [saasFacturacion, setSaasFacturacion] = useState("");
   const [saasModuloIds, setSaasModuloIds] = useState<string[]>([]);
 
   const tipoCodigo = useMemo(() => tipos.find((t) => t.id === tipoId)?.codigo ?? "", [tipos, tipoId]);
@@ -143,6 +151,12 @@ export default function ProyectoNuevoForm({
       setErr("El tipo de web (rubro) es obligatorio para proyectos web.");
       return;
     }
+    // En SaaS/ERP define qué hay que preparar para la puesta en marcha, así que
+    // se pide ahora y no cuando ya haya que arrancar.
+    if (esSaas && !esFacturacionValida(saasFacturacion)) {
+      setErr("Indicá la situación de facturación del cliente.");
+      return;
+    }
     setSaving(true);
     setErr(null);
     // Se aplican en cadena, no en if/else: el tipo mixto guarda ambos briefs.
@@ -155,6 +169,7 @@ export default function ProyectoNuevoForm({
         whatsapp_contacto: contactoWhatsapp,
         observaciones: saasObservaciones,
         modulos_necesarios: saasModulosSeleccionados,
+        facturacion: saasFacturacion,
       });
     }
     // WhatsApp/contacto único (arriba): se guarda como clave general del brief para web/mixto
@@ -531,6 +546,30 @@ export default function ProyectoNuevoForm({
               <h2 className="text-sm font-semibold text-slate-900">Datos del ERP / SaaS</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
+              <div className="block text-sm sm:col-span-2">
+                <span className={LABEL_CLS}>
+                  Facturación del cliente <span className="text-rose-500">*</span>
+                </span>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+                  {PROYECTO_FACTURACION_OPCIONES.map((o) => {
+                    const activo = saasFacturacion === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setSaasFacturacion(o.value)}
+                        className={`rounded-xl border px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${
+                          activo
+                            ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/50"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <label className="block text-sm sm:col-span-2">
                 <span className={LABEL_CLS}>Nombre de la empresa</span>
                 <input

@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronDown, Info } from "lucide-react";
+import { Check, ChevronDown, Info, Search } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 
@@ -21,7 +21,55 @@ export const AMBAR = "#f5b544";
 export const NARANJA = "#f97316";
 export const ROJO = "#ef6461";
 
-export type Opcion = { id: string; nombre: string };
+export type Opcion = {
+  id: string;
+  nombre: string;
+  /** Color configurado de la opción; los estados traen el suyo del catálogo. */
+  color?: string | null;
+};
+
+/**
+ * Paleta para los avatares de personas.
+ *
+ * El color se deriva del id y no de la posición en la lista: así una misma
+ * persona se ve siempre igual, aunque se filtre o cambie el orden.
+ */
+const PALETA_PERSONA = ["#4FAEB2", "#8b5cf6", "#f59e0b", "#ec4899", "#22c55e", "#0ea5e9", "#ef4444"];
+
+function colorDePersona(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PALETA_PERSONA[h % PALETA_PERSONA.length];
+}
+
+function inicialesDe(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+/** Punto de color o avatar con iniciales, según qué lista se esté mostrando. */
+function Marca({ opcion, variante }: { opcion: Opcion; variante: "color" | "persona" | "simple" }) {
+  if (variante === "persona") {
+    const c = colorDePersona(opcion.id);
+    return (
+      <span
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8.5px] font-bold"
+        style={{ background: `${c}22`, color: c }}
+      >
+        {inicialesDe(opcion.nombre)}
+      </span>
+    );
+  }
+  if (variante === "color" && opcion.color) {
+    return (
+      <span
+        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ background: opcion.color, boxShadow: `0 0 0 3px ${opcion.color}22` }}
+      />
+    );
+  }
+  return null;
+}
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -55,6 +103,64 @@ export function FiltroPill({ label, children }: { label: string; children: React
   );
 }
 
+/**
+ * Filtro de fecha que abre el calendario al tocar CUALQUIER parte de la
+ * píldora, no sólo el iconito.
+ *
+ * Un `<input type="date">` nativo sólo despliega el almanaque desde su ícono:
+ * al hacer clic sobre el texto se entra a editar el día a mano, que es lo
+ * último que quiere alguien filtrando un tablero. `showPicker()` lo abre a
+ * pedido; va dentro de un try porque Safari no lo implementa y algunos
+ * navegadores lo rechazan si la llamada no viene de un gesto del usuario. Si
+ * falla, el campo sigue funcionando como antes.
+ */
+export function FiltroFecha({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+  max?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  const abrir = () => {
+    const el = ref.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    if (!el) return;
+    el.focus();
+    try {
+      el.showPicker?.();
+    } catch {
+      /* Navegador sin soporte: queda el comportamiento nativo. */
+    }
+  };
+
+  return (
+    <div
+      onClick={abrir}
+      className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#4FAEB2]/50"
+    >
+      <span className="shrink-0 text-[13px] font-medium text-slate-600">{label}</span>
+      <div className="relative min-w-0 flex-1">
+        <input
+          ref={ref}
+          type="date"
+          value={value}
+          min={min}
+          max={max}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full cursor-pointer bg-transparent text-right text-[13px] text-slate-500 focus:outline-none"
+        />
+      </div>
+    </div>
+  );
+}
+
 /** Selector propio con la estética de la píldora. Con más de 8 opciones, busca. */
 export function PillSelect({
   label,
@@ -62,12 +168,15 @@ export function PillSelect({
   onChange,
   options,
   placeholder = "Todos",
+  variante = "simple",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: Opcion[];
   placeholder?: string;
+  /** `color` pinta el color de la opción; `persona`, un avatar con iniciales. */
+  variante?: "color" | "persona" | "simple";
 }) {
   const [abierto, setAbierto] = useState(false);
   const [q, setQ] = useState("");
@@ -98,7 +207,9 @@ export function PillSelect({
   return (
     <div
       ref={ref}
-      className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className={`relative flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors ${
+        abierto || seleccionada ? "border-[#4FAEB2]/60" : "border-slate-200 hover:border-[#4FAEB2]/40"
+      }`}
     >
       <span className="shrink-0 text-[13px] font-medium text-slate-600">{label}</span>
       <button
@@ -107,31 +218,39 @@ export function PillSelect({
           setAbierto((v) => !v);
           setQ("");
         }}
-        className="flex min-w-0 flex-1 items-center justify-end gap-1 focus:outline-none"
+        className="flex min-w-0 flex-1 items-center justify-end gap-1.5 focus:outline-none"
         title={seleccionada?.nombre ?? placeholder}
       >
-        <span className={`truncate text-[13px] ${seleccionada ? "text-slate-700" : "text-slate-400"}`}>
+        {seleccionada ? <Marca opcion={seleccionada} variante={variante} /> : null}
+        <span
+          className={`truncate text-[13px] ${seleccionada ? "font-medium text-[#2F6E71]" : "text-slate-400"}`}
+        >
           {seleccionada ? seleccionada.nombre : placeholder}
         </span>
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+            abierto ? "rotate-180 text-[#4FAEB2]" : "text-slate-400"
+          }`}
         />
       </button>
 
       {abierto ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-[#4FAEB2]/25 bg-white shadow-xl shadow-slate-900/10">
           {buscable ? (
             <div className="border-b border-slate-100 p-2">
-              <input
-                autoFocus
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar…"
-                className="w-full rounded-lg bg-slate-50 px-2.5 py-1.5 text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none"
-              />
+              <div className="flex items-center gap-1.5 rounded-lg bg-slate-50 px-2 py-1.5 focus-within:bg-white focus-within:ring-1 focus-within:ring-[#4FAEB2]/40">
+                <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <input
+                  autoFocus
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Buscar…"
+                  className="w-full bg-transparent text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                />
+              </div>
             </div>
           ) : null}
-          <ul className="max-h-56 overflow-y-auto py-1">
+          <ul className="max-h-60 overflow-y-auto p-1">
             <li>
               <button
                 type="button"
@@ -139,11 +258,13 @@ export function PillSelect({
                   onChange("");
                   setAbierto(false);
                 }}
-                className={`w-full px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-50 ${
-                  !value ? "font-semibold text-[#2F6E71]" : "text-slate-600"
+                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                  !value ? "bg-[#4FAEB2]/10 font-semibold text-[#2F6E71]" : "text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                {placeholder}
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-dashed border-slate-300" />
+                <span className="min-w-0 flex-1 truncate">{placeholder}</span>
+                {!value ? <Check className="h-3.5 w-3.5 shrink-0 text-[#4FAEB2]" /> : null}
               </button>
             </li>
             {filtradas.map((o) => (
@@ -155,16 +276,20 @@ export function PillSelect({
                     setAbierto(false);
                   }}
                   title={o.nombre}
-                  className={`block w-full truncate px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-slate-50 ${
-                    value === o.id ? "font-semibold text-[#2F6E71]" : "text-slate-600"
+                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                    value === o.id
+                      ? "bg-[#4FAEB2]/10 font-semibold text-[#2F6E71]"
+                      : "text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {o.nombre}
+                  <Marca opcion={o} variante={variante} />
+                  <span className="min-w-0 flex-1 truncate">{o.nombre}</span>
+                  {value === o.id ? <Check className="h-3.5 w-3.5 shrink-0 text-[#4FAEB2]" /> : null}
                 </button>
               </li>
             ))}
             {filtradas.length === 0 ? (
-              <li className="px-3 py-2 text-center text-[11px] text-slate-400">Sin resultados</li>
+              <li className="px-3 py-3 text-center text-[11px] text-slate-400">Sin resultados</li>
             ) : null}
           </ul>
         </div>

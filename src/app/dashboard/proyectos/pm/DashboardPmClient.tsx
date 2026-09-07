@@ -47,7 +47,7 @@ import {
   DashboardHeader,
   Estado,
   EstadoPill,
-  FiltroPill,
+  FiltroFecha,
   Kpi,
   Pill,
   PillSelect,
@@ -303,14 +303,7 @@ export default function DashboardPmClient() {
 
       {/* Filtros */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <FiltroPill label="Fecha">
-          <input
-            type="date"
-            value={hasta}
-            onChange={(e) => setHasta(e.target.value)}
-            className="w-full cursor-pointer bg-transparent text-right text-[13px] text-slate-500 focus:outline-none"
-          />
-        </FiltroPill>
+        <FiltroFecha label="Fecha" value={hasta} onChange={setHasta} />
         {/*
           La cartera sale de la asignación real: el PM del proyecto, y si no
           tiene, el de la ficha de su cliente. Un PM que no es admin ve la suya
@@ -322,15 +315,23 @@ export default function DashboardPmClient() {
           onChange={setPmId}
           options={pms}
           placeholder="Ambas"
+          variante="persona"
         />
         <PillSelect label="Tipo" value={fTipo} onChange={setFTipo} options={data?.opciones.tipos ?? []} />
-        <PillSelect label="Estado" value={fEstado} onChange={setFEstado} options={data?.opciones.estados ?? []} />
+        <PillSelect
+          label="Estado"
+          value={fEstado}
+          onChange={setFEstado}
+          options={data?.opciones.estados ?? []}
+          variante="color"
+        />
         <PillSelect
           label="Técnico"
           value={fTecnico}
           onChange={setFTecnico}
           options={tecnicos}
           placeholder="Todos los técnicos"
+          variante="persona"
         />
       </div>
 

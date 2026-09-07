@@ -18,10 +18,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
+  CartesianGrid,
   Cell,
   LabelList,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -32,6 +34,7 @@ import {
   AlertTriangle,
   CalendarRange,
   CheckCircle2,
+  Clock,
   Download,
   LineChart,
   Quote,
@@ -44,7 +47,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { nombreCorto } from "@/lib/format/nombres";
+import { nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 import {
   AMBAR,
   Card,
@@ -52,7 +55,7 @@ import {
   DashboardHeader,
   Estado,
   EstadoPill,
-  FiltroPill,
+  FiltroFecha,
   Kpi,
   NARANJA,
   Pill,
@@ -140,14 +143,30 @@ const COLOR_BLOQUEO: Record<string, string> = {
 
 /**
  * Cuánto pesa una detención, por el tiempo que lleva. Una pausa de tres horas y
- * una de dos semanas no son el mismo problema, y en una lista de cuatro filas
- * el color es lo único que lo dice de un vistazo.
+ * una de dos semanas no son el mismo problema, y en una lista corta el color es
+ * lo único que lo dice de un vistazo: la fila entera se tiñe, no sólo el número.
  */
-function severidadDetencion(ms: number | null): string {
+function severidadDetencion(ms: number | null): { fila: string; badge: string; barra: string } {
   const horas = ms == null ? 0 : ms / 3600_000;
-  if (horas >= 90) return "bg-rose-50 text-rose-600";
-  if (horas >= 36) return "bg-orange-50 text-orange-600";
-  return "bg-slate-100 text-slate-500";
+  if (horas >= 90) {
+    return {
+      fila: "border-rose-200 bg-gradient-to-r from-rose-50 to-white",
+      badge: "bg-rose-500 text-white shadow-sm shadow-rose-500/30",
+      barra: "bg-rose-500",
+    };
+  }
+  if (horas >= 36) {
+    return {
+      fila: "border-orange-200 bg-gradient-to-r from-orange-50 to-white",
+      badge: "bg-orange-500 text-white shadow-sm shadow-orange-500/30",
+      barra: "bg-orange-500",
+    };
+  }
+  return {
+    fila: "border-slate-200 bg-white",
+    badge: "bg-slate-200 text-slate-600",
+    barra: "bg-slate-300",
+  };
 }
 
 const SEMAFORO_PILL: Record<Data["criticos"][number]["semaforo"], string> = {
@@ -237,6 +256,12 @@ export default function DashboardEjecutivoClient() {
   const donut = useMemo(
     () => (data?.por_estado ?? []).map((e) => ({ ...e, value: e.cantidad })),
     [data?.por_estado]
+  );
+
+  /** Los nombres del catálogo vienen en MAYÚSCULAS; en una lista gritan. */
+  const tecnicos = useMemo(
+    () => (data?.opciones.tecnicos ?? []).map((t) => ({ ...t, nombre: nombreCapitular(t.nombre) })),
+    [data?.opciones.tecnicos]
   );
 
   const wipChart = useMemo(
@@ -355,31 +380,22 @@ export default function DashboardEjecutivoClient() {
 
       {/* Filtros */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <FiltroPill label="Desde">
-          <input
-            type="date"
-            value={desde}
-            max={hasta || undefined}
-            onChange={(e) => setDesde(e.target.value)}
-            className="w-full cursor-pointer bg-transparent text-right text-[13px] text-slate-500 focus:outline-none"
-          />
-        </FiltroPill>
-        <FiltroPill label="Hasta">
-          <input
-            type="date"
-            value={hasta}
-            min={desde || undefined}
-            onChange={(e) => setHasta(e.target.value)}
-            className="w-full cursor-pointer bg-transparent text-right text-[13px] text-slate-500 focus:outline-none"
-          />
-        </FiltroPill>
+        <FiltroFecha label="Desde" value={desde} max={hasta || undefined} onChange={setDesde} />
+        <FiltroFecha label="Hasta" value={hasta} min={desde || undefined} onChange={setHasta} />
         <PillSelect label="Tipo" value={fTipo} onChange={setFTipo} options={data?.opciones.tipos ?? []} />
-        <PillSelect label="Estado" value={fEstado} onChange={setFEstado} options={data?.opciones.estados ?? []} />
+        <PillSelect
+          label="Estado"
+          value={fEstado}
+          onChange={setFEstado}
+          options={data?.opciones.estados ?? []}
+          variante="color"
+        />
         <PillSelect
           label="Resp. técnico"
           value={fTecnico}
           onChange={setFTecnico}
-          options={data?.opciones.tecnicos ?? []}
+          options={tecnicos}
+          variante="persona"
         />
       </div>
 
@@ -515,33 +531,56 @@ export default function DashboardEjecutivoClient() {
                 ) : (
                   <>
                     <ResponsiveContainer width="100%" height={168}>
-                      <BarChart data={wipChart} margin={{ top: 18, right: 6, left: -24, bottom: 0 }}>
+                      <BarChart data={wipChart} margin={{ top: 20, right: 6, left: -24, bottom: 0 }}>
+                        <defs>
+                          {Object.entries(COLOR_WIP).map(([nivel, c]) => (
+                            <linearGradient key={nivel} id={`wip-${nivel}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={c} stopOpacity={1} />
+                              <stop offset="100%" stopColor={c} stopOpacity={0.45} />
+                            </linearGradient>
+                          ))}
+                        </defs>
+                        <CartesianGrid vertical={false} stroke="#f1f5f9" />
                         <XAxis
                           dataKey="corto"
-                          tick={{ fontSize: 9, fill: "#94a3b8" }}
+                          tick={{ fontSize: 9, fill: "#64748b" }}
                           axisLine={false}
                           tickLine={false}
                           interval={0}
                         />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                        <Tooltip formatter={(v: number) => [`${v}`, "Proyectos"]} />
-                        <Bar dataKey="wip" radius={[3, 3, 0, 0]} barSize={22}>
+                        <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: "#cbd5e1" }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          cursor={{ fill: "rgba(79,174,178,0.06)" }}
+                          formatter={(v: number) => [`${v}`, "Proyectos"]}
+                        />
+                        {/* La línea del límite convierte cada barra en un juicio:
+                            debajo está bien, encima hay que repartir trabajo. */}
+                        <ReferenceLine
+                          y={data.wip_limite}
+                          stroke={ROJO}
+                          strokeDasharray="4 3"
+                          strokeOpacity={0.7}
+                        />
+                        <Bar dataKey="wip" radius={[5, 5, 0, 0]} barSize={26}>
                           <LabelList
                             dataKey="wip"
                             position="top"
-                            style={{ fontSize: 10, fill: "#475569", fontWeight: 600 }}
+                            style={{ fontSize: 11, fill: "#334155", fontWeight: 700 }}
                           />
                           {wipChart.map((w) => (
-                            <Cell key={w.usuario_id} fill={COLOR_WIP[w.nivel]} />
+                            <Cell key={w.usuario_id} fill={`url(#wip-${w.nivel})`} />
                           ))}
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
-                    <div className="mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[9px] text-slate-500">
+                    <div className="mt-1 flex flex-wrap justify-center gap-x-2.5 gap-y-1 text-[9px]">
                       <Leyenda color={ROJO} label="Sobre el límite" />
                       <Leyenda color={AMBAR} label="Al límite" />
                       <Leyenda color={VERDE} label="En rango" />
-                      <span className="text-slate-400">Límite recomendado: {data.wip_limite}</span>
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <span className="inline-block h-px w-4 border-t border-dashed border-rose-400" />
+                        Límite {data.wip_limite}
+                      </span>
                     </div>
                   </>
                 )}
@@ -569,16 +608,27 @@ export default function DashboardEjecutivoClient() {
                         tickLine={false}
                         interval={0}
                       />
-                      <Tooltip formatter={(v: number) => [`${v} h`, "Promedio"]} />
-                      <Bar dataKey="horas" radius={[0, 3, 3, 0]} barSize={12}>
+                      <defs>
+                        {data.tiempo_por_estado.map((e) => (
+                          <linearGradient key={e.estado_id} id={`est-${e.estado_id}`} x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor={e.color} stopOpacity={0.55} />
+                            <stop offset="100%" stopColor={e.color} stopOpacity={1} />
+                          </linearGradient>
+                        ))}
+                      </defs>
+                      <Tooltip
+                        cursor={{ fill: "rgba(79,174,178,0.06)" }}
+                        formatter={(v: number) => [`${v} h`, "Promedio"]}
+                      />
+                      <Bar dataKey="horas" radius={[0, 5, 5, 0]} barSize={14}>
                         <LabelList
                           dataKey="horas"
                           position="right"
                           formatter={(v: number) => `${String(v).replace(".", ",")} h`}
-                          style={{ fontSize: 10, fill: "#475569", fontWeight: 600 }}
+                          style={{ fontSize: 10.5, fill: "#334155", fontWeight: 700 }}
                         />
                         {data.tiempo_por_estado.map((e) => (
-                          <Cell key={e.estado_id} fill={e.color} />
+                          <Cell key={e.estado_id} fill={`url(#est-${e.estado_id})`} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -589,22 +639,20 @@ export default function DashboardEjecutivoClient() {
               {/* F. Calidad del desarrollo */}
               <Card>
                 <CardTitle>Calidad del desarrollo</CardTitle>
-                <div className="flex h-[168px] flex-col justify-center gap-3">
-                  <div>
-                    <div className="text-[30px] font-bold leading-none text-emerald-500">
-                      {data.calidad.first_pass_pct != null ? `${data.calidad.first_pass_pct}%` : "—"}
-                    </div>
-                    <div className="text-[11px] text-slate-500">Aprobado en primera revisión</div>
-                  </div>
-                  <div>
-                    <div className="text-[30px] font-bold leading-none text-rose-500">
-                      {data.calidad.con_reingreso_pct != null ? `${data.calidad.con_reingreso_pct}%` : "—"}
-                    </div>
-                    <div className="text-[11px] text-slate-500">Con reingresos desde QA</div>
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Promedio de rondas de QA{" "}
-                    <span className="text-[18px] font-bold text-slate-800">
+                <div className="flex h-[168px] flex-col justify-center gap-3.5">
+                  <BarraCalidad
+                    valor={data.calidad.first_pass_pct}
+                    label="Aprobado en primera revisión"
+                    color={VERDE}
+                  />
+                  <BarraCalidad
+                    valor={data.calidad.con_reingreso_pct}
+                    label="Con reingresos desde QA"
+                    color={ROJO}
+                  />
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                    <span className="text-[11px] text-slate-500">Promedio de rondas de QA</span>
+                    <span className="text-[19px] font-bold leading-none text-slate-800">
                       {data.calidad.promedio_rondas != null
                         ? data.calidad.promedio_rondas.toString().replace(".", ",")
                         : "—"}
@@ -720,19 +768,20 @@ export default function DashboardEjecutivoClient() {
                     <ul className="space-y-2">
                       {data.bloqueos_detalle.map((b) => {
                         const color = COLOR_BLOQUEO[b.tipo] ?? TEAL;
+                        const sev = severidadDetencion(b.tiempo_ms);
                         return (
                           <li
                             key={b.id}
-                            className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-shadow hover:shadow-md"
+                            className={`group relative overflow-hidden rounded-xl border shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-px hover:shadow-md ${sev.fila}`}
                           >
                             {/* Franja del color del tipo: identifica la causa sin
                                 gastar una columna de texto. */}
                             <span
                               aria-hidden
-                              className="absolute inset-y-0 left-0 w-[3px]"
+                              className="absolute inset-y-0 left-0 w-1"
                               style={{ background: color }}
                             />
-                            <div className="py-2 pl-3 pr-2.5">
+                            <div className="py-2 pl-3.5 pr-2.5">
                               <div className="flex items-start justify-between gap-2">
                                 <Link
                                   href={`/dashboard/proyectos?proyecto=${b.id}`}
@@ -742,23 +791,34 @@ export default function DashboardEjecutivoClient() {
                                   {b.titulo}
                                 </Link>
                                 <span
-                                  className={`shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${severidadDetencion(b.tiempo_ms)}`}
+                                  className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-bold tabular-nums ${sev.badge}`}
                                 >
+                                  <Clock className="h-2.5 w-2.5" />
                                   {fmtDur(b.tiempo_ms)}
                                 </span>
                               </div>
-                              <div
-                                className="truncate text-[10.5px] uppercase tracking-wide text-slate-400"
-                                title={b.cliente}
-                              >
-                                {b.cliente}
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="shrink-0 rounded px-1 text-[9px] font-bold uppercase tracking-wide"
+                                  style={{ background: `${color}1F`, color }}
+                                >
+                                  {b.tipo_label}
+                                </span>
+                                <span
+                                  className="min-w-0 truncate text-[10.5px] text-slate-400"
+                                  title={b.cliente}
+                                >
+                                  {b.cliente}
+                                </span>
                               </div>
                               <div className="mt-1 flex items-start gap-1.5">
                                 <Quote className="mt-0.5 h-3 w-3 shrink-0 text-slate-300" />
                                 {/* Sin motivo cargado se dice que falta, en vez de
                                     repetir el estado y aparentar que hay una razón. */}
                                 {b.motivo ? (
-                                  <span className="text-[11px] leading-snug text-slate-600">{b.motivo}</span>
+                                  <span className="text-[11px] font-medium leading-snug text-slate-700">
+                                    {b.motivo}
+                                  </span>
                                 ) : (
                                   <span className="text-[11px] italic leading-snug text-slate-300">
                                     Sin motivo cargado
@@ -789,6 +849,39 @@ export default function DashboardEjecutivoClient() {
           </>
         ) : null}
       </Estado>
+    </div>
+  );
+}
+
+/**
+ * Número grande con su barra de progreso.
+ *
+ * El porcentaje solo no dice cuánto falta para el ideal; la barra lo muestra
+ * sin que haya que pensarlo.
+ */
+function BarraCalidad({
+  valor,
+  label,
+  color,
+}: {
+  valor: number | null;
+  label: string;
+  color: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[30px] font-bold leading-none" style={{ color }}>
+          {valor != null ? `${valor}%` : "—"}
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${Math.min(100, Math.max(0, valor ?? 0))}%`, background: color }}
+        />
+      </div>
+      <div className="mt-1 text-[11px] text-slate-500">{label}</div>
     </div>
   );
 }

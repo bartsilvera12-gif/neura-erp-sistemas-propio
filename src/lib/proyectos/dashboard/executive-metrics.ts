@@ -176,7 +176,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     bloqueados_total: bloqueados.length,
     opciones: {
       tipos: ds.tipos.map((t) => ({ id: t.id, nombre: t.nombre })),
-      estados: estados.map((e) => ({ id: e.id, nombre: e.nombre ?? "—" })),
+      estados: estados.map((e) => ({ id: e.id, nombre: e.nombre ?? "—", color: e.color })),
       tecnicos: ds.tecnicosOpciones,
     },
     atribucion_parcial: ds.atribucionParcial,

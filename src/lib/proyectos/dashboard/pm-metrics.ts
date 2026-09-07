@@ -200,7 +200,7 @@ export function construirDashboardPm(ds: Dataset) {
     bloqueos,
     opciones: {
       tipos: ds.tipos.map((t) => ({ id: t.id, nombre: t.nombre })),
-      estados: ds.estados.map((e) => ({ id: e.id, nombre: e.nombre ?? "—" })),
+      estados: ds.estados.map((e) => ({ id: e.id, nombre: e.nombre ?? "—", color: e.color })),
       tecnicos: ds.tecnicosOpciones,
       pms: ds.pmsOpciones,
     },

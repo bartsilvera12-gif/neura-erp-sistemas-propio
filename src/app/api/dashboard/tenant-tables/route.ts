@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       /** Sin `.is("deleted_at", null)` en PostgREST: en tenants viejos la columna puede no existir y rompía todo el batch. */
       supabase.from("clientes").select("*").eq("empresa_id", empresaId),
       supabase.from("facturas").select("*").eq("empresa_id", empresaId),
-      supabase.from("pagos").select("id, factura_id, monto, fecha_pago").eq("empresa_id", empresaId),
+      supabase.from("pagos").select("id, factura_id, monto, fecha_pago").eq("empresa_id", empresaId).neq("estado_contable", "revertido"),
       supabase.from("tipificaciones").select("*").eq("empresa_id", empresaId),
       supabase.from("productos").select("*").eq("empresa_id", empresaId),
       supabase.from("ventas").select("*").eq("empresa_id", empresaId),

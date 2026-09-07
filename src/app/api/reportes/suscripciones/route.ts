@@ -187,6 +187,7 @@ export async function GET(request: NextRequest) {
         .from("pagos")
         .select("monto, fecha_pago, facturas(tipo, suscripcion_id)")
         .eq("empresa_id", empresaId)
+        .neq("estado_contable", "revertido")
         .gte("fecha_pago", inicioMesAnt)
         .lte("fecha_pago", hoy);
       for (const p of (data ?? []) as { monto: number | null; fecha_pago: string | null; facturas: unknown }[]) {

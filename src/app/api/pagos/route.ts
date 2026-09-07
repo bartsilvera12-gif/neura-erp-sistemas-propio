@@ -74,6 +74,8 @@ export async function GET(request: NextRequest) {
       .from("pagos")
       .select("*, facturas(id, numero_factura, cliente_id)")
       .eq("empresa_id", auth.empresa_id)
+      // Excluir pagos revertidos (transferencia anulada en Conciliación): no son plata cobrada.
+      .neq("estado_contable", "revertido")
       .order("fecha_pago", { ascending: false });
 
     if (facturaId) {

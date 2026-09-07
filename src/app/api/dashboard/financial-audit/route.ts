@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     const [facturasQ, pagosQ] = await Promise.all([
       supabase.from("facturas").select("*").eq("empresa_id", empresaId),
-      supabase.from("pagos").select("id, factura_id, monto, fecha_pago").eq("empresa_id", empresaId),
+      supabase.from("pagos").select("id, factura_id, monto, fecha_pago").eq("empresa_id", empresaId).neq("estado_contable", "revertido"),
     ]);
 
     const facturasErr = facturasQ.error?.message ?? null;

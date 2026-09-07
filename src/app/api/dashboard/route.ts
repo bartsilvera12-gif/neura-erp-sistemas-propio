@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
         .from("pagos")
         .select("monto, fecha_pago")
         .eq("empresa_id", auth.empresa_id)
+        .neq("estado_contable", "revertido")
         .gte("fecha_pago", inicioMes)
         .lt("fecha_pago", inicioMesSiguiente),
       supabase.from("clientes").select("id").eq("empresa_id", auth.empresa_id).eq("estado", "inactivo"),

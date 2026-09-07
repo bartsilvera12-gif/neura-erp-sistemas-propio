@@ -592,6 +592,7 @@ export async function cargarDetalleCliente(
       .from("pagos")
       .select("factura_id, fecha_pago, monto, metodo_pago")
       .eq("empresa_id", empresaId)
+      .neq("estado_contable", "revertido")
       .in("factura_id", slice);
     for (const p of (pRows ?? []) as Record<string, unknown>[]) {
       pagos.push({

@@ -7,6 +7,7 @@ import {
   avatarPath,
   ensureAvatarBucket,
   firmarAvatares,
+  nombreVisible,
   requireChatInterno,
   respuestaAuth,
 } from "@/lib/chat-interno/core";
@@ -28,23 +29,75 @@ export async function GET(request: Request) {
     const catalog = createServiceRoleClient();
     const { data } = await catalog
       .from("usuarios")
-      .select("id, nombre, avatar_path")
+      .select("id, nombre, nombre_chat, avatar_path")
       .eq("id", usuarioId)
       .maybeSingle();
-    const u = (data as { id: string; nombre: string | null; avatar_path: string | null } | null) ?? null;
+    const u =
+      (data as {
+        id: string;
+        nombre: string | null;
+        nombre_chat: string | null;
+        avatar_path: string | null;
+      } | null) ?? null;
     if (!u) return NextResponse.json(errorResponse("Usuario no encontrado"), { status: 404 });
 
     const urls = await firmarAvatares(sb, [u]);
     return NextResponse.json(
       successResponse({
         usuario_id: u.id,
-        nombre: u.nombre ?? "—",
+        nombre: nombreVisible(u),
+        // El del catálogo, para poder ofrecer "volver a mi nombre real".
+        nombre_catalogo: (u.nombre ?? "").trim() || "—",
         avatar_url: urls.get(u.id) ?? null,
       })
     );
   } catch (e) {
     return NextResponse.json(
       errorResponse(e instanceof Error ? e.message : "No se pudo cargar el perfil"),
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH — cambia el nombre con el que me muestro EN EL CHAT.
+ *
+ * Escribe `nombre_chat` y nunca `nombre`: el del catálogo figura en proyectos,
+ * reportes y atribuciones, y un apodo del chat no puede reescribir eso.
+ * Vaciarlo devuelve el nombre real.
+ */
+export async function PATCH(request: Request) {
+  const auth = await requireChatInterno(request);
+  if (!auth.ok) return respuestaAuth(auth);
+  const { usuarioId } = auth;
+
+  try {
+    const body = (await request.json().catch(() => ({}))) as { nombre?: string };
+    if (typeof body.nombre !== "string") {
+      return NextResponse.json(errorResponse("Falta el nombre"), { status: 400 });
+    }
+    const nombre = body.nombre.trim().replace(/\s+/g, " ").slice(0, 60);
+
+    const catalog = createServiceRoleClient();
+    const { error } = await catalog
+      .from("usuarios")
+      .update({ nombre_chat: nombre || null })
+      .eq("id", usuarioId);
+    if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+
+    const { data } = await catalog
+      .from("usuarios")
+      .select("nombre, nombre_chat")
+      .eq("id", usuarioId)
+      .maybeSingle();
+    return NextResponse.json(
+      successResponse({
+        nombre: nombreVisible((data ?? {}) as { nombre?: string; nombre_chat?: string }),
+      })
+    );
+  } catch (e) {
+    return NextResponse.json(
+      errorResponse(e instanceof Error ? e.message : "No se pudo guardar el nombre"),
       { status: 500 }
     );
   }

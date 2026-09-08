@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import {
   esMiembro,
   firmarAvatares,
+  nombreVisible,
   requireChatInterno,
   respuestaAuth,
 } from "@/lib/chat-interno/core";
@@ -30,15 +31,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { data: usuarios } = filas.length
       ? await catalog
           .from("usuarios")
-          .select("id, nombre, avatar_path")
+          .select("id, nombre, nombre_chat, avatar_path")
           .in("id", filas.map((f) => f.usuario_id))
-      : { data: [] as { id: string; nombre: string | null; avatar_path: string | null }[] };
+      : { data: [] as {
+          id: string;
+          nombre: string | null;
+          nombre_chat: string | null;
+          avatar_path: string | null;
+        }[] };
     const personas = (usuarios ?? []) as {
       id: string;
       nombre: string | null;
+      nombre_chat: string | null;
       avatar_path: string | null;
     }[];
-    const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
+    const nombreDe = new Map(personas.map((u) => [u.id, nombreVisible(u)]));
     const avatarDe = await firmarAvatares(sb, personas);
 
     return NextResponse.json(
@@ -60,8 +67,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 /**
  * POST — agrega o saca gente del grupo.
  *
- * Sólo un admin de la sala. Y sólo en grupos: una conversación directa es entre
- * dos personas por definición, sumar a alguien la convertiría en otra cosa.
+ * Agregar y sacar a otros es de un admin de la sala. Sacarse a UNO MISMO es
+ * salir del grupo, y eso puede hacerlo cualquiera: quedarse encerrado en una
+ * conversación no es una regla, es un encierro.
+ *
+ * Y sólo en grupos: una conversación directa es entre dos personas por
+ * definición, sumar a alguien la convertiría en otra cosa.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireChatInterno(request);
@@ -72,11 +83,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const { miembro, rol } = await esMiembro(sb, salaId, usuarioId);
     if (!miembro) return NextResponse.json(errorResponse("No sos miembro"), { status: 403 });
-    if (rol !== "admin") {
-      return NextResponse.json(errorResponse("Sólo un administrador del grupo puede cambiar sus miembros"), {
-        status: 403,
-      });
-    }
 
     const { data: sala } = await sb
       .from("chat_interno_salas")
@@ -93,6 +99,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const body = (await request.json().catch(() => ({}))) as { agregar?: string[]; quitar?: string[] };
     const agregar = [...new Set((body.agregar ?? []).filter((x) => typeof x === "string" && x))];
     const quitar = [...new Set((body.quitar ?? []).filter((x) => typeof x === "string" && x))];
+
+    // Lo único que puede hacer quien no es admin es salir.
+    const soloSale = agregar.length === 0 && quitar.length === 1 && quitar[0] === usuarioId;
+    if (rol !== "admin" && !soloSale) {
+      return NextResponse.json(
+        errorResponse("Sólo un administrador del grupo puede cambiar sus miembros"),
+        { status: 403 }
+      );
+    }
+
+    // Un grupo sin ningún administrador no se puede volver a administrar: nadie
+    // podría sumar gente, renombrarlo, ni siquiera cerrarlo.
+    if (quitar.length > 0) {
+      const { data: admins } = await sb
+        .from("chat_interno_miembros")
+        .select("usuario_id")
+        .eq("sala_id", salaId)
+        .eq("rol", "admin");
+      const idsAdmin = ((admins ?? []) as { usuario_id: string }[]).map((a) => a.usuario_id);
+      const quedan = idsAdmin.filter((a) => !quitar.includes(a));
+      if (idsAdmin.length > 0 && quedan.length === 0) {
+        return NextResponse.json(
+          errorResponse(
+            "El grupo quedaría sin administrador. Nombrá a otro antes de salir."
+          ),
+          { status: 400 }
+        );
+      }
+    }
 
     if (agregar.length > 0) {
       // El id viene del navegador: se confirma que sean de la misma empresa.

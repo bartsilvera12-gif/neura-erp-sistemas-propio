@@ -6,6 +6,7 @@ import {
   esMiembro,
   firmarAdjuntos,
   firmarAvatares,
+  nombreVisible,
   requireChatInterno,
   respuestaAuth,
   type ChatAdjunto,
@@ -67,14 +68,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       ]),
     ].filter((x): x is string => typeof x === "string" && !!x);
     const { data: usuarios } = ids.length
-      ? await catalog.from("usuarios").select("id, nombre, avatar_path").in("id", ids)
-      : { data: [] as { id: string; nombre: string | null; avatar_path: string | null }[] };
+      ? await catalog.from("usuarios").select("id, nombre, nombre_chat, avatar_path").in("id", ids)
+      : { data: [] as {
+          id: string;
+          nombre: string | null;
+          nombre_chat: string | null;
+          avatar_path: string | null;
+        }[] };
     const personas = (usuarios ?? []) as {
       id: string;
       nombre: string | null;
+      nombre_chat: string | null;
       avatar_path: string | null;
     }[];
-    const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
+    const nombreDe = new Map(personas.map((u) => [u.id, nombreVisible(u)]));
     const avatarDe = await firmarAvatares(sb, personas);
 
     const urls = await firmarAdjuntos(sb, filas as { adjuntos?: unknown }[]);

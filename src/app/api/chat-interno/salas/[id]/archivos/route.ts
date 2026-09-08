@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import {
   esMiembro,
   firmarAdjuntos,
+  nombreVisible,
   requireChatInterno,
   respuestaAuth,
   type ChatAdjunto,
@@ -64,13 +65,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       ...new Set(filas.map((m) => m.usuario_id).filter((x): x is string => typeof x === "string")),
     ];
     const { data: usuarios } = ids.length
-      ? await catalog.from("usuarios").select("id, nombre").in("id", ids)
-      : { data: [] as { id: string; nombre: string | null }[] };
+      ? await catalog.from("usuarios").select("id, nombre, nombre_chat").in("id", ids)
+      : { data: [] as { id: string; nombre: string | null; nombre_chat: string | null }[] };
     const nombreDe = new Map(
-      ((usuarios ?? []) as { id: string; nombre: string | null }[]).map((u) => [
-        u.id,
-        u.nombre ?? "—",
-      ])
+      ((usuarios ?? []) as { id: string; nombre: string | null; nombre_chat: string | null }[]).map(
+        (u) => [u.id, nombreVisible(u)]
+      )
     );
 
     const urls = await firmarAdjuntos(sb, filas as { adjuntos?: unknown }[]);

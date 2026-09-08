@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
+  UserMinus,
+  UserPlus,
   MessagesSquare,
   ChevronLeft,
   FileText,
@@ -148,7 +150,20 @@ const BURBUJA_PROPIA = "#E3F3E5";
 
 type UsuarioOpcion = { id: string; nombre: string; area: string; avatar_url: string | null };
 
-type Perfil = { usuario_id: string; nombre: string; avatar_url: string | null };
+type Perfil = {
+  usuario_id: string;
+  nombre: string;
+  nombre_catalogo: string;
+  avatar_url: string | null;
+};
+
+type MiembroSala = {
+  usuario_id: string;
+  nombre: string;
+  avatar_url: string | null;
+  rol: string;
+  propio: boolean;
+};
 
 /**
  * La cara de una persona: la foto si la cargó, y si no las iniciales de color.
@@ -279,14 +294,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [guardandoGrupo, setGuardandoGrupo] = useState(false);
   const fotoGrupoRef = useRef<HTMLInputElement>(null);
   const [subiendoFotoGrupo, setSubiendoFotoGrupo] = useState(false);
+  /** Alta de integrantes: `null` cerrado. */
+  const [sumando, setSumando] = useState<string | null>(null);
+  const [tocandoMiembros, setTocandoMiembros] = useState(false);
+  /** Edición de mi nombre en el chat: `null` mientras no se edita. */
+  const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
   const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
   /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
   const contRef = useRef<HTMLDivElement>(null);
   const [alto, setAlto] = useState<number | null>(null);
   /** Miembros de la sala abierta: alimentan el menú de menciones. */
-  const [miembrosSala, setMiembrosSala] = useState<{ usuario_id: string; nombre: string }[]>([]);
-  /** Mi nombre y mi id, para pintar el mensaje antes de que el servidor conteste. */
-  const [yo, setYo] = useState<{ usuario_id: string; nombre: string } | null>(null);
+  const [miembrosSala, setMiembrosSala] = useState<MiembroSala[]>([]);
+
   const [mencionados, setMencionados] = useState<{ id: string; nombre: string }[]>([]);
   const [consultaMencion, setConsultaMencion] = useState<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -427,14 +446,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     let cancel = false;
     fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/miembros`, { cache: "no-store" })
       .then(async (r) => {
-        const j = (await r.json().catch(() => ({}))) as {
-          data?: { miembros?: { usuario_id: string; nombre: string; propio: boolean }[] };
-        };
-        if (!cancel) {
-          const todos = j?.data?.miembros ?? [];
-          setMiembrosSala(todos.filter((m) => !m.propio));
-          setYo(todos.find((m) => m.propio) ?? null);
-        }
+        const j = (await r.json().catch(() => ({}))) as { data?: { miembros?: MiembroSala[] } };
+        if (!cancel) setMiembrosSala(j?.data?.miembros ?? []);
       })
       .catch(() => {
         if (!cancel) setMiembrosSala([]);
@@ -574,6 +587,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     consultaMencion == null
       ? []
       : miembrosSala
+          .filter((m) => !m.propio)
           .filter((m) => !mencionados.some((x) => x.id === m.usuario_id))
           .filter((m) =>
             consultaMencion.trim()
@@ -614,8 +628,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimista: Mensaje = {
       id: tempId,
-      usuario_id: yo?.usuario_id ?? null,
-      autor: perfil?.nombre ?? yo?.nombre ?? "Yo",
+      usuario_id: perfil?.usuario_id ?? null,
+      autor: perfil?.nombre ?? "Yo",
       texto: cuerpo.trim() || null,
       adjuntos: files,
       created_at: new Date().toISOString(),
@@ -768,6 +782,67 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
   }
 
+  const recargarMiembros = useCallback(async () => {
+    if (!salaId) return;
+    const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/miembros`, {
+      cache: "no-store",
+    });
+    const j = (await r.json().catch(() => ({}))) as { data?: { miembros?: MiembroSala[] } };
+    setMiembrosSala(j?.data?.miembros ?? []);
+  }, [salaId]);
+
+  async function tocarMiembros(cambio: { agregar?: string[]; quitar?: string[] }) {
+    if (!salaId) return;
+    setTocandoMiembros(true);
+    try {
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/miembros`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cambio),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) {
+        setErr(j.error ?? "No se pudo cambiar los integrantes");
+        return;
+      }
+      // Salir del grupo cierra la conversación: ya no es mía.
+      const saliYo = cambio.quitar?.includes(perfil?.usuario_id ?? "");
+      if (saliYo) {
+        setSalaId(null);
+        setPanel(null);
+      } else {
+        await recargarMiembros();
+      }
+      await cargarSalas();
+    } finally {
+      setTocandoMiembros(false);
+      setSumando(null);
+    }
+  }
+
+  async function guardarMiNombre() {
+    if (editandoNombre === null) return;
+    const r = await fetchWithSupabaseSession("/api/chat-interno/perfil", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre: editandoNombre }),
+    });
+    const j = (await r.json().catch(() => ({}))) as {
+      success?: boolean;
+      error?: string;
+      data?: { nombre?: string };
+    };
+    if (!r.ok || !j.success) {
+      setErr(j.error ?? "No se pudo guardar el nombre");
+      return;
+    }
+    setPerfil((p) => (p ? { ...p, nombre: j.data?.nombre ?? p.nombre } : p));
+    setEditandoNombre(null);
+    // Los mensajes ya cargados siguen con el nombre viejo hasta releerlos.
+    if (salaId) void cargarMensajes(salaId, undefined, true);
+    void cargarSalas();
+  }
+
   async function cambiarFotoGrupo(file: File) {
     if (!salaId) return;
     setSubiendoFotoGrupo(true);
@@ -894,6 +969,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   // llama con el nombre de la otra persona y se ve con su cara.
   const puedoEditarGrupo = salaActual?.tipo === "grupo" && salaActual.mi_rol === "admin";
 
+  // Quien todavía no está en el grupo. Ofrecer a alguien que ya está sería
+  // ofrecer una acción sin efecto.
+  const yaEstan = new Set(miembrosSala.map((m) => m.usuario_id));
+  const filtroSuma = (sumando ?? "").trim().toLowerCase();
+  const candidatosASumar = filtroSuma
+    ? directorio
+        .filter((u) => !yaEstan.has(u.id) && u.nombre.toLowerCase().includes(filtroSuma))
+        .slice(0, 8)
+    : [];
+
   const q = filtroBandeja.trim().toLowerCase();
   const salasFiltradas = q
     ? salas.filter(
@@ -954,9 +1039,33 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             </span>
           </button>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold text-slate-800">
-              {perfil ? nombreCapitular(perfil.nombre) : "…"}
-            </p>
+            {editandoNombre !== null ? (
+              <input
+                autoFocus
+                value={editandoNombre}
+                maxLength={60}
+                onChange={(e) => setEditandoNombre(e.target.value)}
+                onBlur={() => void guardarMiNombre()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void guardarMiNombre();
+                  if (e.key === "Escape") setEditandoNombre(null);
+                }}
+                placeholder={perfil?.nombre_catalogo ?? ""}
+                className="w-full rounded-lg border border-[#4FAEB2] px-1.5 py-0.5 text-[13px] font-semibold text-slate-800 focus:outline-none"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditandoNombre(perfil?.nombre ?? "")}
+                title="Cambiar como me ven en el chat"
+                className="flex w-full items-center gap-1 text-left"
+              >
+                <span className="min-w-0 truncate text-[13px] font-semibold text-slate-800">
+                  {perfil ? nombreCapitular(perfil.nombre) : "…"}
+                </span>
+                <Pencil className="h-3 w-3 shrink-0 text-slate-300" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => fotoRef.current?.click()}
@@ -1840,6 +1949,112 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 </>
               )}
             </div>
+
+            {/* Integrantes */}
+            {salaActual.tipo === "grupo" ? (
+              <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[13px] font-semibold text-slate-800">
+                    Integrantes · {miembrosSala.length}
+                  </p>
+                  {puedoEditarGrupo ? (
+                    <button
+                      type="button"
+                      onClick={() => setSumando(sumando === null ? "" : null)}
+                      className="flex items-center gap-1 rounded-lg bg-[#4FAEB2]/12 px-2 py-1 text-[11.5px] font-semibold text-[#2F6E71] transition-colors hover:bg-[#4FAEB2]/20"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Agregar
+                    </button>
+                  ) : null}
+                </div>
+
+                {sumando !== null ? (
+                  <div className="mb-2 rounded-xl border border-slate-200 p-2">
+                    <div className="mb-1.5 flex items-center gap-1.5 rounded-lg bg-slate-100 px-2 py-1">
+                      <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <input
+                        autoFocus
+                        value={sumando}
+                        onChange={(e) => setSumando(e.target.value)}
+                        placeholder="Buscar a alguien"
+                        className="min-w-0 flex-1 bg-transparent text-[12px] focus:outline-none"
+                      />
+                    </div>
+                    <ul className="max-h-44 overflow-y-auto">
+                      {candidatosASumar.length === 0 ? (
+                        <li className="px-1 py-1.5 text-[11.5px] text-slate-400">
+                          {sumando.trim()
+                            ? "Nadie coincide, o ya está en el grupo."
+                            : "Escribí un nombre."}
+                        </li>
+                      ) : (
+                        candidatosASumar.map((u) => (
+                          <li key={u.id}>
+                            <button
+                              type="button"
+                              disabled={tocandoMiembros}
+                              onClick={() => void tocarMiembros({ agregar: [u.id] })}
+                              className="flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              <Avatar nombre={u.nombre} url={u.avatar_url} size={26} />
+                              <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">
+                                {nombreCapitular(u.nombre)}
+                              </span>
+                              <UserPlus className="h-3.5 w-3.5 shrink-0 text-[#4FAEB2]" />
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                ) : null}
+
+                <ul className="space-y-0.5">
+                  {miembrosSala.map((m) => (
+                    <li
+                      key={m.usuario_id}
+                      className="group/mi flex items-center gap-2 rounded-lg px-1 py-1.5"
+                    >
+                      <Avatar nombre={m.nombre} url={m.avatar_url} size={30} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12.5px] font-medium text-slate-700">
+                          {nombreCapitular(m.nombre)}
+                          {m.propio ? " (vos)" : ""}
+                        </span>
+                        {m.rol === "admin" ? (
+                          <span className="block text-[10.5px] text-[#2F6E71]">Administrador</span>
+                        ) : null}
+                      </span>
+                      {/* Sacar a otro es de un admin; salir es de cualquiera. */}
+                      {puedoEditarGrupo && !m.propio ? (
+                        <button
+                          type="button"
+                          disabled={tocandoMiembros}
+                          onClick={() => void tocarMiembros({ quitar: [m.usuario_id] })}
+                          title={`Sacar a ${nombreCorto(m.nombre)} del grupo`}
+                          className="shrink-0 rounded-lg p-1 text-slate-300 opacity-0 transition-opacity hover:text-rose-600 group-hover/mi:opacity-100 disabled:opacity-40"
+                        >
+                          <UserMinus className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  type="button"
+                  disabled={tocandoMiembros}
+                  onClick={() => {
+                    if (!perfil) return;
+                    void tocarMiembros({ quitar: [perfil.usuario_id] });
+                  }}
+                  className="mt-2 w-full rounded-lg border border-slate-200 py-1.5 text-[12px] font-semibold text-slate-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                >
+                  Salir del grupo
+                </button>
+              </div>
+            ) : null}
 
             {/* Resumen de lo compartido */}
             <div className="overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]">

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { firmarAvatares, requireChatInterno, respuestaAuth } from "@/lib/chat-interno/core";
+import {
+  firmarAvatares,
+  nombreVisible,
+  requireChatInterno,
+  respuestaAuth,
+} from "@/lib/chat-interno/core";
 
 export const runtime = "nodejs";
 
@@ -56,21 +61,23 @@ export async function GET(request: Request) {
     const { data: usuarios } = idsUsuarios.length
       ? await catalog
           .from("usuarios")
-          .select("id, nombre, area, avatar_path")
+          .select("id, nombre, nombre_chat, area, avatar_path")
           .in("id", idsUsuarios)
       : { data: [] as {
           id: string;
           nombre: string | null;
+          nombre_chat: string | null;
           area: string | null;
           avatar_path: string | null;
         }[] };
     const personas = (usuarios ?? []) as {
       id: string;
       nombre: string | null;
+      nombre_chat: string | null;
       area: string | null;
       avatar_path: string | null;
     }[];
-    const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
+    const nombreDe = new Map(personas.map((u) => [u.id, nombreVisible(u)]));
     const areaDe = new Map(personas.map((u) => [u.id, (u.area ?? "").trim()]));
     const avatarDe = await firmarAvatares(sb, personas);
     // Las fotos de los grupos viven en el mismo bucket que las de las personas.

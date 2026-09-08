@@ -207,3 +207,17 @@ export async function firmarAvatares(
   }
   return out;
 }
+
+/**
+ * Cómo se llama alguien DENTRO del chat.
+ *
+ * `nombre_chat` es opcional y sólo vale acá: el `nombre` del catálogo es el que
+ * figura en proyectos, reportes y atribuciones, y un apodo del chat no puede
+ * reescribir eso. Vacío = el del catálogo.
+ */
+export function nombreVisible(u: {
+  nombre?: string | null;
+  nombre_chat?: string | null;
+}): string {
+  return (u.nombre_chat ?? "").trim() || (u.nombre ?? "").trim() || "—";
+}

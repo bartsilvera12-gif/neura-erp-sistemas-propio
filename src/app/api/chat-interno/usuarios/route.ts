@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { firmarAvatares, requireChatInterno, respuestaAuth } from "@/lib/chat-interno/core";
+import {
+  firmarAvatares,
+  nombreVisible,
+  requireChatInterno,
+  respuestaAuth,
+} from "@/lib/chat-interno/core";
 
 export const runtime = "nodejs";
 
@@ -14,20 +19,21 @@ export async function GET(request: Request) {
     const catalog = createServiceRoleClient();
     const { data } = await catalog
       .from("usuarios")
-      .select("id, nombre, area, avatar_path")
+      .select("id, nombre, nombre_chat, area, avatar_path")
       .eq("empresa_id", auth.empresaId)
       .eq("estado", "activo")
       .order("nombre");
     const filas = ((data ?? []) as {
       id: string;
       nombre: string | null;
+      nombre_chat: string | null;
       area: string | null;
       avatar_path: string | null;
     }[]).filter((u) => u.id !== auth.usuarioId);
     const avatares = await firmarAvatares(auth.sb, filas);
     const usuarios = filas.map((u) => ({
       id: u.id,
-      nombre: u.nombre ?? "—",
+      nombre: nombreVisible(u),
       area: u.area ?? "",
       avatar_url: avatares.get(u.id) ?? null,
     }));

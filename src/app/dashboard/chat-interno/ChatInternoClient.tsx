@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
+  MessagesSquare,
   ChevronLeft,
   FileText,
   ImageIcon,
@@ -47,6 +48,8 @@ type Sala = {
   /** La cara de la otra persona en un directo, o la foto del grupo. */
   avatar_url: string | null;
   descripcion: string | null;
+  /** Cargo de la otra persona, o cuántos son: se muestra si no hay mensajes. */
+  subtitulo: string;
   /** Mi rol EN ESTA sala: sólo un `admin` edita el grupo. */
   mi_rol: string;
 };
@@ -104,6 +107,8 @@ type Mensaje = {
   reacciones: Record<string, string[]>;
   /** Los mismos emojis, pero con nombres: una reaccion anonima no dice nada. */
   reacciones_nombres: Record<string, string[]>;
+  /** Y con cara: en la pastilla se ve quién reaccionó sin abrir nada. */
+  reacciones_avatares: Record<string, (string | null)[]>;
   menciones: string[];
   /** Pintado al instante, todavia sin respuesta del servidor. */
   pendiente?: boolean;
@@ -121,13 +126,25 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
  * sumar un pedido de red por una textura.
  */
 const PATRON_FONDO =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%232F6E71' stroke-opacity='0.07' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 10h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-6l-4 3v-3H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z'/%3E%3Ccircle cx='42' cy='14' r='5'/%3E%3Cpath d='M34 44h10a2 2 0 0 0 2-2v-8l-5-5h-7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2z'/%3E%3Cpath d='M8 38h14M8 44h9'/%3E%3C/g%3E%3C/svg%3E\")";
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.30' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 18h20a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H20l-6 5v-5h-4a3 3 0 0 1-3-3V21a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='72' cy='24' r='10'/%3E%3Cpath d='M72 18v6l4 3'/%3E%3Cpath d='M100 14h14v18h-14z'/%3E%3Cpath d='M103 20h8M103 25h5'/%3E%3Cpath d='M14 62h16v16H14z'/%3E%3Cpath d='M18 68h8M18 73h5'/%3E%3Cpath d='M50 60h18a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-7l-5 4v-4h-6a3 3 0 0 1-3-3V63a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='100' cy='70' r='9'/%3E%3Cpath d='M96 70h8M100 66v8'/%3E%3Cpath d='M12 100h16M12 106h10'/%3E%3Cpath d='M46 98h16v16H46z'/%3E%3Cpath d='M50 104h8'/%3E%3Ccircle cx='90' cy='106' r='8'/%3E%3Cpath d='M86 106l3 3 5-6'/%3E%3C/g%3E%3C/svg%3E\")";
 
+/**
+ * El fondo del chat: degradado de marca con el patrón calado en blanco encima.
+ *
+ * No es decoración gratuita — un plano de color uniforme deja los globos
+ * flotando sin apoyo, y el patrón le da al blanco de los globos algo contra
+ * qué leerse. Va en un `data:` URI para no sumar un pedido de red por textura.
+ */
 const ESTILO_FONDO: React.CSSProperties = {
-  backgroundColor: "#eff5f6",
-  backgroundImage: PATRON_FONDO,
-  backgroundRepeat: "repeat",
+  backgroundColor: "#4FAEB2",
+  backgroundImage: `${PATRON_FONDO}, linear-gradient(160deg, #63BFC2 0%, #4FAEB2 45%, #3E9B9F 100%)`,
+  backgroundRepeat: "repeat, no-repeat",
+  backgroundSize: "120px 120px, cover",
+  backgroundAttachment: "local, local",
 };
+
+/** Verde muy claro para lo propio, igual que en los chats de siempre. */
+const BURBUJA_PROPIA = "#E4F4E6";
 
 type UsuarioOpcion = { id: string; nombre: string; area: string; avatar_url: string | null };
 
@@ -595,6 +612,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       autor_avatar: perfil?.avatar_url ?? null,
       reacciones: {},
       reacciones_nombres: {},
+      reacciones_avatares: {},
       menciones,
       pendiente: true,
     };
@@ -971,11 +989,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             ) : null}
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {cargandoSalas ? (
-            <p className="px-2 py-3 text-[12px] text-slate-400">Cargando…</p>
+            <p className="px-3.5 py-3 text-[12px] text-slate-400">Cargando…</p>
           ) : salas.length === 0 && !filtroBandeja ? (
-            <p className="px-2 py-3 text-[12px] leading-relaxed text-slate-400">
+            <p className="px-3.5 py-3 text-[12px] leading-relaxed text-slate-400">
               Todavía no tenés conversaciones. Buscá a alguien acá arriba para empezar a hablarle.
             </p>
           ) : (
@@ -986,36 +1004,56 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   key={s.id}
                   type="button"
                   onClick={() => setSalaId(s.id)}
-                  className={`mb-0.5 flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${
-                    activa ? "bg-[#4FAEB2]/12" : "hover:bg-slate-50"
+                  className={`flex w-full items-center gap-3 border-b border-slate-100 px-3.5 py-3 text-left transition-colors ${
+                    activa ? "bg-[#4FAEB2] text-white" : "hover:bg-slate-50"
                   }`}
                 >
                   <Avatar
                     nombre={s.nombre}
                     url={s.avatar_url}
-                    size={44}
+                    size={46}
                     icono={s.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
-                      <span className="min-w-0 truncate text-[13px] font-semibold text-slate-800">
+                      <span
+                        className={`min-w-0 truncate text-[14px] font-semibold ${
+                          activa ? "text-white" : "text-slate-800"
+                        }`}
+                      >
                         {nombreCapitular(s.nombre)}
                       </span>
-                      <span className="shrink-0 text-[10.5px] text-slate-400">
+                      <span
+                        className={`shrink-0 text-[11px] ${
+                          activa ? "text-white/80" : "text-slate-400"
+                        }`}
+                      >
                         {s.ultimo_mensaje_at ? fechaCorta(s.ultimo_mensaje_at) : ""}
                       </span>
                     </span>
-                    <span className="mt-0.5 flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-[11.5px] text-slate-400">
+                    <span className="mt-0.5 flex items-start justify-between gap-2">
+                      {/* Con mensajes se previsualiza el último; sin mensajes,
+                          el cargo — un renglón vacío se ve roto. */}
+                      <span
+                        className={`min-w-0 line-clamp-2 text-[12.5px] leading-tight ${
+                          activa ? "text-white/90" : "text-slate-500"
+                        }`}
+                      >
                         {s.vista_previa
-                          ? `${s.vista_previa_autor ? `${nombreCorto(s.vista_previa_autor)}: ` : ""}${s.vista_previa}`
-                          : s.tipo === "grupo"
-                            ? `${s.miembros} integrantes`
-                            : "Sin mensajes"}
+                          ? `${
+                              s.tipo === "grupo" && s.vista_previa_autor
+                                ? `${nombreCorto(s.vista_previa_autor)}: `
+                                : ""
+                            }${s.vista_previa}`
+                          : s.subtitulo}
                       </span>
                       {s.no_leidos > 0 ? (
-                        <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#4FAEB2] px-1.5 text-[10px] font-bold text-white">
-                          {s.no_leidos}
+                        <span
+                          className={`flex h-[19px] min-w-[24px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold ${
+                            activa ? "bg-white/25 text-white" : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          {s.no_leidos > 99 ? "99+" : s.no_leidos}
                         </span>
                       ) : null}
                     </span>
@@ -1028,7 +1066,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           {/* Personas con las que todavía no hay conversación abierta. */}
           {filtroBandeja.trim() && personasSugeridas.length > 0 ? (
             <>
-              <p className="px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <p className="bg-slate-50 px-3.5 py-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
                 Personas
               </p>
               {personasSugeridas.map((u) => (
@@ -1037,15 +1075,15 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   type="button"
                   onClick={() => void abrirDirecto(u)}
                   disabled={abriendoDirecto === u.id}
-                  className="mb-0.5 flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors hover:bg-slate-50 disabled:opacity-50"
+                  className="flex w-full items-center gap-3 border-b border-slate-100 px-3.5 py-3 text-left transition-colors hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <Avatar nombre={u.nombre} url={u.avatar_url} size={44} />
+                  <Avatar nombre={u.nombre} url={u.avatar_url} size={46} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-semibold text-slate-800">
+                    <span className="block truncate text-[14px] font-semibold text-slate-800">
                       {nombreCapitular(u.nombre)}
                     </span>
-                    <span className="block truncate text-[11.5px] text-slate-400">
-                      {u.area || "Escribirle"}
+                    <span className="block truncate text-[12.5px] text-slate-500">
+                      {u.area || "Usuario"}
                     </span>
                   </span>
                   {abriendoDirecto === u.id ? (
@@ -1057,7 +1095,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           ) : null}
 
           {filtroBandeja.trim() && salasFiltradas.length === 0 && personasSugeridas.length === 0 ? (
-            <p className="px-2.5 py-3 text-[12px] leading-relaxed text-slate-400">
+            <p className="px-3.5 py-3 text-[12px] leading-relaxed text-slate-400">
               Nadie ni ninguna conversación coincide con “{filtroBandeja}”.
             </p>
           ) : null}
@@ -1074,7 +1112,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           </div>
         ) : (
           <>
-            <header className="flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5 sm:px-4">
+            <header className="flex items-center gap-3 border-b border-slate-100 px-3 py-2.5 sm:px-4">
               {mobile ? (
                 <button
                   type="button"
@@ -1095,19 +1133,23 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 <Avatar
                   nombre={salaActual.nombre}
                   url={salaActual.avatar_url}
-                  size={40}
+                  size={44}
                   icono={salaActual.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
                 />
               </span>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-[14px] font-semibold text-slate-800">
-                  {nombreCapitular(salaActual.nombre)}
+                <h2 className="flex items-baseline gap-2 truncate">
+                  <span className="truncate text-[16px] font-semibold text-slate-800">
+                    {nombreCapitular(salaActual.nombre)}
+                  </span>
+                  {salaActual.tipo !== "grupo" ? (
+                    <span className="shrink-0 text-[12.5px] italic text-slate-400">En línea</span>
+                  ) : null}
                 </h2>
-                <p className="truncate text-[11px] text-slate-400">
+                <p className="truncate text-[12.5px] text-slate-400">
                   {salaActual.tipo !== "grupo"
-                    ? "Conversación directa"
-                    : salaActual.descripcion ||
-                      salaActual.miembros_nombres.map((n) => nombreCorto(n)).join(", ")}
+                    ? salaActual.subtitulo
+                    : salaActual.descripcion || `${salaActual.miembros} miembros`}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -1182,11 +1224,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               style={ESTILO_FONDO}
             >
               {cargandoMsgs && mensajes.length === 0 ? (
-                <p className="text-center text-[12px] text-slate-400">Cargando…</p>
+                <p className="text-center text-[13px] text-white/85">Cargando…</p>
               ) : mensajes.length === 0 ? (
-                <p className="text-center text-[12px] text-slate-400">
-                  Todavía no hay mensajes. Escribí el primero.
-                </p>
+                <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                  <MessagesSquare className="h-20 w-20 text-white/45" strokeWidth={1.2} />
+                  <p className="mt-4 max-w-sm text-[17px] leading-relaxed text-white">
+                    {enBusqueda
+                      ? "Ningún mensaje coincide con la búsqueda."
+                      : "Escribí algo, mandá un archivo o grabá un audio."}
+                  </p>
+                </div>
               ) : (
                 mensajes.map((m, i) => {
                   const previo = mensajes[i - 1];
@@ -1199,45 +1246,45 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     <div key={m.id}>
                       {nuevoDia ? (
                         <div className="my-4 flex justify-center">
-                          <span className="rounded-full bg-white/80 px-3 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+                          <span className="rounded-full bg-slate-900/25 px-3.5 py-1 text-[12px] font-medium text-white backdrop-blur-sm">
                             {diaLabel(m.created_at)}
                           </span>
                         </div>
                       ) : null}
+                      {!seguido && !m.propio && salaActual.tipo === "grupo" ? (
+                        <div
+                          className="mb-0.5 ml-[46px] text-[13px] font-semibold"
+                          style={{ color: c }}
+                        >
+                          {nombreCapitular(m.autor)}
+                        </div>
+                      ) : null}
                       <div className={`group flex gap-2 ${m.propio ? "justify-end" : "justify-start"}`}>
+                        {/* La cara va abajo y por fuera del globo, y sólo en el
+                            último de una tanda: repetirla en cada renglón parte
+                            la lectura de una misma intervención. */}
                         <span className={`self-end ${seguido ? "invisible" : ""}`}>
-                          <Avatar nombre={m.autor} url={m.autor_avatar} size={30} />
+                          <Avatar nombre={m.autor} url={m.autor_avatar} size={38} />
                         </span>
                         <div
-                          className={`relative max-w-[72%] rounded-2xl px-3 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.10)] ${
-                            Object.keys(m.reacciones).length > 0 ? "mb-2.5" : ""
-                          } ${
-                            m.propio
-                              ? "rounded-br-md bg-gradient-to-br from-[#54B7BB] to-[#3E9B9F] text-white"
-                              : "rounded-bl-md bg-white text-slate-700"
-                          }`}
+                          style={m.propio ? { background: BURBUJA_PROPIA } : undefined}
+                          className={`relative max-w-[78%] rounded-xl px-3.5 py-2 text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
+                            Object.keys(m.reacciones).length > 0 ? "mb-4" : ""
+                          } ${m.propio ? "" : "bg-white"}`}
                         >
-                          {!seguido && !m.propio && salaActual.tipo === "grupo" ? (
-                            <div className="text-[11px] font-bold" style={{ color: c }}>
-                              {nombreCorto(m.autor)}
-                            </div>
-                          ) : null}
+
                           {m.cita ? (
-                            <div
-                              className={`mb-1 rounded-lg border-l-2 px-2 py-1 text-[11px] ${
-                                m.propio
-                                  ? "border-white/50 bg-white/15 text-white/85"
-                                  : "border-[#4FAEB2] bg-slate-50 text-slate-500"
-                              }`}
-                            >
-                              <span className="block font-semibold">{nombreCorto(m.cita.autor)}</span>
-                              <span className="line-clamp-2">
+                            <div className="mb-1.5 border-l-[3px] border-[#4FAEB2] pl-2.5 text-[13px]">
+                              <span className="block font-semibold text-[#2F6E71]">
+                                {nombreCapitular(m.cita.autor)}
+                              </span>
+                              <span className="line-clamp-2 text-slate-500">
                                 {m.cita.texto ?? "Mensaje eliminado"}
                               </span>
                             </div>
                           ) : null}
                           {m.eliminado ? (
-                            <p className="text-[12px] italic opacity-60">Mensaje eliminado</p>
+                            <p className="text-[14px] italic opacity-60">Mensaje eliminado</p>
                           ) : editando?.id === m.id ? (
                             <div className="space-y-1.5">
                               <textarea
@@ -1266,12 +1313,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           ) : (
                             <>
                               {m.texto ? (
-                                <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed">
-                                  <span
-                                    className={`float-right ml-2 mt-[7px] text-[9.5px] leading-none ${
-                                      m.propio ? "text-white/70" : "text-slate-400"
-                                    }`}
-                                  >
+                                <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">
+                                  <span className="float-right ml-2 mt-[9px] text-[11px] leading-none text-slate-400">
                                     {m.pendiente
                                       ? "enviando…"
                                       : `${m.editado_at ? "editado · " : ""}${hora(m.created_at)}`}
@@ -1311,11 +1354,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             </>
                           )}
                           {!m.texto || m.eliminado || editando?.id === m.id ? (
-                            <div
-                              className={`mt-0.5 text-right text-[9.5px] ${
-                                m.propio ? "text-white/70" : "text-slate-400"
-                              }`}
-                            >
+                            <div className="mt-0.5 text-right text-[11px] text-slate-400">
                               {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
                               {m.pendiente ? "" : hora(m.created_at)}
                             </div>
@@ -1326,14 +1365,15 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               parte de él. */}
                           {Object.keys(m.reacciones).length > 0 ? (
                             <div
-                              className={`absolute -bottom-2.5 z-10 flex flex-wrap gap-1 ${
-                                m.propio ? "right-2" : "left-2"
+                              className={`absolute -bottom-3.5 z-10 flex flex-wrap gap-1 ${
+                                m.propio ? "right-2" : "left-2.5"
                               }`}
                             >
                               {Object.entries(m.reacciones).map(([emoji, quienes]) => {
                                 const nombres = (m.reacciones_nombres?.[emoji] ?? []).map((n) =>
                                   nombreCorto(n)
                                 );
+                                const caras = m.reacciones_avatares?.[emoji] ?? [];
                                 return (
                                   <span key={emoji} className="group/reac relative">
                                     <button
@@ -1342,15 +1382,30 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                       // `title` como respaldo: si el hover del
                                       // globito no llega, el navegador lo dice igual.
                                       title={nombres.join(", ")}
-                                      className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-[3px] text-[11px] leading-none text-slate-600 shadow-sm transition-colors hover:bg-slate-50" 
+                                      className="flex items-center gap-1 rounded-full bg-[#DDEFF0] px-1.5 py-[3px] leading-none shadow-[0_1px_2px_rgba(15,23,42,0.15)] transition-colors hover:bg-[#CBE6E8]"
                                     >
-                                      {emoji}
-                                      <span className="text-[9.5px] font-semibold">
-                                        {quienes.length}
+                                      <span className="text-[13px]">{emoji}</span>
+                                      {/* Las caras de quienes reaccionaron, en
+                                          vez de un número: se ve quién sin abrir
+                                          nada. Más de tres serían ilegibles. */}
+                                      <span className="flex -space-x-1.5">
+                                        {nombres.slice(0, 3).map((n, i) => (
+                                          <span
+                                            key={`${n}-${i}`}
+                                            className="rounded-full ring-[1.5px] ring-white"
+                                          >
+                                            <Avatar nombre={n} url={caras[i]} size={17} />
+                                          </span>
+                                        ))}
                                       </span>
+                                      {quienes.length > 3 ? (
+                                        <span className="text-[10px] font-semibold text-slate-500">
+                                          +{quienes.length - 3}
+                                        </span>
+                                      ) : null}
                                     </button>
                                     {nombres.length > 0 ? (
-                                      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-1 text-[10.5px] font-medium text-white shadow-lg group-hover/reac:block">
+                                      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-1 text-[11px] font-medium text-white shadow-lg group-hover/reac:block">
                                         {emoji} {nombres.join(", ")}
                                       </span>
                                     ) : null}
@@ -1417,7 +1472,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             </div>
 
             {/* --- Redacción ---------------------------------------------------- */}
-            <div className="border-t border-slate-100 bg-white px-3 py-2.5">
+            <div className="border-t border-slate-100 bg-white px-3 py-3 sm:px-4">
               {citando ? (
                 <div className="mb-2 flex items-start gap-2 rounded-lg border-l-2 border-[#4FAEB2] bg-slate-50 px-2.5 py-1.5">
                   <div className="min-w-0 flex-1">
@@ -1453,17 +1508,19 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   ))}
                 </div>
               ) : null}
-              {/* Una sola caja que contiene todo, en vez de tres controles
-                  sueltos: se lee como un lugar donde escribir. */}
-              <div className="flex items-end gap-1.5 rounded-2xl border border-slate-200 bg-white px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-colors focus-within:border-[#4FAEB2]">
+              {/* Una tarjeta grande con el clip a la izquierda y las acciones
+                  abajo a la derecha: se lee como una hoja donde escribir, no
+                  como una barra de controles. */}
+              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_1px_4px_rgba(15,23,42,0.07)] transition-colors focus-within:border-[#4FAEB2]">
+                <div className="flex items-start gap-2">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={subiendo}
                   title="Adjuntar archivo"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#2F6E71] disabled:opacity-40"
+                  className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-[#2F6E71] disabled:opacity-40"
                 >
-                  {subiendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                  {subiendo ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Paperclip className="h-[18px] w-[18px]" />}
                 </button>
                 <div className="relative flex-1">
                 {sugeridosMencion.length > 0 ? (
@@ -1529,30 +1586,35 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                       void subirArchivos(imgs);
                     }
                   }}
-                  placeholder="Escribí un mensaje… · @ para mencionar"
-                  className="max-h-32 min-h-[32px] w-full resize-none bg-transparent px-1 py-1.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  placeholder="Escribí @ para mencionar a alguien"
+                  className="max-h-40 min-h-[26px] w-full resize-none bg-transparent text-[14.5px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
                 </div>
-                <button
-                  type="button"
-                  onClick={alternarGrabacion}
-                  title={grabando ? "Detener y enviar audio" : "Grabar audio"}
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
-                    grabando
-                      ? "animate-pulse bg-rose-50 text-rose-600"
-                      : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
-                  }`}
-                >
-                  {grabando ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void enviar()}
-                  disabled={enviando || (!texto.trim() && adjuntos.length === 0)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
+                </div>
+
+                <div className="mt-1 flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={alternarGrabacion}
+                    title={grabando ? "Detener y enviar audio" : "Grabar audio"}
+                    className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                      grabando
+                        ? "animate-pulse bg-rose-50 text-rose-600"
+                        : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
+                    }`}
+                  >
+                    {grabando ? <Square className="h-[18px] w-[18px]" /> : <Mic className="h-[18px] w-[18px]" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void enviar()}
+                    disabled={enviando || (!texto.trim() && adjuntos.length === 0)}
+                    title="Enviar"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[#4FAEB2] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    <Send className="h-[18px] w-[18px]" />
+                  </button>
+                </div>
               </div>
               <input
                 ref={fileRef}

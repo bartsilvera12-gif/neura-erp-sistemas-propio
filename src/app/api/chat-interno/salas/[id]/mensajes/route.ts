@@ -121,10 +121,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           responde_a: (m.responde_a as string | null) ?? null,
           cita: m.responde_a ? citaDe.get(String(m.responde_a)) ?? null : null,
           reacciones: (m.reacciones as Record<string, string[]> | null) ?? {},
-          // El emoji dice qué; esto dice quién.
+          // El emoji dice qué; esto dice quién, con nombre y con cara.
           reacciones_nombres: Object.fromEntries(
             Object.entries((m.reacciones as Record<string, string[]> | null) ?? {}).map(
               ([emoji, quienes]) => [emoji, quienes.map((u) => nombreDe.get(u) ?? "—")]
+            )
+          ),
+          reacciones_avatares: Object.fromEntries(
+            Object.entries((m.reacciones as Record<string, string[]> | null) ?? {}).map(
+              ([emoji, quienes]) => [emoji, quienes.map((u) => avatarDe.get(u) ?? null)]
             )
           ),
           menciones: Array.isArray(m.menciones) ? (m.menciones as string[]) : [],

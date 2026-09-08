@@ -54,14 +54,24 @@ export async function GET(request: Request) {
       ...new Set(((miembros ?? []) as { usuario_id: string }[]).map((m) => m.usuario_id)),
     ];
     const { data: usuarios } = idsUsuarios.length
-      ? await catalog.from("usuarios").select("id, nombre, avatar_path").in("id", idsUsuarios)
-      : { data: [] as { id: string; nombre: string | null; avatar_path: string | null }[] };
+      ? await catalog
+          .from("usuarios")
+          .select("id, nombre, area, avatar_path")
+          .in("id", idsUsuarios)
+      : { data: [] as {
+          id: string;
+          nombre: string | null;
+          area: string | null;
+          avatar_path: string | null;
+        }[] };
     const personas = (usuarios ?? []) as {
       id: string;
       nombre: string | null;
+      area: string | null;
       avatar_path: string | null;
     }[];
     const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
+    const areaDe = new Map(personas.map((u) => [u.id, (u.area ?? "").trim()]));
     const avatarDe = await firmarAvatares(sb, personas);
     // Las fotos de los grupos viven en el mismo bucket que las de las personas.
     const avatarDeSala = await firmarAvatares(
@@ -121,6 +131,12 @@ export async function GET(request: Request) {
             ? (otro ? avatarDe.get(otro) ?? null : null)
             : avatarDeSala.get(id) ?? null,
         mi_rol: miRolEn.get(id) ?? "miembro",
+        // El cargo se muestra mientras no haya nada que previsualizar: una fila
+        // sin mensajes con un renglón vacío se ve rota.
+        subtitulo:
+          s.tipo === "directo"
+            ? (otro ? areaDe.get(otro) ?? "" : "") || "Usuario"
+            : `${integrantes.length} miembros`,
         ultimo_mensaje_at: s.ultimo_mensaje_at ?? null,
         no_leidos: noLeidos.get(id) ?? 0,
         vista_previa: ultimo

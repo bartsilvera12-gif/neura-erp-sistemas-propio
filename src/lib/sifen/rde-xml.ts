@@ -712,7 +712,9 @@ export function buildOfficialRdeFacturaElectronicaXml(
    */
   totParts.push("</gTotSub>");
 
-  const esCredito = documento.tipo === "credito" || documento.tipo === "suscripcion";
+  // Suscripciones se emiten al CONTADO (decisión fiscal de Neura). Solo el tipo
+  // "credito" explícito informa condición Crédito con plazo.
+  const esCredito = documento.tipo === "credito";
   let gCamCondXml: string;
   if (esCredito) {
     gCamCondXml = [

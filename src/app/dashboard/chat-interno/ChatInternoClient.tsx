@@ -653,10 +653,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       const llegaron = j?.data?.mensajes ?? [];
       // Buscar es otra vista: ahí el cartel de "escribiendo" no viene al caso.
       if (!q) {
+        // La clave es el nombre: si la misma persona llega por los dos
+        // caminos, la segunda pisa a la primera en vez de sumarse.
         const quienes = j?.data?.escribiendo ?? [];
-        setEscribiendo(
-          Object.fromEntries(quienes.map((n, i) => [`${n}-${i}`, n])) as Record<string, string>
-        );
+        setEscribiendo(Object.fromEntries(quienes.map((n) => [n, n])));
       }
       // Los pendientes se conservan hasta que el servidor los devuelva: si no,
       // el mensaje recien escrito parpadearia y desapareceria.
@@ -845,14 +845,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         .on("broadcast", { event: "escribiendo" }, ({ payload }) => {
           const p = payload as { usuario_id?: string; nombre?: string };
           if (!p?.usuario_id || !p.nombre) return;
-          setEscribiendo((prev) => ({ ...prev, [p.usuario_id!]: p.nombre! }));
+          setEscribiendo((prev) => ({ ...prev, [p.nombre!]: p.nombre! }));
           // Se apaga sola: quien cierra la pestaña a mitad de una palabra no
           // manda ningún "ya no escribo", y el cartel quedaría para siempre.
           window.setTimeout(() => {
             setEscribiendo((prev) => {
-              if (!(p.usuario_id! in prev)) return prev;
+              if (!(p.nombre! in prev)) return prev;
               const resto = { ...prev };
-              delete resto[p.usuario_id!];
+              delete resto[p.nombre!];
               return resto;
             });
           }, 4000);
@@ -1652,10 +1652,20 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         .slice(0, 8)
     : [];
 
-  /** "Juliana está escribiendo…", o quiénes si son varios. */
+  /**
+   * "Juliana está escribiendo…", o quiénes si son varios.
+   *
+   * Se quitan los repetidos: el aviso llega por dos caminos —el directo entre
+   * navegadores y la consulta— y cada uno guarda a la persona con una clave
+   * distinta, así que la misma aparecía dos veces.
+   *
+   * En una conversación de a dos no se dice el nombre: ya se sabe quién es, y
+   * repetirlo debajo de su propio nombre no agrega nada.
+   */
   const quienesEscriben = (() => {
-    const nombres = Object.values(escribiendo).map((n) => nombreCorto(n));
+    const nombres = [...new Set(Object.values(escribiendo).map((n) => nombreCorto(n)))];
     if (nombres.length === 0) return "";
+    if (salaActual?.tipo !== "grupo") return "Está escribiendo…";
     if (nombres.length === 1) return `${nombres[0]} está escribiendo…`;
     if (nombres.length === 2) return `${nombres[0]} y ${nombres[1]} están escribiendo…`;
     return "Varios están escribiendo…";

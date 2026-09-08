@@ -532,6 +532,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Contador de pedidos de mensajes, para descartar respuestas atrasadas. */
   const pedidoRef = useRef(0);
+  /** Al abrir una conversación hay que ir al final, no quedarse en el principio. */
+  const saltarAlFinalRef = useRef(true);
   /** Mi perfil: el nombre y la foto que ven los demás. */
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const fotoRef = useRef<HTMLInputElement>(null);
@@ -718,6 +720,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     // durante ese rato la pantalla está diciendo algo que no es cierto.
     setMensajes([]);
     setEscribiendo({});
+    saltarAlFinalRef.current = true;
     if (salaId) {
       setCargandoMsgs(true);
       void cargarMensajes(salaId);
@@ -837,15 +840,31 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   /**
    * Bajar al último mensaje.
    *
-   * Sólo cuando entra uno nuevo, y sólo si ya se estaba mirando el final: a
-   * quien subió a leer algo viejo, arrastrarlo al pie le hace perder el lugar.
+   * Dos casos distintos, y se comportan distinto a propósito:
+   *
+   *  · Al ABRIR una conversación se salta al final de una, sin animación. Una
+   *    conversación se abre para ver lo último, no para leerla desde el
+   *    principio como un libro.
+   *  · Con un mensaje NUEVO se baja sólo si ya se estaba mirando el final: a
+   *    quien subió a leer algo viejo, arrastrarlo al pie le hace perder el
+   *    lugar justo cuando estaba leyendo.
    */
   const ultimoId = mensajes.length > 0 ? mensajes[mensajes.length - 1].id : "";
   useEffect(() => {
     if (!ultimoId) return;
+
+    if (saltarAlFinalRef.current) {
+      saltarAlFinalRef.current = false;
+      const alFondo = () => finRef.current?.scrollIntoView({ behavior: "auto" });
+      alFondo();
+      // Otra vez un instante después: las imágenes y los adjuntos todavía no
+      // midieron, y al hacerlo el final se corre más abajo.
+      const t = window.setTimeout(alFondo, 120);
+      return () => window.clearTimeout(t);
+    }
+
     const cont = finRef.current?.parentElement;
-    const cerca =
-      !cont || cont.scrollHeight - cont.scrollTop - cont.clientHeight < 220;
+    const cerca = !cont || cont.scrollHeight - cont.scrollTop - cont.clientHeight < 220;
     if (cerca) finRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [ultimoId]);
 
@@ -1537,6 +1556,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     setBusca("");
     if (enBusqueda && salaId) {
       setEnBusqueda(false);
+      saltarAlFinalRef.current = true;
       void cargarMensajes(salaId);
     }
   }

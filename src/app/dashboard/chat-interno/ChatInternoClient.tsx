@@ -12,6 +12,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
+  FileText,
+  ImageIcon,
+  Link2,
+  PanelRight,
   Loader2,
   Mic,
   Paperclip,
@@ -52,6 +56,32 @@ type Adjunto = {
 
 type Cita = { autor: string; texto: string | null };
 
+/** Un adjunto ya compartido, visto desde el panel de archivos. */
+type ItemArchivo = {
+  path: string;
+  nombre: string;
+  mime_type: string;
+  size_bytes: number;
+  url: string | null;
+  autor: string;
+  created_at: string;
+};
+
+type ItemEnlace = {
+  url: string;
+  dominio: string;
+  autor: string;
+  created_at: string;
+};
+
+type Biblioteca = {
+  imagenes: ItemArchivo[];
+  audios: ItemArchivo[];
+  archivos: ItemArchivo[];
+  enlaces: ItemEnlace[];
+  truncado: boolean;
+};
+
 type Mensaje = {
   id: string;
   usuario_id: string | null;
@@ -65,6 +95,8 @@ type Mensaje = {
   responde_a: string | null;
   cita: Cita | null;
   reacciones: Record<string, string[]>;
+  /** Los mismos emojis, pero con nombres: una reaccion anonima no dice nada. */
+  reacciones_nombres: Record<string, string[]>;
   menciones: string[];
   /** Pintado al instante, todavia sin respuesta del servidor. */
   pendiente?: boolean;
@@ -72,6 +104,23 @@ type Mensaje = {
 
 /** Lista corta a propósito: se lee de un vistazo, un selector completo no. */
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
+
+/**
+ * Fondo de la conversación.
+ *
+ * Un gris plano deja los globos flotando sin apoyo y cansa la vista en una
+ * pantalla que se mira todo el día. Un patrón muy tenue da profundidad y hace
+ * que el blanco de los globos se lea como blanco. Va en un `data:` URI para no
+ * sumar un pedido de red por una textura.
+ */
+const PATRON_FONDO =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%232F6E71' stroke-opacity='0.07' stroke-width='1.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 10h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-6l-4 3v-3H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z'/%3E%3Ccircle cx='42' cy='14' r='5'/%3E%3Cpath d='M34 44h10a2 2 0 0 0 2-2v-8l-5-5h-7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2z'/%3E%3Cpath d='M8 38h14M8 44h9'/%3E%3C/g%3E%3C/svg%3E\")";
+
+const ESTILO_FONDO: React.CSSProperties = {
+  backgroundColor: "#eff5f6",
+  backgroundImage: PATRON_FONDO,
+  backgroundRepeat: "repeat",
+};
 
 type UsuarioOpcion = { id: string; nombre: string; area: string };
 
@@ -87,6 +136,18 @@ function hora(iso: string): string {
   return Number.isFinite(d.getTime())
     ? d.toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" })
     : "";
+}
+
+/** Para la bandeja: "14:32" si es de hoy, "Ayer", o "23 ago". */
+function fechaCorta(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const hoy = new Date();
+  const ayer = new Date(hoy.getTime() - 86400000);
+  const mismo = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (mismo(d, hoy)) return hora(iso);
+  if (mismo(d, ayer)) return "Ayer";
+  return d.toLocaleDateString("es-PY", { day: "2-digit", month: "short" });
 }
 
 function diaLabel(iso: string): string {
@@ -128,6 +189,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
   const [busca, setBusca] = useState("");
   const [enBusqueda, setEnBusqueda] = useState(false);
+  /** El buscador se despliega: en reposo es un icono, no una caja siempre visible. */
+  const [verBuscador, setVerBuscador] = useState(false);
+  /** Panel lateral "Acerca del chat": `null` cerrado. */
+  const [panel, setPanel] = useState<"archivos" | null>(null);
+  const [biblioteca, setBiblioteca] = useState<Biblioteca | null>(null);
+  const [cargandoBiblio, setCargandoBiblio] = useState(false);
+  const buscaRef = useRef<HTMLInputElement>(null);
   /** Miembros de la sala abierta: alimentan el menú de menciones. */
   const [miembrosSala, setMiembrosSala] = useState<{ usuario_id: string; nombre: string }[]>([]);
   /** Mi nombre y mi id, para pintar el mensaje antes de que el servidor conteste. */
@@ -264,6 +332,34 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     finRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensajes]);
 
+  // El panel se arma cuando se abre, no antes: recorrer la sala entera es caro
+  // y la mayoria de las veces nadie lo mira.
+  const cargarBiblioteca = useCallback(async (id: string) => {
+    setCargandoBiblio(true);
+    try {
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/archivos`, {
+        cache: "no-store",
+      });
+      const j = (await r.json().catch(() => ({}))) as { data?: Biblioteca };
+      setBiblioteca(
+        j?.data ?? { imagenes: [], audios: [], archivos: [], enlaces: [], truncado: false }
+      );
+    } finally {
+      setCargandoBiblio(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (panel === "archivos" && salaId) void cargarBiblioteca(salaId);
+  }, [panel, salaId, cargarBiblioteca]);
+
+  // Cambiar de sala cierra lo que era de la anterior.
+  useEffect(() => {
+    setPanel(null);
+    setBiblioteca(null);
+    setVerBuscador(false);
+  }, [salaId]);
+
   async function subirArchivos(files: File[]) {
     if (!salaId || files.length === 0) return;
     setSubiendo(true);
@@ -393,6 +489,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       responde_a: responde?.id ?? null,
       cita: responde ? { autor: responde.autor, texto: responde.texto } : null,
       reacciones: {},
+      reacciones_nombres: {},
       menciones,
       pendiente: true,
     };
@@ -478,6 +575,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
   }
 
+  /** Salir del buscador es volver a la conversación, no sólo vaciar el campo. */
+  function cerrarBusqueda() {
+    setVerBuscador(false);
+    setBusca("");
+    if (enBusqueda && salaId) {
+      setEnBusqueda(false);
+      void cargarMensajes(salaId);
+    }
+  }
+
   async function abrirModal() {
     setModal(true);
     setNombreGrupo("");
@@ -532,7 +639,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     <div
       className={
         mobile
-          ? "flex h-[calc(100dvh-150px)] min-h-[420px]"
+          ? "relative flex h-[calc(100dvh-150px)] min-h-[420px]"
           : "flex h-[calc(100dvh-190px)] min-h-[520px] gap-3"
       }
     >
@@ -569,33 +676,38 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   key={s.id}
                   type="button"
                   onClick={() => setSalaId(s.id)}
-                  className={`mb-1 flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors ${
-                    activa ? "bg-[#4FAEB2]/10" : "hover:bg-slate-50"
+                  className={`mb-0.5 flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${
+                    activa ? "bg-[#4FAEB2]/12" : "hover:bg-slate-50"
                   }`}
                 >
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[12px] font-bold"
                     style={{ background: `${c}22`, color: c }}
                   >
-                    {s.tipo === "grupo" ? <Users className="h-4 w-4" /> : inicialesNombre(s.nombre)}
+                    {s.tipo === "grupo" ? <Users className="h-5 w-5" /> : inicialesNombre(s.nombre)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-1">
-                      <span className="min-w-0 truncate text-[12.5px] font-semibold text-slate-800">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="min-w-0 truncate text-[13px] font-semibold text-slate-800">
                         {nombreCapitular(s.nombre)}
                       </span>
+                      <span className="shrink-0 text-[10.5px] text-slate-400">
+                        {s.ultimo_mensaje_at ? fechaCorta(s.ultimo_mensaje_at) : ""}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate text-[11.5px] text-slate-400">
+                        {s.vista_previa
+                          ? `${s.vista_previa_autor ? `${nombreCorto(s.vista_previa_autor)}: ` : ""}${s.vista_previa}`
+                          : s.tipo === "grupo"
+                            ? `${s.miembros} integrantes`
+                            : "Sin mensajes"}
+                      </span>
                       {s.no_leidos > 0 ? (
-                        <span className="shrink-0 rounded-full bg-[#4FAEB2] px-1.5 text-[10px] font-bold text-white">
+                        <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#4FAEB2] px-1.5 text-[10px] font-bold text-white">
                           {s.no_leidos}
                         </span>
                       ) : null}
-                    </span>
-                    <span className="block truncate text-[11px] text-slate-400">
-                      {s.vista_previa
-                        ? `${s.vista_previa_autor ? `${nombreCorto(s.vista_previa_autor)}: ` : ""}${s.vista_previa}`
-                        : s.tipo === "grupo"
-                          ? `${s.miembros} integrantes`
-                          : "Sin mensajes"}
                     </span>
                   </span>
                 </button>
@@ -633,17 +745,17 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 </button>
               ) : null}
               <span
-                className={`${mobile ? "hidden" : "flex"} h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold`}
+                className={`${mobile ? "hidden" : "flex"} h-10 w-10 items-center justify-center rounded-full text-[11px] font-bold`}
                 style={{ background: `${colorDe(salaActual.nombre)}22`, color: colorDe(salaActual.nombre) }}
               >
                 {salaActual.tipo === "grupo" ? (
-                  <Users className="h-4 w-4" />
+                  <Users className="h-5 w-5" />
                 ) : (
                   inicialesNombre(salaActual.nombre)
                 )}
               </span>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-[13.5px] font-semibold text-slate-800">
+                <h2 className="truncate text-[14px] font-semibold text-slate-800">
                   {nombreCapitular(salaActual.nombre)}
                 </h2>
                 <p className="truncate text-[11px] text-slate-400">
@@ -652,48 +764,77 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     : "Conversación directa"}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-50 px-2 py-1.5 focus-within:ring-1 focus-within:ring-[#4FAEB2]/40">
-                <Search className="h-3.5 w-3.5 text-slate-400" />
-                <input
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && busca.trim()) {
-                      setEnBusqueda(true);
-                      void cargarMensajes(salaActual.id, busca);
-                    }
-                    if (e.key === "Escape") {
-                      setBusca("");
-                      setEnBusqueda(false);
-                      void cargarMensajes(salaActual.id);
-                    }
-                  }}
-                  placeholder="Buscar…"
-                  className="w-28 bg-transparent text-[12px] focus:outline-none sm:w-40"
-                />
-                {enBusqueda ? (
+              <div className="flex shrink-0 items-center gap-1">
+                {verBuscador ? (
+                  <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 py-1.5 ring-1 ring-transparent focus-within:ring-[#4FAEB2]/40">
+                    <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <input
+                      ref={buscaRef}
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && busca.trim()) {
+                          setEnBusqueda(true);
+                          void cargarMensajes(salaActual.id, busca);
+                        }
+                        if (e.key === "Escape") cerrarBusqueda();
+                      }}
+                      placeholder="Buscar en la conversación…"
+                      className="w-36 bg-transparent text-[12px] focus:outline-none sm:w-52"
+                    />
+                    <button type="button" onClick={cerrarBusqueda} aria-label="Cerrar el buscador">
+                      <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-700" />
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
                     onClick={() => {
-                      setBusca("");
-                      setEnBusqueda(false);
-                      void cargarMensajes(salaActual.id);
+                      setVerBuscador(true);
+                      // El foco va al input recien montado, no en el mismo tick.
+                      setTimeout(() => buscaRef.current?.focus(), 0);
                     }}
-                    aria-label="Salir de la búsqueda"
+                    title="Buscar mensajes"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#2F6E71]"
                   >
-                    <X className="h-3.5 w-3.5 text-slate-400" />
+                    <Search className="h-4 w-4" />
                   </button>
-                ) : null}
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPanel((p) => (p ? null : "archivos"))}
+                  title="Archivos y enlaces del chat"
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                    panel
+                      ? "bg-[#4FAEB2]/15 text-[#2F6E71]"
+                      : "text-slate-500 hover:bg-slate-100 hover:text-[#2F6E71]"
+                  }`}
+                >
+                  <PanelRight className="h-4 w-4" />
+                </button>
               </div>
             </header>
             {enBusqueda ? (
-              <div className="border-b border-amber-100 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-700">
-                Resultados de la búsqueda · {mensajes.length}. Salí con Escape para volver a la
-                conversación.
+              <div className="flex items-center justify-between gap-2 border-b border-amber-100 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-800">
+                <span>
+                  {mensajes.length === 0
+                    ? `Sin resultados para "${busca}"`
+                    : `${mensajes.length} ${mensajes.length === 1 ? "resultado" : "resultados"} para "${busca}"`}
+                </span>
+                <button
+                  type="button"
+                  onClick={cerrarBusqueda}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Volver a la conversación
+                </button>
               </div>
             ) : null}
 
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50/60 px-4 py-3">
+            <div
+              className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4"
+              style={ESTILO_FONDO}
+            >
               {cargandoMsgs && mensajes.length === 0 ? (
                 <p className="text-center text-[12px] text-slate-400">Cargando…</p>
               ) : mensajes.length === 0 ? (
@@ -711,12 +852,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   return (
                     <div key={m.id}>
                       {nuevoDia ? (
-                        <div className="my-3 flex items-center gap-2">
-                          <span className="h-px flex-1 bg-slate-200" />
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                        <div className="my-4 flex justify-center">
+                          <span className="rounded-full bg-white/80 px-3 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.06)] backdrop-blur-sm">
                             {diaLabel(m.created_at)}
                           </span>
-                          <span className="h-px flex-1 bg-slate-200" />
                         </div>
                       ) : null}
                       <div className={`group flex gap-2 ${m.propio ? "justify-end" : "justify-start"}`}>
@@ -731,10 +870,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           </span>
                         ) : null}
                         <div
-                          className={`max-w-[68%] rounded-2xl px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)] ${
+                          className={`max-w-[70%] min-w-[112px] rounded-2xl px-3.5 py-2.5 shadow-[0_1px_3px_rgba(15,23,42,0.10)] ${
                             m.propio
-                              ? "rounded-br-sm bg-[#4FAEB2] text-white"
-                              : "rounded-bl-sm border border-slate-200 bg-white text-slate-700"
+                              ? "rounded-br-md bg-gradient-to-br from-[#54B7BB] to-[#3E9B9F] text-white"
+                              : "rounded-bl-md bg-white text-slate-700"
                           }`}
                         >
                           {!seguido ? (
@@ -836,19 +975,38 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           </div>
 
                           {Object.keys(m.reacciones).length > 0 ? (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {Object.entries(m.reacciones).map(([emoji, quienes]) => (
-                                <button
-                                  key={emoji}
-                                  type="button"
-                                  onClick={() => void reaccionar(m.id, emoji)}
-                                  className={`rounded-full px-1.5 py-0.5 text-[11px] leading-none ${
-                                    m.propio ? "bg-white/20" : "bg-slate-100"
-                                  }`}
-                                >
-                                  {emoji} <span className="text-[9.5px]">{quienes.length}</span>
-                                </button>
-                              ))}
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {Object.entries(m.reacciones).map(([emoji, quienes]) => {
+                                const nombres = (m.reacciones_nombres?.[emoji] ?? []).map((n) =>
+                                  nombreCorto(n)
+                                );
+                                return (
+                                  <span key={emoji} className="group/reac relative">
+                                    <button
+                                      type="button"
+                                      onClick={() => void reaccionar(m.id, emoji)}
+                                      // `title` como respaldo: si el hover del
+                                      // globito no llega, el navegador lo dice igual.
+                                      title={nombres.join(", ")}
+                                      className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] leading-none transition-colors ${
+                                        m.propio
+                                          ? "bg-white/25 hover:bg-white/35"
+                                          : "bg-slate-100 hover:bg-slate-200"
+                                      }`}
+                                    >
+                                      {emoji}
+                                      <span className="text-[9.5px] font-semibold">
+                                        {quienes.length}
+                                      </span>
+                                    </button>
+                                    {nombres.length > 0 ? (
+                                      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-1 text-[10.5px] font-medium text-white shadow-lg group-hover/reac:block">
+                                        {emoji} {nombres.join(", ")}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                );
+                              })}
                             </div>
                           ) : null}
                         </div>
@@ -909,7 +1067,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             </div>
 
             {/* --- Redacción ---------------------------------------------------- */}
-            <div className="border-t border-slate-100 px-3 py-2.5">
+            <div className="border-t border-slate-100 bg-white px-3 py-2.5">
               {citando ? (
                 <div className="mb-2 flex items-start gap-2 rounded-lg border-l-2 border-[#4FAEB2] bg-slate-50 px-2.5 py-1.5">
                   <div className="min-w-0 flex-1">
@@ -945,27 +1103,17 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   ))}
                 </div>
               ) : null}
-              <div className="flex items-end gap-2">
+              {/* Una sola caja que contiene todo, en vez de tres controles
+                  sueltos: se lee como un lugar donde escribir. */}
+              <div className="flex items-end gap-1.5 rounded-2xl border border-slate-200 bg-white px-2 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.06)] transition-colors focus-within:border-[#4FAEB2]">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={subiendo}
                   title="Adjuntar archivo"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#2F6E71] disabled:opacity-40"
                 >
                   {subiendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={alternarGrabacion}
-                  title={grabando ? "Detener y enviar audio" : "Grabar audio"}
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors ${
-                    grabando
-                      ? "animate-pulse border-rose-300 bg-rose-50 text-rose-600"
-                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
-                  }`}
-                >
-                  {grabando ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </button>
                 <div className="relative flex-1">
                 {sugeridosMencion.length > 0 ? (
@@ -1032,9 +1180,21 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     }
                   }}
                   placeholder="Escribí un mensaje… · @ para mencionar"
-                  className="max-h-32 min-h-[36px] w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+                  className="max-h-32 min-h-[32px] w-full resize-none bg-transparent px-1 py-1.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
                 </div>
+                <button
+                  type="button"
+                  onClick={alternarGrabacion}
+                  title={grabando ? "Detener y enviar audio" : "Grabar audio"}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
+                    grabando
+                      ? "animate-pulse bg-rose-50 text-rose-600"
+                      : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
+                  }`}
+                >
+                  {grabando ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                </button>
                 <button
                   type="button"
                   onClick={() => void enviar()}
@@ -1058,6 +1218,205 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           </>
         )}
       </section>
+
+      {/* --- Acerca del chat ---------------------------------------------------
+          Columna de tarjetas sobre fondo gris: cada bloque se lee solo, y lo
+          que no hay simplemente no ocupa lugar. */}
+      {panel && salaActual ? (
+        <aside
+          className={`flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 ${
+            mobile ? "absolute inset-0 z-20" : "ml-3 w-80 shrink-0"
+          }`}
+        >
+          <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
+            <button
+              type="button"
+              onClick={() => setPanel(null)}
+              aria-label="Cerrar el panel"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <h3 className="text-[14px] font-semibold text-slate-800">Acerca del chat</h3>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+            {/* Identidad */}
+            <div className="rounded-2xl bg-white p-4 text-center shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+              <span
+                className="mx-auto flex h-20 w-20 items-center justify-center rounded-full text-[22px] font-bold"
+                style={{
+                  background: `${colorDe(salaActual.nombre)}22`,
+                  color: colorDe(salaActual.nombre),
+                }}
+              >
+                {salaActual.tipo === "grupo" ? (
+                  <Users className="h-8 w-8" />
+                ) : (
+                  inicialesNombre(salaActual.nombre)
+                )}
+              </span>
+              <p className="mt-2.5 text-[15px] font-semibold text-slate-800">
+                {nombreCapitular(salaActual.nombre)}
+              </p>
+              <p className="text-[12px] text-slate-400">
+                {salaActual.tipo === "grupo"
+                  ? `Grupo · ${salaActual.miembros} integrantes`
+                  : "Conversación directa"}
+              </p>
+              {salaActual.tipo === "grupo" ? (
+                <p className="mt-2 text-[11.5px] leading-relaxed text-slate-500">
+                  {salaActual.miembros_nombres.map((n) => nombreCapitular(n)).join(" · ")}
+                </p>
+              ) : null}
+            </div>
+
+            {/* Resumen de lo compartido */}
+            <div className="overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+              {(
+                [
+                  { icono: <FileText className="h-4 w-4" />, txt: "Documentos", n: biblioteca?.archivos.length },
+                  { icono: <ImageIcon className="h-4 w-4" />, txt: "Imágenes", n: biblioteca?.imagenes.length },
+                  { icono: <Mic className="h-4 w-4" />, txt: "Audios", n: biblioteca?.audios.length },
+                  { icono: <Link2 className="h-4 w-4" />, txt: "Enlaces", n: biblioteca?.enlaces.length },
+                ] as const
+              ).map((f) => (
+                <div
+                  key={f.txt}
+                  className="flex items-center gap-2.5 border-b border-slate-50 px-4 py-2.5 last:border-0"
+                >
+                  <span className="text-[#4FAEB2]">{f.icono}</span>
+                  <span className="flex-1 text-[13px] font-medium text-slate-700">{f.txt}</span>
+                  <span className="min-w-[22px] rounded-full bg-slate-100 px-1.5 py-0.5 text-center text-[11px] font-semibold text-slate-500">
+                    {cargandoBiblio ? "…" : f.n ?? 0}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {cargandoBiblio && !biblioteca ? (
+              <p className="px-1 text-[12px] text-slate-400">Cargando…</p>
+            ) : null}
+
+            {/* Imágenes */}
+            {biblioteca && biblioteca.imagenes.length > 0 ? (
+              <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                <p className="mb-2 text-[13px] font-semibold text-slate-800">
+                  Archivos y contenido multimedia
+                </p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {biblioteca.imagenes.slice(0, 12).map((a) =>
+                    a.url ? (
+                      <a
+                        key={a.path}
+                        href={a.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`${a.nombre} · ${nombreCorto(a.autor)}`}
+                        className="aspect-square overflow-hidden rounded-lg bg-slate-100"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={a.url}
+                          alt={a.nombre}
+                          className="h-full w-full object-cover transition-transform hover:scale-105"
+                        />
+                      </a>
+                    ) : null
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Documentos y audios */}
+            {biblioteca && biblioteca.archivos.length + biblioteca.audios.length > 0 ? (
+              <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                <p className="mb-2 text-[13px] font-semibold text-slate-800">Documentos</p>
+                <ul className="space-y-1">
+                  {[...biblioteca.archivos, ...biblioteca.audios].map((a) => (
+                    <li key={a.path}>
+                      <a
+                        href={a.url ?? "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-slate-50"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/12 text-[#2F6E71]">
+                          {a.mime_type.startsWith("audio/") ? (
+                            <Mic className="h-4 w-4" />
+                          ) : (
+                            <FileText className="h-4 w-4" />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-medium text-slate-700">
+                            {a.nombre}
+                          </span>
+                          <span className="block truncate text-[10.5px] text-slate-400">
+                            {pesoLegible(a.size_bytes)} · {nombreCorto(a.autor)} ·{" "}
+                            {fechaCorta(a.created_at)}
+                          </span>
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Enlaces */}
+            {biblioteca && biblioteca.enlaces.length > 0 ? (
+              <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                <p className="mb-2 text-[13px] font-semibold text-slate-800">Enlaces</p>
+                <ul className="space-y-1">
+                  {biblioteca.enlaces.map((e, i) => (
+                    <li key={`${e.url}-${i}`}>
+                      <a
+                        href={e.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="flex items-start gap-2.5 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-slate-50"
+                      >
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/12 text-[#2F6E71]">
+                          <Link2 className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-medium text-[#2F6E71]">
+                            {e.dominio}
+                          </span>
+                          <span className="block truncate text-[10.5px] text-slate-400">
+                            {e.url}
+                          </span>
+                          <span className="block text-[10.5px] text-slate-400">
+                            {nombreCorto(e.autor)} · {fechaCorta(e.created_at)}
+                          </span>
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {biblioteca &&
+            biblioteca.imagenes.length +
+              biblioteca.archivos.length +
+              biblioteca.audios.length +
+              biblioteca.enlaces.length ===
+              0 ? (
+              <p className="px-1 text-[12px] leading-relaxed text-slate-400">
+                Todavía no se compartió ningún archivo ni enlace en esta conversación.
+              </p>
+            ) : null}
+
+            {biblioteca?.truncado ? (
+              <p className="px-1 text-[11px] leading-relaxed text-slate-400">
+                Se muestran los archivos y enlaces de los mensajes más recientes.
+              </p>
+            ) : null}
+          </div>
+        </aside>
+      ) : null}
 
       {err ? (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-[12px] text-rose-700 shadow-lg">

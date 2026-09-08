@@ -56,7 +56,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const filas = (data ?? []) as Record<string, unknown>[];
     const catalog = createServiceRoleClient();
-    const ids = [...new Set(filas.map((m) => m.usuario_id).filter((x): x is string => typeof x === "string"))];
+    const ids = [
+      ...new Set([
+        ...filas.map((m) => m.usuario_id).filter((x): x is string => typeof x === "string"),
+        // Quien reaccionó también necesita nombre.
+        ...filas.flatMap((m) =>
+          Object.values((m.reacciones as Record<string, string[]> | null) ?? {}).flat()
+        ),
+      ]),
+    ].filter((x): x is string => typeof x === "string" && !!x);
     const { data: usuarios } = ids.length
       ? await catalog.from("usuarios").select("id, nombre").in("id", ids)
       : { data: [] as { id: string; nombre: string | null }[] };
@@ -107,6 +115,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           responde_a: (m.responde_a as string | null) ?? null,
           cita: m.responde_a ? citaDe.get(String(m.responde_a)) ?? null : null,
           reacciones: (m.reacciones as Record<string, string[]> | null) ?? {},
+          // El emoji dice qué; esto dice quién.
+          reacciones_nombres: Object.fromEntries(
+            Object.entries((m.reacciones as Record<string, string[]> | null) ?? {}).map(
+              ([emoji, quienes]) => [emoji, quienes.map((u) => nombreDe.get(u) ?? "—")]
+            )
+          ),
           menciones: Array.isArray(m.menciones) ? (m.menciones as string[]) : [],
         };
       })

@@ -29,6 +29,19 @@ const REFRESCO_MS = 60_000;
 /** El chat avisa por acá cuando alguien lee una sala, para bajar el número ya. */
 export const EVENTO_CHAT_LEIDO = "chat-interno:leido";
 
+/**
+ * Canal único de avisos del chat.
+ *
+ * El canal de cada sala sólo lo escucha quien la tiene abierta. Un mensaje en
+ * OTRA conversación no llegaba a ningún lado hasta el refresco de la bandeja.
+ * Acá está todo el mundo, y el aviso lleva sólo el id de la sala: nunca el
+ * texto ni los adjuntos.
+ */
+export const CANAL_AVISOS = "chat-interno-avisos";
+
+/** Rebote hacia el chat abierto, que refresca su bandeja y su conversación. */
+export const EVENTO_CHAT_NOVEDAD = "chat-interno:novedad";
+
 const TITULO_BASE = "Neura ERP";
 
 /** Dibuja el globito rojo con el número sobre el ícono original. */
@@ -143,7 +156,17 @@ export default function ChatPestanaBadge() {
       await autenticarRealtime(supabase);
       if (!vivo) return;
       canal = supabase
-      .channel("chat-interno-pestana")
+      .channel(CANAL_AVISOS, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "mensaje" }, ({ payload }) => {
+          const sala = (payload as { sala_id?: string } | null)?.sala_id;
+          const mias = misSalasRef.current;
+          if (sala && mias && !mias.has(sala)) return;
+          void contar();
+          // El chat, si está abierto, refresca su bandeja con esto.
+          window.dispatchEvent(
+            new CustomEvent(EVENTO_CHAT_NOVEDAD, { detail: { sala_id: sala } })
+          );
+        })
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "neura", table: "chat_interno_mensajes" },

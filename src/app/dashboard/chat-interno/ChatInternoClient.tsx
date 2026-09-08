@@ -47,7 +47,11 @@ import {
   X,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { EVENTO_CHAT_LEIDO } from "@/components/layout/ChatPestanaBadge";
+import {
+  CANAL_AVISOS,
+  EVENTO_CHAT_LEIDO,
+  EVENTO_CHAT_NOVEDAD,
+} from "@/components/layout/ChatPestanaBadge";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
@@ -556,6 +560,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const canalRef = useRef<RealtimeChannel | null>(null);
   /** Último aviso de "estoy escribiendo": se manda cada tanto, no por tecla. */
   const ultimoAvisoRef = useRef(0);
+  /** Canal común, para avisar a quien NO tiene esta conversación abierta. */
+  const avisosRef = useRef<RealtimeChannel | null>(null);
   const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
   /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
   const contRef = useRef<HTMLDivElement>(null);
@@ -924,6 +930,49 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     return () => clearInterval(t);
   }, [cargarSalas]);
 
+  /**
+   * El canal común de avisos, y el rebote del contador de la pestaña.
+   *
+   * Sirve para las dos direcciones: por acá se avisa cuando uno escribe, y por
+   * acá llega la novedad de una conversación que no es la que está abierta —
+   * que es justo la que antes tardaba hasta media hora en aparecer.
+   */
+  useEffect(() => {
+    if (acceso !== "ok") return;
+    let vivo = true;
+    let canal: RealtimeChannel | null = null;
+    void (async () => {
+      await autenticarRealtime(supabase);
+      if (!vivo) return;
+      canal = supabase
+        .channel(CANAL_AVISOS, { config: { broadcast: { self: false } } })
+        .subscribe();
+      avisosRef.current = canal;
+    })();
+
+    const alHaberNovedad = (e: Event) => {
+      const sala = (e as CustomEvent<{ sala_id?: string }>).detail?.sala_id;
+      void cargarSalas();
+      if (sala && sala === salaIdRef.current) {
+        void cargarMensajes(sala, undefined, true);
+      }
+    };
+    window.addEventListener(EVENTO_CHAT_NOVEDAD, alHaberNovedad);
+
+    return () => {
+      vivo = false;
+      avisosRef.current = null;
+      window.removeEventListener(EVENTO_CHAT_NOVEDAD, alHaberNovedad);
+      if (canal) void supabase.removeChannel(canal);
+    };
+  }, [acceso, cargarSalas, cargarMensajes]);
+
+  /** La sala abierta, para leerla desde un manejador que no se vuelve a crear. */
+  const salaIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    salaIdRef.current = salaId;
+  }, [salaId]);
+
   // El panel se arma cuando se abre, no antes: recorrer la sala entera es caro
   // y la mayoria de las veces nadie lo mira.
   const cargarBiblioteca = useCallback(async (id: string) => {
@@ -1178,6 +1227,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       // Aviso directo a quien tenga la sala abierta. Llega antes que la
       // replicación y no depende de ella.
       void canalRef.current?.send({ type: "broadcast", event: "mensaje", payload: {} });
+      // Y al resto, que puede tener otra conversación abierta o ninguna.
+      void avisosRef.current?.send({
+        type: "broadcast",
+        event: "mensaje",
+        payload: { sala_id: salaId },
+      });
       // Al mandar dejo de estar escribiendo; el cartel del otro lado se apaga
       // solo, pero que se apague al ver llegar el mensaje es lo natural.
       ultimoAvisoRef.current = 0;

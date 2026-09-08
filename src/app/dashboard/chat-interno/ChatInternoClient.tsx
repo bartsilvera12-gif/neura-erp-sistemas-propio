@@ -13,6 +13,8 @@ import {
   Camera,
   Check,
   CheckCheck,
+  Download,
+  ExternalLink,
   Crown,
   UserMinus,
   UserPlus,
@@ -346,6 +348,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [tocandoMiembros, setTocandoMiembros] = useState(false);
   /** Edición de mi nombre en el chat: `null` mientras no se edita. */
   const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
+  /** Imagen abierta en grande. `null` = visor cerrado. */
+  const [viendo, setViendo] = useState<Adjunto | null>(null);
   const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
   /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
   const contRef = useRef<HTMLDivElement>(null);
@@ -539,6 +543,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensajes]);
+
+  // Escape cierra el visor: es lo que hace cualquiera sin pensarlo.
+  useEffect(() => {
+    if (!viendo) return;
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setViendo(null);
+    };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [viendo]);
 
   // El panel se arma cuando se abre, no antes: recorrer la sala entera es caro
   // y la mayoria de las veces nadie lo mira.
@@ -833,6 +847,34 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       setGrabando(true);
     } catch {
       setErr("No se pudo acceder al micrófono. Revisá el permiso del navegador.");
+    }
+  }
+
+  /**
+   * Descarga con el nombre real del archivo.
+   *
+   * Un `<a download>` apuntando a la URL firmada no alcanza: el atributo se
+   * ignora cuando el archivo vive en otro origen, y el navegador termina
+   * abriéndolo o guardándolo con el nombre codificado del storage. Así que se
+   * baja a memoria y se guarda desde acá.
+   */
+  async function descargar(a: Adjunto) {
+    if (!a.url) return;
+    try {
+      const r = await fetch(a.url);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = a.nombre || "archivo";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Se libera después: revocarla en el mismo tick cancela la descarga.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch {
+      // Si algo falla, al menos que pueda verlo.
+      window.open(a.url, "_blank", "noopener");
     }
   }
 
@@ -1606,27 +1648,74 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                   {a.clase === "audio" && a.url ? (
                                     <audio controls src={a.url} className="h-9 w-56 max-w-full" />
                                   ) : a.clase === "imagen" && a.url ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={a.url}
-                                      alt={a.nombre}
-                                      className="max-h-56 rounded-lg border border-black/5"
-                                    />
-                                  ) : (
-                                    <a
-                                      href={a.url ?? "#"}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11.5px] ${
-                                        m.propio ? "bg-white/15" : "bg-slate-50"
-                                      }`}
-                                    >
-                                      <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                                      <span className="min-w-0 truncate">{a.nombre}</span>
-                                      <span className="shrink-0 opacity-60">
-                                        {pesoLegible(a.size_bytes)}
+                                    // La miniatura abre el visor; las acciones
+                                    // aparecen encima al pasar el mouse, para no
+                                    // taparla mientras se la mira.
+                                    <div className="group/img relative inline-block">
+                                      <button
+                                        type="button"
+                                        onClick={() => setViendo(a)}
+                                        title="Ver más grande"
+                                        className="block"
+                                      >
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={a.url}
+                                          alt={a.nombre}
+                                          className="max-h-64 cursor-zoom-in rounded-lg border border-black/5"
+                                        />
+                                      </button>
+                                      <span className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover/img:opacity-100">
+                                        <a
+                                          href={a.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title="Abrir en otra pestaña"
+                                          className="rounded-lg bg-slate-900/60 p-1.5 text-white backdrop-blur-sm hover:bg-slate-900/80"
+                                        >
+                                          <ExternalLink className="h-3.5 w-3.5" />
+                                        </a>
+                                        <button
+                                          type="button"
+                                          onClick={() => void descargar(a)}
+                                          title="Descargar"
+                                          className="rounded-lg bg-slate-900/60 p-1.5 text-white backdrop-blur-sm hover:bg-slate-900/80"
+                                        >
+                                          <Download className="h-3.5 w-3.5" />
+                                        </button>
                                       </span>
-                                    </a>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[12px]">
+                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/12 text-[#2F6E71]">
+                                        <FileText className="h-4 w-4" />
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-medium text-slate-700">
+                                          {a.nombre}
+                                        </span>
+                                        <span className="block text-[10.5px] text-slate-400">
+                                          {pesoLegible(a.size_bytes)}
+                                        </span>
+                                      </span>
+                                      <a
+                                        href={a.url ?? "#"}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title="Abrir en otra pestaña"
+                                        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-[#2F6E71]"
+                                      >
+                                        <ExternalLink className="h-4 w-4" />
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => void descargar(a)}
+                                        title="Descargar"
+                                        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-[#2F6E71]"
+                                      >
+                                        <Download className="h-4 w-4" />
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               ))}
@@ -2392,6 +2481,63 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             ) : null}
           </div>
         </aside>
+      ) : null}
+
+      {/* --- Visor de imágenes -------------------------------------------------
+          A pantalla completa y sobre fondo oscuro: una imagen compartida casi
+          siempre es una captura que hay que leer, y en la miniatura del globo
+          no se lee. */}
+      {viendo?.url ? (
+        <div
+          className="fixed inset-0 z-[60] flex flex-col bg-slate-900/90 backdrop-blur-sm"
+          onClick={() => setViendo(null)}
+        >
+          <div
+            className="flex items-center gap-3 px-4 py-3 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13.5px] font-medium">{viendo.nombre}</span>
+              <span className="block text-[11px] text-white/60">
+                {pesoLegible(viendo.size_bytes)}
+              </span>
+            </span>
+            <a
+              href={viendo.url}
+              target="_blank"
+              rel="noreferrer"
+              title="Abrir en otra pestaña"
+              className="rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <ExternalLink className="h-5 w-5" />
+            </a>
+            <button
+              type="button"
+              onClick={() => void descargar(viendo)}
+              title="Descargar"
+              className="rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <Download className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViendo(null)}
+              aria-label="Cerrar"
+              className="rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={viendo.url}
+              alt={viendo.nombre}
+              onClick={(e) => e.stopPropagation()}
+              className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+            />
+          </div>
+        </div>
       ) : null}
 
       {err ? (

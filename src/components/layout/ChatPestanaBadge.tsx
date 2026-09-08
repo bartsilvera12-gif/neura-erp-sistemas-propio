@@ -15,7 +15,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { supabase } from "@/lib/supabase";
 
-/** Cada 60 s como red de seguridad; lo normal es que llegue por realtime. */
+/**
+ * Red de seguridad por si el realtime se cayó sin avisar. Lo normal es que el
+ * número llegue por ahí, no por acá.
+ *
+ * Sólo corre con la pestaña a la vista: una pestaña de fondo no le muestra el
+ * contador a nadie, y una persona con el ERP abierto todo el día en segundo
+ * plano estaría pidiendo mil veces un número que nadie mira.
+ */
 const REFRESCO_MS = 60_000;
 
 /** El chat avisa por acá cuando alguien lee una sala, para bajar el número ya. */
@@ -108,7 +115,9 @@ export default function ChatPestanaBadge() {
     // puede saber preguntando, y hay que preguntar al montar.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void contar();
-    const t = setInterval(() => void contar(), REFRESCO_MS);
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") void contar();
+    }, REFRESCO_MS);
     const alVolver = () => {
       if (document.visibilityState === "visible") void contar();
     };

@@ -86,6 +86,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const urls = await firmarAdjuntos(sb, filas as { adjuntos?: unknown }[]);
 
+    // El visto sale de hasta dónde leyó cada uno, que ya se guarda por sala.
+    // No hace falta una marca por mensaje: alcanza con comparar la fecha del
+    // mensaje contra la última lectura de cada persona.
+    const { data: lectores } = await sb
+      .from("chat_interno_miembros")
+      .select("usuario_id, ultima_lectura_at")
+      .eq("sala_id", salaId);
+    const otros = ((lectores ?? []) as { usuario_id: string; ultima_lectura_at: string | null }[])
+      .filter((l) => l.usuario_id !== usuarioId);
+
     // Los mensajes citados pueden estar fuera de esta página: se traen aparte,
     // sólo con lo que hace falta para pintar la cita.
     const citados = [
@@ -134,6 +144,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               ([emoji, quienes]) => [emoji, quienes.map((u) => nombreDe.get(u) ?? "—")]
             )
           ),
+          // Sólo tiene sentido en lo propio: de los mensajes ajenos, quién
+          // los leyó no es asunto de quien mira.
+          ...(m.usuario_id === usuarioId
+            ? (() => {
+                const leyeron = otros.filter(
+                  (l) => l.ultima_lectura_at && l.ultima_lectura_at >= String(m.created_at)
+                );
+                return {
+                  leido_por: leyeron.length,
+                  destinatarios: otros.length,
+                  leido_por_nombres: leyeron.map((l) => nombreDe.get(l.usuario_id) ?? "—"),
+                };
+              })()
+            : { leido_por: 0, destinatarios: 0, leido_por_nombres: [] as string[] }),
           reacciones_avatares: Object.fromEntries(
             Object.entries((m.reacciones as Record<string, string[]> | null) ?? {}).map(
               ([emoji, quienes]) => [emoji, quienes.map((u) => avatarDe.get(u) ?? null)]

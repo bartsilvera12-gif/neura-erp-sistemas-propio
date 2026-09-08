@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
+  CheckCheck,
   Crown,
   UserMinus,
   UserPlus,
@@ -113,6 +114,10 @@ type Mensaje = {
   reacciones_nombres: Record<string, string[]>;
   /** Y con cara: en la pastilla se ve quién reaccionó sin abrir nada. */
   reacciones_avatares: Record<string, (string | null)[]>;
+  /** El visto, sólo en lo propio: cuántos de cuántos ya lo leyeron. */
+  leido_por: number;
+  destinatarios: number;
+  leido_por_nombres: string[];
   menciones: string[];
   /** Pintado al instante, todavia sin respuesta del servidor. */
   pendiente?: boolean;
@@ -256,6 +261,45 @@ function pesoLegible(bytes: number): string {
  * para volver. Misma lógica, otro esqueleto: duplicar el componente sería
  * duplicar también cada arreglo futuro.
  */
+/**
+ * El visto de un mensaje propio.
+ *
+ * Un tilde = salió. Dos grises = alguien lo leyó, pero no todos. Dos en color
+ * = lo leyeron todos. En un directo "todos" es una sola persona, así que se
+ * comporta igual que el de siempre; en un grupo, el estado intermedio es la
+ * información que importa, y por eso no se colapsa a leído/no leído.
+ */
+function Visto({
+  leidoPor,
+  destinatarios,
+  nombres,
+}: {
+  leidoPor: number;
+  destinatarios: number;
+  nombres: string[];
+}) {
+  if (destinatarios === 0) return null;
+  const todos = leidoPor >= destinatarios;
+  const titulo =
+    leidoPor === 0
+      ? "Todavía no lo leyó nadie"
+      : `Leído por ${nombres.map((n) => nombreCorto(n)).join(", ")}${
+          todos ? "" : ` · faltan ${destinatarios - leidoPor}`
+        }`;
+  return (
+    <span title={titulo} className="inline-flex translate-y-[2px] align-baseline">
+      {leidoPor === 0 ? (
+        <Check className="h-3.5 w-3.5 text-slate-400" strokeWidth={2.5} />
+      ) : (
+        <CheckCheck
+          className={`h-3.5 w-3.5 ${todos ? "text-[#2F9BD8]" : "text-slate-400"}`}
+          strokeWidth={2.5}
+        />
+      )}
+    </span>
+  );
+}
+
 export default function ChatInternoClient({ mobile = false }: { mobile?: boolean } = {}) {
   const [salas, setSalas] = useState<Sala[]>([]);
   const [salaId, setSalaId] = useState<string | null>(null);
@@ -472,6 +516,19 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           void cargarMensajes(salaId, undefined, true);
           void cargarSalas();
         }
+      )
+      // Cuando el otro lee, el visto tiene que ponerse en azul solo. La lectura
+      // se guarda en `miembros` y no en el mensaje, así que el aviso viene por
+      // ahí; se vuelven a pedir los mensajes en silencio para recalcularlo.
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "neura",
+          table: "chat_interno_miembros",
+          filter: `sala_id=eq.${salaId}`,
+        },
+        () => void cargarMensajes(salaId, undefined, true)
       )
       .subscribe();
     return () => {
@@ -691,6 +748,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       reacciones: {},
       reacciones_nombres: {},
       reacciones_avatares: {},
+      leido_por: 0,
+      destinatarios: 0,
+      leido_por_nombres: [],
       menciones,
       pendiente: true,
     };
@@ -1529,6 +1589,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                     {m.pendiente
                                       ? "enviando…"
                                       : `${m.editado_at ? "editado · " : ""}${hora(m.created_at)}`}
+                                    {" "}
+                                    {m.propio && !m.pendiente ? (
+                                      <Visto
+                                        leidoPor={m.leido_por}
+                                        destinatarios={m.destinatarios}
+                                        nombres={m.leido_por_nombres}
+                                      />
+                                    ) : null}
                                   </span>
                                   {m.texto}
                                 </p>
@@ -1568,6 +1636,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             <div className="mt-0.5 text-right text-[11px] text-slate-400">
                               {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
                               {m.pendiente ? "" : hora(m.created_at)}
+                              {" "}
+                                    {m.propio && !m.pendiente ? (
+                                      <Visto
+                                        leidoPor={m.leido_por}
+                                        destinatarios={m.destinatarios}
+                                        nombres={m.leido_por_nombres}
+                                      />
+                                    ) : null}
                             </div>
                           ) : null}
 

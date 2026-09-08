@@ -67,15 +67,35 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         ),
       ]),
     ].filter((x): x is string => typeof x === "string" && !!x);
-    const { data: usuarios } = ids.length
-      ? await catalog.from("usuarios").select("id, nombre, nombre_chat, avatar_path").in("id", ids)
-      : { data: [] as {
-          id: string;
-          nombre: string | null;
-          nombre_chat: string | null;
-          avatar_path: string | null;
-        }[] };
-    const personas = (usuarios ?? []) as {
+    // Lo que sigue no depende entre sí: en fila eran cuatro viajes a la base
+    // antes de contestar, y eso es lo que se siente al cambiar de conversación.
+    // Los citados van aparte porque su lista sale de los mensajes ya traídos.
+    const citados = [
+      ...new Set(filas.map((m) => m.responde_a).filter((x): x is string => typeof x === "string")),
+    ];
+
+    const [usuariosRes, urls, lectoresRes, originalesRes] = await Promise.all([
+      ids.length
+        ? catalog.from("usuarios").select("id, nombre, nombre_chat, avatar_path").in("id", ids)
+        : Promise.resolve({ data: [] as unknown[] }),
+      firmarAdjuntos(sb, filas as { adjuntos?: unknown }[]),
+      // El visto sale de hasta dónde leyó cada uno, que ya se guarda por sala.
+      // No hace falta una marca por mensaje: alcanza con comparar la fecha del
+      // mensaje contra la última lectura de cada persona.
+      sb
+        .from("chat_interno_miembros")
+        .select("usuario_id, ultima_lectura_at, escribiendo_at")
+        .eq("sala_id", salaId),
+      // Los mensajes citados pueden estar fuera de esta página.
+      citados.length
+        ? sb
+            .from("chat_interno_mensajes")
+            .select("id, usuario_id, texto, eliminado_at")
+            .in("id", citados)
+        : Promise.resolve({ data: [] as unknown[] }),
+    ]);
+
+    const personas = (usuariosRes.data ?? []) as {
       id: string;
       nombre: string | null;
       nombre_chat: string | null;
@@ -84,16 +104,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const nombreDe = new Map(personas.map((u) => [u.id, nombreVisible(u)]));
     const avatarDe = await firmarAvatares(sb, personas);
 
-    const urls = await firmarAdjuntos(sb, filas as { adjuntos?: unknown }[]);
-
-    // El visto sale de hasta dónde leyó cada uno, que ya se guarda por sala.
-    // No hace falta una marca por mensaje: alcanza con comparar la fecha del
-    // mensaje contra la última lectura de cada persona.
-    const { data: lectores } = await sb
-      .from("chat_interno_miembros")
-      .select("usuario_id, ultima_lectura_at, escribiendo_at")
-      .eq("sala_id", salaId);
-    const otros = ((lectores ?? []) as {
+    const otros = ((lectoresRes.data ?? []) as {
       usuario_id: string;
       ultima_lectura_at: string | null;
       escribiendo_at: string | null;
@@ -104,19 +115,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const desde = new Date(Date.now() - 5000).toISOString();
     const escribiendo = otros
       .filter((l) => l.escribiendo_at && l.escribiendo_at > desde)
-      .map((l) => nombreDe.get(l.usuario_id) ?? "—");
+      // Si esa persona nunca escribió en esta página, su nombre no está en el
+      // lote: se omite en vez de anunciar que "—" está escribiendo.
+      .map((l) => nombreDe.get(l.usuario_id))
+      .filter((n): n is string => !!n);
 
-    // Los mensajes citados pueden estar fuera de esta página: se traen aparte,
-    // sólo con lo que hace falta para pintar la cita.
-    const citados = [
-      ...new Set(filas.map((m) => m.responde_a).filter((x): x is string => typeof x === "string")),
-    ];
-    const { data: originales } = citados.length
-      ? await sb
-          .from("chat_interno_mensajes")
-          .select("id, usuario_id, texto, eliminado_at")
-          .in("id", citados)
-      : { data: [] as Record<string, unknown>[] };
+    const originales = originalesRes.data;
     const citaDe = new Map(
       ((originales ?? []) as Record<string, unknown>[]).map((o) => [
         String(o.id),

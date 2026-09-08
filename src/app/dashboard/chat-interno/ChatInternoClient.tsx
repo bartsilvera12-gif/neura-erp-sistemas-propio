@@ -526,6 +526,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const buscaRef = useRef<HTMLInputElement>(null);
   /** Temporizador del buscador: se espera a que deje de tipear. */
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Contador de pedidos de mensajes, para descartar respuestas atrasadas. */
+  const pedidoRef = useRef(0);
   /** Mi perfil: el nombre y la foto que ven los demás. */
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const fotoRef = useRef<HTMLInputElement>(null);
@@ -608,6 +610,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    */
   const cargarMensajes = useCallback(async (id: string, q?: string, silencioso = false) => {
     if (!silencioso) setCargandoMsgs(true);
+    // Al cambiar rápido de conversación, la respuesta de la anterior puede
+    // llegar después que la de la nueva y pisarla. Se descarta la que ya no
+    // corresponde a la sala abierta.
+    const miPedido = ++pedidoRef.current;
+    const vigente = () => miPedido === pedidoRef.current;
     try {
       const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
       const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/mensajes${qs}`, {
@@ -616,6 +623,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       const j = (await r.json().catch(() => ({}))) as {
         data?: { mensajes?: Mensaje[]; escribiendo?: string[] };
       };
+      if (!vigente()) return;
       const llegaron = j?.data?.mensajes ?? [];
       // Buscar es otra vista: ahí el cartel de "escribiendo" no viene al caso.
       if (!q) {
@@ -649,7 +657,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         setSalas((prev) => prev.map((s) => (s.id === id ? { ...s, no_leidos: 0 } : s)));
       }
     } finally {
-      if (!silencioso) setCargandoMsgs(false);
+      if (!silencioso && vigente()) setCargandoMsgs(false);
     }
   }, []);
 
@@ -699,8 +707,15 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   }, [acceso]);
 
   useEffect(() => {
-    if (salaId) void cargarMensajes(salaId);
-    else setMensajes([]);
+    // Se vacía ANTES de pedir. Si no, la cabecera ya muestra a la persona
+    // nueva mientras abajo siguen los mensajes de la conversación anterior:
+    // durante ese rato la pantalla está diciendo algo que no es cierto.
+    setMensajes([]);
+    setEscribiendo({});
+    if (salaId) {
+      setCargandoMsgs(true);
+      void cargarMensajes(salaId);
+    }
     setCitando(null);
     setEditando(null);
     setBusca("");
@@ -1941,7 +1956,32 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               style={ESTILO_FONDO}
             >
               {cargandoMsgs && mensajes.length === 0 ? (
-                <p className="text-center text-[13px] text-slate-500">Cargando…</p>
+                // Globos de mentira mientras llega lo de verdad: dice "acá va
+                // una conversación, esperá" sin dejar la pantalla en blanco ni
+                // mostrar la anterior.
+                <div className="space-y-3 py-2">
+                  {[
+                    { propio: false, ancho: "w-48" },
+                    { propio: false, ancho: "w-64" },
+                    { propio: true, ancho: "w-40" },
+                    { propio: false, ancho: "w-56" },
+                    { propio: true, ancho: "w-52" },
+                  ].map((f, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-end gap-2 ${f.propio ? "justify-end" : ""}`}
+                    >
+                      {!f.propio ? (
+                        <span className="h-[34px] w-[34px] shrink-0 animate-pulse rounded-full bg-white/70" />
+                      ) : null}
+                      <span
+                        className={`h-9 animate-pulse rounded-xl ${f.ancho} ${
+                          f.propio ? "bg-[#D8EBDA]" : "bg-white/80"
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
               ) : mensajes.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center px-8 text-center">
                   <MessagesSquare className="h-16 w-16 text-[#4FAEB2]/35" strokeWidth={1.2} />

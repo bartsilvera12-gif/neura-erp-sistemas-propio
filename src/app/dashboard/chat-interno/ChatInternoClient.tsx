@@ -1269,7 +1269,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           </span>
                         </div>
                       ) : null}
-                      <div className={`group flex gap-2 ${m.propio ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`group relative flex gap-2 ${
+                          m.propio ? "justify-end" : "justify-start"
+                        }`}
+                      >
                         {/* La cara va por fuera del globo y sólo en el último de
                             una tanda: repetirla en cada renglón parte la lectura
                             de una misma intervención. En lo propio no va: ya se
@@ -1438,9 +1442,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         </div>
 
                         {/* Acciones: aparecen al pasar el mouse, para no
-                            competir con el texto en reposo. */}
+                            competir con el texto en reposo.
+
+                            En los mensajes propios van ANTES del globo: aunque
+                            estén invisibles ocupan su ancho, y puestas después
+                            empujaban el globo hacia adentro — nunca llegaba al
+                            borde derecho. */}
                         {!m.eliminado && !enBusqueda && !m.pendiente ? (
-                          <div className="flex items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100">
+                          <div
+                            className={`flex shrink-0 items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100 ${
+                              m.propio ? "order-first" : ""
+                            }`}
+                          >
                             <div className="flex items-center rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow-sm">
                               {EMOJIS.map((e) => (
                                 <button

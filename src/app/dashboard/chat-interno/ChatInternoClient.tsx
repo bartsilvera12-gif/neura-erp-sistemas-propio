@@ -202,21 +202,39 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
  * que el blanco de los globos se lea como blanco. Va en un `data:` URI para no
  * sumar un pedido de red por una textura.
  */
-const PATRON_FONDO =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%232F6E71' stroke-opacity='0.09' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 18h20a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H20l-6 5v-5h-4a3 3 0 0 1-3-3V21a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='72' cy='24' r='10'/%3E%3Cpath d='M72 18v6l4 3'/%3E%3Cpath d='M100 14h14v18h-14z'/%3E%3Cpath d='M103 20h8M103 25h5'/%3E%3Cpath d='M14 62h16v16H14z'/%3E%3Cpath d='M18 68h8M18 73h5'/%3E%3Cpath d='M50 60h18a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-7l-5 4v-4h-6a3 3 0 0 1-3-3V63a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='100' cy='70' r='9'/%3E%3Cpath d='M96 70h8M100 66v8'/%3E%3Cpath d='M12 100h16M12 106h10'/%3E%3Cpath d='M46 98h16v16H46z'/%3E%3Cpath d='M50 104h8'/%3E%3Ccircle cx='90' cy='106' r='8'/%3E%3Cpath d='M86 106l3 3 5-6'/%3E%3C/g%3E%3C/svg%3E\")";
+/**
+ * Trama del fondo: una retícula de puntos muy finos.
+ *
+ * Antes eran iconitos de chat. Cumplían, pero un dibujo reconocible pide ser
+ * mirado, y el fondo de una conversación no es para mirarlo: es para que el
+ * blanco de los globos tenga contra qué apoyarse. Un punto no representa nada,
+ * así que da textura sin robar atención.
+ */
+const TRAMA_PUNTOS =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Ccircle cx='1.5' cy='1.5' r='1.1' fill='%232F6E71' fill-opacity='0.13'/%3E%3C/svg%3E\")";
 
 /**
- * El fondo del chat: degradado de marca con el patrón calado en blanco encima.
+ * El fondo completo: dos halos de marca muy tenues sobre un gris cálido, con
+ * la trama encima.
  *
- * No es decoración gratuita — un plano de color uniforme deja los globos
- * flotando sin apoyo, y el patrón le da al blanco de los globos algo contra
- * qué leerse. Va en un `data:` URI para no sumar un pedido de red por textura.
+ * Los halos son lo que evita que se vea plano —le dan profundidad sin dibujar
+ * nada— y van al 8 %, por debajo del umbral en que un fondo empieza a competir
+ * con lo que tiene delante. Todo va en `data:` URI y gradientes: ni un pedido
+ * de red por la decoración.
+ *
+ * El contenedor tiene scroll, así que el fondo queda quieto mientras los
+ * mensajes pasan por encima: si se moviera con ellos, marearía.
  */
 const ESTILO_FONDO: React.CSSProperties = {
-  backgroundColor: "#EDF5F5",
-  backgroundImage: PATRON_FONDO,
-  backgroundRepeat: "repeat",
-  backgroundSize: "120px 120px",
+  backgroundColor: "#F1F5F4",
+  backgroundImage: [
+    "radial-gradient(70% 55% at 15% 10%, rgba(79,174,178,0.16), rgba(79,174,178,0) 70%)",
+    "radial-gradient(60% 50% at 88% 85%, rgba(47,110,113,0.13), rgba(47,110,113,0) 72%)",
+    TRAMA_PUNTOS,
+    "linear-gradient(160deg, #F6F9F8 0%, #EFF4F3 55%, #E9F0EF 100%)",
+  ].join(", "),
+  backgroundRepeat: "no-repeat, no-repeat, repeat, no-repeat",
+  backgroundSize: "auto, auto, 22px 22px, cover",
 };
 
 /** Verde muy claro para lo propio, igual que en los chats de siempre. */
@@ -1680,12 +1698,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       {/* --- Bandeja ---------------------------------------------------------- */}
       <aside
         className={`${verBandeja ? "flex" : "hidden"} ${
-          mobile ? "w-full" : "w-72 shrink-0"
-        } flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white`}
+          mobile ? "w-full" : "w-[19rem] shrink-0"
+        } flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]`}
       >
         {/* Mi perfil. La foto se cambia acá porque acá es donde uno se ve
             como lo ven los demás. */}
-        <div className="flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5">
+        <div className="flex items-center gap-2.5 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-3 py-2.5">
           <button
             type="button"
             onClick={() => fotoRef.current?.click()}
@@ -1761,8 +1779,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
         {/* Un solo campo para las dos cosas: encontrar una conversación que ya
             existe, o a la persona con la que todavía no hablé. */}
-        <div className="border-b border-slate-100 px-3 py-2">
-          <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 py-1.5 ring-1 ring-transparent focus-within:ring-[#4FAEB2]/40">
+        <div className="border-b border-[#4FAEB2]/12 px-3 py-2">
+          <div className="flex items-center gap-1.5 rounded-xl bg-[#4FAEB2]/8 px-2.5 py-1.5 ring-1 ring-transparent focus-within:bg-white focus-within:ring-[#4FAEB2]/40">
             <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <input
               value={filtroBandeja}
@@ -1792,8 +1810,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   key={s.id}
                   type="button"
                   onClick={() => setSalaId(s.id)}
-                  className={`flex w-full items-center gap-3 border-b border-slate-100 px-3.5 py-3 text-left transition-colors ${
-                    activa ? "bg-[#4FAEB2] text-white" : "hover:bg-slate-50"
+                  className={`flex w-full items-center gap-3 border-b border-[#4FAEB2]/10 px-3.5 py-3 text-left transition-colors ${
+                    activa
+                      ? "bg-gradient-to-r from-[#4FAEB2] to-[#3E9B9F] text-white"
+                      : "hover:bg-[#4FAEB2]/8"
                   }`}
                 >
                   <Avatar
@@ -1863,7 +1883,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   type="button"
                   onClick={() => void abrirDirecto(u)}
                   disabled={abriendoDirecto === u.id}
-                  className="flex w-full items-center gap-3 border-b border-slate-100 px-3.5 py-3 text-left transition-colors hover:bg-slate-50 disabled:opacity-50"
+                  className="flex w-full items-center gap-3 border-b border-[#4FAEB2]/10 px-3.5 py-3 text-left transition-colors hover:bg-[#4FAEB2]/8 disabled:opacity-50"
                 >
                   <Avatar nombre={u.nombre} url={u.avatar_url} size={46} />
                   <span className="min-w-0 flex-1">
@@ -1892,7 +1912,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
       {/* --- Conversación ------------------------------------------------------ */}
       <section
-        className={`${verConversacion ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white`}
+        className={`${verConversacion ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]`}
       >
         {!salaActual ? (
           <div
@@ -1910,7 +1930,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           </div>
         ) : (
           <>
-            <header className="flex items-center gap-3 border-b border-slate-100 px-3 py-2.5 sm:px-4">
+            <header className="flex items-center gap-3 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-3 py-2.5 sm:px-4">
               {mobile ? (
                 <button
                   type="button"
@@ -2331,7 +2351,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             </div>
 
             {/* --- Redacción ---------------------------------------------------- */}
-            <div className="border-t border-slate-100 bg-white px-3 py-3 sm:px-4">
+            <div className="border-t border-[#4FAEB2]/15 bg-white px-3 py-3 sm:px-4">
               {citando ? (
                 <div className="mb-2 flex items-start gap-2 rounded-lg border-l-2 border-[#4FAEB2] bg-slate-50 px-2.5 py-1.5">
                   <div className="min-w-0 flex-1">
@@ -2370,7 +2390,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               {/* Una tarjeta grande con el clip a la izquierda y las acciones
                   abajo a la derecha: se lee como una hoja donde escribir, no
                   como una barra de controles. */}
-              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-[0_1px_4px_rgba(15,23,42,0.07)] transition-colors focus-within:border-[#4FAEB2]">
+              <div className="rounded-2xl border border-[#4FAEB2]/25 bg-white px-3 py-2.5 shadow-[0_1px_5px_rgba(47,110,113,0.10)] transition-colors focus-within:border-[#4FAEB2] focus-within:shadow-[0_2px_10px_rgba(79,174,178,0.18)]">
                 <div className="flex items-start gap-2">
                 <button
                   type="button"
@@ -2502,11 +2522,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           que no hay simplemente no ocupa lugar. */}
       {panel && salaActual ? (
         <aside
-          className={`flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 ${
+          className={`flex flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-[#F4F8F8] shadow-[0_2px_12px_rgba(47,110,113,0.08)] ${
             mobile ? "absolute inset-0 z-20" : "ml-3 w-80 shrink-0"
           }`}
         >
-          <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
+          <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-white px-3 py-3">
             <button
               type="button"
               onClick={() => setPanel(null)}

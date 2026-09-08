@@ -17,18 +17,28 @@ function fecha(sp: URLSearchParams, key: string): string | null {
 /**
  * Filtros de pantalla.
  *
- * `pm_id` elige la cartera a mirar; vacío = todas. Quién puede elegir lo decide
- * el SERVIDOR: sólo quien tiene permiso de ver todo (administración) puede
- * pedir la cartera de otra persona. A un PM se le fuerza la propia, pida lo que
- * pida — si el id del query mandara, bastaría cambiar la URL para ver la
- * cartera ajena.
+ * `pm_id` elige la cartera a mirar. Tres valores posibles, y los tres
+ * significan cosas distintas:
+ *   · ausente      — todavía no eligió: se usa `pmPorDefecto` (su propia
+ *                    cartera), para que al entrar vea la suya y no un promedio.
+ *   · "todas"      — eligió ver todas, dicho explícitamente.
+ *   · un id        — esa cartera.
+ *
+ * Sin el "todas" explícito no habría forma de distinguir "quiero ver todo" de
+ * "todavía no elegí", y una de las dos quedaría sin poder expresarse.
+ *
+ * Quién puede elegir lo decide el SERVIDOR: a quien no tiene permiso se le
+ * fuerza la propia, pida lo que pida — si el id del query mandara, bastaría
+ * cambiar la URL para ver la cartera ajena.
  */
 export function leerFiltros(
   request: Request,
-  ctx: { usuarioId: string; puedeVerTodo: boolean }
+  ctx: { usuarioId: string; puedeVerTodo: boolean; pmPorDefecto?: string | null }
 ): Filtros {
   const sp = new URL(request.url).searchParams;
-  const pedido = texto(sp, "pm_id");
+  const crudo = texto(sp, "pm_id");
+  const pedido =
+    crudo === null ? (ctx.pmPorDefecto ?? null) : crudo === "todas" ? null : crudo;
   return {
     desde: fecha(sp, "desde"),
     hasta: fecha(sp, "hasta"),

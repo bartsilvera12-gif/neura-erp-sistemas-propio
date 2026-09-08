@@ -76,6 +76,7 @@ type Data = {
   wip_limite: number;
   puede_ver_todo: boolean;
   pm_id: string | null;
+  mi_pm_id: string | null;
   atencion: {
     id: string;
     titulo: string;
@@ -212,13 +213,14 @@ function hoyIso(): string {
 export default function DashboardPmClient() {
   const [hasta, setHasta] = useState(hoyIso);
   /**
-   * Cartera a mirar. Vacío = todas.
+   * Cartera a mirar. `null` = todavía no eligió, y ahí manda el servidor:
+   * a un PM le devuelve la suya, para que al entrar vea la que responde y no
+   * un promedio de las dos. Una vez que elige, `""` significa "ambas".
    *
-   * Antes esto era un interruptor "Mis proyectos / Todos" que filtraba por el
-   * usuario de la sesión, y para cualquiera que no fuera PM el tablero salía
-   * vacío: administración no tiene cartera propia. Ahora se elige la persona.
+   * La distinción importa: sin ella, "no elegí" y "quiero ver todo" serían el
+   * mismo valor y una de las dos no se podría expresar.
    */
-  const [pmId, setPmId] = useState("");
+  const [pmId, setPmId] = useState<string | null>(null);
   const [fTipo, setFTipo] = useState("");
   const [fEstado, setFEstado] = useState("");
   const [fTecnico, setFTecnico] = useState("");
@@ -233,7 +235,8 @@ export default function DashboardPmClient() {
     try {
       const qs = new URLSearchParams();
       if (hasta) qs.set("hasta", hasta);
-      if (pmId) qs.set("pm_id", pmId);
+      // Mientras no haya elegido no se manda nada y decide el servidor.
+      if (pmId !== null) qs.set("pm_id", pmId || "todas");
       if (fTipo) qs.set("tipo_id", fTipo);
       if (fEstado) qs.set("estado_id", fEstado);
       if (fTecnico) qs.set("responsable_tecnico_id", fTecnico);
@@ -261,11 +264,14 @@ export default function DashboardPmClient() {
   const pms = useMemo(() => capitular(data?.opciones.pms ?? []), [data?.opciones.pms]);
   const tecnicos = useMemo(() => capitular(data?.opciones.tecnicos ?? []), [data?.opciones.tecnicos]);
 
+  /** Lo que hay que mostrar marcado: lo elegido, o lo que aplicó el servidor. */
+  const pmSeleccionado = pmId ?? data?.pm_id ?? "";
+
   /** Qué cartera se está mirando, para decirlo arriba y no sólo en el filtro. */
   const carteraLabel = useMemo(() => {
-    if (!pmId) return "Ambas carteras";
-    return pms.find((p) => p.id === pmId)?.nombre ?? "Cartera";
-  }, [pmId, pms]);
+    if (!pmSeleccionado) return "Ambas carteras";
+    return pms.find((p) => p.id === pmSeleccionado)?.nombre ?? "Cartera";
+  }, [pmSeleccionado, pms]);
 
   const vacio = !!data && data.atencion.length === 0 && data.wip.length === 0;
 
@@ -308,9 +314,10 @@ export default function DashboardPmClient() {
           La cartera sale de la asignación real: el PM del proyecto, y si no
           tiene, el de la ficha de su cliente.
 
-          A quien no puede ver todo NO se le ofrece el selector: el servidor le
-          devuelve su cartera elija lo que elija, y un selector que no cambia
-          nada se lee como que el tablero no actualiza.
+          Un PM entra viendo la suya —marcada, para que sepa cuál está
+          mirando— y puede cambiar a la de la otra o a ambas. A quien no puede
+          elegir no se le ofrece el selector: un selector que no cambia nada se
+          lee como que el tablero no actualiza.
         */}
         {data && !data.puede_ver_todo ? (
           <div className="flex flex-col justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2">
@@ -324,7 +331,7 @@ export default function DashboardPmClient() {
         ) : (
           <PillSelect
             label="Cartera"
-            value={pmId}
+            value={pmSeleccionado}
             onChange={setPmId}
             options={pms}
             placeholder="Ambas"

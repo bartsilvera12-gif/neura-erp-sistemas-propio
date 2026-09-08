@@ -25,16 +25,20 @@ export async function GET(request: Request) {
     }
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
-    // Un PM que no es admin ve su cartera y nada más, pida lo que pida.
+    // Un PM puede mirar la cartera de otra: se trabaja de a dos y hace falta
+    // ver el conjunto. Al entrar arranca en la propia, que es la que responde.
     const filtros = leerFiltros(request, {
       usuarioId: perfil.usuarioId,
-      puedeVerTodo: perfil.esAdmin,
+      puedeVerTodo: perfil.esAdmin || perfil.esPm,
+      pmPorDefecto: perfil.esPm ? perfil.usuarioId : null,
     });
     const ds = await cargarDataset(sb, auth.empresaId, filtros);
     return NextResponse.json(
       successResponse({
         ...construirDashboardPm(ds),
-        puede_ver_todo: perfil.esAdmin,
+        puede_ver_todo: perfil.esAdmin || perfil.esPm,
+        // Mi propia cartera, para que el selector arranque marcándola.
+        mi_pm_id: perfil.esPm ? perfil.usuarioId : null,
         // La cartera que el servidor terminó aplicando, que no siempre es la
         // que se pidió: a un PM se le fuerza la propia.
         pm_id: filtros.pmId,

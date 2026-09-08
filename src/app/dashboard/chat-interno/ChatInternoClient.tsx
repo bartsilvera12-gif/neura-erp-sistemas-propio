@@ -126,7 +126,7 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
  * sumar un pedido de red por una textura.
  */
 const PATRON_FONDO =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.30' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 18h20a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H20l-6 5v-5h-4a3 3 0 0 1-3-3V21a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='72' cy='24' r='10'/%3E%3Cpath d='M72 18v6l4 3'/%3E%3Cpath d='M100 14h14v18h-14z'/%3E%3Cpath d='M103 20h8M103 25h5'/%3E%3Cpath d='M14 62h16v16H14z'/%3E%3Cpath d='M18 68h8M18 73h5'/%3E%3Cpath d='M50 60h18a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-7l-5 4v-4h-6a3 3 0 0 1-3-3V63a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='100' cy='70' r='9'/%3E%3Cpath d='M96 70h8M100 66v8'/%3E%3Cpath d='M12 100h16M12 106h10'/%3E%3Cpath d='M46 98h16v16H46z'/%3E%3Cpath d='M50 104h8'/%3E%3Ccircle cx='90' cy='106' r='8'/%3E%3Cpath d='M86 106l3 3 5-6'/%3E%3C/g%3E%3C/svg%3E\")";
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%232F6E71' stroke-opacity='0.09' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 18h20a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H20l-6 5v-5h-4a3 3 0 0 1-3-3V21a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='72' cy='24' r='10'/%3E%3Cpath d='M72 18v6l4 3'/%3E%3Cpath d='M100 14h14v18h-14z'/%3E%3Cpath d='M103 20h8M103 25h5'/%3E%3Cpath d='M14 62h16v16H14z'/%3E%3Cpath d='M18 68h8M18 73h5'/%3E%3Cpath d='M50 60h18a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-7l-5 4v-4h-6a3 3 0 0 1-3-3V63a3 3 0 0 1 3-3z'/%3E%3Ccircle cx='100' cy='70' r='9'/%3E%3Cpath d='M96 70h8M100 66v8'/%3E%3Cpath d='M12 100h16M12 106h10'/%3E%3Cpath d='M46 98h16v16H46z'/%3E%3Cpath d='M50 104h8'/%3E%3Ccircle cx='90' cy='106' r='8'/%3E%3Cpath d='M86 106l3 3 5-6'/%3E%3C/g%3E%3C/svg%3E\")";
 
 /**
  * El fondo del chat: degradado de marca con el patrón calado en blanco encima.
@@ -136,15 +136,14 @@ const PATRON_FONDO =
  * qué leerse. Va en un `data:` URI para no sumar un pedido de red por textura.
  */
 const ESTILO_FONDO: React.CSSProperties = {
-  backgroundColor: "#4FAEB2",
-  backgroundImage: `${PATRON_FONDO}, linear-gradient(160deg, #63BFC2 0%, #4FAEB2 45%, #3E9B9F 100%)`,
-  backgroundRepeat: "repeat, no-repeat",
-  backgroundSize: "120px 120px, cover",
-  backgroundAttachment: "local, local",
+  backgroundColor: "#EDF5F5",
+  backgroundImage: PATRON_FONDO,
+  backgroundRepeat: "repeat",
+  backgroundSize: "120px 120px",
 };
 
 /** Verde muy claro para lo propio, igual que en los chats de siempre. */
-const BURBUJA_PROPIA = "#E4F4E6";
+const BURBUJA_PROPIA = "#E3F3E5";
 
 type UsuarioOpcion = { id: string; nombre: string; area: string; avatar_url: string | null };
 
@@ -182,8 +181,10 @@ function Avatar({
   }
   return (
     <span
-      style={{ width: px, height: px, background: `${c}22`, color: c, fontSize: size * 0.34 }}
-      className="flex shrink-0 items-center justify-center rounded-full font-bold"
+      // Color pleno y no una base translúcida: sobre el patrón del fondo, un
+      // avatar semitransparente se lava y deja de leerse como una persona.
+      style={{ width: px, height: px, background: c, fontSize: size * 0.36 }}
+      className="flex shrink-0 items-center justify-center rounded-full font-bold text-white"
     >
       {icono ?? inicialesNombre(nombre)}
     </span>
@@ -378,6 +379,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     window.addEventListener("resize", medir);
     return () => window.removeEventListener("resize", medir);
   }, [acceso]);
+
+  const yaElegi = useRef(false);
+  useEffect(() => {
+    if (mobile || yaElegi.current || salaId || salas.length === 0) return;
+    yaElegi.current = true;
+    setSalaId(salas[0].id);
+  }, [salas, salaId, mobile]);
 
   // Mi perfil y el directorio de la empresa: se cargan una vez.
   useEffect(() => {
@@ -1107,8 +1115,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         className={`${verConversacion ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white`}
       >
         {!salaActual ? (
-          <div className="flex flex-1 items-center justify-center px-6 text-center text-[13px] text-slate-400">
-            Elegí una conversación o creá una nueva.
+          <div
+            className="flex flex-1 flex-col items-center justify-center px-8 text-center"
+            style={ESTILO_FONDO}
+          >
+            <MessagesSquare className="h-16 w-16 text-[#4FAEB2]/35" strokeWidth={1.2} />
+            <p className="mt-3 text-[15px] text-slate-500">
+              {cargandoSalas
+                ? "Cargando…"
+                : salas.length === 0
+                  ? "Buscá a alguien arriba para empezar a hablarle."
+                  : "Elegí una conversación."}
+            </p>
           </div>
         ) : (
           <>
@@ -1224,11 +1242,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               style={ESTILO_FONDO}
             >
               {cargandoMsgs && mensajes.length === 0 ? (
-                <p className="text-center text-[13px] text-white/85">Cargando…</p>
+                <p className="text-center text-[13px] text-slate-500">Cargando…</p>
               ) : mensajes.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-                  <MessagesSquare className="h-20 w-20 text-white/45" strokeWidth={1.2} />
-                  <p className="mt-4 max-w-sm text-[17px] leading-relaxed text-white">
+                  <MessagesSquare className="h-16 w-16 text-[#4FAEB2]/35" strokeWidth={1.2} />
+                  <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-slate-500">
                     {enBusqueda
                       ? "Ningún mensaje coincide con la búsqueda."
                       : "Escribí algo, mandá un archivo o grabá un audio."}
@@ -1246,26 +1264,21 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     <div key={m.id}>
                       {nuevoDia ? (
                         <div className="my-4 flex justify-center">
-                          <span className="rounded-full bg-slate-900/25 px-3.5 py-1 text-[12px] font-medium text-white backdrop-blur-sm">
+                          <span className="rounded-full bg-white px-3.5 py-1 text-[12px] font-medium text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
                             {diaLabel(m.created_at)}
                           </span>
                         </div>
                       ) : null}
-                      {!seguido && !m.propio && salaActual.tipo === "grupo" ? (
-                        <div
-                          className="mb-0.5 ml-[46px] text-[13px] font-semibold"
-                          style={{ color: c }}
-                        >
-                          {nombreCapitular(m.autor)}
-                        </div>
-                      ) : null}
                       <div className={`group flex gap-2 ${m.propio ? "justify-end" : "justify-start"}`}>
-                        {/* La cara va abajo y por fuera del globo, y sólo en el
-                            último de una tanda: repetirla en cada renglón parte
-                            la lectura de una misma intervención. */}
-                        <span className={`self-end ${seguido ? "invisible" : ""}`}>
-                          <Avatar nombre={m.autor} url={m.autor_avatar} size={38} />
-                        </span>
+                        {/* La cara va por fuera del globo y sólo en el último de
+                            una tanda: repetirla en cada renglón parte la lectura
+                            de una misma intervención. En lo propio no va: ya se
+                            sabe de quién es, y ocupa lugar. */}
+                        {!m.propio ? (
+                          <span className={`self-end ${seguido ? "invisible" : ""}`}>
+                            <Avatar nombre={m.autor} url={m.autor_avatar} size={34} />
+                          </span>
+                        ) : null}
                         <div
                           style={m.propio ? { background: BURBUJA_PROPIA } : undefined}
                           className={`relative max-w-[78%] rounded-xl px-3.5 py-2 text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
@@ -1273,6 +1286,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           } ${m.propio ? "" : "bg-white"}`}
                         >
 
+                          {/* El nombre va DENTRO del globo: afuera, sobre el
+                              fondo, los colores claros de la paleta no llegan a
+                              contrastar y el renglón se pierde. */}
+                          {!seguido && !m.propio && salaActual.tipo === "grupo" ? (
+                            <div className="mb-0.5 text-[13px] font-semibold" style={{ color: c }}>
+                              {nombreCapitular(m.autor)}
+                            </div>
+                          ) : null}
                           {m.cita ? (
                             <div className="mb-1.5 border-l-[3px] border-[#4FAEB2] pl-2.5 text-[13px]">
                               <span className="block font-semibold text-[#2F6E71]">

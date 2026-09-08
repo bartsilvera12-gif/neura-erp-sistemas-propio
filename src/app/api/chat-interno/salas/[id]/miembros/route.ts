@@ -65,11 +65,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 }
 
 /**
- * POST — agrega o saca gente del grupo.
+ * POST — agrega, saca, o cambia el rol de la gente del grupo.
  *
- * Agregar y sacar a otros es de un admin de la sala. Sacarse a UNO MISMO es
- * salir del grupo, y eso puede hacerlo cualquiera: quedarse encerrado en una
- * conversación no es una regla, es un encierro.
+ * Agregar, sacar a otros y nombrar administradores es de un admin de la sala.
+ * Sacarse a UNO MISMO es salir del grupo, y eso puede hacerlo cualquiera:
+ * quedarse encerrado en una conversación no es una regla, es un encierro.
  *
  * Y sólo en grupos: una conversación directa es entre dos personas por
  * definición, sumar a alguien la convertiría en otra cosa.
@@ -96,12 +96,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       });
     }
 
-    const body = (await request.json().catch(() => ({}))) as { agregar?: string[]; quitar?: string[] };
-    const agregar = [...new Set((body.agregar ?? []).filter((x) => typeof x === "string" && x))];
-    const quitar = [...new Set((body.quitar ?? []).filter((x) => typeof x === "string" && x))];
+    const body = (await request.json().catch(() => ({}))) as {
+      agregar?: string[];
+      quitar?: string[];
+      promover?: string[];
+      degradar?: string[];
+    };
+    const lista = (x: unknown) => [
+      ...new Set((Array.isArray(x) ? x : []).filter((v): v is string => typeof v === "string" && !!v)),
+    ];
+    const agregar = lista(body.agregar);
+    const quitar = lista(body.quitar);
+    const promover = lista(body.promover);
+    const degradar = lista(body.degradar);
 
     // Lo único que puede hacer quien no es admin es salir.
-    const soloSale = agregar.length === 0 && quitar.length === 1 && quitar[0] === usuarioId;
+    const soloSale =
+      agregar.length === 0 &&
+      promover.length === 0 &&
+      degradar.length === 0 &&
+      quitar.length === 1 &&
+      quitar[0] === usuarioId;
     if (rol !== "admin" && !soloSale) {
       return NextResponse.json(
         errorResponse("Sólo un administrador del grupo puede cambiar sus miembros"),
@@ -110,23 +125,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     // Un grupo sin ningún administrador no se puede volver a administrar: nadie
-    // podría sumar gente, renombrarlo, ni siquiera cerrarlo.
-    if (quitar.length > 0) {
+    // podría sumar gente, renombrarlo, ni siquiera cerrarlo. Se cuenta una sola
+    // vez, contra lo que quedaría después de TODOS los cambios de este pedido:
+    // mirarlos por separado dejaría pasar "me saco y me degrado a la vez".
+    if (quitar.length > 0 || degradar.length > 0) {
       const { data: admins } = await sb
         .from("chat_interno_miembros")
         .select("usuario_id")
         .eq("sala_id", salaId)
         .eq("rol", "admin");
       const idsAdmin = ((admins ?? []) as { usuario_id: string }[]).map((a) => a.usuario_id);
-      const quedan = idsAdmin.filter((a) => !quitar.includes(a));
+      const quedan = [...new Set([...idsAdmin, ...promover])].filter(
+        (a) => !quitar.includes(a) && !degradar.includes(a)
+      );
       if (idsAdmin.length > 0 && quedan.length === 0) {
         return NextResponse.json(
-          errorResponse(
-            "El grupo quedaría sin administrador. Nombrá a otro antes de salir."
-          ),
+          errorResponse("El grupo quedaría sin administrador. Nombrá a otro primero."),
           { status: 400 }
         );
       }
+    }
+
+    // Cambios de rol. Sólo sobre quien YA está en la sala: el `eq` de sala_id
+    // hace que un id de otra conversación no toque nada.
+    for (const [ids, nuevoRol] of [
+      [promover, "admin"],
+      [degradar, "miembro"],
+    ] as const) {
+      if (ids.length === 0) continue;
+      await sb
+        .from("chat_interno_miembros")
+        .update({ rol: nuevoRol })
+        .eq("sala_id", salaId)
+        .in("usuario_id", ids);
     }
 
     if (agregar.length > 0) {
@@ -154,7 +185,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .in("usuario_id", quitar);
     }
 
-    return NextResponse.json(successResponse({ agregados: agregar.length, quitados: quitar.length }));
+    return NextResponse.json(
+      successResponse({
+        agregados: agregar.length,
+        quitados: quitar.length,
+        promovidos: promover.length,
+        degradados: degradar.length,
+      })
+    );
   } catch (e) {
     return NextResponse.json(errorResponse(e instanceof Error ? e.message : "Error"), { status: 500 });
   }

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
+  ShieldCheck,
   UserMinus,
   UserPlus,
   MessagesSquare,
@@ -791,7 +792,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     setMiembrosSala(j?.data?.miembros ?? []);
   }, [salaId]);
 
-  async function tocarMiembros(cambio: { agregar?: string[]; quitar?: string[] }) {
+  async function tocarMiembros(cambio: {
+    agregar?: string[];
+    quitar?: string[];
+    promover?: string[];
+    degradar?: string[];
+  }) {
     if (!salaId) return;
     setTocandoMiembros(true);
     try {
@@ -2026,17 +2032,46 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           <span className="block text-[10.5px] text-[#2F6E71]">Administrador</span>
                         ) : null}
                       </span>
-                      {/* Sacar a otro es de un admin; salir es de cualquiera. */}
-                      {puedoEditarGrupo && !m.propio ? (
-                        <button
-                          type="button"
-                          disabled={tocandoMiembros}
-                          onClick={() => void tocarMiembros({ quitar: [m.usuario_id] })}
-                          title={`Sacar a ${nombreCorto(m.nombre)} del grupo`}
-                          className="shrink-0 rounded-lg p-1 text-slate-300 opacity-0 transition-opacity hover:text-rose-600 group-hover/mi:opacity-100 disabled:opacity-40"
-                        >
-                          <UserMinus className="h-4 w-4" />
-                        </button>
+                      {/* Nombrar y sacar es de un admin; salir es de
+                          cualquiera. Puede degradarse a sí mismo, que es el
+                          paso previo a irse dejando el grupo administrado. */}
+                      {puedoEditarGrupo ? (
+                        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/mi:opacity-100">
+                          <button
+                            type="button"
+                            disabled={tocandoMiembros}
+                            onClick={() =>
+                              void tocarMiembros(
+                                m.rol === "admin"
+                                  ? { degradar: [m.usuario_id] }
+                                  : { promover: [m.usuario_id] }
+                              )
+                            }
+                            title={
+                              m.rol === "admin"
+                                ? `Quitarle a ${nombreCorto(m.nombre)} el rol de administrador`
+                                : `Hacer administrador a ${nombreCorto(m.nombre)}`
+                            }
+                            className={`rounded-lg p-1 transition-colors disabled:opacity-40 ${
+                              m.rol === "admin"
+                                ? "text-[#4FAEB2] hover:text-slate-400"
+                                : "text-slate-300 hover:text-[#2F6E71]"
+                            }`}
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                          </button>
+                          {!m.propio ? (
+                            <button
+                              type="button"
+                              disabled={tocandoMiembros}
+                              onClick={() => void tocarMiembros({ quitar: [m.usuario_id] })}
+                              title={`Sacar a ${nombreCorto(m.nombre)} del grupo`}
+                              className="rounded-lg p-1 text-slate-300 transition-colors hover:text-rose-600 disabled:opacity-40"
+                            >
+                              <UserMinus className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                        </span>
                       ) : null}
                     </li>
                   ))}

@@ -148,6 +148,32 @@ function DeltaChip({ pct }: { pct: number }) {
   );
 }
 
+/** Encabezado de columna ordenable: clic cicla desc → asc → default. */
+function SortHeader({ label, col, orden, onSort, align = "left" }: {
+  label: string;
+  col: "mensual" | "estado";
+  orden: { col: "mensual" | "estado" | null; dir: "asc" | "desc" };
+  onSort: (col: "mensual" | "estado") => void;
+  align?: "left" | "right";
+}) {
+  const active = orden.col === col;
+  return (
+    <th className={`px-4 py-3 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500 ${align === "right" ? "text-right" : "text-left"}`}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""} rounded transition-colors hover:text-slate-800 ${active ? "text-[#3F8E91]" : ""}`}
+        title="Ordenar"
+      >
+        {label}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={active ? "" : "opacity-30"}>
+          {active && orden.dir === "asc" ? <path d="M6 15l6-6 6 6" /> : active ? <path d="M6 9l6 6 6-6" /> : <path d="M8 9l4-4 4 4M8 15l4 4 4-4" />}
+        </svg>
+      </button>
+    </th>
+  );
+}
+
 export default function ReporteSuscripcionesPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [serie, setSerie] = useState<SeriePunto[]>([]);
@@ -164,6 +190,10 @@ export default function ReporteSuscripcionesPage() {
   const [tipo, setTipo] = useState("");
   const [q, setQ] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<"" | "cobrado" | "por_cobrar">("");
+  // Orden de la tabla por columna (clic cicla: desc → asc → default por saldo pendiente).
+  const [orden, setOrden] = useState<{ col: "mensual" | "estado" | null; dir: "asc" | "desc" }>({ col: null, dir: "desc" });
+  const toggleOrden = (col: "mensual" | "estado") =>
+    setOrden((p) => (p.col !== col ? { col, dir: "desc" } : p.dir === "desc" ? { col, dir: "asc" } : { col: null, dir: "desc" }));
 
   useEffect(() => {
     let cancel = false;
@@ -237,8 +267,19 @@ export default function ReporteSuscripcionesPage() {
     let list = baseFiltradas;
     if (estadoFiltro === "cobrado") list = list.filter((r) => r.cobrado_mes > 0);
     if (estadoFiltro === "por_cobrar") list = list.filter((r) => r.cobrado_mes < r.monto);
-    return [...list].sort((a, b) => (b.monto - b.cobrado_mes) - (a.monto - a.cobrado_mes) || b.monto - a.monto);
-  }, [baseFiltradas, estadoFiltro]);
+    const arr = [...list];
+    const mul = orden.dir === "asc" ? 1 : -1;
+    if (orden.col === "mensual") {
+      arr.sort((a, b) => (a.monto - b.monto) * mul || a.cliente.localeCompare(b.cliente));
+    } else if (orden.col === "estado") {
+      const rank = (r: Row) => (estadoCobro(r) === "cobrada" ? 3 : estadoCobro(r) === "parcial" ? 2 : 1);
+      arr.sort((a, b) => (rank(a) - rank(b)) * mul || (a.cobrado_mes - b.cobrado_mes) * mul || a.cliente.localeCompare(b.cliente));
+    } else {
+      // Default: mayor saldo por cobrar primero.
+      arr.sort((a, b) => (b.monto - b.cobrado_mes) - (a.monto - a.cobrado_mes) || b.monto - a.monto);
+    }
+    return arr;
+  }, [baseFiltradas, estadoFiltro, orden]);
 
   const gs = (r: Row) => r.moneda === "GS";
   const mensualObjetivo = baseFiltradas.filter(gs).reduce((s, r) => s + r.monto, 0);
@@ -435,10 +476,10 @@ export default function ReporteSuscripcionesPage() {
               <thead className="border-b border-slate-200 bg-slate-50/70">
                 <tr>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Cliente</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Plan · Tipo</th>
-                  <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Mensual</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Plan</th>
+                  <SortHeader label="Mensual" col="mensual" orden={orden} onSort={toggleOrden} align="right" />
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500" style={{ width: 220 }}>Cobrado del mes</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Estado</th>
+                  <SortHeader label="Estado" col="estado" orden={orden} onSort={toggleOrden} />
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Vendedor</th>
                 </tr>
               </thead>
@@ -453,10 +494,7 @@ export default function ReporteSuscripcionesPage() {
                           <span className="font-semibold text-slate-800">{r.cliente}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-slate-600">{r.plan}</div>
-                        <span className="mt-0.5 inline-flex items-center rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3F8E91]">{r.tipo_label}</span>
-                      </td>
+                      <td className="px-4 py-3 text-slate-600">{r.plan}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-slate-600">{pref}{fmtGs(r.monto)}</td>
                       <td className="px-4 py-3">
                         <div className="mb-1.5 text-xs font-bold tabular-nums">

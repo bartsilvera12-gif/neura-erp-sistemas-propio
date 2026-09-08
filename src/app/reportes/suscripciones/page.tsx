@@ -30,6 +30,9 @@ function fmtGs(n: number) {
   return n.toLocaleString("es-PY");
 }
 
+/** Clave para agrupar/filtrar los clientes sin tipo de servicio cargado. */
+const SIN_TIPO = "__sin_tipo__";
+
 function periodoLabel(ym: string) {
   const [y, m] = ym.split("-");
   const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -125,9 +128,8 @@ function Ring({ pct }: { pct: number }) {
         <circle cx="60" cy="60" r={r} fill="none" stroke="#eef2f5" strokeWidth="14" />
         <circle cx="60" cy="60" r={r} fill="none" stroke="#059669" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${dash} ${c - dash}`} />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[26px] font-bold text-emerald-700">{pct}%</span>
-        <span className="text-[10.5px] font-semibold text-slate-400">al día {""}</span>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[28px] font-extrabold text-emerald-700">{pct}%</span>
       </div>
     </div>
   );
@@ -212,18 +214,19 @@ export default function ReporteSuscripcionesPage() {
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);
 
-  // Base (tipo + búsqueda): alimenta KPIs y distribución; estable al clickear un tile.
-  const baseFiltradas = useMemo(() => {
+  // Solo búsqueda (sin tipo): alimenta la distribución y el total de activas, para poder
+  // cambiar entre tipos siempre.
+  const baseSinTipo = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (tipo && r.tipo_slug !== tipo) return false;
-      if (needle) {
-        const hay = `${r.cliente} ${r.plan} ${r.vendedor} ${r.tipo_label}`.toLowerCase();
-        if (!hay.includes(needle)) return false;
-      }
-      return true;
-    });
-  }, [rows, tipo, q]);
+    if (!needle) return rows;
+    return rows.filter((r) => `${r.cliente} ${r.plan} ${r.vendedor} ${r.tipo_label}`.toLowerCase().includes(needle));
+  }, [rows, q]);
+  // KPIs de arriba: búsqueda + tipo seleccionado (clic en la distribución o el select).
+  const baseFiltradas = useMemo(() => {
+    if (!tipo) return baseSinTipo;
+    if (tipo === SIN_TIPO) return baseSinTipo.filter((r) => !r.tipo_slug);
+    return baseSinTipo.filter((r) => r.tipo_slug === tipo);
+  }, [baseSinTipo, tipo]);
 
   // La tabla: base + filtro por estado de cobro (tiles seleccionables), ordenada por saldo pendiente.
   const filtradas = useMemo(() => {
@@ -242,18 +245,20 @@ export default function ReporteSuscripcionesPage() {
   const deltaEmitido = totalMesAnterior > 0 ? ((totalMes - totalMesAnterior) / totalMesAnterior) * 100 : totalMes > 0 ? 100 : 0;
   const deltaCobrado = cobradoMesAnterior > 0 ? ((cobradoMes - cobradoMesAnterior) / cobradoMesAnterior) * 100 : cobradoMes > 0 ? 100 : 0;
 
-  // Distribución por tipo de servicio (conteo + monto), top primeros.
+  // Distribución por tipo de servicio (conteo), sobre la base sin filtrar por tipo → siempre
+  // muestra todos los tipos, clickeables para cambiar los KPIs.
   const distribucion = useMemo(() => {
-    const m = new Map<string, { label: string; count: number; monto: number }>();
-    for (const r of baseFiltradas) {
-      const k = r.tipo_label || "Sin tipo";
-      const prev = m.get(k) ?? { label: k, count: 0, monto: 0 };
+    const m = new Map<string, { key: string; label: string; count: number }>();
+    for (const r of baseSinTipo) {
+      const key = r.tipo_slug ?? SIN_TIPO;
+      const label = r.tipo_slug ? r.tipo_label : "Sin clasificar";
+      const prev = m.get(key) ?? { key, label, count: 0 };
       prev.count += 1;
-      if (gs(r)) prev.monto += r.monto;
-      m.set(k, prev);
+      m.set(key, prev);
     }
     return [...m.values()].sort((a, b) => b.count - a.count);
-  }, [baseFiltradas]);
+  }, [baseSinTipo]);
+  const hayCliSinTipo = useMemo(() => rows.some((r) => !r.tipo_slug), [rows]);
   const maxTipoCount = Math.max(1, ...distribucion.map((d) => d.count));
   const tonos = ["bg-gradient-to-r from-[#3F8E91] to-[#0B3A3D]", "bg-[#4FAEB2]", "bg-[#7DCFD2]", "bg-[#B6E3E4]", "bg-slate-300"];
 
@@ -341,27 +346,40 @@ export default function ReporteSuscripcionesPage() {
           </div>
         </button>
 
-        {/* Activas + distribución por tipo */}
+        {/* Activas + distribución por tipo (clic filtra los KPIs; "activas" resetea) */}
         <div className={`${TILE} lg:col-span-2 flex items-center gap-6`}>
-          <div className="flex shrink-0 items-center gap-3 border-r border-slate-100 pr-6">
+          <button
+            type="button"
+            onClick={() => { setTipo(""); setEstadoFiltro(""); }}
+            title="Ver todas"
+            className={`flex shrink-0 items-center gap-3 rounded-xl border-r border-slate-100 pr-6 text-left transition-opacity ${tipo ? "opacity-60 hover:opacity-100" : ""}`}
+          >
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0B3A3D]/[0.06] text-[#0B3A3D]">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /></svg>
             </span>
             <div>
-              <div className="text-[30px] font-extrabold leading-none tabular-nums text-slate-900">{baseFiltradas.length}</div>
+              <div className="text-[30px] font-extrabold leading-none tabular-nums text-slate-900">{baseSinTipo.length}</div>
               <div className={`${LBL} mt-1`}>activas</div>
             </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-2.5">
-            {distribucion.slice(0, 4).map((d, i) => (
-              <div key={d.label} className="flex items-center gap-3">
-                <span className="w-24 shrink-0 truncate text-xs font-semibold text-slate-700">{d.label}</span>
-                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                  <div className={`h-full rounded-full ${tonos[i] ?? "bg-slate-300"}`} style={{ width: `${Math.round((d.count / maxTipoCount) * 100)}%` }} />
-                </div>
-                <span className="w-10 shrink-0 text-right text-xs font-extrabold tabular-nums text-slate-900">{d.count}</span>
-              </div>
-            ))}
+          </button>
+          <div className="flex flex-1 flex-col gap-1.5">
+            {distribucion.slice(0, 5).map((d, i) => {
+              const activo = tipo === d.key;
+              return (
+                <button
+                  key={d.key}
+                  type="button"
+                  onClick={() => setTipo((p) => (p === d.key ? "" : d.key))}
+                  className={`-mx-2 flex items-center gap-3 rounded-lg px-2 py-1 text-left transition-colors ${activo ? "bg-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/30" : "hover:bg-slate-50"}`}
+                >
+                  <span className={`w-24 shrink-0 truncate text-xs font-semibold ${activo ? "text-[#3F8E91]" : "text-slate-700"}`}>{d.label}</span>
+                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div className={`h-full rounded-full ${tonos[i] ?? "bg-slate-300"}`} style={{ width: `${Math.round((d.count / maxTipoCount) * 100)}%` }} />
+                  </div>
+                  <span className="w-10 shrink-0 text-right text-xs font-extrabold tabular-nums text-slate-900">{d.count}</span>
+                </button>
+              );
+            })}
             {distribucion.length === 0 && <span className="text-xs text-slate-400">Sin datos</span>}
           </div>
         </div>
@@ -385,6 +403,7 @@ export default function ReporteSuscripcionesPage() {
           {tiposDisponibles.map(([slug, label]) => (
             <option key={slug} value={slug}>{label}</option>
           ))}
+          {hayCliSinTipo && <option value={SIN_TIPO}>Sin clasificar</option>}
         </select>
         {(q || tipo || estadoFiltro) && (
           <button

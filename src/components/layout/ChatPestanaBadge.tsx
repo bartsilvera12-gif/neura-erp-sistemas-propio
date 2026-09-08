@@ -74,6 +74,8 @@ export default function ChatPestanaBadge() {
   /** Sin acceso al módulo se deja de preguntar, y se corta el realtime. */
   const [habilitado, setHabilitado] = useState(true);
   const habilitadoRef = useRef(true);
+  /** Mis salas, para no recontar por un mensaje de una conversación ajena. */
+  const misSalasRef = useRef<Set<string> | null>(null);
 
   const contar = useCallback(async () => {
     if (!habilitadoRef.current) return;
@@ -89,8 +91,13 @@ export default function ChatPestanaBadge() {
         setTotal(0);
         return;
       }
-      const j = (await r.json().catch(() => ({}))) as { data?: { total?: number } };
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { total?: number; mis_salas?: string[] };
+      };
       setTotal(Math.max(0, Number(j?.data?.total ?? 0)));
+      if (Array.isArray(j?.data?.mis_salas)) {
+        misSalasRef.current = new Set(j.data.mis_salas);
+      }
     } catch {
       // Sin red no se toca el número: dejarlo en cero mentiría.
     }
@@ -125,7 +132,15 @@ export default function ChatPestanaBadge() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "neura", table: "chat_interno_mensajes" },
-        () => void contar()
+        (payload) => {
+          // El aviso llega por cada mensaje de la empresa, no sólo de los míos.
+          // Sin este filtro, cada mensaje ajeno dispararía un recuento por cada
+          // persona conectada. Una sala nueva se descubre en el refresco.
+          const sala = (payload.new as { sala_id?: string } | null)?.sala_id;
+          const mias = misSalasRef.current;
+          if (sala && mias && !mias.has(sala)) return;
+          void contar();
+        }
       )
       .subscribe();
     return () => {

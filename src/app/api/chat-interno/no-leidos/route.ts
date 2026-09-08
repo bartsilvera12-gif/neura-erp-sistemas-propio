@@ -74,7 +74,14 @@ export async function GET(request: Request) {
     }
     const total = Object.values(porSala).reduce((a, b) => a + b, 0);
 
-    return NextResponse.json(successResponse({ total, por_sala: porSala }));
+    return NextResponse.json(
+      successResponse({
+        total,
+        por_sala: porSala,
+        // La pestaña las usa para ignorar los avisos de conversaciones ajenas.
+        mis_salas: salas.map((x) => x.sala_id),
+      })
+    );
   } catch (e) {
     return NextResponse.json(
       errorResponse(e instanceof Error ? e.message : "No se pudo contar"),

@@ -115,7 +115,7 @@ function fmtPhone(p: string | null): string {
   return digits ? `+${digits}` : p;
 }
 
-function MessageBody({ m }: { m: Msg }) {
+function MessageBody({ m, onZoom }: { m: Msg; onZoom: (url: string) => void }) {
   if (m.message_type === "text") {
     return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
   }
@@ -129,8 +129,15 @@ function MessageBody({ m }: { m: Msg }) {
   }
   if (m.message_type === "image") {
     return url ? (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={url} alt="imagen" className="max-w-[220px] rounded-lg" />
+      <button
+        type="button"
+        onClick={() => onZoom(url)}
+        className="block border-0 bg-transparent p-0 text-left"
+        aria-label="Ampliar imagen"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt="imagen" className="max-w-[220px] rounded-lg" />
+      </button>
     ) : (
       <span className="italic opacity-80">[imagen]</span>
     );
@@ -203,6 +210,8 @@ export default function MAsesorChatPage() {
   const [sendErr, setSendErr] = useState<string | null>(null);
   /** Mensaje que se está citando (deslizá una burbuja hacia la derecha para elegirlo). */
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
+  /** Imagen abierta a pantalla completa. */
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
   /** Arrastre en curso: qué burbuja y cuántos px lleva. Sólo visual. */
   const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
   const swipeStart = useRef<{ x: number; y: number; locked: boolean } | null>(null);
@@ -735,7 +744,7 @@ export default function MAsesorChatPage() {
                       </div>
                     );
                   })()}
-                  <MessageBody m={m} />
+                  <MessageBody m={m} onZoom={setZoomUrl} />
                   {m.from_me && m.whatsapp_delivery_status === "failed" ? (
                     <div className="mt-1 rounded-md bg-red-50 border border-red-200 px-2 py-1 text-[11px] text-red-700 flex items-start gap-1">
                       <span aria-hidden>⚠</span>
@@ -916,6 +925,36 @@ export default function MAsesorChatPage() {
           </>
         )}
       </div>
+
+      {zoomUrl ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+          role="presentation"
+          // En móvil se cierra tocando en cualquier lado, como WhatsApp — no sólo
+          // en el fondo. Igual va la ✕ visible, porque sin ella no es descubrible.
+          onClick={() => setZoomUrl(null)}
+          style={{
+            paddingTop: "env(safe-area-inset-top)",
+            paddingBottom: "env(safe-area-inset-bottom)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setZoomUrl(null)}
+            aria-label="Cerrar"
+            className="absolute right-3 grid h-10 w-10 place-items-center rounded-full bg-white/15 text-xl text-white active:bg-white/25"
+            style={{ top: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+          >
+            ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoomUrl}
+            alt="Imagen ampliada"
+            className="max-h-full max-w-full object-contain"
+          />
+        </div>
+      ) : null}
 
       {tplOpen ? (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40" onClick={() => setTplOpen(false)}>

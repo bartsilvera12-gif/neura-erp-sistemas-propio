@@ -280,6 +280,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [biblioteca, setBiblioteca] = useState<Biblioteca | null>(null);
   const [cargandoBiblio, setCargandoBiblio] = useState(false);
   const buscaRef = useRef<HTMLInputElement>(null);
+  /** Temporizador del buscador: se espera a que deje de tipear. */
+  const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Mi perfil: el nombre y la foto que ven los demás. */
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const fotoRef = useRef<HTMLInputElement>(null);
@@ -533,15 +535,56 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
   }
 
+  /**
+   * Reaccionar, de verdad al instante.
+   *
+   * El cambio se pinta ANTES de salir a la red y el servidor sólo confirma:
+   * esperar el ida y vuelta para ver tu propio 👍 se siente roto. Si falla, se
+   * vuelve a lo que decía el servidor.
+   */
   async function reaccionar(msgId: string, emoji: string) {
-    // Optimista: la reacción se ve al instante y el servidor confirma. En un
-    // chat, esperar el ida y vuelta para ver tu propio 👍 se siente roto.
-    await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${msgId}/reaccion`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emoji }),
-    });
-    if (salaId) void cargarMensajes(salaId, enBusqueda ? busca : undefined);
+    const yoId = perfil?.usuario_id ?? "";
+    const yoNombre = perfil?.nombre ?? "Yo";
+    const yoFoto = perfil?.avatar_url ?? null;
+    const antes = mensajes;
+
+    setMensajes((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const quienes = m.reacciones[emoji] ?? [];
+        const yaEstaba = quienes.includes(yoId);
+        const nuevos = yaEstaba ? quienes.filter((u) => u !== yoId) : [...quienes, yoId];
+
+        const reacciones = { ...m.reacciones };
+        const nombres = { ...m.reacciones_nombres };
+        const caras = { ...m.reacciones_avatares };
+        if (nuevos.length === 0) {
+          delete reacciones[emoji];
+          delete nombres[emoji];
+          delete caras[emoji];
+        } else {
+          reacciones[emoji] = nuevos;
+          nombres[emoji] = yaEstaba
+            ? (nombres[emoji] ?? []).filter((n) => n !== yoNombre)
+            : [...(nombres[emoji] ?? []), yoNombre];
+          caras[emoji] = yaEstaba
+            ? (caras[emoji] ?? []).slice(0, nuevos.length)
+            : [...(caras[emoji] ?? []), yoFoto];
+        }
+        return { ...m, reacciones, reacciones_nombres: nombres, reacciones_avatares: caras };
+      })
+    );
+
+    try {
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${msgId}/reaccion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji }),
+      });
+      if (!r.ok) setMensajes(antes);
+    } catch {
+      setMensajes(antes);
+    }
   }
 
   async function borrarMensaje(msgId: string) {
@@ -554,7 +597,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       setErr(j.error ?? "No se pudo eliminar");
       return;
     }
-    if (salaId) void cargarMensajes(salaId, enBusqueda ? busca : undefined);
+    // Se marca en la lista que ya está en pantalla; recargar la conversación
+    // entera para tachar un renglón es traer todo de nuevo por nada.
+    setMensajes((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, eliminado: true, texto: null, adjuntos: [] } : m))
+    );
+    void cargarSalas();
   }
 
   async function guardarEdicion() {
@@ -1299,11 +1347,27 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     <input
                       ref={buscaRef}
                       value={busca}
-                      onChange={(e) => setBusca(e.target.value)}
+                      // Busca mientras se escribe, con una pausa de 250 ms:
+                      // tener que apretar Enter para ver si hay algo convierte
+                      // cada intento en un viaje de ida y vuelta.
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setBusca(v);
+                        if (buscaTimer.current) clearTimeout(buscaTimer.current);
+                        buscaTimer.current = setTimeout(() => {
+                          if (v.trim()) {
+                            setEnBusqueda(true);
+                            void cargarMensajes(salaActual.id, v, true);
+                          } else if (enBusqueda) {
+                            setEnBusqueda(false);
+                            void cargarMensajes(salaActual.id, undefined, true);
+                          }
+                        }, 250);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && busca.trim()) {
                           setEnBusqueda(true);
-                          void cargarMensajes(salaActual.id, busca);
+                          void cargarMensajes(salaActual.id, busca, true);
                         }
                         if (e.key === "Escape") cerrarBusqueda();
                       }}

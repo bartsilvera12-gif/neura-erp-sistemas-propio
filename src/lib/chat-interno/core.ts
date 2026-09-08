@@ -16,6 +16,7 @@ import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { resolveEffectiveModules } from "@/lib/modulos/resolve-effective-modules";
 import { errorResponse } from "@/lib/api/response";
+import { cacheFirmas, cacheSesion } from "@/lib/chat-interno/cache";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 /** Slug del módulo. Es RESTRINGIDO: ver `lib/modulos/modulos-restringidos.ts`. */
@@ -42,6 +43,16 @@ export type ChatAuth = ChatAuthOk | { ok: false; status: number; message: string
  * del menú nunca fue un permiso.
  */
 export async function requireChatInterno(request: Request): Promise<ChatAuth> {
+  // Una ráfaga de interacción son muchos pedidos chicos seguidos de la misma
+  // persona. Resolver la sesión entera en cada uno —Auth, usuario, módulos,
+  // schema— es media docena de viajes antes de tocar un mensaje.
+  const token = request.headers.get("authorization") ?? "";
+  const clave = token ? `auth:${token}` : "";
+  if (clave) {
+    const guardado = cacheSesion.get(clave) as ChatAuthOk | undefined;
+    if (guardado) return guardado;
+  }
+
   const user = await getAuthUserForApiRoute(request);
   if (!user?.id) return { ok: false, status: 401, message: "No autenticado" };
 
@@ -57,12 +68,17 @@ export async function requireChatInterno(request: Request): Promise<ChatAuth> {
   const tiene = modulos.some((m) => (m.slug ?? "").trim().toLowerCase() === MODULO_CHAT_INTERNO);
   if (!tiene) return { ok: false, status: 403, message: "Sin acceso al chat interno" };
 
-  return {
+  const resuelto: ChatAuthOk = {
     ok: true,
     empresaId: usuario.empresa_id,
     usuarioId: usuario.id,
     sb: await getChatServiceClientForEmpresa(usuario.empresa_id),
   };
+  // Sólo se recuerda lo que salió BIEN. Un rechazo no se cachea: si a alguien
+  // le acaban de dar acceso, tiene que entrar en el próximo intento y no en el
+  // próximo medio minuto.
+  if (clave) cacheSesion.set(clave, resuelto);
+  return resuelto;
 }
 
 export function respuestaAuth(auth: Exclude<ChatAuth, ChatAuthOk>) {
@@ -141,11 +157,22 @@ export async function firmarAdjuntos(
   }
   const out = new Map<string, string>();
   if (paths.size === 0) return out;
-  const { data } = await sb.storage
-    .from(CHAT_BUCKET)
-    .createSignedUrls([...paths], CHAT_SIGNED_URL_TTL);
+
+  // Lo ya firmado se reusa: la misma foto y el mismo adjunto vuelven en cada
+  // página, y firmar es un viaje al storage.
+  const faltan: string[] = [];
+  for (const p of paths) {
+    const guardada = cacheFirmas.get(`${CHAT_BUCKET}:${p}`);
+    if (guardada) out.set(p, guardada);
+    else faltan.push(p);
+  }
+  if (faltan.length === 0) return out;
+
+  const { data } = await sb.storage.from(CHAT_BUCKET).createSignedUrls(faltan, CHAT_SIGNED_URL_TTL);
   for (const row of data ?? []) {
-    if (row.path && row.signedUrl) out.set(row.path, row.signedUrl);
+    if (!row.path || !row.signedUrl) continue;
+    out.set(row.path, row.signedUrl);
+    cacheFirmas.set(`${CHAT_BUCKET}:${row.path}`, row.signedUrl);
   }
   return out;
 }
@@ -198,11 +225,19 @@ export async function firmarAvatares(
   }
   const out = new Map<string, string>();
   if (porPath.size === 0) return out;
-  const { data } = await sb.storage
-    .from(AVATAR_BUCKET)
-    .createSignedUrls([...porPath.keys()], CHAT_SIGNED_URL_TTL);
+
+  const faltan: string[] = [];
+  for (const p of porPath.keys()) {
+    const guardada = cacheFirmas.get(`${AVATAR_BUCKET}:${p}`);
+    if (guardada) for (const id of porPath.get(p) ?? []) out.set(id, guardada);
+    else faltan.push(p);
+  }
+  if (faltan.length === 0) return out;
+
+  const { data } = await sb.storage.from(AVATAR_BUCKET).createSignedUrls(faltan, CHAT_SIGNED_URL_TTL);
   for (const row of data ?? []) {
     if (!row.path || !row.signedUrl) continue;
+    cacheFirmas.set(`${AVATAR_BUCKET}:${row.path}`, row.signedUrl);
     for (const id of porPath.get(row.path) ?? []) out.set(id, row.signedUrl);
   }
   return out;

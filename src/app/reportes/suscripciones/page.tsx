@@ -12,6 +12,7 @@ type Row = {
   tipo_slug: string | null;
   tipo_label: string;
   monto: number;
+  facturado_mes: number;
   cobrado_mes: number;
   moneda: string;
   vendedor: string;
@@ -156,6 +157,7 @@ export default function ReporteSuscripcionesPage() {
   const [totalMesAnterior, setTotalMesAnterior] = useState(0);
   const [cobradoMes, setCobradoMes] = useState(0);
   const [cobradoMesAnterior, setCobradoMesAnterior] = useState(0);
+  const [facturasMes, setFacturasMes] = useState(0);
   const [diaCorte, setDiaCorte] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -179,6 +181,7 @@ export default function ReporteSuscripcionesPage() {
             total_mes_anterior?: number;
             cobrado_mes?: number;
             cobrado_mes_anterior?: number;
+            facturas_mes?: number;
             serie_mrr?: SeriePunto[];
             rows: Row[];
           };
@@ -195,6 +198,7 @@ export default function ReporteSuscripcionesPage() {
           setTotalMesAnterior(Number(json.data.total_mes_anterior) || 0);
           setCobradoMes(Number(json.data.cobrado_mes) || 0);
           setCobradoMesAnterior(Number(json.data.cobrado_mes_anterior) || 0);
+          setFacturasMes(Number(json.data.facturas_mes) || 0);
           setErr(null);
         }
       } catch (e) {
@@ -238,6 +242,10 @@ export default function ReporteSuscripcionesPage() {
 
   const gs = (r: Row) => r.moneda === "GS";
   const mensualObjetivo = baseFiltradas.filter(gs).reduce((s, r) => s + r.monto, 0);
+  // Facturado (emitido) este mes en suscripciones. Sin filtro = total del API (coincide con el
+  // final de la curva); con tipo seleccionado = suma de lo facturado de ese tipo.
+  const facturadoDelMes = tipo ? baseFiltradas.filter(gs).reduce((s, r) => s + (r.facturado_mes || 0), 0) : totalMes;
+  const facturasCount = tipo ? baseFiltradas.filter((r) => r.facturado_mes > 0).length : facturasMes;
   const cobradoBase = baseFiltradas.filter(gs).reduce((s, r) => s + r.cobrado_mes, 0);
   const porCobrarBase = baseFiltradas.filter(gs).reduce((s, r) => s + Math.max(r.monto - r.cobrado_mes, 0), 0);
   const pctCobrado = mensualObjetivo > 0 ? Math.round((cobradoBase / mensualObjetivo) * 100) : 0;
@@ -290,14 +298,14 @@ export default function ReporteSuscripcionesPage() {
         {/* MRR + tendencia (grande) */}
         <div className={`${TILE} lg:col-span-1 lg:row-span-2 flex flex-col`}>
           <div className="flex items-start justify-between">
-            <span className={LBL}>Ingreso recurrente · MRR</span>
+            <span className={LBL}>Facturado del mes · Suscripciones</span>
             <span className="rounded-lg border border-[#4FAEB2]/25 bg-[#4FAEB2]/10 px-2 py-1 text-[11px] font-bold text-[#3F8E91]">6 meses</span>
           </div>
-          <div className="mt-3 text-[34px] font-extrabold leading-none tracking-tight tabular-nums text-slate-900">Gs. {fmtGs(mensualObjetivo)}</div>
-          <div className="mt-2 text-[11px] text-slate-400">objetivo mensual · {baseFiltradas.length} activas</div>
+          <div className="mt-3 text-[34px] font-extrabold leading-none tracking-tight tabular-nums text-slate-900">Gs. {fmtGs(facturadoDelMes)}</div>
+          <div className="mt-2 text-[11px] text-slate-400">{facturasCount} factura{facturasCount === 1 ? "" : "s"} emitida{facturasCount === 1 ? "" : "s"}{periodo ? ` · ${periodoLabel(periodo)}` : ""}</div>
           <div className="mt-4 flex items-center gap-2">
             <DeltaChip pct={deltaEmitido} />
-            <span className="text-[11px] text-slate-400">facturado vs {periodoAnterior ? periodoLabel(periodoAnterior).split(" ")[0] : "mes ant."}</span>
+            <span className="text-[11px] text-slate-400">vs {periodoAnterior ? periodoLabel(periodoAnterior).split(" ")[0] : "mes ant."}</span>
           </div>
           <div className="mt-auto pt-4">
             <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">Facturado por mes</p>

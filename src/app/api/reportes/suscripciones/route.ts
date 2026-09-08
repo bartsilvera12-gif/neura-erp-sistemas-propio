@@ -135,9 +135,10 @@ export async function GET(request: NextRequest) {
 
     // 4) Facturas de suscripción del mes actual (estado por suscripción) + totales facturados
     //    de este mes y del anterior (para comparar cuánta plata mueven las suscripciones).
-    const factBySub = new Map<string, { estado: string; saldo: number }>();
+    const factBySub = new Map<string, { estado: string; saldo: number; monto: number }>();
     let totalMes = 0;
     let totalMesAnterior = 0;
+    let facturasMes = 0; // cantidad de facturas de suscripción emitidas este mes (no anuladas)
     {
       const { data } = await supabase
         .from("facturas")
@@ -152,10 +153,12 @@ export async function GET(request: NextRequest) {
         if (anulada) continue; // no cuenta como plata ni como estado del mes
         if (per === ym) {
           totalMes += monto;
+          facturasMes += 1;
           if (f.suscripcion_id) {
             factBySub.set(String(f.suscripcion_id), {
               estado: String(f.estado ?? "").trim(),
               saldo: Number(f.saldo) || 0,
+              monto,
             });
           }
         } else if (per === ymPrev) {
@@ -262,6 +265,7 @@ export async function GET(request: NextRequest) {
           tipo_slug: tipoSlug || null,
           tipo_label: tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogMap) : "Sin tipo",
           monto: Math.round(monto),
+          facturado_mes: Math.round(fact?.monto ?? 0),
           cobrado_mes: Math.round(cobradoBySub.get(String(s.id)) ?? 0),
           moneda: String(s.moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
           vendedor: (cli.vendedorUid ? nombrePorUid.get(cli.vendedorUid) : "") || cli.vendedorTexto || "—",
@@ -278,6 +282,7 @@ export async function GET(request: NextRequest) {
         dia_corte: diaCorte,
         total_mes: Math.round(totalMes),
         total_mes_anterior: Math.round(totalMesAnterior),
+        facturas_mes: facturasMes,
         cobrado_mes: Math.round(cobradoMes),
         cobrado_mes_anterior: Math.round(cobradoMesAnterior),
         serie_mrr,

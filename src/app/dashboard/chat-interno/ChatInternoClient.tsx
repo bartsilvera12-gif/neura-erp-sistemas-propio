@@ -871,12 +871,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   }, [viendoIdx, mover]);
 
   /**
-   * Mientras el chat está abierto y a la vista, se pregunta cada 3 segundos.
+   * Red de seguridad: con el chat abierto y a la vista, se pregunta cada 20 s.
    *
-   * Esto NO reemplaza al tiempo real: es el piso mientras el WebSocket de
-   * Realtime no llega (el proxy que está delante reescribe la cabecera
-   * `Connection` y el servicio rechaza el upgrade). Cuando eso se arregle,
-   * los avisos van a llegar antes por su camino y esto pasa a ser una red.
+   * Los mensajes llegan por Realtime, que ya funciona. Esto sólo cubre el caso
+   * de que el socket se caiga sin avisar —pasa: una red que se corta, una
+   * suspensión del equipo—, y ahí veinte segundos de atraso es un mal momento,
+   * no una conversación rota. Cuando se preguntaba cada 3 s era porque el
+   * Realtime no llegaba: eso ya se arregló en el proxy.
    *
    * Sólo con la pestaña visible: una pestaña de fondo no le muestra nada a
    * nadie, y preguntar ahí es gastar por gusto.
@@ -886,7 +887,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     const t = setInterval(() => {
       if (document.visibilityState !== "visible") return;
       void cargarMensajes(salaId, undefined, true);
-    }, 3000);
+    }, 20000);
     const alVolver = () => {
       if (document.visibilityState === "visible") {
         void cargarMensajes(salaId, undefined, true);
@@ -900,11 +901,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     };
   }, [salaId, enBusqueda, cargarMensajes, cargarSalas]);
 
-  /** La bandeja se refresca más espaciada: cambia menos y pesa más. */
+  /** La bandeja, más espaciada todavía: cambia menos y pesa más. */
   useEffect(() => {
     const t = setInterval(() => {
       if (document.visibilityState === "visible") void cargarSalas();
-    }, 10000);
+    }, 30000);
     return () => clearInterval(t);
   }, [cargarSalas]);
 

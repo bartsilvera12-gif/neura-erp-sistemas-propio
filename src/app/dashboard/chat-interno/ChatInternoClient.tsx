@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
-  ShieldCheck,
+  Crown,
   UserMinus,
   UserPlus,
   MessagesSquare,
@@ -2022,14 +2022,27 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                       key={m.usuario_id}
                       className="group/mi flex items-center gap-2 rounded-lg px-1 py-1.5"
                     >
-                      <Avatar nombre={m.nombre} url={m.avatar_url} size={30} />
+                      {/* La corona va sobre el avatar: así se ve quién manda
+                          mirando las caras, sin leer una línea por persona. */}
+                      <span className="relative shrink-0">
+                        <Avatar nombre={m.nombre} url={m.avatar_url} size={30} />
+                        {m.rol === "admin" ? (
+                          <Crown
+                            className="absolute -right-1 -top-1.5 h-3.5 w-3.5 -rotate-12 fill-[#F5B301] text-[#B57F00]"
+                            strokeWidth={1.5}
+                          />
+                        ) : null}
+                      </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] font-medium text-slate-700">
+                        <span className="flex items-center gap-1 truncate text-[12.5px] font-medium text-slate-700">
                           {nombreCapitular(m.nombre)}
                           {m.propio ? " (vos)" : ""}
                         </span>
                         {m.rol === "admin" ? (
-                          <span className="block text-[10.5px] text-[#2F6E71]">Administrador</span>
+                          <span className="flex items-center gap-1 text-[10.5px] font-semibold text-[#B57F00]">
+                            <Crown className="h-3 w-3 fill-[#F5B301] text-[#B57F00]" strokeWidth={1.5} />
+                            Administrador
+                          </span>
                         ) : null}
                       </span>
                       {/* Nombrar y sacar es de un admin; salir es de
@@ -2054,11 +2067,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             }
                             className={`rounded-lg p-1 transition-colors disabled:opacity-40 ${
                               m.rol === "admin"
-                                ? "text-[#4FAEB2] hover:text-slate-400"
-                                : "text-slate-300 hover:text-[#2F6E71]"
+                                ? "text-[#B57F00] hover:text-slate-400"
+                                : "text-slate-300 hover:text-[#B57F00]"
                             }`}
                           >
-                            <ShieldCheck className="h-4 w-4" />
+                            <Crown
+                              className={`h-4 w-4 ${m.rol === "admin" ? "fill-[#F5B301]" : ""}`}
+                              strokeWidth={1.5}
+                            />
                           </button>
                           {!m.propio ? (
                             <button

@@ -44,8 +44,11 @@ type Sala = {
   no_leidos: number;
   vista_previa: string;
   vista_previa_autor: string;
-  /** Sólo en los directos: la cara de la otra persona. */
+  /** La cara de la otra persona en un directo, o la foto del grupo. */
   avatar_url: string | null;
+  descripcion: string | null;
+  /** Mi rol EN ESTA sala: sólo un `admin` edita el grupo. */
+  mi_rol: string;
 };
 
 type Adjunto = {
@@ -249,6 +252,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   /** Filtro de la bandeja: busca en mis conversaciones Y entre las personas. */
   const [filtroBandeja, setFiltroBandeja] = useState("");
   const [directorio, setDirectorio] = useState<UsuarioOpcion[]>([]);
+  /** Edición del grupo: `null` mientras no se esté editando. */
+  const [editandoGrupo, setEditandoGrupo] = useState<{
+    nombre: string;
+    descripcion: string;
+  } | null>(null);
+  const [guardandoGrupo, setGuardandoGrupo] = useState(false);
+  const fotoGrupoRef = useRef<HTMLInputElement>(null);
+  const [subiendoFotoGrupo, setSubiendoFotoGrupo] = useState(false);
   const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
   /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
   const contRef = useRef<HTMLDivElement>(null);
@@ -269,6 +280,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [modal, setModal] = useState(false);
   const [usuarios, setUsuarios] = useState<UsuarioOpcion[]>([]);
   const [nombreGrupo, setNombreGrupo] = useState("");
+  const [descGrupo, setDescGrupo] = useState("");
   const [elegidos, setElegidos] = useState<string[]>([]);
   const [buscaUsuario, setBuscaUsuario] = useState("");
 
@@ -449,6 +461,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     setPanel(null);
     setBiblioteca(null);
     setVerBuscador(false);
+    setEditandoGrupo(null);
   }, [salaId]);
 
   async function subirArchivos(files: File[]) {
@@ -694,6 +707,73 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
   }
 
+  async function guardarGrupo() {
+    if (!salaId || !editandoGrupo) return;
+    if (!editandoGrupo.nombre.trim()) {
+      setErr("El grupo necesita un nombre");
+      return;
+    }
+    setGuardandoGrupo(true);
+    try {
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: editandoGrupo.nombre,
+          descripcion: editandoGrupo.descripcion,
+        }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) {
+        setErr(j.error ?? "No se pudo guardar");
+        return;
+      }
+      setEditandoGrupo(null);
+      await cargarSalas();
+    } finally {
+      setGuardandoGrupo(false);
+    }
+  }
+
+  async function cambiarFotoGrupo(file: File) {
+    if (!salaId) return;
+    setSubiendoFotoGrupo(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}`, {
+        method: "POST",
+        body: fd,
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) {
+        setErr(j.error ?? "No se pudo guardar la foto");
+        return;
+      }
+      await cargarSalas();
+    } finally {
+      setSubiendoFotoGrupo(false);
+    }
+  }
+
+  async function quitarFotoGrupo() {
+    if (!salaId) return;
+    setSubiendoFotoGrupo(true);
+    try {
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}`, {
+        method: "DELETE",
+      });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) {
+        setErr(j.error ?? "No se pudo quitar la foto");
+        return;
+      }
+      await cargarSalas();
+    } finally {
+      setSubiendoFotoGrupo(false);
+    }
+  }
+
   /**
    * Abre la conversación con alguien. Si ya existe se reusa —el servidor no
    * crea un segundo hilo con la misma persona—, y si no, se crea ahí mismo.
@@ -736,6 +816,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   async function abrirModal() {
     setModal(true);
     setNombreGrupo("");
+    setDescGrupo("");
     setElegidos([]);
     setBuscaUsuario("");
     const r = await fetchWithSupabaseSession("/api/chat-interno/usuarios", { cache: "no-store" });
@@ -753,6 +834,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       body: JSON.stringify({
         tipo: esDirecto ? "directo" : "grupo",
         nombre: nombreGrupo,
+        descripcion: descGrupo,
         miembros: elegidos,
       }),
     });
@@ -774,6 +856,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       </div>
     );
   }
+
+  // Editar el grupo es de sus administradores. Un directo no se edita: se
+  // llama con el nombre de la otra persona y se ve con su cara.
+  const puedoEditarGrupo = salaActual?.tipo === "grupo" && salaActual.mi_rol === "admin";
 
   const q = filtroBandeja.trim().toLowerCase();
   const salasFiltradas = q
@@ -1005,24 +1091,23 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   <ChevronLeft className="h-5 w-5" />
                 </button>
               ) : null}
-              <span
-                className={`${mobile ? "hidden" : "flex"} h-10 w-10 items-center justify-center rounded-full text-[11px] font-bold`}
-                style={{ background: `${colorDe(salaActual.nombre)}22`, color: colorDe(salaActual.nombre) }}
-              >
-                {salaActual.tipo === "grupo" ? (
-                  <Users className="h-5 w-5" />
-                ) : (
-                  inicialesNombre(salaActual.nombre)
-                )}
+              <span className={mobile ? "hidden" : "block"}>
+                <Avatar
+                  nombre={salaActual.nombre}
+                  url={salaActual.avatar_url}
+                  size={40}
+                  icono={salaActual.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
+                />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-[14px] font-semibold text-slate-800">
                   {nombreCapitular(salaActual.nombre)}
                 </h2>
                 <p className="truncate text-[11px] text-slate-400">
-                  {salaActual.tipo === "grupo"
-                    ? salaActual.miembros_nombres.map((n) => nombreCorto(n)).join(", ")
-                    : "Conversación directa"}
+                  {salaActual.tipo !== "grupo"
+                    ? "Conversación directa"
+                    : salaActual.descripcion ||
+                      salaActual.miembros_nombres.map((n) => nombreCorto(n)).join(", ")}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -1506,34 +1591,151 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-            {/* Identidad */}
+            {/* Identidad. En un grupo, un administrador la edita acá mismo:
+                el nombre, la descripción y la foto son del grupo y cambian
+                cuando el grupo cambia. */}
             <div className="rounded-2xl bg-white p-4 text-center shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-              <span
-                className="mx-auto flex h-20 w-20 items-center justify-center rounded-full text-[22px] font-bold"
-                style={{
-                  background: `${colorDe(salaActual.nombre)}22`,
-                  color: colorDe(salaActual.nombre),
-                }}
-              >
-                {salaActual.tipo === "grupo" ? (
-                  <Users className="h-8 w-8" />
-                ) : (
-                  inicialesNombre(salaActual.nombre)
-                )}
-              </span>
-              <p className="mt-2.5 text-[15px] font-semibold text-slate-800">
-                {nombreCapitular(salaActual.nombre)}
-              </p>
-              <p className="text-[12px] text-slate-400">
-                {salaActual.tipo === "grupo"
-                  ? `Grupo · ${salaActual.miembros} integrantes`
-                  : "Conversación directa"}
-              </p>
-              {salaActual.tipo === "grupo" ? (
-                <p className="mt-2 text-[11.5px] leading-relaxed text-slate-500">
-                  {salaActual.miembros_nombres.map((n) => nombreCapitular(n)).join(" · ")}
-                </p>
+              <div className="relative mx-auto w-20">
+                <Avatar
+                  nombre={salaActual.nombre}
+                  url={salaActual.avatar_url}
+                  size={80}
+                  icono={salaActual.tipo === "grupo" ? <Users className="h-8 w-8" /> : undefined}
+                />
+                {puedoEditarGrupo ? (
+                  <button
+                    type="button"
+                    onClick={() => fotoGrupoRef.current?.click()}
+                    disabled={subiendoFotoGrupo}
+                    title="Cambiar la foto del grupo"
+                    className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-900/50 opacity-0 transition-opacity hover:opacity-100"
+                  >
+                    {subiendoFotoGrupo ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    ) : (
+                      <Camera className="h-5 w-5 text-white" />
+                    )}
+                  </button>
+                ) : null}
+              </div>
+              {puedoEditarGrupo ? (
+                <input
+                  ref={fotoGrupoRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) void cambiarFotoGrupo(f);
+                  }}
+                />
               ) : null}
+
+              {editandoGrupo ? (
+                <div className="mt-3 space-y-2 text-left">
+                  <label className="block">
+                    <span className="mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                      Nombre
+                    </span>
+                    <input
+                      autoFocus
+                      value={editandoGrupo.nombre}
+                      maxLength={80}
+                      onChange={(e) =>
+                        setEditandoGrupo((g) => (g ? { ...g, nombre: e.target.value } : g))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void guardarGrupo();
+                        if (e.key === "Escape") setEditandoGrupo(null);
+                      }}
+                      className="w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-[13px] text-slate-800 focus:border-[#4FAEB2] focus:outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                      Descripción
+                    </span>
+                    <textarea
+                      rows={3}
+                      maxLength={500}
+                      value={editandoGrupo.descripcion}
+                      onChange={(e) =>
+                        setEditandoGrupo((g) => (g ? { ...g, descripcion: e.target.value } : g))
+                      }
+                      placeholder="Para qué es este grupo"
+                      className="w-full resize-none rounded-xl border border-slate-200 px-2.5 py-1.5 text-[12.5px] leading-relaxed text-slate-700 placeholder:text-slate-400 focus:border-[#4FAEB2] focus:outline-none"
+                    />
+                  </label>
+                  <div className="flex items-center justify-end gap-2 pt-0.5">
+                    {salaActual.avatar_url ? (
+                      <button
+                        type="button"
+                        onClick={() => void quitarFotoGrupo()}
+                        className="mr-auto text-[11px] text-slate-400 hover:text-rose-600"
+                      >
+                        Quitar foto
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setEditandoGrupo(null)}
+                      className="rounded-lg px-2.5 py-1 text-[12px] text-slate-500 hover:bg-slate-100"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void guardarGrupo()}
+                      disabled={guardandoGrupo}
+                      className="flex items-center gap-1.5 rounded-lg bg-[#4FAEB2] px-3 py-1 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      {guardandoGrupo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="mt-2.5 text-[15px] font-semibold text-slate-800">
+                    {nombreCapitular(salaActual.nombre)}
+                  </p>
+                  <p className="text-[12px] text-slate-400">
+                    {salaActual.tipo === "grupo"
+                      ? `Grupo · ${salaActual.miembros} integrantes`
+                      : "Conversación directa"}
+                  </p>
+                  {salaActual.descripcion ? (
+                    <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-600">
+                      {salaActual.descripcion}
+                    </p>
+                  ) : null}
+                  {salaActual.tipo === "grupo" ? (
+                    <p className="mt-2 text-[11.5px] leading-relaxed text-slate-500">
+                      {salaActual.miembros_nombres.map((n) => nombreCapitular(n)).join(" · ")}
+                    </p>
+                  ) : null}
+                  {puedoEditarGrupo ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditandoGrupo({
+                          nombre: salaActual.nombre,
+                          descripcion: salaActual.descripcion ?? "",
+                        })
+                      }
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#4FAEB2]/12 px-3 py-1.5 text-[12px] font-semibold text-[#2F6E71] transition-colors hover:bg-[#4FAEB2]/20"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Editar grupo
+                    </button>
+                  ) : salaActual.tipo === "grupo" ? (
+                    <p className="mt-3 text-[11px] text-slate-400">
+                      Sólo un administrador del grupo puede editarlo.
+                    </p>
+                  ) : null}
+                </>
+              )}
             </div>
 
             {/* Resumen de lo compartido */}
@@ -1714,6 +1916,21 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-[13px] focus:border-[#4FAEB2] focus:outline-none"
                 />
               </label>
+              {nombreGrupo.trim() ? (
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Descripción
+                  </span>
+                  <textarea
+                    rows={2}
+                    maxLength={500}
+                    value={descGrupo}
+                    onChange={(e) => setDescGrupo(e.target.value)}
+                    placeholder="Para qué es este grupo (se puede cambiar después)"
+                    className="mt-1 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-[12.5px] leading-relaxed focus:border-[#4FAEB2] focus:outline-none"
+                  />
+                </label>
+              ) : null}
               <div>
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Integrantes

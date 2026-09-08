@@ -17,19 +17,24 @@ export async function GET(request: Request) {
   try {
     const { data: mis } = await sb
       .from("chat_interno_miembros")
-      .select("sala_id, ultima_lectura_at")
+      .select("sala_id, ultima_lectura_at, rol")
       .eq("usuario_id", usuarioId);
 
-    const filas = (mis ?? []) as { sala_id: string; ultima_lectura_at: string | null }[];
+    const filas = (mis ?? []) as {
+      sala_id: string;
+      ultima_lectura_at: string | null;
+      rol: string | null;
+    }[];
     if (filas.length === 0) return NextResponse.json(successResponse({ salas: [] }));
 
     const ids = filas.map((f) => f.sala_id);
     const lecturaDe = new Map(filas.map((f) => [f.sala_id, f.ultima_lectura_at]));
+    const miRolEn = new Map(filas.map((f) => [f.sala_id, f.rol ?? "miembro"]));
 
     const [{ data: salas }, { data: miembros }, { data: ultimos }] = await Promise.all([
       sb
         .from("chat_interno_salas")
-        .select("id, tipo, nombre, descripcion, ultimo_mensaje_at, created_at")
+        .select("id, tipo, nombre, descripcion, avatar_path, ultimo_mensaje_at, created_at")
         .eq("empresa_id", empresaId)
         .in("id", ids)
         .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false }),
@@ -58,6 +63,14 @@ export async function GET(request: Request) {
     }[];
     const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
     const avatarDe = await firmarAvatares(sb, personas);
+    // Las fotos de los grupos viven en el mismo bucket que las de las personas.
+    const avatarDeSala = await firmarAvatares(
+      sb,
+      ((salas ?? []) as Record<string, unknown>[]).map((x) => ({
+        id: String(x.id),
+        avatar_path: (x.avatar_path as string | null) ?? null,
+      }))
+    );
 
     const porSala = new Map<string, string[]>();
     for (const m of (miembros ?? []) as { sala_id: string; usuario_id: string }[]) {
@@ -101,9 +114,13 @@ export async function GET(request: Request) {
         descripcion: s.descripcion ?? null,
         miembros: integrantes.length,
         miembros_nombres: integrantes.map((u) => nombreDe.get(u) ?? "—"),
-        // En un directo la sala se ve con la cara de la otra persona; un grupo
-        // no tiene una sola cara, y ahi va el icono.
-        avatar_url: s.tipo === "directo" && otro ? avatarDe.get(otro) ?? null : null,
+        // El directo se ve con la cara de la otra persona; el grupo, con la
+        // suya propia si le pusieron una.
+        avatar_url:
+          s.tipo === "directo"
+            ? (otro ? avatarDe.get(otro) ?? null : null)
+            : avatarDeSala.get(id) ?? null,
+        mi_rol: miRolEn.get(id) ?? "miembro",
         ultimo_mensaje_at: s.ultimo_mensaje_at ?? null,
         no_leidos: noLeidos.get(id) ?? 0,
         vista_previa: ultimo

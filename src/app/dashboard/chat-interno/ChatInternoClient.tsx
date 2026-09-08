@@ -313,6 +313,23 @@ function diaLabel(iso: string): string {
   return d.toLocaleDateString("es-PY", { day: "2-digit", month: "long" });
 }
 
+/**
+ * Resumen barato de la lista, para saber si cambió algo.
+ *
+ * Incluye lo que se ve: el id, si se editó o borró, las reacciones y el visto.
+ * Comparar los objetos enteros sería más caro que volver a renderizar.
+ */
+function firmaDeMensajes(ms: Mensaje[]): string {
+  return ms
+    .map(
+      (m) =>
+        `${m.id}|${m.editado_at ?? ""}|${m.eliminado ? 1 : 0}|${m.leido_por}|${JSON.stringify(
+          m.reacciones
+        )}`
+    )
+    .join(",");
+}
+
 function pesoLegible(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -596,14 +613,27 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/mensajes${qs}`, {
         cache: "no-store",
       });
-      const j = (await r.json().catch(() => ({}))) as { data?: { mensajes?: Mensaje[] } };
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { mensajes?: Mensaje[]; escribiendo?: string[] };
+      };
       const llegaron = j?.data?.mensajes ?? [];
+      // Buscar es otra vista: ahí el cartel de "escribiendo" no viene al caso.
+      if (!q) {
+        const quienes = j?.data?.escribiendo ?? [];
+        setEscribiendo(
+          Object.fromEntries(quienes.map((n, i) => [`${n}-${i}`, n])) as Record<string, string>
+        );
+      }
       // Los pendientes se conservan hasta que el servidor los devuelva: si no,
       // el mensaje recien escrito parpadearia y desapareceria.
       setMensajes((prev) => {
         const confirmados = new Set(llegaron.map((m) => m.id));
         const enVuelo = prev.filter((m) => m.pendiente && !confirmados.has(m.id));
-        return [...llegaron, ...enVuelo];
+        const nuevos = [...llegaron, ...enVuelo];
+        // Si es lo mismo que ya está en pantalla, se deja la lista anterior:
+        // reemplazarla por una copia idéntica vuelve a renderizar todo y
+        // mueve el scroll cada tres segundos.
+        return firmaDeMensajes(prev) === firmaDeMensajes(nuevos) ? prev : nuevos;
       });
       // Buscar no es leer la conversación: no marca nada como visto.
       if (!q) {
@@ -783,9 +813,20 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     };
   }, [salaId, cargarMensajes, cargarSalas]);
 
+  /**
+   * Bajar al último mensaje.
+   *
+   * Sólo cuando entra uno nuevo, y sólo si ya se estaba mirando el final: a
+   * quien subió a leer algo viejo, arrastrarlo al pie le hace perder el lugar.
+   */
+  const ultimoId = mensajes.length > 0 ? mensajes[mensajes.length - 1].id : "";
   useEffect(() => {
-    finRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [mensajes]);
+    if (!ultimoId) return;
+    const cont = finRef.current?.parentElement;
+    const cerca =
+      !cont || cont.scrollHeight - cont.scrollTop - cont.clientHeight < 220;
+    if (cerca) finRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [ultimoId]);
 
   /**
    * Todo lo que se puede mirar en grande en esta conversación, en orden.
@@ -828,6 +869,44 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
   }, [viendoIdx, mover]);
+
+  /**
+   * Mientras el chat está abierto y a la vista, se pregunta cada 3 segundos.
+   *
+   * Esto NO reemplaza al tiempo real: es el piso mientras el WebSocket de
+   * Realtime no llega (el proxy que está delante reescribe la cabecera
+   * `Connection` y el servicio rechaza el upgrade). Cuando eso se arregle,
+   * los avisos van a llegar antes por su camino y esto pasa a ser una red.
+   *
+   * Sólo con la pestaña visible: una pestaña de fondo no le muestra nada a
+   * nadie, y preguntar ahí es gastar por gusto.
+   */
+  useEffect(() => {
+    if (!salaId || enBusqueda) return;
+    const t = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void cargarMensajes(salaId, undefined, true);
+    }, 3000);
+    const alVolver = () => {
+      if (document.visibilityState === "visible") {
+        void cargarMensajes(salaId, undefined, true);
+        void cargarSalas();
+      }
+    };
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [salaId, enBusqueda, cargarMensajes, cargarSalas]);
+
+  /** La bandeja se refresca más espaciada: cambia menos y pesa más. */
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") void cargarSalas();
+    }, 10000);
+    return () => clearInterval(t);
+  }, [cargarSalas]);
 
   // El panel se arma cuando se abre, no antes: recorrer la sala entera es caro
   // y la mayoria de las veces nadie lo mira.
@@ -1167,14 +1246,28 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    */
   function avisarQueEscribo() {
     const canal = canalRef.current;
-    if (!canal || !perfil) return;
+    if (!perfil) return;
     const ahora = Date.now();
     if (ahora - ultimoAvisoRef.current < 2000) return;
     ultimoAvisoRef.current = ahora;
-    void canal.send({
+    void canal?.send({
       type: "broadcast",
       event: "escribiendo",
       payload: { usuario_id: perfil.usuario_id, nombre: perfil.nombre },
+    });
+  }
+
+  /**
+   * El mismo aviso, por el camino que hoy sí llega.
+   *
+   * Deja una marca en la sala; quien consulta ve quién escribió hace menos de
+   * unos segundos. Cuesta un pedido cada dos segundos mientras se escribe, y
+   * sólo mientras se escribe.
+   */
+  function avisarQueEscriboPorApi() {
+    if (!salaId) return;
+    void fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/escribiendo`, {
+      method: "POST",
     });
   }
 
@@ -2190,7 +2283,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   value={texto}
                   onChange={(e) => {
                     setTexto(e.target.value);
-                    if (e.target.value) avisarQueEscribo();
+                    if (e.target.value) {
+                      const antes = ultimoAvisoRef.current;
+                      avisarQueEscribo();
+                      // `avisarQueEscribo` ya trae el freno de los dos
+                      // segundos; si avanzó, es que tocaba avisar.
+                      if (ultimoAvisoRef.current !== antes) avisarQueEscriboPorApi();
+                    }
                     const at = detectarArroba(e.target.value, e.target.selectionStart ?? 0);
                     setConsultaMencion(at ? at.frag : null);
                   }}

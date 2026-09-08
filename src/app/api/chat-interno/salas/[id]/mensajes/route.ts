@@ -91,10 +91,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // mensaje contra la última lectura de cada persona.
     const { data: lectores } = await sb
       .from("chat_interno_miembros")
-      .select("usuario_id, ultima_lectura_at")
+      .select("usuario_id, ultima_lectura_at, escribiendo_at")
       .eq("sala_id", salaId);
-    const otros = ((lectores ?? []) as { usuario_id: string; ultima_lectura_at: string | null }[])
-      .filter((l) => l.usuario_id !== usuarioId);
+    const otros = ((lectores ?? []) as {
+      usuario_id: string;
+      ultima_lectura_at: string | null;
+      escribiendo_at: string | null;
+    }[]).filter((l) => l.usuario_id !== usuarioId);
+
+    // Quién está escribiendo ahora. Cinco segundos: el aviso se manda cada dos,
+    // así que da margen para uno perdido sin dejar el cartel colgado.
+    const desde = new Date(Date.now() - 5000).toISOString();
+    const escribiendo = otros
+      .filter((l) => l.escribiendo_at && l.escribiendo_at > desde)
+      .map((l) => nombreDe.get(l.usuario_id) ?? "—");
 
     // Los mensajes citados pueden estar fuera de esta página: se traen aparte,
     // sólo con lo que hace falta para pintar la cita.
@@ -169,7 +179,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       .reverse();
 
     return NextResponse.json(
-      successResponse({ mensajes, hay_mas: filas.length === PAGINA })
+      successResponse({ mensajes, hay_mas: filas.length === PAGINA, escribiendo })
     );
   } catch (e) {
     return NextResponse.json(

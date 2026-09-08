@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
+import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { fechaRelativa } from "@/app/dashboard/proyectos/components/qa/ui";
 import {
   escribirSonidoActivado,
@@ -262,21 +263,30 @@ export default function NotificacionesBell() {
     const schema = sesion?.data_schema;
     if (!usuarioId || !schema) return;
     const sb = createBrowserClientForSchema(schema);
-    const channel = sb
-      .channel(`usuario-notificaciones:${usuarioId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema,
-          table: "usuario_notificaciones",
-          filter: `usuario_id=eq.${usuarioId}`,
-        },
-        () => void cargarRef.current?.()
-      )
-      .subscribe();
+    let vivo = true;
+    let channel: ReturnType<typeof sb.channel> | null = null;
+    void (async () => {
+      // Sin autenticar el socket, RLS no deja pasar ni un evento y la
+      // suscripción queda "conectada" sin recibir nunca nada.
+      await autenticarRealtime(sb);
+      if (!vivo) return;
+      channel = sb
+        .channel(`usuario-notificaciones:${usuarioId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema,
+            table: "usuario_notificaciones",
+            filter: `usuario_id=eq.${usuarioId}`,
+          },
+          () => void cargarRef.current?.()
+        )
+        .subscribe();
+    })();
     return () => {
-      void sb.removeChannel(channel);
+      vivo = false;
+      if (channel) void sb.removeChannel(channel);
     };
   }, [sesion?.id, sesion?.data_schema]);
 

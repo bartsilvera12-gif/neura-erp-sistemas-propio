@@ -48,7 +48,9 @@ import {
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { EVENTO_CHAT_LEIDO } from "@/components/layout/ChatPestanaBadge";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 
 type Sala = {
@@ -529,6 +531,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
   /** Índice dentro de la galería de la conversación. `null` = visor cerrado. */
   const [viendoIdx, setViendoIdx] = useState<number | null>(null);
+  /** Quién está escribiendo ahora mismo: nombre por usuario. */
+  const [escribiendo, setEscribiendo] = useState<Record<string, string>>({});
+  /** El canal de la sala abierta, para poder avisar por él. */
+  const canalRef = useRef<RealtimeChannel | null>(null);
+  /** Último aviso de "estoy escribiendo": se manda cada tanto, no por tecla. */
+  const ultimoAvisoRef = useRef(0);
   const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
   /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
   const contRef = useRef<HTMLDivElement>(null);
@@ -605,6 +613,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           // Que el contador de la pestaña baje ahora y no en el próximo
           // refresco: leer una sala tiene que verse en el acto.
           window.dispatchEvent(new Event(EVENTO_CHAT_LEIDO));
+          // Y que al otro se le ponga el visto en azul sin esperar nada.
+          void canalRef.current?.send({ type: "broadcast", event: "leido", payload: {} });
         });
         setSalas((prev) => prev.map((s) => (s.id === id ? { ...s, no_leidos: 0 } : s)));
       }
@@ -687,35 +697,89 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     };
   }, [salaId]);
 
-  // Realtime: un mensaje nuevo en la sala abierta se agrega sin recargar.
+  /**
+   * El canal de la sala abierta.
+   *
+   * Va por DOS caminos a la vez, y no por gusto:
+   *
+   *  · `postgres_changes` lee la replicación de Postgres. Es el camino correcto
+   *    —lo que se guardó es lo que se avisa— pero depende de que la tabla esté
+   *    publicada, de RLS, y de que el socket esté autenticado.
+   *  · `broadcast` es un mensaje directo entre navegadores. No toca la base, así
+   *    que llega siempre y llega antes.
+   *
+   * Los dos disparan lo mismo —volver a pedir— y pedir de más es inofensivo.
+   * Con uno solo, cualquier problema de infraestructura deja el chat mudo, que
+   * es de donde venimos.
+   */
   useEffect(() => {
     if (!salaId) return;
-    const canal = supabase
-      .channel(`chat-interno-${salaId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "neura", table: "chat_interno_mensajes", filter: `sala_id=eq.${salaId}` },
-        () => {
-          void cargarMensajes(salaId, undefined, true);
-          void cargarSalas();
-        }
-      )
-      // Cuando el otro lee, el visto tiene que ponerse en azul solo. La lectura
-      // se guarda en `miembros` y no en el mensaje, así que el aviso viene por
-      // ahí; se vuelven a pedir los mensajes en silencio para recalcularlo.
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "neura",
-          table: "chat_interno_miembros",
-          filter: `sala_id=eq.${salaId}`,
-        },
-        () => void cargarMensajes(salaId, undefined, true)
-      )
-      .subscribe();
+    let vivo = true;
+    let canal: RealtimeChannel | null = null;
+
+    const refrescar = () => {
+      void cargarMensajes(salaId, undefined, true);
+      void cargarSalas();
+    };
+
+    void (async () => {
+      // Sin esto el canal se une con el token anónimo y RLS no deja pasar nada.
+      await autenticarRealtime(supabase);
+      if (!vivo) return;
+
+      canal = supabase
+        .channel(`chat-interno-${salaId}`, { config: { broadcast: { self: false } } })
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "neura",
+            table: "chat_interno_mensajes",
+            filter: `sala_id=eq.${salaId}`,
+          },
+          refrescar
+        )
+        // Cuando el otro lee, el visto tiene que ponerse en azul solo. La
+        // lectura se guarda en `miembros` y no en el mensaje.
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "neura",
+            table: "chat_interno_miembros",
+            filter: `sala_id=eq.${salaId}`,
+          },
+          () => void cargarMensajes(salaId, undefined, true)
+        )
+        .on("broadcast", { event: "mensaje" }, refrescar)
+        .on("broadcast", { event: "leido" }, () =>
+          void cargarMensajes(salaId, undefined, true)
+        )
+        .on("broadcast", { event: "escribiendo" }, ({ payload }) => {
+          const p = payload as { usuario_id?: string; nombre?: string };
+          if (!p?.usuario_id || !p.nombre) return;
+          setEscribiendo((prev) => ({ ...prev, [p.usuario_id!]: p.nombre! }));
+          // Se apaga sola: quien cierra la pestaña a mitad de una palabra no
+          // manda ningún "ya no escribo", y el cartel quedaría para siempre.
+          window.setTimeout(() => {
+            setEscribiendo((prev) => {
+              if (!(p.usuario_id! in prev)) return prev;
+              const resto = { ...prev };
+              delete resto[p.usuario_id!];
+              return resto;
+            });
+          }, 4000);
+        })
+        .subscribe();
+
+      canalRef.current = canal;
+    })();
+
     return () => {
-      void supabase.removeChannel(canal);
+      vivo = false;
+      canalRef.current = null;
+      setEscribiendo({});
+      if (canal) void supabase.removeChannel(canal);
     };
   }, [salaId, cargarMensajes, cargarSalas]);
 
@@ -1016,6 +1080,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       setMensajes((prev) =>
         prev.map((m) => (m.id === tempId ? { ...m, id: j.data?.id ?? m.id, pendiente: false } : m))
       );
+      // Aviso directo a quien tenga la sala abierta. Llega antes que la
+      // replicación y no depende de ella.
+      void canalRef.current?.send({ type: "broadcast", event: "mensaje", payload: {} });
+      // Al mandar dejo de estar escribiendo; el cartel del otro lado se apaga
+      // solo, pero que se apague al ver llegar el mensaje es lo natural.
+      ultimoAvisoRef.current = 0;
       void cargarMensajes(salaId, undefined, true);
       void cargarSalas();
     } catch {
@@ -1087,6 +1157,25 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       // Si algo falla, al menos que pueda verlo.
       window.open(a.url, "_blank", "noopener");
     }
+  }
+
+  /**
+   * Avisa que estoy escribiendo, como mucho una vez cada dos segundos.
+   *
+   * Mandarlo por tecla sería una ráfaga de avisos por cada palabra, y el cartel
+   * del otro lado se ve igual.
+   */
+  function avisarQueEscribo() {
+    const canal = canalRef.current;
+    if (!canal || !perfil) return;
+    const ahora = Date.now();
+    if (ahora - ultimoAvisoRef.current < 2000) return;
+    ultimoAvisoRef.current = ahora;
+    void canal.send({
+      type: "broadcast",
+      event: "escribiendo",
+      payload: { usuario_id: perfil.usuario_id, nombre: perfil.nombre },
+    });
   }
 
   async function cambiarFoto(file: File) {
@@ -1345,6 +1434,15 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         .filter((u) => !yaEstan.has(u.id) && u.nombre.toLowerCase().includes(filtroSuma))
         .slice(0, 8)
     : [];
+
+  /** "Juliana está escribiendo…", o quiénes si son varios. */
+  const quienesEscriben = (() => {
+    const nombres = Object.values(escribiendo).map((n) => nombreCorto(n));
+    if (nombres.length === 0) return "";
+    if (nombres.length === 1) return `${nombres[0]} está escribiendo…`;
+    if (nombres.length === 2) return `${nombres[0]} y ${nombres[1]} están escribiendo…`;
+    return "Varios están escribiendo…";
+  })();
 
   const q = filtroBandeja.trim().toLowerCase();
   const salasFiltradas = q
@@ -1647,11 +1745,19 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     <span className="shrink-0 text-[12.5px] italic text-slate-400">En línea</span>
                   ) : null}
                 </h2>
-                <p className="truncate text-[12.5px] text-slate-400">
-                  {salaActual.tipo !== "grupo"
-                    ? salaActual.subtitulo
-                    : salaActual.descripcion || `${salaActual.miembros} miembros`}
-                </p>
+                {/* Quién escribe reemplaza al subtítulo mientras dura: es lo
+                    que está pasando ahora, y el cargo no se va a ningún lado. */}
+                {quienesEscriben ? (
+                  <p className="truncate text-[12.5px] font-medium text-[#2F6E71]">
+                    {quienesEscriben}
+                  </p>
+                ) : (
+                  <p className="truncate text-[12.5px] text-slate-400">
+                    {salaActual.tipo !== "grupo"
+                      ? salaActual.subtitulo
+                      : salaActual.descripcion || `${salaActual.miembros} miembros`}
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {verBuscador ? (
@@ -2084,6 +2190,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   value={texto}
                   onChange={(e) => {
                     setTexto(e.target.value);
+                    if (e.target.value) avisarQueEscribo();
                     const at = detectarArroba(e.target.value, e.target.selectionStart ?? 0);
                     setConsultaMencion(at ? at.frag : null);
                   }}

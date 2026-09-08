@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { supabase } from "@/lib/supabase";
+import { autenticarRealtime } from "@/lib/realtime/autenticar";
 
 /**
  * Red de seguridad por si el realtime se cayó sin avisar. Lo normal es que el
@@ -136,7 +137,12 @@ export default function ChatPestanaBadge() {
   // se puede hacer acá —son varias—, así que se escucha la tabla y se recuenta.
   useEffect(() => {
     if (!habilitado) return;
-    const canal = supabase
+    let vivo = true;
+    let canal: ReturnType<typeof supabase.channel> | null = null;
+    void (async () => {
+      await autenticarRealtime(supabase);
+      if (!vivo) return;
+      canal = supabase
       .channel("chat-interno-pestana")
       .on(
         "postgres_changes",
@@ -152,8 +158,10 @@ export default function ChatPestanaBadge() {
         }
       )
       .subscribe();
+    })();
     return () => {
-      void supabase.removeChannel(canal);
+      vivo = false;
+      if (canal) void supabase.removeChannel(canal);
     };
   }, [contar, habilitado]);
 

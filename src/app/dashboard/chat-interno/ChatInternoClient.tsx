@@ -694,7 +694,22 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   const yaElegi = useRef(false);
   useEffect(() => {
-    if (mobile || yaElegi.current || salaId || salas.length === 0) return;
+    if (yaElegi.current || salaId || salas.length === 0) return;
+
+    // `?sala=` viene de la campanita: se entra a LA conversación del aviso.
+    // Vale también en mobile, donde normalmente no se abre ninguna sola:
+    // acá la persona pidió explícitamente esa conversación.
+    const pedida = new URLSearchParams(window.location.search).get("sala");
+    if (pedida && salas.some((s) => s.id === pedida)) {
+      yaElegi.current = true;
+      setSalaId(pedida);
+      // Se limpia la URL: al recargar más tarde, esa sala ya no es "la del
+      // aviso" y volver a abrirla sería una sorpresa.
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+
+    if (mobile) return;
     yaElegi.current = true;
     setSalaId(salas[0].id);
   }, [salas, salaId, mobile]);

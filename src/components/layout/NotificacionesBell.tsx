@@ -40,7 +40,8 @@ type TipoNotificacion =
   | "cobro_pendiente"
   | "comentario_proyecto"
   | "agenda_recordatorio"
-  | "qa_vence";
+  | "qa_vence"
+  | "chat_interno_mensaje";
 
 type Notificacion = {
   id: string;
@@ -53,7 +54,7 @@ type Notificacion = {
   leida_at: string | null;
   created_at: string;
   /** Sólo en comentarios: canal al que apunta, para abrir la sección correcta. */
-  metadata?: { canal?: string } | null;
+  metadata?: { canal?: string; sala_id?: string; mencion?: boolean } | null;
   /**
    * Aviso calculado en vivo por la API, sin fila en la base (compromiso de
    * esqueleto). No se puede marcar leído: se apaga cuando el proyecto avanza.
@@ -103,6 +104,11 @@ const ESTILO_TIPO: Record<
     icon: ClipboardList,
     wrap: "bg-indigo-50 text-indigo-600",
     label: "Novedad de QA",
+  },
+  chat_interno_mensaje: {
+    icon: MessageSquare,
+    wrap: "bg-[#4FAEB2]/12 text-[#3F8E91]",
+    label: "Chat interno",
   },
   qa_aprobado: {
     icon: CheckCircle2,
@@ -433,6 +439,12 @@ export default function NotificacionesBell() {
 
                 const destino = n.cita_id
                   ? "/dashboard/agenda"
+                  // Al chat se entra a LA conversación del aviso, no a la
+                  // bandeja: si no, hay que buscar de nuevo lo que te avisaron.
+                  : n.tipo === "chat_interno_mensaje"
+                  ? `/dashboard/chat-interno${
+                      n.metadata?.sala_id ? `?sala=${n.metadata.sala_id}` : ""
+                    }`
                   : n.tipo === "cobro_pendiente"
                   ? "/cobranzas/conciliacion"
                   : n.tipo === "comentario_proyecto" && n.proyecto_id

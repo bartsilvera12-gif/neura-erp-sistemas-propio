@@ -7,6 +7,7 @@ import { ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
+import ChatPestanaBadge from "@/components/layout/ChatPestanaBadge";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -118,6 +119,10 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
 
         {/* Notificaciones */}
         <NotificacionesBell />
+        {/* No dibuja nada: pone el contador del chat en la pestaña. Va acá
+            porque el Header está en todas las pantallas, y el sentido del
+            contador es avisar justamente cuando no se está mirando el chat. */}
+        <ChatPestanaBadge />
 
         {/* Avatar + menú usuario */}
         <div className="relative" ref={menuRef}>

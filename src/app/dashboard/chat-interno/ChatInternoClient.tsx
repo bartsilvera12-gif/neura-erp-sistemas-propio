@@ -32,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { EVENTO_CHAT_LEIDO } from "@/components/layout/ChatPestanaBadge";
 import { supabase } from "@/lib/supabase";
 import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 
@@ -349,7 +350,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       });
       // Buscar no es leer la conversación: no marca nada como visto.
       if (!q) {
-        void fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, { method: "POST" });
+        void fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, {
+          method: "POST",
+        }).then(() => {
+          // Que el contador de la pestaña baje ahora y no en el próximo
+          // refresco: leer una sala tiene que verse en el acto.
+          window.dispatchEvent(new Event(EVENTO_CHAT_LEIDO));
+        });
         setSalas((prev) => prev.map((s) => (s.id === id ? { ...s, no_leidos: 0 } : s)));
       }
     } finally {

@@ -9,12 +9,21 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   Camera,
   Check,
   CheckCheck,
+  ChevronRight,
   Download,
   ExternalLink,
+  File as FileIcon,
+  FileArchive,
+  FileAudio,
+  FileSpreadsheet,
+  FileType,
+  FileVideo,
+  Play,
   Crown,
   UserMinus,
   UserPlus,
@@ -66,9 +75,60 @@ type Adjunto = {
   nombre: string;
   mime_type: string;
   size_bytes: number;
-  clase: "audio" | "imagen" | "archivo";
+  clase: "audio" | "imagen" | "video" | "archivo";
   url?: string | null;
 };
+
+type TipoAdjunto = "imagen" | "video" | "audio" | "pdf" | "archivo";
+
+/**
+ * Qué es un adjunto, mirando su mime y no la `clase` guardada.
+ *
+ * Los mensajes viejos se guardaron cuando "video" todavía no existía como
+ * categoría: deducirlo en cada render hace que también ellos se vean bien, sin
+ * tener que reescribir nada en la base.
+ */
+function tipoDe(a: { mime_type?: string | null; nombre?: string | null }): TipoAdjunto {
+  const mime = (a.mime_type ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return "imagen";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime === "application/pdf" || (a.nombre ?? "").toLowerCase().endsWith(".pdf")) return "pdf";
+  return "archivo";
+}
+
+/** Se abre dentro del chat, sin descargar nada. */
+function seVeEnGrande(a: { mime_type?: string | null; nombre?: string | null }): boolean {
+  const t = tipoDe(a);
+  return t === "imagen" || t === "video" || t === "pdf";
+}
+
+/**
+ * El ícono y el color de un archivo, por su tipo.
+ *
+ * Un PDF rojo y una planilla verde se reconocen antes de leer el nombre, que
+ * además suele venir cortado.
+ */
+function pintaDeArchivo(a: { mime_type?: string | null; nombre?: string | null }): {
+  Icono: LucideIcon;
+  color: string;
+  fondo: string;
+} {
+  const nombre = (a.nombre ?? "").toLowerCase();
+  const mime = (a.mime_type ?? "").toLowerCase();
+  const term = (...ext: string[]) => ext.some((e) => nombre.endsWith(e));
+
+  if (tipoDe(a) === "pdf") return { Icono: FileText, color: "#DC2626", fondo: "#FEE2E2" };
+  if (term(".xlsx", ".xls", ".csv") || mime.includes("spreadsheet"))
+    return { Icono: FileSpreadsheet, color: "#15803D", fondo: "#DCFCE7" };
+  if (term(".doc", ".docx") || mime.includes("wordprocessing"))
+    return { Icono: FileType, color: "#1D4ED8", fondo: "#DBEAFE" };
+  if (term(".zip", ".rar", ".7z", ".tar", ".gz"))
+    return { Icono: FileArchive, color: "#B45309", fondo: "#FEF3C7" };
+  if (tipoDe(a) === "video") return { Icono: FileVideo, color: "#7C3AED", fondo: "#EDE9FE" };
+  if (tipoDe(a) === "audio") return { Icono: FileAudio, color: "#0E7490", fondo: "#CFFAFE" };
+  return { Icono: FileIcon, color: "#475569", fondo: "#E2E8F0" };
+}
 
 type Cita = { autor: string; texto: string | null };
 
@@ -302,6 +362,125 @@ function Visto({
   );
 }
 
+/**
+ * Un adjunto dentro del globo.
+ *
+ * Cada tipo se muestra como corresponde: la imagen y el video se ven ahí
+ * mismo, el audio se escucha, y lo demás es una tarjeta con el ícono de su
+ * clase. Mostrar todo como un enlace gris obliga a descargar para saber qué es.
+ */
+function Adjuntito({
+  a,
+  onVer,
+  onDescargar,
+}: {
+  a: Adjunto;
+  onVer: () => void;
+  onDescargar: () => void;
+}) {
+  const tipo = tipoDe(a);
+
+  if (tipo === "audio" && a.url) {
+    return <audio controls src={a.url} className="h-9 w-60 max-w-full" />;
+  }
+
+  if ((tipo === "imagen" || tipo === "video") && a.url) {
+    return (
+      // Las acciones aparecen encima al pasar el mouse, para no tapar la
+      // imagen mientras se la mira.
+      <div className="group/img relative inline-block">
+        <button type="button" onClick={onVer} title="Ver más grande" className="block">
+          {tipo === "imagen" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={a.url}
+              alt={a.nombre}
+              className="max-h-64 cursor-zoom-in rounded-lg border border-black/5"
+            />
+          ) : (
+            <span className="relative block">
+              <video
+                src={a.url}
+                // Sin `preload` el recuadro sale negro: hace falta el primer
+                // fotograma para que se entienda qué video es.
+                preload="metadata"
+                className="max-h-64 rounded-lg border border-black/5"
+              />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/55 text-white backdrop-blur-sm">
+                  <Play className="ml-0.5 h-5 w-5 fill-white" />
+                </span>
+              </span>
+            </span>
+          )}
+        </button>
+        <span className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover/img:opacity-100">
+          <a
+            href={a.url}
+            target="_blank"
+            rel="noreferrer"
+            title="Abrir en otra pestaña"
+            className="rounded-lg bg-slate-900/60 p-1.5 text-white backdrop-blur-sm hover:bg-slate-900/80"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+          <button
+            type="button"
+            onClick={onDescargar}
+            title="Descargar"
+            className="rounded-lg bg-slate-900/60 p-1.5 text-white backdrop-blur-sm hover:bg-slate-900/80"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  const { Icono, color, fondo } = pintaDeArchivo(a);
+  const abrible = seVeEnGrande(a) && !!a.url;
+  return (
+    <div className="flex min-w-[230px] items-center gap-2.5 rounded-lg bg-slate-50 px-2 py-2 text-[12px]">
+      <button
+        type="button"
+        onClick={abrible ? onVer : onDescargar}
+        title={abrible ? "Ver" : "Descargar"}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+        style={{ background: fondo, color }}
+      >
+        <Icono className="h-[18px] w-[18px]" />
+      </button>
+      <button
+        type="button"
+        onClick={abrible ? onVer : onDescargar}
+        className="min-w-0 flex-1 text-left"
+      >
+        <span className="block truncate font-medium text-slate-700">{a.nombre}</span>
+        <span className="block text-[10.5px] uppercase text-slate-400">
+          {(a.nombre.split(".").pop() ?? "").slice(0, 5)} · {pesoLegible(a.size_bytes)}
+        </span>
+      </button>
+      <a
+        href={a.url ?? "#"}
+        target="_blank"
+        rel="noreferrer"
+        title="Abrir en otra pestaña"
+        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-[#2F6E71]"
+      >
+        <ExternalLink className="h-4 w-4" />
+      </a>
+      <button
+        type="button"
+        onClick={onDescargar}
+        title="Descargar"
+        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-[#2F6E71]"
+      >
+        <Download className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 export default function ChatInternoClient({ mobile = false }: { mobile?: boolean } = {}) {
   const [salas, setSalas] = useState<Sala[]>([]);
   const [salaId, setSalaId] = useState<string | null>(null);
@@ -348,8 +527,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [tocandoMiembros, setTocandoMiembros] = useState(false);
   /** Edición de mi nombre en el chat: `null` mientras no se edita. */
   const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
-  /** Imagen abierta en grande. `null` = visor cerrado. */
-  const [viendo, setViendo] = useState<Adjunto | null>(null);
+  /** Índice dentro de la galería de la conversación. `null` = visor cerrado. */
+  const [viendoIdx, setViendoIdx] = useState<number | null>(null);
   const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
   /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
   const contRef = useRef<HTMLDivElement>(null);
@@ -544,15 +723,47 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     finRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [mensajes]);
 
-  // Escape cierra el visor: es lo que hace cualquiera sin pensarlo.
+  /**
+   * Todo lo que se puede mirar en grande en esta conversación, en orden.
+   *
+   * El visor navega sobre esta lista y no sobre un solo archivo: abrir una foto
+   * y tener que cerrarla para ver la siguiente es lo que hace que revisar lo
+   * que se mandó sea tedioso.
+   */
+  const galeria = useMemo(
+    () => mensajes.flatMap((m) => m.adjuntos.filter((a) => seVeEnGrande(a) && a.url)),
+    [mensajes]
+  );
+  const viendo = viendoIdx !== null ? galeria[viendoIdx] ?? null : null;
+
+  function abrirVisor(a: Adjunto) {
+    const i = galeria.findIndex((x) => x.path === a.path);
+    setViendoIdx(i >= 0 ? i : null);
+    if (i < 0 && a.url) window.open(a.url, "_blank", "noopener");
+  }
+
+  const mover = useCallback(
+    (paso: number) => {
+      setViendoIdx((i) => {
+        if (i === null || galeria.length === 0) return i;
+        // Da la vuelta: llegar al final y quedarse trabado no ayuda a nadie.
+        return (i + paso + galeria.length) % galeria.length;
+      });
+    },
+    [galeria.length]
+  );
+
+  // Escape cierra y las flechas recorren: es lo que hace cualquiera sin pensarlo.
   useEffect(() => {
-    if (!viendo) return;
+    if (viendoIdx === null) return;
     const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setViendo(null);
+      if (e.key === "Escape") setViendoIdx(null);
+      if (e.key === "ArrowRight") mover(1);
+      if (e.key === "ArrowLeft") mover(-1);
     };
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
-  }, [viendo]);
+  }, [viendoIdx, mover]);
 
   // El panel se arma cuando se abre, no antes: recorrer la sala entera es caro
   // y la mayoria de las veces nadie lo mira.
@@ -1645,78 +1856,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               ) : null}
                               {m.adjuntos.map((a) => (
                                 <div key={a.path} className="mt-1.5">
-                                  {a.clase === "audio" && a.url ? (
-                                    <audio controls src={a.url} className="h-9 w-56 max-w-full" />
-                                  ) : a.clase === "imagen" && a.url ? (
-                                    // La miniatura abre el visor; las acciones
-                                    // aparecen encima al pasar el mouse, para no
-                                    // taparla mientras se la mira.
-                                    <div className="group/img relative inline-block">
-                                      <button
-                                        type="button"
-                                        onClick={() => setViendo(a)}
-                                        title="Ver más grande"
-                                        className="block"
-                                      >
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                          src={a.url}
-                                          alt={a.nombre}
-                                          className="max-h-64 cursor-zoom-in rounded-lg border border-black/5"
-                                        />
-                                      </button>
-                                      <span className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover/img:opacity-100">
-                                        <a
-                                          href={a.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          title="Abrir en otra pestaña"
-                                          className="rounded-lg bg-slate-900/60 p-1.5 text-white backdrop-blur-sm hover:bg-slate-900/80"
-                                        >
-                                          <ExternalLink className="h-3.5 w-3.5" />
-                                        </a>
-                                        <button
-                                          type="button"
-                                          onClick={() => void descargar(a)}
-                                          title="Descargar"
-                                          className="rounded-lg bg-slate-900/60 p-1.5 text-white backdrop-blur-sm hover:bg-slate-900/80"
-                                        >
-                                          <Download className="h-3.5 w-3.5" />
-                                        </button>
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[12px]">
-                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#4FAEB2]/12 text-[#2F6E71]">
-                                        <FileText className="h-4 w-4" />
-                                      </span>
-                                      <span className="min-w-0 flex-1">
-                                        <span className="block truncate font-medium text-slate-700">
-                                          {a.nombre}
-                                        </span>
-                                        <span className="block text-[10.5px] text-slate-400">
-                                          {pesoLegible(a.size_bytes)}
-                                        </span>
-                                      </span>
-                                      <a
-                                        href={a.url ?? "#"}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        title="Abrir en otra pestaña"
-                                        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-[#2F6E71]"
-                                      >
-                                        <ExternalLink className="h-4 w-4" />
-                                      </a>
-                                      <button
-                                        type="button"
-                                        onClick={() => void descargar(a)}
-                                        title="Descargar"
-                                        className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-[#2F6E71]"
-                                      >
-                                        <Download className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  )}
+                                  <Adjuntito
+                                    a={a}
+                                    onVer={() => abrirVisor(a)}
+                                    onDescargar={() => void descargar(a)}
+                                  />
                                 </div>
                               ))}
                             </>
@@ -2341,7 +2485,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               {(
                 [
                   { icono: <FileText className="h-4 w-4" />, txt: "Documentos", n: biblioteca?.archivos.length },
-                  { icono: <ImageIcon className="h-4 w-4" />, txt: "Imágenes", n: biblioteca?.imagenes.length },
+                  { icono: <ImageIcon className="h-4 w-4" />, txt: "Fotos y videos", n: biblioteca?.imagenes.length },
                   { icono: <Mic className="h-4 w-4" />, txt: "Audios", n: biblioteca?.audios.length },
                   { icono: <Link2 className="h-4 w-4" />, txt: "Enlaces", n: biblioteca?.enlaces.length },
                 ] as const
@@ -2489,8 +2633,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           no se lee. */}
       {viendo?.url ? (
         <div
-          className="fixed inset-0 z-[60] flex flex-col bg-slate-900/90 backdrop-blur-sm"
-          onClick={() => setViendo(null)}
+          className="fixed inset-0 z-[60] flex flex-col bg-slate-900/92 backdrop-blur-sm"
+          onClick={() => setViendoIdx(null)}
         >
           <div
             className="flex items-center gap-3 px-4 py-3 text-white"
@@ -2500,6 +2644,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               <span className="block truncate text-[13.5px] font-medium">{viendo.nombre}</span>
               <span className="block text-[11px] text-white/60">
                 {pesoLegible(viendo.size_bytes)}
+                {galeria.length > 1 ? ` · ${(viendoIdx ?? 0) + 1} de ${galeria.length}` : ""}
               </span>
             </span>
             <a
@@ -2521,21 +2666,71 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             </button>
             <button
               type="button"
-              onClick={() => setViendo(null)}
+              onClick={() => setViendoIdx(null)}
               aria-label="Cerrar"
               className="rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={viendo.url}
-              alt={viendo.nombre}
-              onClick={(e) => e.stopPropagation()}
-              className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
-            />
+
+          <div className="relative flex min-h-0 flex-1 items-center justify-center p-4">
+            {galeria.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    mover(-1);
+                  }}
+                  aria-label="Anterior"
+                  className="absolute left-3 z-10 rounded-full bg-white/10 p-2.5 text-white transition-colors hover:bg-white/20"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    mover(1);
+                  }}
+                  aria-label="Siguiente"
+                  className="absolute right-3 z-10 rounded-full bg-white/10 p-2.5 text-white transition-colors hover:bg-white/20"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            ) : null}
+
+            {tipoDe(viendo) === "video" ? (
+              <video
+                key={viendo.path}
+                src={viendo.url}
+                controls
+                autoPlay
+                onClick={(e) => e.stopPropagation()}
+                className="max-h-full max-w-full rounded-lg shadow-2xl"
+              />
+            ) : tipoDe(viendo) === "pdf" ? (
+              // El PDF se lee acá adentro. Si el navegador no lo muestra, los
+              // botones de arriba siguen estando.
+              <iframe
+                key={viendo.path}
+                src={viendo.url}
+                title={viendo.nombre}
+                onClick={(e) => e.stopPropagation()}
+                className="h-full w-full max-w-5xl rounded-lg bg-white shadow-2xl"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={viendo.path}
+                src={viendo.url}
+                alt={viendo.nombre}
+                onClick={(e) => e.stopPropagation()}
+                className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+              />
+            )}
           </div>
         </div>
       ) : null}

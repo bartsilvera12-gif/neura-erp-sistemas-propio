@@ -133,13 +133,14 @@ export type ChatAdjunto = {
   nombre: string;
   mime_type: string;
   size_bytes: number;
-  /** `audio` se reproduce en línea; el resto se descarga. */
-  clase: "audio" | "imagen" | "archivo";
+  /** Qué se puede hacer con él sin salir del chat. */
+  clase: "audio" | "imagen" | "video" | "archivo";
 };
 
 export function claseDeAdjunto(mime: string): ChatAdjunto["clase"] {
   if (mime.startsWith("audio/")) return "audio";
   if (mime.startsWith("image/")) return "imagen";
+  if (mime.startsWith("video/")) return "video";
   return "archivo";
 }
 

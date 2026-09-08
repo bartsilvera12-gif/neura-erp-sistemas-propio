@@ -96,8 +96,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           created_at: cuando,
           mensaje_id: String(m.id),
         };
-        if (a.clase === "imagen") imagenes.push(item);
-        else if (a.clase === "audio") audios.push(item);
+        // Se clasifica por el mime y no por la `clase` guardada: los videos
+        // se subieron cuando esa categoría todavía no existía, y quedaron como
+        // "archivo". Deducirlo acá los acomoda sin reescribir nada.
+        const mime = (a.mime_type ?? "").toLowerCase();
+        if (mime.startsWith("image/") || mime.startsWith("video/")) imagenes.push(item);
+        else if (mime.startsWith("audio/")) audios.push(item);
         else archivos.push(item);
       }
 

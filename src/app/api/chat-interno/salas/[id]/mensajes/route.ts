@@ -5,6 +5,7 @@ import { notificarMensajeChat } from "@/lib/chat-interno/notificar";
 import {
   esMiembro,
   firmarAdjuntos,
+  firmarAvatares,
   requireChatInterno,
   respuestaAuth,
   type ChatAdjunto,
@@ -66,11 +67,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       ]),
     ].filter((x): x is string => typeof x === "string" && !!x);
     const { data: usuarios } = ids.length
-      ? await catalog.from("usuarios").select("id, nombre").in("id", ids)
-      : { data: [] as { id: string; nombre: string | null }[] };
-    const nombreDe = new Map(
-      ((usuarios ?? []) as { id: string; nombre: string | null }[]).map((u) => [u.id, u.nombre ?? "—"])
-    );
+      ? await catalog.from("usuarios").select("id, nombre, avatar_path").in("id", ids)
+      : { data: [] as { id: string; nombre: string | null; avatar_path: string | null }[] };
+    const personas = (usuarios ?? []) as {
+      id: string;
+      nombre: string | null;
+      avatar_path: string | null;
+    }[];
+    const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
+    const avatarDe = await firmarAvatares(sb, personas);
 
     const urls = await firmarAdjuntos(sb, filas as { adjuntos?: unknown }[]);
 
@@ -103,6 +108,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           id: String(m.id),
           usuario_id: (m.usuario_id as string | null) ?? null,
           autor: m.usuario_id ? nombreDe.get(String(m.usuario_id)) ?? "—" : "—",
+          autor_avatar: m.usuario_id ? avatarDe.get(String(m.usuario_id)) ?? null : null,
           // Un mensaje borrado deja el hueco pero no el contenido.
           texto: borrado ? null : ((m.texto as string | null) ?? null),
           adjuntos: borrado

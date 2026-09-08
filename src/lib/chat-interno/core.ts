@@ -149,3 +149,61 @@ export async function firmarAdjuntos(
   }
   return out;
 }
+
+// --- Foto de perfil ----------------------------------------------------------
+
+/**
+ * Bucket propio y privado para las fotos de perfil.
+ *
+ * Privado y no público porque son fotos de empleados: se sirven firmadas, con
+ * la misma vida que un adjunto. Por eso en la base se guarda el `path` y no una
+ * URL, que vencería en una hora.
+ */
+export const AVATAR_BUCKET = "avatares";
+/** 4 MB alcanza de sobra para una foto de perfil ya redimensionada. */
+export const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+
+export async function ensureAvatarBucket(sb: AppSupabaseClient): Promise<void> {
+  const { data, error } = await sb.storage.listBuckets();
+  if (error) throw new Error(error.message);
+  if ((data ?? []).some((b) => b.name === AVATAR_BUCKET)) return;
+  const { error: e } = await sb.storage.createBucket(AVATAR_BUCKET, {
+    public: false,
+    fileSizeLimit: AVATAR_MAX_BYTES,
+  });
+  if (e && !e.message.toLowerCase().includes("already exists")) throw new Error(e.message);
+}
+
+export function avatarPath(empresaId: string, usuarioId: string, mime: string): string {
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+  // El sufijo al azar evita que el navegador siga mostrando la foto anterior.
+  return `${empresaId}/${usuarioId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+}
+
+/**
+ * Firma las fotos de un conjunto de personas, en una sola pasada.
+ *
+ * Devuelve un mapa `usuario_id -> url`. Quien no tenga foto simplemente no
+ * aparece: la UI cae en las iniciales de color, que siempre funcionan.
+ */
+export async function firmarAvatares(
+  sb: AppSupabaseClient,
+  usuarios: { id: string; avatar_path?: string | null }[]
+): Promise<Map<string, string>> {
+  const porPath = new Map<string, string[]>();
+  for (const u of usuarios) {
+    const p = u.avatar_path;
+    if (typeof p !== "string" || !p) continue;
+    porPath.set(p, [...(porPath.get(p) ?? []), u.id]);
+  }
+  const out = new Map<string, string>();
+  if (porPath.size === 0) return out;
+  const { data } = await sb.storage
+    .from(AVATAR_BUCKET)
+    .createSignedUrls([...porPath.keys()], CHAT_SIGNED_URL_TTL);
+  for (const row of data ?? []) {
+    if (!row.path || !row.signedUrl) continue;
+    for (const id of porPath.get(row.path) ?? []) out.set(id, row.signedUrl);
+  }
+  return out;
+}

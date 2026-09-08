@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Camera,
   Check,
   ChevronLeft,
   FileText,
@@ -43,6 +44,8 @@ type Sala = {
   no_leidos: number;
   vista_previa: string;
   vista_previa_autor: string;
+  /** Sólo en los directos: la cara de la otra persona. */
+  avatar_url: string | null;
 };
 
 type Adjunto = {
@@ -86,6 +89,7 @@ type Mensaje = {
   id: string;
   usuario_id: string | null;
   autor: string;
+  autor_avatar: string | null;
   texto: string | null;
   adjuntos: Adjunto[];
   created_at: string;
@@ -122,7 +126,49 @@ const ESTILO_FONDO: React.CSSProperties = {
   backgroundRepeat: "repeat",
 };
 
-type UsuarioOpcion = { id: string; nombre: string; area: string };
+type UsuarioOpcion = { id: string; nombre: string; area: string; avatar_url: string | null };
+
+type Perfil = { usuario_id: string; nombre: string; avatar_url: string | null };
+
+/**
+ * La cara de una persona: la foto si la cargó, y si no las iniciales de color.
+ *
+ * Las iniciales no son un placeholder a la espera de la foto — son la identidad
+ * por defecto, siempre presentes y siempre legibles.
+ */
+function Avatar({
+  nombre,
+  url,
+  size = 36,
+  icono,
+}: {
+  nombre: string;
+  url?: string | null;
+  size?: number;
+  icono?: React.ReactNode;
+}) {
+  const c = colorDe(nombre);
+  const px = `${size}px`;
+  if (url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={nombre}
+        style={{ width: px, height: px }}
+        className="shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <span
+      style={{ width: px, height: px, background: `${c}22`, color: c, fontSize: size * 0.34 }}
+      className="flex shrink-0 items-center justify-center rounded-full font-bold"
+    >
+      {icono ?? inicialesNombre(nombre)}
+    </span>
+  );
+}
 
 const COLORES = ["#4FAEB2", "#8b5cf6", "#f59e0b", "#ec4899", "#22c55e", "#0ea5e9"];
 function colorDe(texto: string): string {
@@ -196,6 +242,17 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [biblioteca, setBiblioteca] = useState<Biblioteca | null>(null);
   const [cargandoBiblio, setCargandoBiblio] = useState(false);
   const buscaRef = useRef<HTMLInputElement>(null);
+  /** Mi perfil: el nombre y la foto que ven los demás. */
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const fotoRef = useRef<HTMLInputElement>(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  /** Filtro de la bandeja: busca en mis conversaciones Y entre las personas. */
+  const [filtroBandeja, setFiltroBandeja] = useState("");
+  const [directorio, setDirectorio] = useState<UsuarioOpcion[]>([]);
+  const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
+  /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
+  const contRef = useRef<HTMLDivElement>(null);
+  const [alto, setAlto] = useState<number | null>(null);
   /** Miembros de la sala abierta: alimentan el menú de menciones. */
   const [miembrosSala, setMiembrosSala] = useState<{ usuario_id: string; nombre: string }[]>([]);
   /** Mi nombre y mi id, para pintar el mensaje antes de que el servidor conteste. */
@@ -273,6 +330,40 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   useEffect(() => {
     void cargarSalas();
   }, [cargarSalas]);
+
+  /**
+   * El chat ocupa todo lo que sobra hasta el pie de la ventana.
+   *
+   * Se mide la distancia real desde el borde superior del contenedor en vez de
+   * restar una constante: la barra de arriba cambia de alto entre pantallas, y
+   * un `calc` fijo deja hueco muerto en unas y corta en otras.
+   */
+  useEffect(() => {
+    const medir = () => {
+      const el = contRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      setAlto(Math.max(360, Math.round(window.innerHeight - top - 16)));
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, [acceso]);
+
+  // Mi perfil y el directorio de la empresa: se cargan una vez.
+  useEffect(() => {
+    if (acceso !== "ok") return;
+    void (async () => {
+      const [rp, ru] = await Promise.all([
+        fetchWithSupabaseSession("/api/chat-interno/perfil", { cache: "no-store" }),
+        fetchWithSupabaseSession("/api/chat-interno/usuarios", { cache: "no-store" }),
+      ]);
+      const jp = (await rp.json().catch(() => ({}))) as { data?: Perfil };
+      const ju = (await ru.json().catch(() => ({}))) as { data?: { usuarios?: UsuarioOpcion[] } };
+      setPerfil(jp?.data ?? null);
+      setDirectorio(ju?.data?.usuarios ?? []);
+    })();
+  }, [acceso]);
 
   useEffect(() => {
     if (salaId) void cargarMensajes(salaId);
@@ -479,7 +570,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     const optimista: Mensaje = {
       id: tempId,
       usuario_id: yo?.usuario_id ?? null,
-      autor: yo?.nombre ?? "Yo",
+      autor: perfil?.nombre ?? yo?.nombre ?? "Yo",
       texto: cuerpo.trim() || null,
       adjuntos: files,
       created_at: new Date().toISOString(),
@@ -488,6 +579,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       propio: true,
       responde_a: responde?.id ?? null,
       cita: responde ? { autor: responde.autor, texto: responde.texto } : null,
+      autor_avatar: perfil?.avatar_url ?? null,
       reacciones: {},
       reacciones_nombres: {},
       menciones,
@@ -575,6 +667,62 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
   }
 
+  async function cambiarFoto(file: File) {
+    setSubiendoFoto(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetchWithSupabaseSession("/api/chat-interno/perfil", {
+        method: "POST",
+        body: fd,
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        data?: { avatar_url?: string | null };
+      };
+      if (!r.ok || !j.success) {
+        setErr(j.error ?? "No se pudo guardar la foto");
+        return;
+      }
+      setPerfil((p) => (p ? { ...p, avatar_url: j.data?.avatar_url ?? null } : p));
+      // La foto vieja sigue pegada en los mensajes ya cargados hasta releerlos.
+      if (salaId) void cargarMensajes(salaId, undefined, true);
+      void cargarSalas();
+    } finally {
+      setSubiendoFoto(false);
+    }
+  }
+
+  /**
+   * Abre la conversación con alguien. Si ya existe se reusa —el servidor no
+   * crea un segundo hilo con la misma persona—, y si no, se crea ahí mismo.
+   */
+  async function abrirDirecto(u: UsuarioOpcion) {
+    setAbriendoDirecto(u.id);
+    try {
+      const r = await fetchWithSupabaseSession("/api/chat-interno/salas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo: "directo", miembros: [u.id] }),
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        data?: { id?: string };
+      };
+      if (!r.ok || !j.success || !j.data?.id) {
+        setErr(j.error ?? "No se pudo abrir la conversación");
+        return;
+      }
+      setFiltroBandeja("");
+      await cargarSalas();
+      setSalaId(j.data.id);
+    } finally {
+      setAbriendoDirecto(null);
+    }
+  }
+
   /** Salir del buscador es volver a la conversación, no sólo vaciar el campo. */
   function cerrarBusqueda() {
     setVerBuscador(false);
@@ -627,6 +775,26 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     );
   }
 
+  const q = filtroBandeja.trim().toLowerCase();
+  const salasFiltradas = q
+    ? salas.filter(
+        (s) =>
+          s.nombre.toLowerCase().includes(q) ||
+          s.miembros_nombres.some((n) => n.toLowerCase().includes(q))
+      )
+    : salas;
+  // Sólo gente con la que NO hay un directo abierto: si ya lo hay, aparece
+  // arriba como conversación y ofrecerla dos veces sería confuso.
+  const conDirecto = new Set(
+    salas.filter((s) => s.tipo === "directo").map((s) => s.nombre.toLowerCase())
+  );
+  const personasSugeridas = q
+    ? directorio
+        .filter((u) => u.nombre.toLowerCase().includes(q))
+        .filter((u) => !conDirecto.has(u.nombre.toLowerCase()))
+        .slice(0, 8)
+    : [];
+
   const usuariosFiltrados = usuarios.filter((u) =>
     buscaUsuario.trim() ? u.nombre.toLowerCase().includes(buscaUsuario.trim().toLowerCase()) : true
   );
@@ -637,11 +805,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   return (
     <div
-      className={
-        mobile
-          ? "relative flex h-[calc(100dvh-150px)] min-h-[420px]"
-          : "flex h-[calc(100dvh-190px)] min-h-[520px] gap-3"
-      }
+      ref={contRef}
+      style={alto ? { height: `${alto}px` } : undefined}
+      className={mobile ? "relative flex min-h-[420px]" : "flex min-h-[480px] gap-3"}
     >
       {/* --- Bandeja ---------------------------------------------------------- */}
       <aside
@@ -649,28 +815,86 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           mobile ? "w-full" : "w-72 shrink-0"
         } flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white`}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
-          <h2 className="text-[13px] font-semibold text-slate-700">Conversaciones</h2>
+        {/* Mi perfil. La foto se cambia acá porque acá es donde uno se ve
+            como lo ven los demás. */}
+        <div className="flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => fotoRef.current?.click()}
+            disabled={subiendoFoto}
+            title="Cambiar mi foto de perfil"
+            className="group/foto relative shrink-0 rounded-full"
+          >
+            <Avatar nombre={perfil?.nombre ?? "?"} url={perfil?.avatar_url} size={38} />
+            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-900/50 opacity-0 transition-opacity group-hover/foto:opacity-100">
+              {subiendoFoto ? (
+                <Loader2 className="h-4 w-4 animate-spin text-white" />
+              ) : (
+                <Camera className="h-4 w-4 text-white" />
+              )}
+            </span>
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold text-slate-800">
+              {perfil ? nombreCapitular(perfil.nombre) : "…"}
+            </p>
+            <button
+              type="button"
+              onClick={() => fotoRef.current?.click()}
+              className="text-[10.5px] text-slate-400 hover:text-[#2F6E71]"
+            >
+              {perfil?.avatar_url ? "Cambiar foto" : "Poner una foto"}
+            </button>
+          </div>
           <button
             type="button"
             onClick={abrirModal}
-            title="Nueva conversación"
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#4FAEB2] text-white transition-opacity hover:opacity-90"
+            title="Nuevo grupo"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2] text-white transition-opacity hover:opacity-90"
           >
             <Plus className="h-4 w-4" />
           </button>
+          <input
+            ref={fotoRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void cambiarFoto(f);
+            }}
+          />
+        </div>
+
+        {/* Un solo campo para las dos cosas: encontrar una conversación que ya
+            existe, o a la persona con la que todavía no hablé. */}
+        <div className="border-b border-slate-100 px-3 py-2">
+          <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-2.5 py-1.5 ring-1 ring-transparent focus-within:ring-[#4FAEB2]/40">
+            <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <input
+              value={filtroBandeja}
+              onChange={(e) => setFiltroBandeja(e.target.value)}
+              placeholder="Buscar persona o conversación"
+              className="min-w-0 flex-1 bg-transparent text-[12px] focus:outline-none"
+            />
+            {filtroBandeja ? (
+              <button type="button" onClick={() => setFiltroBandeja("")} aria-label="Limpiar">
+                <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-700" />
+              </button>
+            ) : null}
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {cargandoSalas ? (
             <p className="px-2 py-3 text-[12px] text-slate-400">Cargando…</p>
-          ) : salas.length === 0 ? (
+          ) : salas.length === 0 && !filtroBandeja ? (
             <p className="px-2 py-3 text-[12px] leading-relaxed text-slate-400">
-              Todavía no tenés conversaciones. Creá la primera con el botón de arriba.
+              Todavía no tenés conversaciones. Buscá a alguien acá arriba para empezar a hablarle.
             </p>
           ) : (
-            salas.map((s) => {
+            salasFiltradas.map((s) => {
               const activa = s.id === salaId;
-              const c = colorDe(s.nombre);
               return (
                 <button
                   key={s.id}
@@ -680,12 +904,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     activa ? "bg-[#4FAEB2]/12" : "hover:bg-slate-50"
                   }`}
                 >
-                  <span
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[12px] font-bold"
-                    style={{ background: `${c}22`, color: c }}
-                  >
-                    {s.tipo === "grupo" ? <Users className="h-5 w-5" /> : inicialesNombre(s.nombre)}
-                  </span>
+                  <Avatar
+                    nombre={s.nombre}
+                    url={s.avatar_url}
+                    size={44}
+                    icono={s.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="min-w-0 truncate text-[13px] font-semibold text-slate-800">
@@ -714,6 +938,43 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               );
             })
           )}
+
+          {/* Personas con las que todavía no hay conversación abierta. */}
+          {filtroBandeja.trim() && personasSugeridas.length > 0 ? (
+            <>
+              <p className="px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Personas
+              </p>
+              {personasSugeridas.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => void abrirDirecto(u)}
+                  disabled={abriendoDirecto === u.id}
+                  className="mb-0.5 flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <Avatar nombre={u.nombre} url={u.avatar_url} size={44} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-semibold text-slate-800">
+                      {nombreCapitular(u.nombre)}
+                    </span>
+                    <span className="block truncate text-[11.5px] text-slate-400">
+                      {u.area || "Escribirle"}
+                    </span>
+                  </span>
+                  {abriendoDirecto === u.id ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+                  ) : null}
+                </button>
+              ))}
+            </>
+          ) : null}
+
+          {filtroBandeja.trim() && salasFiltradas.length === 0 && personasSugeridas.length === 0 ? (
+            <p className="px-2.5 py-3 text-[12px] leading-relaxed text-slate-400">
+              Nadie ni ninguna conversación coincide con “{filtroBandeja}”.
+            </p>
+          ) : null}
         </div>
       </aside>
 
@@ -859,30 +1120,20 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         </div>
                       ) : null}
                       <div className={`group flex gap-2 ${m.propio ? "justify-end" : "justify-start"}`}>
-                        {!m.propio ? (
-                          <span
-                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
-                              seguido ? "invisible" : ""
-                            }`}
-                            style={{ background: `${c}22`, color: c }}
-                          >
-                            {inicialesNombre(m.autor)}
-                          </span>
-                        ) : null}
+                        <span className={`self-end ${seguido ? "invisible" : ""}`}>
+                          <Avatar nombre={m.autor} url={m.autor_avatar} size={30} />
+                        </span>
                         <div
-                          className={`max-w-[70%] min-w-[112px] rounded-2xl px-3.5 py-2.5 shadow-[0_1px_3px_rgba(15,23,42,0.10)] ${
+                          className={`relative max-w-[72%] rounded-2xl px-3 py-1.5 shadow-[0_1px_3px_rgba(15,23,42,0.10)] ${
+                            Object.keys(m.reacciones).length > 0 ? "mb-2.5" : ""
+                          } ${
                             m.propio
                               ? "rounded-br-md bg-gradient-to-br from-[#54B7BB] to-[#3E9B9F] text-white"
                               : "rounded-bl-md bg-white text-slate-700"
                           }`}
                         >
-                          {!seguido ? (
-                            <div
-                              className={`mb-0.5 text-[10.5px] font-bold ${
-                                m.propio ? "text-right text-white/85" : ""
-                              }`}
-                              style={m.propio ? undefined : { color: c }}
-                            >
+                          {!seguido && !m.propio && salaActual.tipo === "grupo" ? (
+                            <div className="text-[11px] font-bold" style={{ color: c }}>
                               {nombreCorto(m.autor)}
                             </div>
                           ) : null}
@@ -930,7 +1181,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           ) : (
                             <>
                               {m.texto ? (
-                                <p className="whitespace-pre-wrap break-words text-[12.5px] leading-snug">
+                                <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed">
+                                  <span
+                                    className={`float-right ml-2 mt-[7px] text-[9.5px] leading-none ${
+                                      m.propio ? "text-white/70" : "text-slate-400"
+                                    }`}
+                                  >
+                                    {m.pendiente
+                                      ? "enviando…"
+                                      : `${m.editado_at ? "editado · " : ""}${hora(m.created_at)}`}
+                                  </span>
                                   {m.texto}
                                 </p>
                               ) : null}
@@ -965,17 +1225,26 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               ))}
                             </>
                           )}
-                          <div
-                            className={`mt-0.5 text-right text-[9.5px] ${
-                              m.propio ? "text-white/70" : "text-slate-400"
-                            }`}
-                          >
-                            {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
-                            {m.pendiente ? "" : hora(m.created_at)}
-                          </div>
+                          {!m.texto || m.eliminado || editando?.id === m.id ? (
+                            <div
+                              className={`mt-0.5 text-right text-[9.5px] ${
+                                m.propio ? "text-white/70" : "text-slate-400"
+                              }`}
+                            >
+                              {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
+                              {m.pendiente ? "" : hora(m.created_at)}
+                            </div>
+                          ) : null}
 
+                          {/* Las reacciones cuelgan del borde del globo, no lo
+                              ensanchan: son un comentario sobre el mensaje, no
+                              parte de él. */}
                           {Object.keys(m.reacciones).length > 0 ? (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
+                            <div
+                              className={`absolute -bottom-2.5 z-10 flex flex-wrap gap-1 ${
+                                m.propio ? "right-2" : "left-2"
+                              }`}
+                            >
                               {Object.entries(m.reacciones).map(([emoji, quienes]) => {
                                 const nombres = (m.reacciones_nombres?.[emoji] ?? []).map((n) =>
                                   nombreCorto(n)
@@ -988,11 +1257,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                       // `title` como respaldo: si el hover del
                                       // globito no llega, el navegador lo dice igual.
                                       title={nombres.join(", ")}
-                                      className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] leading-none transition-colors ${
-                                        m.propio
-                                          ? "bg-white/25 hover:bg-white/35"
-                                          : "bg-slate-100 hover:bg-slate-200"
-                                      }`}
+                                      className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-[3px] text-[11px] leading-none text-slate-600 shadow-sm transition-colors hover:bg-slate-50" 
                                     >
                                       {emoji}
                                       <span className="text-[9.5px] font-semibold">
@@ -1476,12 +1741,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             sel ? "bg-[#4FAEB2]/10 text-[#2F6E71]" : "text-slate-600 hover:bg-slate-50"
                           }`}
                         >
-                          <span
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[8.5px] font-bold"
-                            style={{ background: `${colorDe(u.nombre)}22`, color: colorDe(u.nombre) }}
-                          >
-                            {inicialesNombre(u.nombre)}
-                          </span>
+                          <Avatar nombre={u.nombre} url={u.avatar_url} size={26} />
                           <span className="min-w-0 flex-1 truncate">{nombreCapitular(u.nombre)}</span>
                           {sel ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
                         </button>

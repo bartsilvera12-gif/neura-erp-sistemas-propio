@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { esMiembro, requireChatInterno, respuestaAuth } from "@/lib/chat-interno/core";
+import {
+  esMiembro,
+  firmarAvatares,
+  requireChatInterno,
+  respuestaAuth,
+} from "@/lib/chat-interno/core";
 
 export const runtime = "nodejs";
 
@@ -23,17 +28,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const filas = (data ?? []) as { usuario_id: string; rol: string }[];
     const catalog = createServiceRoleClient();
     const { data: usuarios } = filas.length
-      ? await catalog.from("usuarios").select("id, nombre").in("id", filas.map((f) => f.usuario_id))
-      : { data: [] as { id: string; nombre: string | null }[] };
-    const nombreDe = new Map(
-      ((usuarios ?? []) as { id: string; nombre: string | null }[]).map((u) => [u.id, u.nombre ?? "—"])
-    );
+      ? await catalog
+          .from("usuarios")
+          .select("id, nombre, avatar_path")
+          .in("id", filas.map((f) => f.usuario_id))
+      : { data: [] as { id: string; nombre: string | null; avatar_path: string | null }[] };
+    const personas = (usuarios ?? []) as {
+      id: string;
+      nombre: string | null;
+      avatar_path: string | null;
+    }[];
+    const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
+    const avatarDe = await firmarAvatares(sb, personas);
 
     return NextResponse.json(
       successResponse({
         miembros: filas.map((f) => ({
           usuario_id: f.usuario_id,
           nombre: nombreDe.get(f.usuario_id) ?? "—",
+          avatar_url: avatarDe.get(f.usuario_id) ?? null,
           rol: f.rol,
           propio: f.usuario_id === usuarioId,
         })),

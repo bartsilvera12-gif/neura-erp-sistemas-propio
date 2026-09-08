@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { requireChatInterno, respuestaAuth } from "@/lib/chat-interno/core";
+import { firmarAvatares, requireChatInterno, respuestaAuth } from "@/lib/chat-interno/core";
 
 export const runtime = "nodejs";
 
@@ -49,11 +49,15 @@ export async function GET(request: Request) {
       ...new Set(((miembros ?? []) as { usuario_id: string }[]).map((m) => m.usuario_id)),
     ];
     const { data: usuarios } = idsUsuarios.length
-      ? await catalog.from("usuarios").select("id, nombre").in("id", idsUsuarios)
-      : { data: [] as { id: string; nombre: string | null }[] };
-    const nombreDe = new Map(
-      ((usuarios ?? []) as { id: string; nombre: string | null }[]).map((u) => [u.id, u.nombre ?? "—"])
-    );
+      ? await catalog.from("usuarios").select("id, nombre, avatar_path").in("id", idsUsuarios)
+      : { data: [] as { id: string; nombre: string | null; avatar_path: string | null }[] };
+    const personas = (usuarios ?? []) as {
+      id: string;
+      nombre: string | null;
+      avatar_path: string | null;
+    }[];
+    const nombreDe = new Map(personas.map((u) => [u.id, u.nombre ?? "—"]));
+    const avatarDe = await firmarAvatares(sb, personas);
 
     const porSala = new Map<string, string[]>();
     for (const m of (miembros ?? []) as { sala_id: string; usuario_id: string }[]) {
@@ -97,6 +101,9 @@ export async function GET(request: Request) {
         descripcion: s.descripcion ?? null,
         miembros: integrantes.length,
         miembros_nombres: integrantes.map((u) => nombreDe.get(u) ?? "—"),
+        // En un directo la sala se ve con la cara de la otra persona; un grupo
+        // no tiene una sola cara, y ahi va el icono.
+        avatar_url: s.tipo === "directo" && otro ? avatarDe.get(otro) ?? null : null,
         ultimo_mensaje_at: s.ultimo_mensaje_at ?? null,
         no_leidos: noLeidos.get(id) ?? 0,
         vista_previa: ultimo

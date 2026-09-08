@@ -82,6 +82,7 @@ export default function ColaEditor({
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [soloTransferencia, setSoloTransferencia] = useState(false);
   const [legacyChannelType, setLegacyChannelType] = useState<string>("");
   const [strategy, setStrategy] = useState("least_load");
   const [priority, setPriority] = useState(0);
@@ -107,6 +108,7 @@ export default function ColaEditor({
         setNombre(q.nombre);
         setDescripcion(q.descripcion ?? "");
         setIsActive(q.is_active);
+        setSoloTransferencia((q as { solo_transferencia?: boolean }).solo_transferencia === true);
         setLegacyChannelType(q.channel_type ?? "");
         setStrategy(q.distribution_strategy ?? "least_load");
         setPriority(q.priority ?? 0);
@@ -147,6 +149,7 @@ export default function ColaEditor({
         channel_type: linked.length > 0 ? null : legacyChannelType.trim() || null,
         distribution_strategy: strategy,
         priority,
+        solo_transferencia: soloTransferencia,
         routing_config: serializeQueueRoutingConfig(routing),
       });
       await apiSetQueueChannelLinks(queueId, linked);
@@ -358,6 +361,22 @@ export default function ColaEditor({
             Cola activa
           </label>
         </div>
+        <label className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 px-3.5 py-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={soloTransferencia}
+            onChange={(e) => setSoloTransferencia(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 accent-amber-600 focus:ring-amber-400/30"
+          />
+          <span>
+            <span className="font-semibold text-amber-900">Solo transferencias (no recibe chats nuevos)</span>
+            <span className="mt-0.5 block text-xs text-amber-800/80">
+              El reparto automático nunca asigna chats entrantes a esta cola. Sus agentes solo reciben
+              conversaciones que otro agente les transfiere manualmente. Ideal para una cola de Project
+              Managers que reciben derivaciones de los comerciales.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className="space-y-4 rounded-2xl border border-[#4FAEB2]/45 bg-white p-5 shadow-sm">

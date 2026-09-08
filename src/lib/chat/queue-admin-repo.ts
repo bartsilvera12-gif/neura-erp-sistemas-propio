@@ -34,6 +34,8 @@ export type ChatQueueAdminRow = {
   channel_type: string | null;
   distribution_strategy: string;
   priority: number;
+  /** Cola "solo transferencias": no recibe chats nuevos por reparto, solo transferencias manuales. */
+  solo_transferencia: boolean;
   /** Reglas operativas (jsonb); puede faltar en listados parciales. */
   routing_config?: Record<string, unknown> | null;
 };
@@ -95,7 +97,7 @@ function mapChatChannelRow(r: Record<string, unknown>): QueueEditorChatChannelRo
 export async function repoListQueues(ctx: QueueAdminTenantContext): Promise<ChatQueueAdminRow[]> {
   const { data, error } = await ctx.supabase
     .from("chat_queues")
-    .select("id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority")
+    .select("id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority, solo_transferencia")
     .eq("empresa_id", ctx.empresa_id)
     .order("priority", { ascending: false })
     .order("nombre", { ascending: true });
@@ -108,7 +110,7 @@ export async function repoFetchQueue(ctx: QueueAdminTenantContext, queueId: stri
   if (!id) return null;
   const { data, error } = await ctx.supabase
     .from("chat_queues")
-    .select("id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority, routing_config")
+    .select("id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority, solo_transferencia, routing_config")
     .eq("id", id)
     .eq("empresa_id", ctx.empresa_id)
     .maybeSingle();
@@ -146,6 +148,7 @@ export async function repoSaveQueue(
     channel_type?: string | null;
     distribution_strategy: string;
     priority?: number;
+    solo_transferencia?: boolean;
     routing_config?: Record<string, unknown> | null;
   }
 ): Promise<void> {
@@ -159,6 +162,9 @@ export async function repoSaveQueue(
     priority: input.priority ?? 0,
     updated_at: new Date().toISOString(),
   };
+  if (input.solo_transferencia !== undefined) {
+    patch.solo_transferencia = input.solo_transferencia === true;
+  }
   if (input.channel_type !== undefined) {
     patch.channel_type = input.channel_type?.trim() || null;
   }
@@ -311,12 +317,18 @@ export async function repoAddAgentToQueue(
   const uid = input.usuario_id.trim();
   const { data: q, error: qe } = await ctx.supabase
     .from("chat_queues")
-    .select("id")
+    .select("id, solo_transferencia")
     .eq("id", qid)
     .eq("empresa_id", ctx.empresa_id)
     .maybeSingle();
   if (qe) throw new Error(qe.message);
   if (!q) throw new Error("Cola no encontrada");
+  // En una cola "solo transferencias", el agente entra SIN recibir chats nuevos por
+  // reparto (solo transferencias manuales). El admin puede cambiarlo por agente después.
+  const receivesNewChats =
+    (q as { solo_transferencia?: boolean }).solo_transferencia === true
+      ? false
+      : input.receives_new_chats !== false;
   const { error } = await ctx.supabase.from("chat_agents").insert({
     empresa_id: ctx.empresa_id,
     queue_id: qid,
@@ -324,7 +336,7 @@ export async function repoAddAgentToQueue(
     is_online: false,
     max_conversations: input.max_conversations ?? 5,
     is_active: true,
-    receives_new_chats: input.receives_new_chats !== false,
+    receives_new_chats: receivesNewChats,
     priority_in_queue: input.priority_in_queue ?? 0,
   });
   if (error) {

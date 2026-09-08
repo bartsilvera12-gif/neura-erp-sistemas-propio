@@ -1336,35 +1336,28 @@ export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRo
     return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
   }
 
-  // Agente normal: colas propias como alcance de destinos.
-  const ownQueues = await resolveQueueIdsForUsuarios(supabase, empresa_id, [usuario_id], dataSchema);
-  if (ownQueues.length === 0) {
-    return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
-  }
-
-  const buildQuery = (sel: string, withReceives: boolean) => {
-    let q = supabase
+  // Agente normal: puede transferir a CUALQUIER cola de la empresa (decisión de negocio).
+  // Los destinos son todos los agentes ACTIVOS de la empresa, SIN exigir `receives_new_chats`:
+  // una transferencia es manual y deliberada, así que también vale derivar a un agente que NO
+  // entra al reparto automático — p. ej. un Project Manager de una cola "solo transferencias".
+  const buildQuery = (sel: string) =>
+    supabase
       .from("chat_agents")
       .select(sel)
       .eq("empresa_id", empresa_id)
-      .eq("is_active", true)
-      .in("queue_id", ownQueues);
-    if (withReceives) q = q.eq("receives_new_chats", true);
-    return q;
-  };
+      .eq("is_active", true);
   const fullSel =
     "id, queue_id, usuario_id, operational_status, operational_status_changed_at, last_heartbeat_at, max_conversations, is_online";
-  let res = await buildQuery(fullSel, true);
-  if (res.error && isMissingColumnError(res.error.message, "receives_new_chats")) res = await buildQuery(fullSel, false);
+  let res = await buildQuery(fullSel);
   if (
     res.error &&
     (isMissingColumnError(res.error.message, "operational_status_changed_at") ||
       isMissingColumnError(res.error.message, "last_heartbeat_at"))
   ) {
-    res = await buildQuery("id, queue_id, usuario_id, operational_status, max_conversations, is_online", false);
+    res = await buildQuery("id, queue_id, usuario_id, operational_status, max_conversations, is_online");
   }
   if (res.error && isMissingColumnError(res.error.message, "operational_status")) {
-    res = await buildQuery("id, queue_id, usuario_id, max_conversations, is_online", false);
+    res = await buildQuery("id, queue_id, usuario_id, max_conversations, is_online");
   }
   if (res.error) {
     logInvalidSchema("fetchTransferTargetAgents", dataSchema, res.error);

@@ -31,6 +31,8 @@ type QueueRow = {
   priority: number;
   routing_config?: unknown;
   assignment_state?: unknown;
+  /** Cola "solo transferencias": nunca es destino de reparto automático. */
+  solo_transferencia?: boolean;
 };
 
 type EligibleAgent = EligibleAgentForPick;
@@ -119,13 +121,16 @@ export async function assignConversation(
   const { data: queues, error: qErr } = await supabase
     .from("chat_queues")
     .select(
-      "id, channel_type, nombre, distribution_strategy, priority, routing_config, assignment_state"
+      "id, channel_type, nombre, distribution_strategy, priority, routing_config, assignment_state, solo_transferencia"
     )
     .eq("empresa_id", empresaId)
     .eq("is_active", true);
 
   if (qErr) return { ok: false, error: qErr.message };
-  const allQueues = (queues ?? []) as QueueRow[];
+  // Las colas "solo transferencias" (p. ej. Project Managers) NO entran al
+  // reparto automático: nunca son destino de un chat entrante, solo reciben
+  // conversaciones que un agente les transfiere manualmente.
+  const allQueues = ((queues ?? []) as QueueRow[]).filter((q) => q.solo_transferencia !== true);
 
   let queue: QueueRow | null = null;
 

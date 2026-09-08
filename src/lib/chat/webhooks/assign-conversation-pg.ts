@@ -14,6 +14,8 @@ type QueueRow = {
   priority: number;
   routing_config: unknown;
   assignment_state: unknown;
+  /** Cola "solo transferencias": nunca es destino de reparto automático. */
+  solo_transferencia: boolean | null;
 };
 
 function pickQueueForChannel(queues: QueueRow[], channelType: string): QueueRow | null {
@@ -92,12 +94,14 @@ export async function assignConversationPg(
   const channelType = ((chRow.rows[0] as { type?: string } | undefined)?.type as string) ?? "whatsapp";
 
   const qRes = await pool.query(
-    `SELECT id, channel_type, nombre, distribution_strategy, priority, routing_config, assignment_state
+    `SELECT id, channel_type, nombre, distribution_strategy, priority, routing_config, assignment_state, solo_transferencia
      FROM ${qT}
      WHERE empresa_id = $1::uuid AND is_active = true`,
     [empresaId]
   );
-  const allQueues = (qRes.rows ?? []) as QueueRow[];
+  // Las colas "solo transferencias" (p. ej. Project Managers) NO entran al reparto
+  // automático: solo reciben conversaciones transferidas manualmente.
+  const allQueues = ((qRes.rows ?? []) as QueueRow[]).filter((q) => q.solo_transferencia !== true);
 
   let queue: QueueRow | null = null;
   const linkRes = await pool.query(

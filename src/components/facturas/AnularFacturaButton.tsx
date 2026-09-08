@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 /**
@@ -82,9 +83,9 @@ export function AnularFacturaButton({
         Anular factura
       </button>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby="anular-factura-title"
@@ -136,7 +137,8 @@ export function AnularFacturaButton({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

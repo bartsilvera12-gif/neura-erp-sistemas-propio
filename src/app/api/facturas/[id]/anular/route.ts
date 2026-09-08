@@ -81,7 +81,10 @@ export async function POST(
         .from("pagos")
         .select("id", { count: "exact", head: true })
         .eq("factura_id", fid)
-        .eq("empresa_id", auth.empresa_id),
+        .eq("empresa_id", auth.empresa_id)
+        // Un pago revertido (transferencia anulada en Conciliación) ya no cuenta como pago:
+        // no debe bloquear la anulación de la factura.
+        .neq("estado_contable", "revertido"),
       supabase
         .from("factura_electronica")
         .select("estado_sifen")

@@ -68,6 +68,7 @@ export async function apiSaveQueue(
     channel_type: string | null;
     distribution_strategy: string;
     priority: number;
+    solo_transferencia?: boolean;
     routing_config?: Record<string, unknown> | null;
   }
 ): Promise<void> {

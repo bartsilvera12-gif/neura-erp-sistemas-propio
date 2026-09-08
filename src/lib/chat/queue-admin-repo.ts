@@ -1,5 +1,6 @@
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { isErpRolSupervisor, isErpRolUsuario } from "@/lib/usuarios/erp-rol-normalize";
+import { isMissingColumnError } from "@/lib/chat/postgres-column-error";
 
 const DISTRIBUTION = new Set(["round_robin", "least_load", "manual_pull"]);
 
@@ -34,6 +35,12 @@ export type ChatQueueAdminRow = {
   channel_type: string | null;
   distribution_strategy: string;
   priority: number;
+  /**
+   * Cola "solo transferencias": no recibe chats nuevos por reparto, solo transferencias manuales.
+   * Opcional / drift-safe: `undefined` cuando el schema del tenant NO tiene la columna (la función
+   * solo existe en el schema que la adoptó, hoy neura). La UI usa esto para mostrar u ocultar el toggle.
+   */
+  solo_transferencia?: boolean;
   /** Reglas operativas (jsonb); puede faltar en listados parciales. */
   routing_config?: Record<string, unknown> | null;
 };
@@ -93,27 +100,48 @@ function mapChatChannelRow(r: Record<string, unknown>): QueueEditorChatChannelRo
 }
 
 export async function repoListQueues(ctx: QueueAdminTenantContext): Promise<ChatQueueAdminRow[]> {
-  const { data, error } = await ctx.supabase
+  // Drift-safe: intentar con la columna solo_transferencia; si el schema del tenant NO la tiene
+  // (todos menos el que adoptó la función), reintentar sin ella → comportamiento histórico intacto.
+  const base = "id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority";
+  let res = await ctx.supabase
     .from("chat_queues")
-    .select("id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority")
+    .select(`${base}, solo_transferencia`)
     .eq("empresa_id", ctx.empresa_id)
     .order("priority", { ascending: false })
     .order("nombre", { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as ChatQueueAdminRow[];
+  if (res.error && isMissingColumnError(res.error.message, "solo_transferencia")) {
+    res = await ctx.supabase
+      .from("chat_queues")
+      .select(base)
+      .eq("empresa_id", ctx.empresa_id)
+      .order("priority", { ascending: false })
+      .order("nombre", { ascending: true });
+  }
+  if (res.error) throw new Error(res.error.message);
+  return (res.data ?? []) as ChatQueueAdminRow[];
 }
 
 export async function repoFetchQueue(ctx: QueueAdminTenantContext, queueId: string): Promise<ChatQueueAdminRow | null> {
   const id = queueId.trim();
   if (!id) return null;
-  const { data, error } = await ctx.supabase
+  // Drift-safe: ver comentario en repoListQueues.
+  const base = "id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority, routing_config";
+  let res = await ctx.supabase
     .from("chat_queues")
-    .select("id, nombre, descripcion, is_active, channel_type, distribution_strategy, priority, routing_config")
+    .select(`${base}, solo_transferencia`)
     .eq("id", id)
     .eq("empresa_id", ctx.empresa_id)
     .maybeSingle();
-  if (error) throw new Error(error.message);
-  return (data as ChatQueueAdminRow) ?? null;
+  if (res.error && isMissingColumnError(res.error.message, "solo_transferencia")) {
+    res = await ctx.supabase
+      .from("chat_queues")
+      .select(base)
+      .eq("id", id)
+      .eq("empresa_id", ctx.empresa_id)
+      .maybeSingle();
+  }
+  if (res.error) throw new Error(res.error.message);
+  return (res.data as ChatQueueAdminRow) ?? null;
 }
 
 export async function repoCreateQueueDraft(ctx: QueueAdminTenantContext): Promise<string> {
@@ -146,6 +174,7 @@ export async function repoSaveQueue(
     channel_type?: string | null;
     distribution_strategy: string;
     priority?: number;
+    solo_transferencia?: boolean;
     routing_config?: Record<string, unknown> | null;
   }
 ): Promise<void> {
@@ -165,8 +194,23 @@ export async function repoSaveQueue(
   if (input.routing_config !== undefined) {
     patch.routing_config = input.routing_config ?? {};
   }
-  const { error } = await ctx.supabase.from("chat_queues").update(patch).eq("id", input.id.trim()).eq("empresa_id", ctx.empresa_id);
-  if (error) throw new Error(error.message);
+  if (input.solo_transferencia !== undefined) {
+    patch.solo_transferencia = input.solo_transferencia === true;
+  }
+  const qid = input.id.trim();
+  const { error } = await ctx.supabase.from("chat_queues").update(patch).eq("id", qid).eq("empresa_id", ctx.empresa_id);
+  if (error) {
+    // Drift-safe: si el schema del tenant no tiene la columna, reintentar sin ella (los demás
+    // tenants no adoptaron la función → guardar la cola no debe romperse por este campo).
+    if ("solo_transferencia" in patch && isMissingColumnError(error.message, "solo_transferencia")) {
+      const rest = { ...patch };
+      delete rest.solo_transferencia;
+      const retry = await ctx.supabase.from("chat_queues").update(rest).eq("id", qid).eq("empresa_id", ctx.empresa_id);
+      if (retry.error) throw new Error(retry.error.message);
+      return;
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function repoDeleteQueue(ctx: QueueAdminTenantContext, queueId: string): Promise<void> {
@@ -309,14 +353,30 @@ export async function repoAddAgentToQueue(
 ): Promise<void> {
   const qid = input.queue_id.trim();
   const uid = input.usuario_id.trim();
-  const { data: q, error: qe } = await ctx.supabase
-    .from("chat_queues")
-    .select("id")
-    .eq("id", qid)
-    .eq("empresa_id", ctx.empresa_id)
-    .maybeSingle();
-  if (qe) throw new Error(qe.message);
+  // Drift-safe: leer solo_transferencia si el schema la tiene; si no, tratar como false.
+  let q: { id?: string; solo_transferencia?: boolean } | null = null;
+  {
+    let sel = await ctx.supabase
+      .from("chat_queues")
+      .select("id, solo_transferencia")
+      .eq("id", qid)
+      .eq("empresa_id", ctx.empresa_id)
+      .maybeSingle();
+    if (sel.error && isMissingColumnError(sel.error.message, "solo_transferencia")) {
+      sel = await ctx.supabase
+        .from("chat_queues")
+        .select("id")
+        .eq("id", qid)
+        .eq("empresa_id", ctx.empresa_id)
+        .maybeSingle();
+    }
+    if (sel.error) throw new Error(sel.error.message);
+    q = (sel.data as { id?: string; solo_transferencia?: boolean } | null) ?? null;
+  }
   if (!q) throw new Error("Cola no encontrada");
+  // En una cola "solo transferencias", el agente entra SIN recibir chats nuevos por reparto
+  // (solo transferencias manuales). El admin puede cambiarlo por agente después.
+  const receivesNewChats = q.solo_transferencia === true ? false : input.receives_new_chats !== false;
   const { error } = await ctx.supabase.from("chat_agents").insert({
     empresa_id: ctx.empresa_id,
     queue_id: qid,
@@ -324,7 +384,7 @@ export async function repoAddAgentToQueue(
     is_online: false,
     max_conversations: input.max_conversations ?? 5,
     is_active: true,
-    receives_new_chats: input.receives_new_chats !== false,
+    receives_new_chats: receivesNewChats,
     priority_in_queue: input.priority_in_queue ?? 0,
   });
   if (error) {

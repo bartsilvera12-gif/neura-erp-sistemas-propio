@@ -48,6 +48,7 @@ export async function saveQueueAdmin(input: {
   channel_type?: string | null;
   distribution_strategy: string;
   priority?: number;
+  solo_transferencia?: boolean;
 }): Promise<void> {
   return repoSaveQueue(await ctx(), input);
 }

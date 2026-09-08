@@ -1308,6 +1308,33 @@ export async function fetchSupervisorAgentLoads(): Promise<SupervisorAgentLoadRo
 }
 
 /**
+ * ¿La empresa tiene alguna cola marcada "solo transferencias"?
+ *
+ * DRIFT-SAFE y auto-gateado: la columna `chat_queues.solo_transferencia` existe SOLO en el
+ * schema del cliente que adoptó la función (hoy: neura). En cualquier otro schema la columna no
+ * existe → PostgREST devuelve error de columna y acá devolvemos `false`, dejando el comportamiento
+ * IDÉNTICO al histórico. Nunca lanza: ante cualquier error degrada a `false`.
+ */
+async function hasSoloTransferenciaQueue(
+  supabase: AppSupabaseClient,
+  empresaId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("chat_queues")
+      .select("id")
+      .eq("empresa_id", empresaId)
+      .eq("is_active", true)
+      .eq("solo_transferencia", true)
+      .limit(1);
+    if (error) return false; // columna ausente (otro tenant) u otro error → comportamiento histórico
+    return (data ?? []).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Agentes DESTINO para el modal "Transferir conversación".
  *
  * A diferencia del directorio del inbox (scoped a "mis" agentes vía `scope.agentUsuarioIds`),
@@ -1336,10 +1363,21 @@ export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRo
     return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
   }
 
-  // Agente normal: colas propias como alcance de destinos.
-  const ownQueues = await resolveQueueIdsForUsuarios(supabase, empresa_id, [usuario_id], dataSchema);
-  if (ownQueues.length === 0) {
-    return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+  // Agente normal. Alcance de destinos:
+  //  - Histórico (default, TODOS los tenants): agentes activos que RECIBEN chats, de las colas
+  //    propias del asesor.
+  //  - Si la empresa tiene una cola "solo transferencias" (hoy solo neura): TODOS los agentes
+  //    activos de la empresa (cualquier cola) y SIN exigir receives_new_chats, para poder derivar
+  //    a un PM que no entra al reparto automático. Drift-safe: en schemas sin la columna,
+  //    hasSoloTransferenciaQueue() es false → comportamiento histórico intacto.
+  const broaden = await hasSoloTransferenciaQueue(supabase, empresa_id);
+
+  let ownQueues: string[] = [];
+  if (!broaden) {
+    ownQueues = await resolveQueueIdsForUsuarios(supabase, empresa_id, [usuario_id], dataSchema);
+    if (ownQueues.length === 0) {
+      return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+    }
   }
 
   const buildQuery = (sel: string, withReceives: boolean) => {
@@ -1347,9 +1385,11 @@ export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRo
       .from("chat_agents")
       .select(sel)
       .eq("empresa_id", empresa_id)
-      .eq("is_active", true)
-      .in("queue_id", ownQueues);
-    if (withReceives) q = q.eq("receives_new_chats", true);
+      .eq("is_active", true);
+    if (!broaden) {
+      q = q.in("queue_id", ownQueues);
+      if (withReceives) q = q.eq("receives_new_chats", true);
+    }
     return q;
   };
   const fullSel =

@@ -5,9 +5,10 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 /**
  * Notificaciones in-app del movimiento de un proyecto por el Kanban.
  *
- * El destinatario es el comercial del proyecto: es quien le da la cara al
- * cliente y necesita enterarse de que algo se movió sin tener que mirar el
- * tablero. El técnico no entra acá — el movimiento normalmente lo hace él.
+ * Los destinatarios son el comercial y el project manager del proyecto: el
+ * comercial le da la cara al cliente y el PM responde por que el proyecto
+ * avance, y ninguno de los dos debería tener que mirar el tablero para
+ * enterarse. El técnico no entra acá — el movimiento normalmente lo hace él.
  *
  * Sólo al llegar a un estado final se suman los usuarios con
  * `notificar_entregas`, que reciben las entregas de toda la empresa. En los
@@ -52,8 +53,10 @@ export async function notificarCambioEstado(
     empresaId: string;
     proyectoId: string;
     tituloProyecto: string;
-    /** Comercial del proyecto. Sin comercial no hay a quién avisarle. */
+    /** Comercial del proyecto. */
     comercialId: string | null;
+    /** Project manager del proyecto: responde por que avance. */
+    pmId?: string | null;
     /** Quién movió el proyecto: no se auto-notifica. */
     actorId: string | null;
     estadoAnteriorNombre: string | null;
@@ -80,6 +83,8 @@ export async function notificarCambioEstado(
     const destinatarios = new Set<string>();
     // El comercial recibe todos los movimientos de SUS proyectos.
     if (args.comercialId) destinatarios.add(args.comercialId);
+    // Y el PM los de su cartera. Si es la misma persona, el `Set` lo resuelve.
+    if (args.pmId) destinatarios.add(args.pmId);
     // Al entregar se suma quien coordina las entregas: recibe el aviso de TODOS
     // los proyectos, no sólo de los suyos. Sale del flag `notificar_entregas`
     // del catálogo y no de una lista fija en el código, porque quién ocupa ese

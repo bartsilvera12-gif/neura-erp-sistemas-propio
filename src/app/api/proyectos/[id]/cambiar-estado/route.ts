@@ -41,7 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: proyecto, error: e1 } = await sb
       .from("proyectos")
       .select(
-        "id, titulo, estado_id, responsable_tecnico_id, responsable_comercial_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms, primera_entrega_at, brief_data"
+        "id, titulo, estado_id, responsable_tecnico_id, responsable_comercial_id, project_manager_id, qa_responsable_id, etapa_desarrollo, pausado_at, pausa_acumulada_ms, primera_entrega_at, brief_data"
       )
       .eq("empresa_id", empresaId)
       .eq("id", pid)
@@ -201,15 +201,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     if (e3) return NextResponse.json(errorResponse(e3.message), { status: 400 });
 
-    // Aviso al comercial del proyecto. Va después del update por la misma razón
-    // que el de QA: si falla, el movimiento ya está guardado y no se revierte.
+    // Aviso al comercial y al PM del proyecto. Va después del update por la
+    // misma razón que el de QA: si falla, el movimiento ya está guardado y no
+    // se revierte.
     {
       const comercialId =
         (proyecto as { responsable_comercial_id?: string | null }).responsable_comercial_id ?? null;
+      const pmId =
+        (proyecto as { project_manager_id?: string | null }).project_manager_id ?? null;
       // El nombre del estado anterior se lee acá y no antes: sólo hace falta
       // para el texto del aviso, y evita una consulta cuando no hay a quién avisar.
+      const hayAQuienAvisar =
+        (comercialId && comercialId !== auth.usuarioCatalogId) ||
+        (pmId && pmId !== auth.usuarioCatalogId);
       let estadoAnteriorNombre: string | null = null;
-      if (comercialId && comercialId !== auth.usuarioCatalogId && anteriorId) {
+      if (hayAQuienAvisar && anteriorId) {
         const { data: estAnt } = await sb
           .from("proyecto_estados")
           .select("nombre")
@@ -224,6 +230,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         proyectoId: pid,
         tituloProyecto,
         comercialId,
+        pmId,
         actorId: auth.usuarioCatalogId,
         estadoAnteriorNombre,
         estadoNuevoNombre: (est.nombre ?? "").trim() || codigoNuevo || "otro estado",

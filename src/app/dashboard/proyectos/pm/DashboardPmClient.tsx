@@ -306,17 +306,31 @@ export default function DashboardPmClient() {
         <FiltroFecha label="Fecha" value={hasta} onChange={setHasta} />
         {/*
           La cartera sale de la asignación real: el PM del proyecto, y si no
-          tiene, el de la ficha de su cliente. Un PM que no es admin ve la suya
-          igual elija lo que elija — el servidor no le devuelve otra cosa.
+          tiene, el de la ficha de su cliente.
+
+          A quien no puede ver todo NO se le ofrece el selector: el servidor le
+          devuelve su cartera elija lo que elija, y un selector que no cambia
+          nada se lee como que el tablero no actualiza.
         */}
-        <PillSelect
-          label="Cartera"
-          value={pmId}
-          onChange={setPmId}
-          options={pms}
-          placeholder="Ambas"
-          variante="persona"
-        />
+        {data && !data.puede_ver_todo ? (
+          <div className="flex flex-col justify-center rounded-2xl border border-slate-200 bg-white px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Cartera
+            </span>
+            <span className="truncate text-[13px] font-semibold text-slate-700">
+              {pms.find((p) => p.id === data.pm_id)?.nombre ?? "La mía"}
+            </span>
+          </div>
+        ) : (
+          <PillSelect
+            label="Cartera"
+            value={pmId}
+            onChange={setPmId}
+            options={pms}
+            placeholder="Ambas"
+            variante="persona"
+          />
+        )}
         <PillSelect label="Tipo" value={fTipo} onChange={setFTipo} options={data?.opciones.tipos ?? []} />
         <PillSelect
           label="Estado"

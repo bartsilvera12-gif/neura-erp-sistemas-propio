@@ -91,6 +91,7 @@ import { assignmentWaitBadge, assignmentWaitBadgeClass } from "@/lib/chat/inbox-
 import type { OmnicanalOperatorRole } from "@/lib/chat/omnicanal-supervision-read";
 import { playInboxNotificationBeep, readInboxNotificationSoundEnabled } from "@/lib/chat/inbox-notification-preference";
 import { createBrowserClientForSchema } from "@/lib/supabase";
+import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { ChannelBadge } from "@/components/chat/ChannelBadge";
 
 type ChatMessage = {
@@ -573,6 +574,48 @@ export function ConversacionesClient({
     () => createBrowserClientForSchema(chatDataSchema),
     [chatDataSchema]
   );
+
+  /**
+   * Las suscripciones esperan a que el socket tenga el token.
+   *
+   * `postgres_changes` sobre tablas con RLS se evalúa con el token que el
+   * socket tiene AL UNIRSE al canal. `supabase-js` lo pone cuando cambia el
+   * estado de la sesión, pero al entrar a una pantalla la sesión ya venía
+   * restaurada de la cookie: no cambia nada, el canal se une como anónimo y RLS
+   * no deja pasar un solo evento. La suscripción dice "SUBSCRIBED" y no llega
+   * nada nunca — que es exactamente lo que estaba pasando acá.
+   */
+  const [realtimeListo, setRealtimeListo] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    void autenticarRealtime(supabaseChat).then(() => {
+      if (vivo) setRealtimeListo(true);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [supabaseChat]);
+
+  /**
+   * El alto disponible se MIDE.
+   *
+   * Antes era `100dvh - 4.75rem`, una constante que suponía cuánto ocupa la
+   * barra de arriba. Cuando no coincide, el módulo se pasa de largo y lo que
+   * queda cortado es lo último: la caja de escribir.
+   */
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const [alto, setAlto] = useState<number | null>(null);
+  useEffect(() => {
+    const medir = () => {
+      const el = contenedorRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      setAlto(Math.max(420, Math.round(window.innerHeight - top - 12)));
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
+  }, []);
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -1617,6 +1660,7 @@ export function ConversacionesClient({
 
   /** Lista: Realtime sobre conversaciones (PERF-2A: merge incremental, sin full refetch). */
   useEffect(() => {
+    if (!realtimeListo) return;
     const channel = supabaseChat
       .channel("conversaciones-inbox-list")
       .on(
@@ -1643,10 +1687,11 @@ export function ConversacionesClient({
     return () => {
       void supabaseChat.removeChannel(channel);
     };
-  }, [chatDataSchema, supabaseChat, patchConversationFromRealtime]);
+  }, [chatDataSchema, supabaseChat, patchConversationFromRealtime, realtimeListo]);
 
   /** Mensajes entrantes: PERF-2A patch local + beep si corresponde (sin full refetch). */
   useEffect(() => {
+    if (!realtimeListo) return;
     const channel = supabaseChat
       .channel("conversaciones-inbox-inbound-messages")
       .on(
@@ -1689,7 +1734,7 @@ export function ConversacionesClient({
     return () => {
       void supabaseChat.removeChannel(channel);
     };
-  }, [chatDataSchema, supabaseChat, patchConversationOnMessageInsert]);
+  }, [chatDataSchema, supabaseChat, patchConversationOnMessageInsert, realtimeListo]);
 
   /**
    * PERF-2A: red de seguridad si Realtime falla (publicación RLS, websocket caído).
@@ -1797,7 +1842,7 @@ export function ConversacionesClient({
     return () => {
       void supabaseChat.removeChannel(channel);
     };
-  }, [selectedId, chatDataSchema, supabaseChat]);
+  }, [selectedId, chatDataSchema, supabaseChat, realtimeListo]);
 
   const onMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;
@@ -2531,7 +2576,11 @@ export function ConversacionesClient({
   }, [finalizeStateId, finalizeOptions]);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 h-[calc(100dvh-4.75rem)] max-h-[calc(100dvh-4.75rem)] gap-1 overflow-hidden">
+    <div
+      ref={contenedorRef}
+      style={alto ? { height: `${alto}px`, maxHeight: `${alto}px` } : undefined}
+      className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden"
+    >
       {lightboxUrl ? (
         <button
           type="button"

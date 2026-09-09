@@ -471,12 +471,19 @@ function mapChannels(rows: unknown): { id: string; nombre: string | null; type: 
   }));
 }
 
+import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
+import {
+  listarCierresRapido,
+  type AlcanceCierres,
+} from "@/lib/chat/finalized-closures-fast";
+
 export async function listFinalizedClosures(
   filters: FinalizedClosuresFilters,
   page: number,
   page_size: number
 ): Promise<FinalizedClosuresListResult> {
-  const { supabase, catalogSr, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, catalogSr, empresa_id, usuario_id, dataSchema } =
+    await requireEmpresaTenantServiceRole();
   const ps = Math.min(Math.max(page_size, 5), 1000);
   const p = Math.max(1, page);
   const from = (p - 1) * ps;
@@ -486,6 +493,54 @@ export async function listFinalizedClosures(
 
   const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id);
   const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
+
+  /**
+   * Camino rápido: todo en una consulta SQL.
+   *
+   * El camino de abajo resuelve el alcance trayendo hasta 15.000 ids de
+   * conversación y metiéndolos en un `IN (...)`. Con un comercial que acumula
+   * miles de cierres —Patricio tiene 1.276— eso arma URLs enormes y obliga a
+   * paginar en memoria. Acá el alcance, los filtros, el orden, la página y el
+   * total salen de un solo viaje.
+   *
+   * El alcance no se relaja: se traduce al `WHERE`, no se afloja.
+   */
+  const poolRapido = getChatPostgresPool();
+  if (poolRapido) {
+    try {
+      let alcance: AlcanceCierres;
+      if (bypass || isOmnicanalAdminScope(scope)) {
+        alcance = { tipo: "todo" };
+      } else {
+        // Un asesor ve lo suyo; un supervisor, lo de su equipo.
+        const usuarios =
+          scope.role === "supervisor" && scope.agentUsuarioIds.length > 0
+            ? scope.agentUsuarioIds
+            : [usuario_id];
+        const chatAgentIds = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, usuarios);
+        if (chatAgentIds.length === 0) {
+          return { rows: [], total: 0, page: p, page_size: ps };
+        }
+        alcance = { tipo: "agentes", chatAgentIds };
+      }
+      return await listarCierresRapido(
+        poolRapido,
+        dataSchema,
+        empresa_id,
+        alcance,
+        filters,
+        p,
+        ps
+      );
+    } catch (e) {
+      // Un schema al que le falte alguna tabla, o sin conexión directa: se cae
+      // al camino de siempre. El reporte nunca queda vacío por esto.
+      console.warn(
+        "[listFinalizedClosures] camino rápido falló, se usa PostgREST:",
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
 
   if (!bypass && !isOmnicanalAdminScope(scope)) {
     const fq = filters.queue_id?.trim();

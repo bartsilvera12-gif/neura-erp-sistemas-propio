@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { X, MessageSquarePlus } from "lucide-react";
+import { X, MessageSquarePlus, Download, SlidersHorizontal } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   listFinalizedClosures,
@@ -16,6 +16,46 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 /** Valor de "Todos" (tope del server para page_size). */
 const TODOS_PAGE_SIZE = 1000;
 const EXPORT_MAX_ROWS = 5000;
+
+/**
+ * Arrastrar el listado con el cursor, como se mueve un mapa.
+ *
+ * Se usa `pointer` y no `mouse` para que sirva igual con dedo o lápiz. Y sólo
+ * se considera arrastre a partir de 4 px: sin ese umbral, un clic con un
+ * temblor mínimo cancelaría la selección de texto de la celda.
+ */
+function useArrastreHorizontal() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [arrastrando, setArrastrando] = useState(false);
+  const origen = useRef<{ x: number; scroll: number } | null>(null);
+
+  const alApretar = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Sólo el botón principal, y nunca sobre un control: dentro de la tabla hay
+    // enlaces y botones que tienen que seguir funcionando.
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    origen.current = { x: e.clientX, scroll: el.scrollLeft };
+  }, []);
+
+  const alMover = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const o = origen.current;
+    if (!el || !o) return;
+    const dx = e.clientX - o.x;
+    if (!arrastrando && Math.abs(dx) < 4) return;
+    if (!arrastrando) setArrastrando(true);
+    el.scrollLeft = o.scroll - dx;
+  }, [arrastrando]);
+
+  const alSoltar = useCallback(() => {
+    origen.current = null;
+    setArrastrando(false);
+  }, []);
+
+  return { scrollRef, arrastrando, alApretar, alMover, alSoltar };
+}
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -87,6 +127,7 @@ type ChatMessageRow = {
 };
 
 export default function FinalizedClosuresClient({ filterOptions }: { filterOptions: FinalizedFilterOptions }) {
+  const { scrollRef, arrastrando, alApretar, alMover, alSoltar } = useArrastreHorizontal();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [queueId, setQueueId] = useState("");
@@ -258,8 +299,9 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           type="button"
           onClick={() => void onExport()}
           disabled={loading}
-          className="inline-flex items-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91] disabled:opacity-50"
         >
+          <Download className="h-4 w-4" />
           Descargar Excel (CSV)
         </button>
       </div>
@@ -271,15 +313,19 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
         <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{info}</div>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm space-y-4">
-        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Filtros</h2>
+      <section className="space-y-4 overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]">
+        <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-4 py-3 md:px-5">
+          <SlidersHorizontal className="h-4 w-4 text-[#2F6E71]" />
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#2F6E71]">Filtros</h2>
+        </div>
+        <div className="px-4 pb-4 md:px-5 md:pb-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Desde
             <FechaSelect
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
 />
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
@@ -287,7 +333,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <FechaSelect
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
 />
           </label>
           {!esAsesor && (
@@ -296,7 +342,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <select
               value={queueId}
               onChange={(e) => setQueueId(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 bg-white"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             >
               <option value="">Todas</option>
               {filterOptions.queues.map((qItem) => (
@@ -313,7 +359,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <select
               value={assignedUsuarioId}
               onChange={(e) => setAssignedUsuarioId(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 bg-white"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             >
               <option value="">Todos</option>
               {filterOptions.agents.map((a) => (
@@ -330,7 +376,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <select
               value={channelId}
               onChange={(e) => setChannelId(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 bg-white"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             >
               <option value="">Todos</option>
               {filterOptions.channels.map((c) => (
@@ -346,7 +392,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <select
               value={stateLabel}
               onChange={(e) => setStateLabel(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 bg-white"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             >
               <option value="">Todos</option>
               {filterOptions.state_labels.map((s) => (
@@ -362,7 +408,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <select
               value={substateLabel}
               onChange={(e) => setSubstateLabel(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 bg-white"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             >
               <option value="">Todos</option>
               {filterOptions.substate_labels.map((s) => (
@@ -380,7 +426,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar contacto…"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
             />
           </label>
         </div>
@@ -389,7 +435,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           <button
             type="button"
             onClick={applyFilters}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91]"
           >
             Aplicar filtros
           </button>
@@ -415,12 +461,26 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             Limpiar
           </button>
         </div>
+        </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-[1000px] w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+      <section className="overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]">
+        {/*
+          El listado se arrastra con el cursor, además de la barra.
+          Once columnas no entran en ninguna pantalla, y buscar la barra de
+          abajo para leer el comentario de un cierre es un trabajo que la tabla
+          te está haciendo hacer. Con el arrastre, se corre como un mapa.
+        */}
+        <div
+          ref={scrollRef}
+          onPointerDown={alApretar}
+          onPointerMove={alMover}
+          onPointerUp={alSoltar}
+          onPointerLeave={alSoltar}
+          className={`overflow-x-auto ${arrastrando ? "cursor-grabbing select-none" : "cursor-grab"}`}
+        >
+          <table className="w-full min-w-[1000px] text-left text-sm">
+            <thead className="border-b border-[#4FAEB2]/20 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/6 to-transparent text-xs font-semibold uppercase tracking-wide text-[#2F6E71]">
               <tr>
                 <th className="px-3 py-3 whitespace-nowrap">Finalización</th>
                 <th className="px-3 py-3">Contacto</th>

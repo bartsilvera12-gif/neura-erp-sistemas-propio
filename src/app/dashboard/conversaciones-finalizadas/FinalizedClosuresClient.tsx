@@ -11,6 +11,7 @@ import {
   type FinalizedFilterOptions,
 } from "@/lib/chat/finalized-closures-actions";
 import { FechaSelect } from "@/components/ui/FechaSelect";
+import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 /** Valor de "Todos" (tope del server para page_size). */
@@ -196,6 +197,51 @@ type ChatMessageRow = {
 
 export default function FinalizedClosuresClient({ filterOptions }: { filterOptions: FinalizedFilterOptions }) {
   const { scrollRef, borde, alMover, alSalir } = useBordesQueDesplazan();
+
+  /**
+   * Las opciones de cada filtro, con su "todos" adelante.
+   *
+   * Se arman una sola vez por lista: sin esto, cada tecla que se escribe en el
+   * buscador reconstruiría cinco arreglos que no cambiaron.
+   */
+  const opcionesCola = useMemo(
+    () => [
+      { value: "", label: "Todas" },
+      ...filterOptions.queues.map((x) => ({ value: x.id, label: x.nombre })),
+    ],
+    [filterOptions.queues]
+  );
+  const opcionesAgente = useMemo(
+    () => [
+      { value: "", label: "Todos" },
+      ...filterOptions.agents.map((x) => ({ value: x.id, label: x.nombre })),
+    ],
+    [filterOptions.agents]
+  );
+  const opcionesCanal = useMemo(
+    () => [
+      { value: "", label: "Todos" },
+      ...filterOptions.channels.map((c) => ({
+        value: c.id,
+        label: (c.nombre ?? c.type).trim() || c.type,
+      })),
+    ],
+    [filterOptions.channels]
+  );
+  const opcionesEstado = useMemo(
+    () => [
+      { value: "", label: "Todos" },
+      ...filterOptions.state_labels.map((x) => ({ value: x, label: x })),
+    ],
+    [filterOptions.state_labels]
+  );
+  const opcionesSubestado = useMemo(
+    () => [
+      { value: "", label: "Todos" },
+      ...filterOptions.substate_labels.map((x) => ({ value: x, label: x })),
+    ],
+    [filterOptions.substate_labels]
+  );
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [queueId, setQueueId] = useState("");
@@ -388,7 +434,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
         </div>
         <div className="px-4 pb-4 md:px-5 md:pb-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Desde
             <FechaSelect
               value={dateFrom}
@@ -396,7 +442,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
 />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Hasta
             <FechaSelect
               value={dateTo}
@@ -405,89 +451,64 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
 />
           </label>
           {!esAsesor && (
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Cola
-            <select
+            <FancySelect
+              ariaLabel="Cola"
               value={queueId}
-              onChange={(e) => setQueueId(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-            >
-              <option value="">Todas</option>
-              {filterOptions.queues.map((qItem) => (
-                <option key={qItem.id} value={qItem.id}>
-                  {qItem.nombre}
-                </option>
-              ))}
-            </select>
+              onChange={setQueueId}
+              placeholder="Todas"
+              options={opcionesCola}
+            />
           </label>
           )}
           {!esAsesor && (
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Agente asignado
-            <select
+            <FancySelect
+              ariaLabel="Agente asignado"
               value={assignedUsuarioId}
-              onChange={(e) => setAssignedUsuarioId(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-            >
-              <option value="">Todos</option>
-              {filterOptions.agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nombre}
-                </option>
-              ))}
-            </select>
+              onChange={setAssignedUsuarioId}
+              placeholder="Todos"
+              options={opcionesAgente}
+            />
           </label>
           )}
           {!esAsesor && (
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Canal
-            <select
+            <FancySelect
+              ariaLabel="Canal"
               value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-            >
-              <option value="">Todos</option>
-              {filterOptions.channels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {(c.nombre ?? c.type).trim() || c.type}
-                </option>
-              ))}
-            </select>
+              onChange={setChannelId}
+              placeholder="Todos"
+              options={opcionesCanal}
+            />
           </label>
           )}
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Estado
-            <select
+            <FancySelect
+              ariaLabel="Estado"
               value={stateLabel}
-              onChange={(e) => setStateLabel(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-            >
-              <option value="">Todos</option>
-              {filterOptions.state_labels.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+              onChange={setStateLabel}
+              placeholder="Todos"
+              options={opcionesEstado}
+            />
           </label>
           {!esAsesor && (
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Subestado
-            <select
+            <FancySelect
+              ariaLabel="Subestado"
               value={substateLabel}
-              onChange={(e) => setSubstateLabel(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
-            >
-              <option value="">Todos</option>
-              {filterOptions.substate_labels.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+              onChange={setSubstateLabel}
+              placeholder="Todos"
+              options={opcionesSubestado}
+            />
           </label>
           )}
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 sm:col-span-2">
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71] sm:col-span-2">
             Nombre o número
             <input
               type="search"
@@ -499,7 +520,9 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           </label>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        {/* Separado del último campo por una línea: pegado, "Aplicar filtros"
+            se leía como parte del buscador de contacto. */}
+        <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
           <button
             type="button"
             onClick={applyFilters}
@@ -672,15 +695,20 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           }}
         >
           <div
-            className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-xl border border-slate-200"
+            className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/25 bg-white shadow-2xl shadow-[#2F6E71]/15"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 shrink-0">
-              <div>
-                <h2 id="finalized-detail-title" className="text-lg font-bold text-slate-900">
-                  Detalle del cierre
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#4FAEB2]/20 bg-gradient-to-r from-[#4FAEB2]/14 via-[#4FAEB2]/6 to-transparent px-5 py-4">
+              <div className="min-w-0">
+                <h2 id="finalized-detail-title" className="text-[17px] font-semibold text-slate-900">
+                  {detail.contact_name?.trim() || detail.phone_number || "Detalle del cierre"}
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Conversación {detail.conversation_id}</p>
+                {/* El teléfono y la fecha son lo que ubica: el id de la
+                    conversación no le dice nada a nadie y ocupaba el renglón
+                    más visible del modal. */}
+                <p className="mt-0.5 truncate text-[12.5px] text-slate-600">
+                  {detail.phone_number} · cerrado el {formatDateTime(detail.closed_at)}
+                </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Link
@@ -694,7 +722,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                 <button
                   type="button"
                   onClick={() => setDetail(null)}
-                  className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                  className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/70 hover:text-slate-700"
                   aria-label="Cerrar"
                 >
                   <X className="h-5 w-5" />
@@ -702,52 +730,57 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               </div>
             </div>
 
-            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4 text-sm">
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Contacto</dt>
-                  <dd className="text-slate-900">{detail.contact_name ?? "—"}</dd>
+            <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 px-5 py-4 text-sm">
+              {/*
+                Cómo terminó, arriba y solo. Es el dato por el que se abre este
+                modal; mezclado entre otros ocho campos había que buscarlo.
+              */}
+              <div className="rounded-2xl border border-[#4FAEB2]/25 bg-white p-4 shadow-[0_1px_3px_rgba(47,110,113,0.08)]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[#4FAEB2]/15 px-3 py-1 text-[13px] font-semibold text-[#2F6E71]">
+                    {detail.state_label || "Sin estado"}
+                  </span>
+                  {detail.substate_label ? (
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[12.5px] text-slate-600">
+                      {detail.substate_label}
+                    </span>
+                  ) : null}
                 </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Número</dt>
-                  <dd className="text-slate-900">{detail.phone_number}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Fecha de cierre</dt>
-                  <dd className="text-slate-900">{formatDateTime(detail.closed_at)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Agente asignado</dt>
-                  <dd className="text-slate-900">{detail.assigned_agent_nombre ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Cerrado por</dt>
-                  <dd className="text-slate-900">{detail.closed_by_nombre ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Cola</dt>
-                  <dd className="text-slate-900">{detail.queue_nombre ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Canal</dt>
-                  <dd className="text-slate-900">{channelLabel(detail)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Estado</dt>
-                  <dd className="text-slate-900">{detail.state_label}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-semibold text-slate-500">Subestado</dt>
-                  <dd className="text-slate-900">{detail.substate_label}</dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-xs font-semibold text-slate-500">Comentario</dt>
-                  <dd className="text-slate-800 whitespace-pre-wrap mt-1">{detail.comment || "—"}</dd>
-                </div>
+                <p className="mt-3 whitespace-pre-wrap text-[13.5px] leading-relaxed text-slate-700">
+                  {detail.comment?.trim() || (
+                    <span className="italic text-slate-400">Sin comentario de cierre.</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Quién y por dónde. Dos columnas fijas: la etiqueta a la
+                  izquierda y el dato a la derecha se recorren de un vistazo,
+                  cosa que una grilla de tarjetas sueltas no permite. */}
+              <dl className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                {(
+                  [
+                    ["Agente asignado", detail.assigned_agent_nombre ?? "—"],
+                    ["Cerrado por", detail.closed_by_nombre ?? "—"],
+                    ["Cola", detail.queue_nombre ?? "—"],
+                    ["Canal", channelLabel(detail)],
+                  ] as const
+                ).map(([rotulo, valor]) => (
+                  <div
+                    key={rotulo}
+                    className="flex items-baseline gap-3 border-b border-slate-100 px-4 py-2.5 last:border-0"
+                  >
+                    <dt className="w-36 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
+                      {rotulo}
+                    </dt>
+                    <dd className="min-w-0 flex-1 text-[13.5px] text-slate-800">{valor}</dd>
+                  </div>
+                ))}
               </dl>
 
               <div>
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mensajes</h3>
+                <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#2F6E71]">
+                  Mensajes
+                </h3>
                 {msgLoading ? (
                   <p className="text-slate-400 text-sm">Cargando historial…</p>
                 ) : msgError ? (
@@ -755,14 +788,14 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                 ) : messages.length === 0 ? (
                   <p className="text-slate-500 text-sm">No hay mensajes en esta conversación.</p>
                 ) : (
-                  <ul className="space-y-2 max-h-[min(50vh,420px)] overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                  <ul className="max-h-[min(50vh,420px)] space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3">
                     {messages.map((m) => (
                       <li
                         key={m.id}
-                        className={`rounded-lg px-3 py-2 text-sm border ${
+                        className={`w-fit max-w-[85%] rounded-xl px-3 py-2 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.06)] ${
                           m.from_me
-                            ? "border-sky-200 bg-sky-50 text-slate-800 ml-4"
-                            : "border-slate-200 bg-white text-slate-800 mr-4"
+                            ? "ml-auto bg-[#E3F3E5] text-slate-800"
+                            : "mr-auto border border-slate-200 bg-white text-slate-800"
                         }`}
                       >
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mb-1">

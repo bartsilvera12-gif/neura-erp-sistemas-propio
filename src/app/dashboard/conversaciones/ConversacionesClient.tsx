@@ -516,21 +516,6 @@ function badgeEstadoClass(s: string) {
   return "text-slate-600 bg-slate-50 border-slate-200";
 }
 
-function omnicanalRoleBadgeClass(role: string | null): string {
-  if (role === "admin") return "text-slate-800 bg-slate-100 border-slate-200";
-  if (role === "supervisor") return "text-sky-800 bg-sky-50 border-sky-200";
-  if (role === "agente") return "text-indigo-900 bg-indigo-50 border-indigo-200";
-  return "text-slate-600 bg-slate-50 border-slate-200";
-}
-
-function omnicanalRoleShortLabel(role: string | null): string | null {
-  if (!role) return null;
-  if (role === "admin") return "Admin";
-  if (role === "supervisor") return "Supervisor";
-  if (role === "agente") return "Agente";
-  return null;
-}
-
 const CHAT_LIST_DEBUG = process.env.NEXT_PUBLIC_CHAT_LIST_DEBUG === "true";
 function chatListUiLog(
   sub: "initial-data" | "refetch-start" | "refetch-result" | "set-conversations" | "filters-applied" | "tab-split" | "refetch-preserve",
@@ -2848,32 +2833,31 @@ export function ConversacionesClient({
                       </p>
                     ) : (
                       filteredTransferAgents.map((a) => {
-                        const roleLabel = omnicanalRoleShortLabel(a.omnicanal_role);
                         const isCurrent = a.id === selected.assigned_agent_id;
                         return (
-                          <button
+                          <div
                             key={a.id}
-                            type="button"
-                            disabled={opsBusy || isCurrent}
-                            onClick={() =>
-                              void runConversationOp(async () => {
-                                await assignConversationToAgent(selected.id, a.id);
-                                setTransferModalOpen(false);
-                              })
-                            }
-                            className={`w-full text-left px-4 py-3 transition-colors hover:bg-white disabled:opacity-50 disabled:pointer-events-none ${
-                              isCurrent ? "bg-emerald-50/80" : ""
-                            }`}
+                            className={`px-4 py-3 transition-colors ${isCurrent ? "bg-emerald-50/80" : ""}`}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <span className="font-semibold text-slate-900 text-sm leading-snug">{a.nombre}</span>
-                              {roleLabel ? (
-                                <span
-                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${omnicanalRoleBadgeClass(a.omnicanal_role)}`}
-                                >
-                                  {roleLabel}
-                                </span>
-                              ) : null}
+                              <span className="font-semibold text-slate-900 text-sm leading-snug min-w-0">{a.nombre}</span>
+                              <button
+                                type="button"
+                                disabled={opsBusy || isCurrent}
+                                onClick={() =>
+                                  void runConversationOp(async () => {
+                                    await assignConversationToAgent(selected.id, a.id);
+                                    setTransferModalOpen(false);
+                                  })
+                                }
+                                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-50 disabled:pointer-events-none ${
+                                  isCurrent
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-[#4FAEB2] text-white hover:bg-[#3F8E91]"
+                                }`}
+                              >
+                                {isCurrent ? "Asignado" : "Transferir"}
+                              </button>
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-white text-slate-700 border border-slate-200">
@@ -2882,17 +2866,13 @@ export function ConversacionesClient({
                               <span className="text-[11px] text-slate-500">
                                 {a.operational_status === "offline" ? "En pausa" : "Disponible"}
                                 {!a.is_online ? " · sin sesión" : ""}
+                                {" · "}
+                                <span className="tabular-nums font-medium text-slate-600">
+                                  {a.active_conversations} activos
+                                </span>
                               </span>
                             </div>
-                            <div className="flex justify-end mt-2">
-                              <span className="text-[11px] text-slate-600 tabular-nums">
-                                <span className="inline-flex items-center rounded border border-slate-200 bg-white px-1.5 py-0.5 font-semibold text-slate-800">
-                                  {a.active_conversations}
-                                </span>{" "}
-                                Activos
-                              </span>
-                            </div>
-                          </button>
+                          </div>
                         );
                       })
                     )}

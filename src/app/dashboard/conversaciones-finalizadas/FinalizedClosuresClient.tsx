@@ -496,7 +496,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               options={opcionesEstado}
             />
           </label>
-          {!esAsesor && (
+          {/* El subestado es la mitad de la tipificación: sin él, "No contesta"
+              son cientos de filas indistinguibles. Va también para el asesor. */}
           <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
             Subestado
             <FancySelect
@@ -507,7 +508,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               options={opcionesSubestado}
             />
           </label>
-          )}
           <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71] sm:col-span-2">
             Nombre o número
             <input

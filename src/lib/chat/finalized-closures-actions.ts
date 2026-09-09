@@ -320,7 +320,10 @@ async function loadFinalizedFilterOptionsScopedTeam(
   const states = new Set<string>();
   const subs = new Set<string>();
   const closerIdSet = new Set<string>();
-  const chunk = 120;
+  // Lotes de ID_IN_CHUNK (50), no de 120: con 120 uuids la URL pasa los ~3,7 KB
+  // que aguanta el gateway y la respuesta es un 502 que acá se ignoraba en
+  // silencio, dejando el combo de estados corto o vacío.
+  const chunk = ID_IN_CHUNK;
   for (let i = 0; i < convIds.length; i += chunk) {
     const slice = convIds.slice(i, i + chunk);
     const { data: closureSample, error: ce } = await supabase
@@ -380,7 +383,8 @@ async function loadFinalizedFilterOptionsScopedTeam(
 async function loadFinalizedFilterOptionsOwn(
   supabase: AppSupabaseClient,
   empresa_id: string,
-  usuario_id: string
+  usuario_id: string,
+  dataSchema: string
 ): Promise<FinalizedFilterOptions> {
   const base: FinalizedFilterOptions = {
     queues: [],
@@ -394,6 +398,28 @@ async function loadFinalizedFilterOptionsOwn(
 
   const ownFkIds = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, [usuario_id]);
   if (ownFkIds.length === 0) return base;
+
+  /*
+    Camino rápido: una consulta, con el alcance como parámetro en vez de miles
+    de ids dentro de la URL. Es lo que arregla el combo "Estado" corto o vacío
+    para quien acumula muchos cierres, y de paso lo deja armado sobre la misma
+    unión que la lista: lo que ofrece el filtro es lo que se puede llegar a ver.
+  */
+  const pool = getChatPostgresPool();
+  if (pool && dataSchema) {
+    try {
+      const et = await listarEtiquetasRapido(pool, dataSchema, empresa_id, {
+        tipo: "agentes",
+        chatAgentIds: ownFkIds,
+      });
+      return { ...base, state_labels: et.state_labels, substate_labels: et.substate_labels };
+    } catch (e) {
+      console.warn(
+        "[loadFinalizedFilterOptions] etiquetas rápidas fallaron, se usa PostgREST:",
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
 
   const { data: ownConv, error: ownErr } = await supabase
     .from("chat_conversations")
@@ -413,7 +439,7 @@ async function loadFinalizedFilterOptionsOwn(
 
   const states = new Set<string>();
   const subs = new Set<string>();
-  const chunk = 120;
+  const chunk = ID_IN_CHUNK;
   for (let i = 0; i < convIds.length; i += chunk) {
     const slice = convIds.slice(i, i + chunk);
     const { data: closureSample, error: ce } = await supabase
@@ -442,7 +468,8 @@ async function loadFinalizedFilterOptionsOwn(
 }
 
 export async function loadFinalizedFilterOptions(): Promise<FinalizedFilterOptions> {
-  const { supabase, catalogSr, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, catalogSr, empresa_id, usuario_id, dataSchema } =
+    await requireEmpresaTenantServiceRole();
   const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id);
   const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
   if (bypass || isOmnicanalAdminScope(scope)) {
@@ -451,7 +478,7 @@ export async function loadFinalizedFilterOptions(): Promise<FinalizedFilterOptio
   // Asesor puro (no supervisor): vista simplificada "own" → el cliente muestra solo Fecha,
   // Estado y búsqueda. Opciones acotadas a SUS finalizadas (mismo alcance que la lista).
   if (scope.role !== "supervisor") {
-    return loadFinalizedFilterOptionsOwn(supabase, empresa_id, usuario_id);
+    return loadFinalizedFilterOptionsOwn(supabase, empresa_id, usuario_id, dataSchema);
   }
   return loadFinalizedFilterOptionsScopedTeam(supabase, catalogSr, empresa_id, scope);
 }
@@ -474,6 +501,7 @@ function mapChannels(rows: unknown): { id: string; nombre: string | null; type: 
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import {
   listarCierresRapido,
+  listarEtiquetasRapido,
   type AlcanceCierres,
 } from "@/lib/chat/finalized-closures-fast";
 

@@ -171,3 +171,65 @@ export async function listarCierresRapido(
 
   return { rows, total, page: Math.max(1, pagina), page_size: porPagina };
 }
+
+/**
+ * Estados y subestados que existen dentro del alcance, en UNA consulta.
+ *
+ * El camino de PostgREST arma el desplegable trayendo los ids de conversación
+ * del alcance y pidiendo las tipificaciones por lotes, con los ids metidos en
+ * la URL. Con un comercial que acumula miles de cierres esa URL pasa los ~3,7 KB
+ * que aguanta el gateway y la respuesta es un 502; el error se registraba y se
+ * seguía de largo, así que el combo "Estado" quedaba corto o directamente vacío
+ * sin que nada lo dijera.
+ *
+ * Acá el alcance viaja como parámetro, no como texto en la URL, y el resultado
+ * sale de la misma unión que la lista: lo que ofrece el filtro es exactamente
+ * lo que se puede llegar a ver.
+ */
+export async function listarEtiquetasRapido(
+  pool: Pool,
+  schema: string,
+  empresaId: string,
+  alcance: AlcanceCierres
+): Promise<{ state_labels: string[]; substate_labels: string[]; closed_by_ids: string[] }> {
+  const T = (t: string) => quoteSchemaTable(schema, t);
+
+  const cond: string[] = ["cl.empresa_id = $1::uuid"];
+  const params: unknown[] = [empresaId];
+
+  if (alcance.tipo === "agentes") {
+    if (alcance.chatAgentIds.length === 0) {
+      return { state_labels: [], substate_labels: [], closed_by_ids: [] };
+    }
+    cond.push("co.assigned_agent_id = ANY($2::uuid[])");
+    params.push(alcance.chatAgentIds);
+  }
+
+  const sql = `
+    SELECT DISTINCT
+           NULLIF(btrim(cl.closure_state_label), '')    AS estado,
+           NULLIF(btrim(cl.closure_substate_label), '') AS subestado,
+           cl.closed_by_usuario_id::text                AS cerro
+      FROM ${T("chat_conversation_closures")} cl
+      JOIN ${T("chat_conversations")} co ON co.id = cl.conversation_id
+     WHERE ${cond.join("\n       AND ")}`;
+
+  const r = await pool.query(sql, params);
+  const estados = new Set<string>();
+  const subs = new Set<string>();
+  const cerraron = new Set<string>();
+  for (const f of (r.rows ?? []) as Record<string, unknown>[]) {
+    const e = f.estado as string | null;
+    const s = f.subestado as string | null;
+    const c = f.cerro as string | null;
+    if (e) estados.add(e);
+    if (s) subs.add(s);
+    if (c) cerraron.add(c);
+  }
+  const ordenar = (v: Set<string>) => [...v].sort((a, b) => a.localeCompare(b, "es"));
+  return {
+    state_labels: ordenar(estados),
+    substate_labels: ordenar(subs),
+    closed_by_ids: [...cerraron],
+  };
+}

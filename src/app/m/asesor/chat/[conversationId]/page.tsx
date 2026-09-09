@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
+  assignConversationToAgent,
+  changeConversationQueue,
+  fetchTransferTargetAgents,
+  listTransferQueues,
+  type ChatQueueListRow,
+  type SupervisorAgentLoadRow,
+} from "@/lib/chat/chat-ops-actions";
+import {
   getErpAttachmentPublicUrl,
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
@@ -212,6 +220,16 @@ export default function MAsesorChatPage() {
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   /** Imagen abierta a pantalla completa. */
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+
+  // ── Transferir conversación (mismo comportamiento que el panel de escritorio) ──
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null);
+  const [opsQueues, setOpsQueues] = useState<ChatQueueListRow[]>([]);
+  const [opsAgents, setOpsAgents] = useState<SupervisorAgentLoadRow[]>([]);
+  const [transferQueue, setTransferQueue] = useState("");
+  const [transferSearch, setTransferSearch] = useState("");
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [opsBusy, setOpsBusy] = useState(false);
   /** Arrastre en curso: qué burbuja y cuántos px lleva. Sólo visual. */
   const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
   const swipeStart = useRef<{ x: number; y: number; locked: boolean } | null>(null);
@@ -265,6 +283,7 @@ export default function MAsesorChatPage() {
         }
         setTitle(data.conversation?.contact_nombre || data.conversation?.contact_telefono || "Chat");
         setContactPhone(data.conversation?.contact_telefono ?? null);
+        setAssignedAgentId(data.conversation?.assigned_agent_id ?? null);
         setWindowOpen(data.conversation?.window_open ?? null);
         setErr(null);
       } catch (e) {
@@ -412,6 +431,53 @@ export default function MAsesorChatPage() {
       })();
     },
     [conversationId, load]
+  );
+
+  // Se cargan al abrir el modal, no al montar: son dos consultas caras que la mayoría
+  // de las veces no se usan (el asesor entra a leer, no a transferir).
+  const openTransfer = useCallback(() => {
+    setTransferOpen(true);
+    setTransferLoading(true);
+    void Promise.all([
+      listTransferQueues().catch(() => [] as ChatQueueListRow[]),
+      fetchTransferTargetAgents().catch(() => [] as SupervisorAgentLoadRow[]),
+    ])
+      .then(([qs, ags]) => {
+        setOpsQueues(qs);
+        setOpsAgents(ags);
+      })
+      .finally(() => setTransferLoading(false));
+  }, []);
+
+  // Mismo filtrado que el desktop: la cola acota, el texto busca en nombre, email y cola.
+  const filteredAgents = (() => {
+    const q = transferSearch.trim().toLowerCase();
+    const rows = opsAgents.filter((a) => (transferQueue === "" ? true : a.queue_id === transferQueue));
+    if (!q) return rows;
+    return rows.filter(
+      (a) =>
+        a.nombre.toLowerCase().includes(q) ||
+        (a.email && a.email.toLowerCase().includes(q)) ||
+        a.queue_nombre.toLowerCase().includes(q)
+    );
+  })();
+
+  const runOp = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (opsBusy) return;
+      setOpsBusy(true);
+      setSendErr(null);
+      try {
+        await fn();
+        setTransferOpen(false);
+        await load(true);
+      } catch (e) {
+        setSendErr(e instanceof Error ? e.message : "Error en la acción");
+      } finally {
+        setOpsBusy(false);
+      }
+    },
+    [opsBusy, load]
   );
 
   const previewOf = (m: Msg) => (m.content?.trim() || `[${m.message_type}]`).slice(0, 160);
@@ -674,10 +740,18 @@ export default function MAsesorChatPage() {
         <button onClick={() => router.push("/m/asesor")} aria-label="Volver" className="h-9 w-9 grid place-items-center rounded-full active:bg-white/15 text-lg">
           ‹
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold leading-tight">{headerTitle}</h1>
           <p className="text-[11px] text-white/80 leading-tight truncate">{headerSub}</p>
         </div>
+        <button
+          type="button"
+          onClick={openTransfer}
+          aria-label="Transferir conversación"
+          className="shrink-0 flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-[12px] font-semibold active:bg-white/25"
+        >
+          ⇄ Transferir
+        </button>
       </header>
 
       <div
@@ -925,6 +999,134 @@ export default function MAsesorChatPage() {
           </>
         )}
       </div>
+
+      {transferOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+          role="presentation"
+          onClick={() => setTransferOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="max-h-[85vh] overflow-hidden rounded-t-2xl bg-white flex flex-col"
+            onClick={(ev) => ev.stopPropagation()}
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 shrink-0">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-slate-900">Transferir conversación</h2>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Elegí cola y/o agente. Los números reflejan chats abiertos asignados al agente.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTransferOpen(false)}
+                aria-label="Cerrar"
+                className="shrink-0 h-8 w-8 grid place-items-center rounded-full text-slate-500 active:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-5">
+              <div>
+                <label className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  Colas
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    disabled={opsBusy}
+                    value={transferQueue}
+                    onChange={(e) => setTransferQueue(e.target.value)}
+                    aria-label="Cola destino y filtro de agentes"
+                    className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[14px]"
+                  >
+                    <option value="">Todas las colas (tu alcance)</option>
+                    {opsQueues.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={opsBusy || !transferQueue}
+                    onClick={() =>
+                      void runOp(() => changeConversationQueue(conversationId, transferQueue))
+                    }
+                    className="shrink-0 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-[14px] font-semibold text-white active:bg-[#3F8E91] disabled:opacity-50"
+                  >
+                    Transferir
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Agentes
+                  </label>
+                  <input
+                    type="search"
+                    value={transferSearch}
+                    onChange={(e) => setTransferSearch(e.target.value)}
+                    placeholder="Buscar"
+                    aria-label="Buscar agente"
+                    className="w-40 rounded-xl border border-slate-200 px-3 py-2 text-[14px] outline-none focus:ring-2 focus:ring-[#4FAEB2]/30"
+                  />
+                </div>
+                {transferLoading ? (
+                  <p className="py-6 text-center text-[13px] text-slate-500">Cargando agentes…</p>
+                ) : filteredAgents.length === 0 ? (
+                  <p className="py-6 text-center text-[13px] text-slate-500">
+                    No hay agentes para mostrar con estos filtros.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                    {filteredAgents.map((a) => {
+                      const isCurrent = a.id === assignedAgentId;
+                      return (
+                        <div key={a.id} className={`px-3 py-3 ${isCurrent ? "bg-emerald-50/80" : ""}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[14px] font-semibold leading-snug text-slate-900">
+                                {a.nombre}
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-700">
+                                  {a.queue_nombre}
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                  {a.operational_status === "offline" ? "En pausa" : "Disponible"}
+                                  {!a.is_online ? " · sin sesión" : ""}
+                                  {" · "}
+                                  {a.active_conversations} activos
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={opsBusy || isCurrent}
+                              onClick={() =>
+                                void runOp(() => assignConversationToAgent(conversationId, a.id))
+                              }
+                              className="shrink-0 rounded-xl bg-[#4FAEB2] px-3 py-2 text-[13px] font-semibold text-white active:bg-[#3F8E91] disabled:bg-slate-200 disabled:text-slate-500"
+                            >
+                              {isCurrent ? "Asignado" : "Transferir"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {zoomUrl ? (
         <div

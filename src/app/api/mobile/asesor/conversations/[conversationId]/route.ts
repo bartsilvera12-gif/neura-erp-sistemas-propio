@@ -116,6 +116,8 @@ export async function GET(
       conversation: {
         id: (conv as { id: string }).id,
         status: (conv as { status: string }).status,
+        // Necesario para marcar "Asignado" al agente actual en el modal de transferir.
+        assigned_agent_id: (conv as { assigned_agent_id: string | null }).assigned_agent_id ?? null,
         contact_nombre: contactNombre,
         contact_telefono: contactTelefono,
         window_open: windowOpen,

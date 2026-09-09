@@ -24,37 +24,149 @@ const EXPORT_MAX_ROWS = 5000;
  * se considera arrastre a partir de 4 px: sin ese umbral, un clic con un
  * temblor mínimo cancelaría la selección de texto de la celda.
  */
+/** A qué distancia del borde empieza a correrse la tabla. */
+const ZONA_BORDE = 90;
+/** Píxeles por cuadro: en el borde exacto, y apenas entrando en la zona. */
+const VELOCIDAD_MAX = 22;
+const VELOCIDAD_MIN = 2;
+
 function useArrastreHorizontal() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [arrastrando, setArrastrando] = useState(false);
   const origen = useRef<{ x: number; scroll: number } | null>(null);
 
-  const alApretar = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    // Sólo el botón principal, y nunca sobre un control: dentro de la tabla hay
-    // enlaces y botones que tienen que seguir funcionando.
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    origen.current = { x: e.clientX, scroll: el.scrollLeft };
+  /** Velocidad actual del desplazamiento automático. 0 = quieto. */
+  const velocidad = useRef(0);
+  const cuadro = useRef<number | null>(null);
+  /** Qué lado está activo, para pintar la señal en pantalla. */
+  const [borde, setBorde] = useState<"izq" | "der" | null>(null);
+
+  const detener = useCallback(() => {
+    velocidad.current = 0;
+    if (cuadro.current !== null) {
+      cancelAnimationFrame(cuadro.current);
+      cuadro.current = null;
+    }
+    setBorde(null);
   }, []);
 
-  const alMover = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+  /**
+   * El bucle corre mientras haya velocidad. No se reprograma solo: si el cursor
+   * sale de la zona, `velocidad` queda en 0 y el bucle se apaga en el siguiente
+   * cuadro. Así no queda nada girando de fondo.
+   *
+   * Es una función suelta y no un `useCallback` porque se llama a sí misma:
+   * declarada como callback tendría que referenciarse antes de terminar de
+   * existir. Sólo lee refs, así que no necesita reconstruirse en cada render.
+   */
+  function correr() {
     const el = scrollRef.current;
-    const o = origen.current;
-    if (!el || !o) return;
-    const dx = e.clientX - o.x;
-    if (!arrastrando && Math.abs(dx) < 4) return;
-    if (!arrastrando) setArrastrando(true);
-    el.scrollLeft = o.scroll - dx;
-  }, [arrastrando]);
+    if (!el || velocidad.current === 0) {
+      cuadro.current = null;
+      return;
+    }
+    const antes = el.scrollLeft;
+    el.scrollLeft = antes + velocidad.current;
+    // Si ya no se movió, se llegó al final: no tiene sentido seguir.
+    if (el.scrollLeft === antes) {
+      velocidad.current = 0;
+      cuadro.current = null;
+      // Se apaga la señal: si no se puede seguir, decir "hay más de este lado"
+      // sería mentir.
+      setBorde(null);
+      return;
+    }
+    cuadro.current = requestAnimationFrame(correr);
+  }
+
+  /**
+   * Acercar el cursor a un borde corre la tabla hacia ese lado.
+   *
+   * La velocidad crece cuanto más cerca del borde: al filo va rápido, y apenas
+   * entrando en la zona se mueve despacio para poder frenar sobre la columna
+   * que uno quiere leer. Una velocidad fija se pasa de largo siempre.
+   */
+  const evaluarBorde = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const el = scrollRef.current;
+      // Mientras se arrastra manda la mano, no el borde.
+      if (!el || origen.current) return;
+
+      const caja = el.getBoundingClientRect();
+      const desdeIzq = e.clientX - caja.left;
+      const desdeDer = caja.right - e.clientX;
+      const hayIzq = el.scrollLeft > 0;
+      const hayDer = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+
+      const rampa = (d: number) =>
+        VELOCIDAD_MIN + (VELOCIDAD_MAX - VELOCIDAD_MIN) * (1 - d / ZONA_BORDE);
+
+      let v = 0;
+      let lado: "izq" | "der" | null = null;
+      if (desdeIzq >= 0 && desdeIzq < ZONA_BORDE && hayIzq) {
+        v = -rampa(desdeIzq);
+        lado = "izq";
+      } else if (desdeDer >= 0 && desdeDer < ZONA_BORDE && hayDer) {
+        v = rampa(desdeDer);
+        lado = "der";
+      }
+
+      velocidad.current = v;
+      setBorde(lado);
+      if (v !== 0 && cuadro.current === null) {
+        cuadro.current = requestAnimationFrame(correr);
+      }
+    },
+    // Sólo lee refs; no depende de nada que cambie entre renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // Si el componente se va con el bucle andando, hay que cortarlo.
+  useEffect(() => detener, [detener]);
+
+  const alApretar = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Sólo el botón principal, y nunca sobre un control: dentro de la tabla
+      // hay enlaces y botones que tienen que seguir funcionando.
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      detener();
+      origen.current = { x: e.clientX, scroll: el.scrollLeft };
+    },
+    [detener]
+  );
+
+  const alMover = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const el = scrollRef.current;
+      const o = origen.current;
+      if (el && o) {
+        const dx = e.clientX - o.x;
+        if (!arrastrando && Math.abs(dx) < 4) return;
+        if (!arrastrando) setArrastrando(true);
+        el.scrollLeft = o.scroll - dx;
+        return;
+      }
+      evaluarBorde(e);
+    },
+    [arrastrando, evaluarBorde]
+  );
 
   const alSoltar = useCallback(() => {
     origen.current = null;
     setArrastrando(false);
   }, []);
 
-  return { scrollRef, arrastrando, alApretar, alMover, alSoltar };
+  const alSalir = useCallback(() => {
+    origen.current = null;
+    setArrastrando(false);
+    detener();
+  }, [detener]);
+
+  return { scrollRef, arrastrando, borde, alApretar, alMover, alSoltar, alSalir };
 }
 
 function formatDateTime(iso: string): string {
@@ -127,7 +239,8 @@ type ChatMessageRow = {
 };
 
 export default function FinalizedClosuresClient({ filterOptions }: { filterOptions: FinalizedFilterOptions }) {
-  const { scrollRef, arrastrando, alApretar, alMover, alSoltar } = useArrastreHorizontal();
+  const { scrollRef, arrastrando, borde, alApretar, alMover, alSoltar, alSalir } =
+    useArrastreHorizontal();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [queueId, setQueueId] = useState("");
@@ -466,17 +579,26 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
 
       <section className="overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]">
         {/*
-          El listado se arrastra con el cursor, además de la barra.
           Once columnas no entran en ninguna pantalla, y buscar la barra de
           abajo para leer el comentario de un cierre es un trabajo que la tabla
-          te está haciendo hacer. Con el arrastre, se corre como un mapa.
+          te está haciendo hacer. Dos formas de correrla, y ninguna estorba a
+          la otra: acercar el cursor a un borde la desplaza sola, y arrastrar
+          la mueve como un mapa.
         */}
+        <div className="relative">
+          {/* La sombra dice hacia dónde se está yendo, y que hay más. */}
+          {borde === "izq" ? (
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[90px] bg-gradient-to-r from-[#4FAEB2]/25 to-transparent" />
+          ) : null}
+          {borde === "der" ? (
+            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-[90px] bg-gradient-to-l from-[#4FAEB2]/25 to-transparent" />
+          ) : null}
         <div
           ref={scrollRef}
           onPointerDown={alApretar}
           onPointerMove={alMover}
           onPointerUp={alSoltar}
-          onPointerLeave={alSoltar}
+          onPointerLeave={alSalir}
           className={`overflow-x-auto ${arrastrando ? "cursor-grabbing select-none" : "cursor-grab"}`}
         >
           <table className="w-full min-w-[1000px] text-left text-sm">
@@ -535,6 +657,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               )}
             </tbody>
           </table>
+        </div>
         </div>
         {!loading && total > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-600">

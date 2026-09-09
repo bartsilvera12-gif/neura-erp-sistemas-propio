@@ -55,7 +55,7 @@ import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recordin
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
 import {
   X,
-  CheckCircle2, ArrowLeftRight, Download, FileText, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
+  CheckCircle2, ArrowLeftRight, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
 
 /** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -441,6 +441,280 @@ async function descargarMedia(url: string, filename: string): Promise<void> {
     // Fallback (p. ej. CORS): abrir en pestaña nueva para que se guarde a mano.
     window.open(url, "_blank", "noopener,noreferrer");
   }
+}
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 8;
+
+function limitar(v: number, min: number, max: number): number {
+  return v < min ? min : v > max ? max : v;
+}
+
+/**
+ * Visor de imágenes a pantalla completa.
+ *
+ * La vista ampliada era la imagen sobre un fondo negro y poco más: se cerraba
+ * clickeando en cualquier lado —si adivinabas—, y una foto de un comprobante o
+ * una captura con texto chico no se podía leer.
+ *
+ * Ahora hace lo que uno espera de un visor: rueda del mouse para acercar hacia
+ * donde está el cursor, doble clic para alternar, arrastrar para moverse cuando
+ * está acercada, y rotar para las fotos que llegan de costado (pasa seguido con
+ * lo que mandan desde el celular). El teclado también: Esc cierra, + y − acercan
+ * y alejan, 0 vuelve al tamaño original.
+ */
+function VisorImagen({
+  url,
+  nombre,
+  onCerrar,
+}: {
+  url: string;
+  nombre: string;
+  onCerrar: () => void;
+}) {
+  const [escala, setEscala] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [rotacion, setRotacion] = useState(0);
+  const [arrastrando, setArrastrando] = useState(false);
+
+  const areaRef = useRef<HTMLDivElement | null>(null);
+  const arrastreRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  /** Punteros activos: con dos se hace pinch en pantallas táctiles. */
+  const punterosRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ dist: number; escala: number } | null>(null);
+
+  function reiniciar() {
+    setEscala(1);
+    setPos({ x: 0, y: 0 });
+    setRotacion(0);
+  }
+
+  /**
+   * Acerca manteniendo fijo el punto que está bajo el cursor.
+   *
+   * Sin esto el zoom sale del centro, y para mirar un detalle de la esquina hay
+   * que acercar y después arrastrar a mano, cada vez.
+   */
+  function zoomEnPunto(nuevaEscala: number, clienteX?: number, clienteY?: number) {
+    const destino = limitar(nuevaEscala, ZOOM_MIN, ZOOM_MAX);
+    setEscala((anterior) => {
+      if (destino === anterior) return anterior;
+      if (destino === ZOOM_MIN) {
+        setPos({ x: 0, y: 0 });
+        return destino;
+      }
+      const area = areaRef.current;
+      if (area && clienteX !== undefined && clienteY !== undefined) {
+        const caja = area.getBoundingClientRect();
+        const cx = clienteX - caja.left - caja.width / 2;
+        const cy = clienteY - caja.top - caja.height / 2;
+        const factor = destino / anterior;
+        setPos((punto) => ({
+          x: cx - (cx - punto.x) * factor,
+          y: cy - (cy - punto.y) * factor,
+        }));
+      }
+      return destino;
+    });
+  }
+
+  // La rueda se escucha a mano: React registra `wheel` como pasivo, y con
+  // preventDefault dentro de onWheel el navegador scrollea igual por detrás.
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const onWheel = (ev: WheelEvent) => {
+      ev.preventDefault();
+      const paso = ev.deltaY < 0 ? 1.18 : 1 / 1.18;
+      zoomEnPunto(escala * paso, ev.clientX, ev.clientY);
+    };
+    area.addEventListener("wheel", onWheel, { passive: false });
+    return () => area.removeEventListener("wheel", onWheel);
+  }, [escala]);
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        onCerrar();
+      } else if (ev.key === "+" || ev.key === "=") {
+        setEscala((e) => limitar(e * 1.3, ZOOM_MIN, ZOOM_MAX));
+      } else if (ev.key === "-" || ev.key === "_") {
+        setEscala((e) => {
+          const n = limitar(e / 1.3, ZOOM_MIN, ZOOM_MAX);
+          if (n === ZOOM_MIN) setPos({ x: 0, y: 0 });
+          return n;
+        });
+      } else if (ev.key === "0") {
+        setEscala(1);
+        setPos({ x: 0, y: 0 });
+        setRotacion(0);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCerrar]);
+
+  function onPointerDown(ev: React.PointerEvent<HTMLDivElement>) {
+    punterosRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (punterosRef.current.size === 2) {
+      const [a, b] = [...punterosRef.current.values()];
+      pinchRef.current = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, escala };
+      arrastreRef.current = null;
+      setArrastrando(false);
+      return;
+    }
+    if (escala === ZOOM_MIN) return;
+    ev.currentTarget.setPointerCapture(ev.pointerId);
+    arrastreRef.current = { x: ev.clientX, y: ev.clientY, px: pos.x, py: pos.y };
+    setArrastrando(true);
+  }
+
+  function onPointerMove(ev: React.PointerEvent<HTMLDivElement>) {
+    if (punterosRef.current.has(ev.pointerId)) {
+      punterosRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    }
+    const pinch = pinchRef.current;
+    if (pinch && punterosRef.current.size === 2) {
+      const [a, b] = [...punterosRef.current.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      zoomEnPunto(pinch.escala * (dist / pinch.dist), (a.x + b.x) / 2, (a.y + b.y) / 2);
+      return;
+    }
+    const d = arrastreRef.current;
+    if (!d) return;
+    setPos({ x: d.px + (ev.clientX - d.x), y: d.py + (ev.clientY - d.y) });
+  }
+
+  function soltar(ev: React.PointerEvent<HTMLDivElement>) {
+    punterosRef.current.delete(ev.pointerId);
+    if (punterosRef.current.size < 2) pinchRef.current = null;
+    arrastreRef.current = null;
+    setArrastrando(false);
+  }
+
+  const btn =
+    "grid h-9 w-9 place-items-center rounded-lg bg-white/10 text-white transition-colors hover:bg-white/25 disabled:opacity-35 disabled:hover:bg-white/10";
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90">
+      {/* Barra fija arriba, de borde a borde: la cruz cae en la esquina, que es
+          donde se la busca. */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-black/40 px-3 py-2 backdrop-blur">
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white/80" title={nombre}>
+          {nombre}
+        </span>
+        <button
+          type="button"
+          className={btn}
+          aria-label="Alejar"
+          title="Alejar (−)"
+          disabled={escala <= ZOOM_MIN}
+          onClick={() => {
+            const n = limitar(escala / 1.3, ZOOM_MIN, ZOOM_MAX);
+            setEscala(n);
+            if (n === ZOOM_MIN) setPos({ x: 0, y: 0 });
+          }}
+        >
+          <ZoomOut className="h-4 w-4" aria-hidden />
+        </button>
+        <span className="w-12 text-center text-[11px] font-semibold tabular-nums text-white/70">
+          {Math.round(escala * 100)}%
+        </span>
+        <button
+          type="button"
+          className={btn}
+          aria-label="Acercar"
+          title="Acercar (+)"
+          disabled={escala >= ZOOM_MAX}
+          onClick={() => setEscala((e) => limitar(e * 1.3, ZOOM_MIN, ZOOM_MAX))}
+        >
+          <ZoomIn className="h-4 w-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className={btn}
+          aria-label="Tamaño original"
+          title="Tamaño original (0)"
+          onClick={reiniciar}
+        >
+          <Maximize2 className="h-4 w-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className={btn}
+          aria-label="Rotar"
+          title="Rotar 90°"
+          onClick={() => setRotacion((r) => (r + 90) % 360)}
+        >
+          <RotateCw className="h-4 w-4" aria-hidden />
+        </button>
+        <span className="mx-1 h-6 w-px bg-white/15" aria-hidden />
+        <button
+          type="button"
+          className={btn}
+          aria-label="Descargar"
+          title="Descargar"
+          onClick={() => void descargarMedia(url, nombre)}
+        >
+          <Download className="h-4 w-4" aria-hidden />
+        </button>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg bg-white/10 px-3 py-2 text-[11px] font-semibold text-white no-underline transition-colors hover:bg-white/25"
+        >
+          Abrir
+        </a>
+        <button
+          type="button"
+          className="grid h-9 w-9 place-items-center rounded-lg bg-white/15 text-white transition-colors hover:bg-red-500/80"
+          aria-label="Cerrar vista ampliada"
+          title="Cerrar (Esc)"
+          onClick={onCerrar}
+        >
+          <X className="h-5 w-5" aria-hidden />
+        </button>
+      </div>
+
+      <div
+        ref={areaRef}
+        role="presentation"
+        className="relative flex min-h-0 flex-1 select-none items-center justify-center overflow-hidden"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={soltar}
+        onPointerCancel={soltar}
+        // Clic en el vacío cierra, como en cualquier visor; sobre la imagen no,
+        // porque ahí el clic es para arrastrar.
+        onClick={(ev) => {
+          if (ev.target === ev.currentTarget) onCerrar();
+        }}
+        onDoubleClick={(ev) => zoomEnPunto(escala > 1 ? 1 : 2.5, ev.clientX, ev.clientY)}
+        style={{
+          cursor: arrastrando ? "grabbing" : escala > 1 ? "grab" : "zoom-in",
+          touchAction: "none",
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={nombre}
+          draggable={false}
+          className="max-h-full max-w-full object-contain"
+          style={{
+            transform: `translate(${pos.x}px, ${pos.y}px) scale(${escala}) rotate(${rotacion}deg)`,
+            transition: arrastrando ? "none" : "transform 120ms ease-out",
+          }}
+        />
+      </div>
+
+      <p className="shrink-0 bg-black/40 px-3 py-1.5 text-center text-[10px] text-white/45">
+        Rueda para acercar · doble clic para alternar · arrastrá para moverte · Esc para cerrar
+      </p>
+    </div>
+  );
 }
 
 function tabClass(active: boolean) {
@@ -2682,51 +2956,11 @@ export function ConversacionesClient({
       className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden"
     >
       {lightbox ? (
-        <div
-          className="fixed inset-0 z-[100] flex flex-col bg-black/85 p-4"
-          role="presentation"
-          onClick={() => setLightbox(null)}
-        >
-          {/* Barra de acciones. Antes el visor era solo la imagen sobre el fondo
-              negro: se veía en grande y no había forma de guardarla. */}
-          <div
-            className="mx-auto flex w-full max-w-4xl shrink-0 items-center justify-end gap-2 pb-3"
-            onClick={(ev) => ev.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => void descargarMedia(lightbox.url, lightbox.nombre)}
-              className="flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-white/25"
-            >
-              <Download className="h-4 w-4" aria-hidden /> Descargar
-            </button>
-            <a
-              href={lightbox.url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white no-underline backdrop-blur transition-colors hover:bg-white/25"
-            >
-              Abrir en pestaña
-            </a>
-            <button
-              type="button"
-              onClick={() => setLightbox(null)}
-              aria-label="Cerrar vista ampliada"
-              className="grid h-8 w-8 place-items-center rounded-lg bg-white/15 text-white backdrop-blur transition-colors hover:bg-white/25"
-            >
-              <X className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={lightbox.url}
-              alt="Vista ampliada"
-              className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
-              onClick={(ev) => ev.stopPropagation()}
-            />
-          </div>
-        </div>
+        <VisorImagen
+          url={lightbox.url}
+          nombre={lightbox.nombre}
+          onCerrar={() => setLightbox(null)}
+        />
       ) : null}
 
       {compApproveConfirmId ? (

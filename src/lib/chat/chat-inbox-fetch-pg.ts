@@ -387,29 +387,53 @@ export async function fetchChatConversationsFromTenantPg(
     pi++;
   }
 
-  // Búsqueda server-side (dentro del alcance ya aplicado): teléfono / nombre de contacto / preview.
-  // NO se limita a las ya cargadas en el cliente.
+  /**
+   * Búsqueda server-side, dentro del alcance ya aplicado.
+   *
+   * Tres cosas que la hacen encontrar lo que uno busca:
+   *
+   *  · SIN TILDES en los dos lados (`sin_tildes`, indexado con trigramas).
+   *    Nadie escribe "José" en un buscador, y antes eso no encontraba nada.
+   *  · POR PALABRAS, en AND. "juan perez" encuentra a "Juan Carlos Pérez"
+   *    aunque el apellido esté a cuatro palabras del nombre; y cada palabra que
+   *    se agrega ACOTA en vez de ampliar, que es lo que uno espera al seguir
+   *    escribiendo.
+   *  · El TELÉFONO se busca por sus dígitos, así que da igual cómo esté
+   *    guardado: con espacios, con guiones o con prefijo.
+   *
+   * Cada palabra puede aparecer en el nombre, en el teléfono o en la vista
+   * previa: al escribir uno no piensa en qué campo estaba el dato.
+   */
   const qraw = filters?.q?.trim();
   if (qraw) {
     const contactsQt = quoteSchemaTable(dataSchema, "chat_contacts");
-    const like = `%${qraw}%`;
-    const digits = qraw.replace(/\D/g, "");
-    const likeIdx = pi;
-    params.push(like);
-    pi++;
-    let phoneNormClause = "";
-    if (digits.length >= 3) {
-      phoneNormClause = ` OR phone_normalized ILIKE $${pi}`;
-      params.push(`%${digits}%`);
+    // Se reusa `quoteSchemaTable` para no repetir el saneo del nombre del schema.
+    const sinTildes = `${quoteSchemaTable(dataSchema, "sin_tildes")}`;
+    // Máximo cinco palabras: más que eso no acota nada y sí encarece.
+    const palabras = qraw.split(/\s+/).filter(Boolean).slice(0, 5);
+
+    for (const palabra of palabras) {
+      const like = `%${palabra}%`;
+      const likeIdx = pi;
+      params.push(like);
       pi++;
+
+      const digitos = palabra.replace(/\D/g, "");
+      let porTelefono = "";
+      if (digitos.length >= 3) {
+        porTelefono = ` OR phone_normalized LIKE $${pi} OR ${sinTildes}(phone_number) LIKE $${pi}`;
+        params.push(`%${digitos}%`);
+        pi++;
+      }
+
+      whereParts.push(
+        `(${sinTildes}(last_message_preview) LIKE ${sinTildes}($${likeIdx}) OR contact_id IN (
+           SELECT id FROM ${contactsQt}
+           WHERE empresa_id = $1::uuid
+             AND (${sinTildes}(name) LIKE ${sinTildes}($${likeIdx})${porTelefono})
+         ))`
+      );
     }
-    whereParts.push(
-      `(last_message_preview ILIKE $${likeIdx} OR contact_id IN (
-         SELECT id FROM ${contactsQt}
-         WHERE empresa_id = $1::uuid
-           AND (name ILIKE $${likeIdx} OR phone_number ILIKE $${likeIdx}${phoneNormClause})
-       ))`
-    );
   }
 
   if (!bypass) {

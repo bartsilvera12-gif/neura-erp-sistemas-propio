@@ -2349,10 +2349,17 @@ export default function ProyectoDetalleInner({
   ).toLowerCase();
   const esEstadoDesarrollo = codigoEstadoActual === "desarrollo";
   const subestadosDisponibles = subestadosParaTipo(codigoTipo);
-  /** El estado actual, para mostrar el motivo de cancelación sólo cuando toca. */
+  /**
+   * El estado actual, para mostrar el motivo de cancelación sólo cuando toca.
+   *
+   * `proyecto` puede no existir todavía: sale de `data?.proyecto`, y la guarda
+   * que corta el render está más abajo. Cuando el modal se abre desde el Kanban
+   * hay una fila de preview que lo siembra, pero al entrar por URL directa o al
+   * refrescar no hay nada, y leerlo sin `?.` tiraba abajo toda la página.
+   */
   const estaCancelado =
     String(
-      (proyecto as { proyecto_estado?: { codigo?: string } }).proyecto_estado?.codigo ?? ""
+      (proyecto as { proyecto_estado?: { codigo?: string } } | undefined)?.proyecto_estado?.codigo ?? ""
     ).toLowerCase() === ESTADO_CANCELADO_CODIGO;
 
   const subestadoActual = String(
@@ -4169,7 +4176,7 @@ export default function ProyectoDetalleInner({
 
         {tab === "cambios" ? (() => {
           const estadoCodigo = String(
-            (proyecto as { proyecto_estado?: { codigo?: string } }).proyecto_estado?.codigo ?? ""
+            (proyecto as { proyecto_estado?: { codigo?: string } } | undefined)?.proyecto_estado?.codigo ?? ""
           ).toLowerCase();
           const estaEntregado = estadoCodigo === ESTADO_ENTREGADO_CODIGO;
           // Ancla fija: la ventana corre desde la PRIMERA entrega, no desde

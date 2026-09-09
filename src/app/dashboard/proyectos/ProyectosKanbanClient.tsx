@@ -52,6 +52,13 @@ type ProyectoCard = Record<string, unknown> & {
   bloqueado?: boolean;
   archivado?: boolean;
   /**
+   * `bloqueo_motivo` es el canónico; `pausa_motivo` quedó de antes y se sigue
+   * leyendo para no perder lo que se cargó con el campo viejo.
+   */
+  bloqueo_motivo?: string | null;
+  pausa_motivo?: string | null;
+  cancelacion_motivo?: string | null;
+  /**
    * Novedades de QA sin leer *para el usuario actual*. Es un dato por persona,
    * no del proyecto: dos responsables ven badges distintos sobre la misma fila.
    */
@@ -1745,6 +1752,12 @@ function ProjectCardViewBase({
               <FechaMeta label="Actividad" value={fmtDateTime(p.last_activity_at)} />
             </div>
           </div>
+
+          {/* El porqué, cuando el estado lo pide.
+              Una tarjeta parada o cancelada sin explicación obliga a abrirla
+              para entender qué pasó, y eso es justo lo que un tablero tendría
+              que ahorrarte. */}
+          <MotivoMeta p={p} />
         </div>
       </button>
       {!dragOverlay ? (
@@ -1839,6 +1852,46 @@ function PersonaMeta({ rol, nombre }: { rol: string; nombre?: string | null }) {
       <span className="min-w-0 truncate text-[11px] font-medium text-slate-700">
         {nombreCorto(completo)}
       </span>
+    </div>
+  );
+}
+
+/**
+ * El motivo de que la tarjeta esté parada o cancelada.
+ *
+ * Sólo aparece en Pausado y en Cancelado: en cualquier otro estado no hay nada
+ * que explicar, y un renglón vacío en cada tarjeta es ruido.
+ *
+ * Cuando el estado lo pide y el motivo NO está cargado, se dice. Un hueco en
+ * silencio se lee como "no hace falta"; el aviso lo convierte en algo que
+ * alguien puede ir a completar.
+ */
+function MotivoMeta({ p }: { p: ProyectoCard }) {
+  const codigo = String(p.proyecto_estado?.codigo ?? "").toLowerCase();
+  const esPausa = codigo === "pausado" || p.bloqueado === true;
+  const esCancelado = codigo === "cancelado";
+  if (!esPausa && !esCancelado) return null;
+
+  const texto = (
+    esCancelado ? p.cancelacion_motivo : (p.bloqueo_motivo ?? p.pausa_motivo)
+  )?.trim();
+
+  const paleta = esCancelado
+    ? { caja: "bg-slate-100 text-slate-600", rotulo: "text-slate-500" }
+    : { caja: "bg-amber-50 text-amber-800", rotulo: "text-amber-600" };
+
+  return (
+    <div className={`mt-1.5 rounded-lg px-2 py-1.5 ${paleta.caja}`}>
+      <span className={`block text-[9.5px] font-semibold uppercase tracking-wide ${paleta.rotulo}`}>
+        {esCancelado ? "Motivo de cancelación" : "Motivo de la pausa"}
+      </span>
+      {texto ? (
+        <span className="mt-0.5 block text-[11px] leading-snug">{texto}</span>
+      ) : (
+        <span className="mt-0.5 block text-[11px] italic leading-snug opacity-70">
+          Sin cargar
+        </span>
+      )}
     </div>
   );
 }

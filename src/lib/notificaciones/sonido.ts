@@ -151,7 +151,15 @@ function tocar(
  */
 function tocarCampana(
   notas: { freq: number; inicio: number; dur: number }[],
-  volumen: number
+  volumen: number,
+  /**
+   * Cuánto tarda en llegar al máximo. Un ataque de 4 ms es un golpe; uno de
+   * 30 ms es un sonido que "entra". Es la diferencia entre sobresaltar y
+   * avisar, y no se nota como lentitud.
+   */
+  ataque = 0.004,
+  /** Peso del armónico de octava: cuanto más alto, más metálico. */
+  brillo = 0.12
 ): void {
   if (!leerSonidoActivado()) return;
   const c = obtenerContexto();
@@ -164,7 +172,7 @@ function tocarCampana(
       // pero subirla es lo que vuelve el sonido metálico y molesto.
       for (const [mult, peso] of [
         [1, 1],
-        [2, 0.12],
+        [2, brillo],
       ] as const) {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -172,8 +180,7 @@ function tocarCampana(
         osc.frequency.value = freq * mult;
         const t = base + inicio;
         gain.gain.setValueAtTime(0, t);
-        // 4 ms de ataque: instantáneo para el oído, sin el "click" del corte seco.
-        gain.gain.linearRampToValueAtTime(volumen * peso, t + 0.004);
+        gain.gain.linearRampToValueAtTime(volumen * peso, t + ataque);
         gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
         osc.connect(gain);
         gain.connect(salida);
@@ -189,22 +196,28 @@ function tocarCampana(
 /**
  * Campanita general (QA, cambios de estado, avisos de esqueleto).
  *
- * Dos toques que suben una cuarta, con caída larga: el "bloop-bloop" de los
- * mensajeros. No es el archivo de Discord —ese tiene dueño y meterlo acá sería
- * usar algo ajeno sin licencia—, sino el mismo tipo de sonido con osciladores.
+ * Un carillón suave: dos notas que BAJAN una tercera mayor (E5→C5) y se dejan
+ * sonar juntas hasta apagarse solas.
  *
- * Va una octava más abajo que la primera versión (D5→G5 en vez de C6→F6): en
- * el registro alto el mismo aviso se percibe como agudo y punzante, y a un
- * sonido que se escucha cincuenta veces por día eso lo vuelve insoportable.
- * Con la cola larga se sigue oyendo igual de bien sin agredir.
+ * Tres decisiones, y las tres apuntan a lo mismo — que a la quincuagésima vez
+ * del día siga sin molestar:
+ *
+ *  · BAJA en vez de subir. Un intervalo ascendente el oído lo lee como una
+ *    pregunta o una llamada, y pide atención; uno descendente suena a algo que
+ *    se cierra, y alcanza para enterarse.
+ *  · Ataque de 30 ms. No golpea: entra.
+ *  · Cola de más de un segundo, con las dos notas superpuestas. El volumen
+ *    puede bajar porque lo que hace que se escuche es la duración, no el pico.
  */
 export function reproducirSonidoNotificacion(): void {
   tocarCampana(
     [
-      { freq: 587.33, inicio: 0, dur: 0.5 }, // D5
-      { freq: 783.99, inicio: 0.14, dur: 0.75 }, // G5
+      { freq: 659.25, inicio: 0, dur: 1.1 }, // E5
+      { freq: 523.25, inicio: 0.16, dur: 1.4 }, // C5 — baja una tercera
     ],
-    0.44
+    0.36,
+    0.03,
+    0.07
   );
 }
 

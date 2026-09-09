@@ -384,6 +384,25 @@ export default function ColaEditor({
             </span>
           </label>
         ) : null}
+        {soloTransferenciaSupported ? (
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-500">
+              Mensaje automático al derivar a esta cola (opcional)
+            </label>
+            <textarea
+              value={routing.mensaje_derivacion ?? ""}
+              onChange={(e) => setRouting({ ...routing, mensaje_derivacion: e.target.value })}
+              maxLength={1000}
+              rows={3}
+              placeholder="Ej.: ¡Gracias por tu paciencia! 🙌 Te derivamos a nuestro equipo de Project Management, que va a continuar con tu caso a la brevedad."
+              className="min-h-[72px] w-full rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Cuando un agente transfiera una conversación a esta cola, el cliente recibe este mensaje
+              automáticamente. Dejalo vacío para no enviar nada.
+            </p>
+          </div>
+        ) : null}
       </section>
 
       <section className="space-y-4 rounded-2xl border border-[#4FAEB2]/45 bg-white p-5 shadow-sm">

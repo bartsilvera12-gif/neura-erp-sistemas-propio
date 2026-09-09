@@ -24,7 +24,16 @@ export type QueueSameAdvisorConfig = {
 export type QueueRoutingConfig = {
   initial_no_response?: QueueInitialNoResponseConfig;
   same_advisor_window?: QueueSameAdvisorConfig;
+  /**
+   * Mensaje automático que se le envía al cliente cuando una conversación se DERIVA (transfiere)
+   * a esta cola. Vacío / undefined = no se envía nada (comportamiento por defecto para todas las
+   * colas). Opt-in por cola.
+   */
+  mensaje_derivacion?: string;
 };
+
+/** Largo máximo del mensaje de derivación (evita payloads absurdos). */
+export const MENSAJE_DERIVACION_MAX = 1000;
 
 export const DEFAULT_QUEUE_ROUTING_CONFIG: QueueRoutingConfig = {
   initial_no_response: {
@@ -48,6 +57,8 @@ export function parseQueueRoutingConfig(raw: unknown): QueueRoutingConfig {
   const def = DEFAULT_QUEUE_ROUTING_CONFIG;
   const in0 = (o.initial_no_response ?? {}) as Record<string, unknown>;
   const sa0 = (o.same_advisor_window ?? {}) as Record<string, unknown>;
+  const mensajeDerivacion =
+    typeof o.mensaje_derivacion === "string" ? o.mensaje_derivacion.trim().slice(0, MENSAJE_DERIVACION_MAX) : "";
   return {
     initial_no_response: {
       enabled: Boolean(in0.enabled),
@@ -60,11 +71,12 @@ export function parseQueueRoutingConfig(raw: unknown): QueueRoutingConfig {
       value: Math.max(1, Number(sa0.value) || def.same_advisor_window!.value),
       unit: sa0.unit === "days" ? "days" : "hours",
     },
+    ...(mensajeDerivacion ? { mensaje_derivacion: mensajeDerivacion } : {}),
   };
 }
 
 export function serializeQueueRoutingConfig(c: QueueRoutingConfig): Record<string, unknown> {
-  return {
+  const out: Record<string, unknown> = {
     initial_no_response: {
       enabled: Boolean(c.initial_no_response?.enabled),
       value: Math.max(1, Number(c.initial_no_response?.value) || 15),
@@ -77,4 +89,7 @@ export function serializeQueueRoutingConfig(c: QueueRoutingConfig): Record<strin
       unit: c.same_advisor_window?.unit === "days" ? "days" : "hours",
     },
   };
+  const md = (c.mensaje_derivacion ?? "").trim().slice(0, MENSAJE_DERIVACION_MAX);
+  if (md) out.mensaje_derivacion = md;
+  return out;
 }

@@ -28,6 +28,9 @@ import {
 import { logInvalidSchema } from "@/lib/chat/tenant-pg-trace";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
+import { parseQueueRoutingConfig } from "@/lib/chat/queue-routing-config";
+import { sendConversationText } from "@/lib/chat/send-conversation-text";
 
 /** Fila imposible para forzar 0 resultados en consultas `in`/count cuando el alcance no admite filas. */
 const OMNICANAL_NO_MATCH_UUID = "00000000-0000-0000-0000-000000000001";
@@ -141,6 +144,54 @@ export async function assignConversationToAgent(
     event_type: "supervisor_assigned",
     payload: { to_agent_id: agent.id, source: "assignConversationToAgent" },
   });
+
+  // Mensaje automático de DERIVACIÓN: si la conversación ENTRA a una cola distinta y esa cola
+  // tiene configurado `routing_config.mensaje_derivacion`, se lo enviamos al cliente. Opt-in por
+  // cola (vacío = nada, comportamiento por defecto para todas). Best-effort: NUNCA bloquea ni
+  // revierte la transferencia (si el envío falla —p. ej. ventana 24h vencida— solo se loguea).
+  try {
+    const previousQueueId = conv.queue_id ?? null;
+    const destinoQueueId = agent.queue_id;
+    const derivContactId = (conv.contact_id ?? "").trim();
+    const derivChannelId = (conv.channel_id ?? "").trim();
+    if (destinoQueueId && destinoQueueId !== previousQueueId && derivContactId && derivChannelId) {
+      const { data: qrow } = await supabase
+        .from("chat_queues")
+        .select("routing_config")
+        .eq("id", destinoQueueId)
+        .eq("empresa_id", empresa_id)
+        .maybeSingle();
+      const mensaje = parseQueueRoutingConfig(
+        (qrow as { routing_config?: unknown } | null)?.routing_config
+      ).mensaje_derivacion?.trim();
+      if (mensaje) {
+        const dataSchema = await fetchDataSchemaForEmpresaId(empresa_id);
+        const pool = getChatPostgresPool();
+        const tenantPg = Boolean(pool && isLikelyUnexposedTenantChatSchema(dataSchema));
+        const r = await sendConversationText({
+          supabase,
+          pool,
+          tenantPg,
+          dataSchema,
+          empresaId: empresa_id,
+          conversationId: conv.id,
+          contactId: derivContactId,
+          channelId: derivChannelId,
+          text: mensaje,
+          senderType: "system",
+          automationSource: "derivacion",
+        });
+        if (!r.ok) {
+          console.warn("[assignConversationToAgent] mensaje_derivacion no enviado:", r.error);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(
+      "[assignConversationToAgent] mensaje_derivacion error:",
+      e instanceof Error ? e.message : String(e)
+    );
+  }
 }
 
 /**

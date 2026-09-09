@@ -424,7 +424,17 @@ export function FechaSelect({
             setAbierto(false);
           }
         }}
-        className={className || "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-sm text-slate-900 outline-none transition-colors focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 disabled:cursor-not-allowed disabled:opacity-60"}
+        /*
+          `block w-full` va SIEMPRE, aunque el llamador traiga su propia clase.
+          El botón del calendario se posiciona contra el div de afuera; si el
+          input no ocupa todo el ancho, el ícono queda flotando fuera del
+          recuadro y el campo se ve partido. Ya pasó en el reporte de cierres,
+          que era el único de los ~85 usos que no incluía `w-full`.
+        */
+        className={`block w-full ${
+          className ||
+          "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 disabled:cursor-not-allowed disabled:opacity-60"
+        }`}
         style={{ paddingRight: 34 }}
       />
       <button

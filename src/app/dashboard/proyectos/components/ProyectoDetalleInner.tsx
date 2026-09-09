@@ -83,6 +83,7 @@ const CANAL_COMENTARIO_LABEL: Record<CanalComentarioUI, string> = {
 };
 
 const ESTADO_ENTREGADO_CODIGO = "publicado";
+const ESTADO_CANCELADO_CODIGO = "cancelado";
 const POSTENTREGA_PERIODO_DIAS = 30;
 const CAMBIOS_SLOTS = [1, 2, 3] as const;
 
@@ -107,6 +108,7 @@ function firmaDatos(v: {
   projectManagerId: string;
   bloqueoTipo: string;
   bloqueoMotivo: string;
+  cancelacionMotivo: string;
   prioridad: string;
   fechaPrometida: string;
 }): string {
@@ -121,6 +123,7 @@ function firmaDatos(v: {
     project_manager_id: v.projectManagerId,
     bloqueo_tipo: v.bloqueoTipo,
     bloqueo_motivo: v.bloqueoMotivo,
+    cancelacion_motivo: v.cancelacionMotivo,
     prioridad: v.prioridad,
     fecha_prometida: v.fechaPrometida,
   });
@@ -1168,6 +1171,7 @@ export default function ProyectoDetalleInner({
    */
   const [bloqueoTipo, setBloqueoTipo] = useState("");
   const [bloqueoMotivo, setBloqueoMotivo] = useState("");
+  const [cancelacionMotivo, setCancelacionMotivo] = useState("");
   const [prioridad, setPrioridad] = useState("normal");
   const [fechaPrometida, setFechaPrometida] = useState("");
   const [clientes, setClientes] = useState<{ id: string; empresa?: string | null; nombre_contacto?: string | null }[]>([]);
@@ -1219,6 +1223,7 @@ export default function ProyectoDetalleInner({
     const pm = typeof p.project_manager_id === "string" ? p.project_manager_id : "";
     const bt = typeof p.bloqueo_tipo === "string" ? p.bloqueo_tipo : "";
     const bm = typeof p.bloqueo_motivo === "string" ? p.bloqueo_motivo : "";
+    const cm = typeof p.cancelacion_motivo === "string" ? p.cancelacion_motivo : "";
     const prio = typeof p.prioridad === "string" ? p.prioridad : "normal";
     // Fecha Y hora: se recorta a lo que entiende `datetime-local`.
     const fProm = typeof p.fecha_prometida === "string" ? isoAInputDatetimeLocal(p.fecha_prometida) : "";
@@ -1243,6 +1248,7 @@ export default function ProyectoDetalleInner({
         projectManagerId: pm,
         bloqueoTipo: bt,
         bloqueoMotivo: bm,
+        cancelacionMotivo: cm,
         prioridad: prio,
         fechaPrometida: fProm,
       })
@@ -1542,6 +1548,7 @@ export default function ProyectoDetalleInner({
         projectManagerId,
         bloqueoTipo,
         bloqueoMotivo,
+        cancelacionMotivo,
         prioridad,
         fechaPrometida,
       }),
@@ -1556,6 +1563,7 @@ export default function ProyectoDetalleInner({
       projectManagerId,
       bloqueoTipo,
       bloqueoMotivo,
+      cancelacionMotivo,
       prioridad,
       fechaPrometida,
     ]
@@ -1594,6 +1602,7 @@ export default function ProyectoDetalleInner({
         project_manager_id: projectManagerId || null,
         bloqueo_tipo: bloqueoTipo || null,
         bloqueo_motivo: bloqueoMotivo.trim() === "" ? null : bloqueoMotivo.trim(),
+        cancelacion_motivo: cancelacionMotivo.trim() === "" ? null : cancelacionMotivo.trim(),
         prioridad,
         // El input ya trae fecha Y hora local; se pasa a ISO para guardar el
         // instante exacto. Antes se forzaba el mediodía y la hora que eligiera
@@ -2340,6 +2349,12 @@ export default function ProyectoDetalleInner({
   ).toLowerCase();
   const esEstadoDesarrollo = codigoEstadoActual === "desarrollo";
   const subestadosDisponibles = subestadosParaTipo(codigoTipo);
+  /** El estado actual, para mostrar el motivo de cancelación sólo cuando toca. */
+  const estaCancelado =
+    String(
+      (proyecto as { proyecto_estado?: { codigo?: string } }).proyecto_estado?.codigo ?? ""
+    ).toLowerCase() === ESTADO_CANCELADO_CODIGO;
+
   const subestadoActual = String(
     (proyecto as { subestado_desarrollo?: string | null } | undefined)?.subestado_desarrollo ?? ""
   );
@@ -2849,6 +2864,36 @@ export default function ProyectoDetalleInner({
                     aria-label="Motivo del bloqueo"
                   />
                 </div>
+
+                {/*
+                  Sólo aparece con el proyecto en Cancelado. Un campo de "por
+                  qué se canceló" siempre visible invita a llenarlo en un
+                  proyecto que sigue vivo, y después nadie sabe si ese texto
+                  significa algo.
+
+                  Se guarda aparte de `bloqueo_motivo`: un bloqueo es temporal y
+                  se destraba, una cancelación es definitiva. En el mismo campo,
+                  cancelar pisaría el motivo del bloqueo que llevó hasta ahí.
+                */}
+                {estaCancelado ? (
+                  <div className="block text-sm sm:col-span-2">
+                    <span className={labelCls}>Motivo de la cancelación</span>
+                    <textarea
+                      value={cancelacionMotivo}
+                      onChange={(e) => setCancelacionMotivo(e.target.value)}
+                      rows={2}
+                      placeholder="Por qué no continúa: el cliente desistió, se cayó el presupuesto, se duplicó el proyecto…"
+                      className={`${inputCls} mt-1.5 resize-none leading-relaxed`}
+                      aria-label="Motivo de la cancelación"
+                    />
+                    {!cancelacionMotivo.trim() ? (
+                      <span className="mt-1 block text-[11.5px] text-amber-700">
+                        Un proyecto cancelado sin motivo no se puede explicar tres meses
+                        después.
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="block text-sm">
                   <span className={labelCls}>Prioridad</span>
                   <div className="mt-1.5">

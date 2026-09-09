@@ -316,6 +316,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           ? body.bloqueo_motivo
           : null;
     }
+    // Motivo de cancelación. Campo propio y no `bloqueo_motivo`: un bloqueo es
+    // temporal y se destraba, una cancelación es definitiva; guardarlos juntos
+    // haría que cancelar pisara el motivo del bloqueo que llevó hasta ahí.
+    if (typeof body.cancelacion_motivo === "string" || body.cancelacion_motivo === null) {
+      patch.cancelacion_motivo =
+        typeof body.cancelacion_motivo === "string" && body.cancelacion_motivo.trim()
+          ? body.cancelacion_motivo.trim()
+          : null;
+    }
     if (typeof body.archivado === "boolean") patch.archivado = body.archivado;
 
     // --- Etapa de desarrollo + contador de días por programador --------------

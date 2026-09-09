@@ -44,7 +44,8 @@ type TipoNotificacion =
   | "agenda_recordatorio"
   | "qa_vence"
   | "chat_interno_mensaje"
-  | "conversacion_asignada";
+  | "conversacion_asignada"
+  | "conversacion_mensaje";
 
 type Notificacion = {
   id: string;
@@ -127,6 +128,13 @@ const ESTILO_TIPO: Record<
     icon: MessageSquare,
     wrap: "bg-[#4FAEB2]/12 text-[#3F8E91]",
     label: "Chat interno",
+  },
+  conversacion_mensaje: {
+    // Mismo look que la asignación: para quien mira, las dos cosas son "un
+    // cliente te está esperando". Cambia el texto, no la categoría.
+    icon: Headset,
+    wrap: "bg-violet-50 text-violet-600",
+    label: "Mensaje de cliente",
   },
   conversacion_asignada: {
     // Distinto del chat interno a propósito, y en las dos señales que se leen
@@ -225,7 +233,10 @@ export default function NotificacionesBell() {
           new CustomEvent(EVENTO_CONVERSACIONES_PENDIENTES, {
             detail: {
               n: j.data.notificaciones.filter(
-                (n) => n.tipo === "conversacion_asignada" && !n.leida_at
+                (n) =>
+                  (n.tipo === "conversacion_asignada" ||
+                    n.tipo === "conversacion_mensaje") &&
+                  !n.leida_at
               ).length,
             },
           })
@@ -248,7 +259,10 @@ export default function NotificacionesBell() {
           // tiene que saber de qué es sin mirar la pantalla.
           const idsChat = new Set(
             j.data.notificaciones
-              .filter((n) => n.tipo === "conversacion_asignada")
+              .filter(
+                (n) =>
+                  n.tipo === "conversacion_asignada" || n.tipo === "conversacion_mensaje"
+              )
               .map((n) => n.id)
           );
           const hayChatNuevo = [...idsChat].some((id) => !chatsAvisadosRef.current.has(id));
@@ -498,7 +512,7 @@ export default function NotificacionesBell() {
                       n.metadata?.sala_id ? `?sala=${n.metadata.sala_id}` : ""
                     }`
                   // Al inbox, y abriendo LA conversación del aviso.
-                  : n.tipo === "conversacion_asignada"
+                  : n.tipo === "conversacion_asignada" || n.tipo === "conversacion_mensaje"
                   ? `/dashboard/conversaciones${
                       n.metadata?.conversation_id ? `?c=${n.metadata.conversation_id}` : ""
                     }`

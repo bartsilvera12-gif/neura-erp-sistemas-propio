@@ -44,6 +44,34 @@ export function motivo(codigo: MotivoCodigo, label: string): Motivo {
 }
 
 /**
+ * Los motivos que hablan de un PLAZO: algo ya se pasó de fecha, o está por
+ * pasarse.
+ *
+ * Son dos relojes distintos y los dos cuentan:
+ *   · La fecha prometida al cliente — `vencido` y `vence_pronto`.
+ *   · El objetivo interno de tiempo (SLV) — `slv_*`, donde "vencido" es que ya
+ *     se pasó y "crítico"/"en riesgo" es que está por pasarse.
+ *
+ * Quedan afuera los que son un problema pero no un plazo: bloqueado, sin
+ * movimiento, estancado, rondas de QA, esperando al cliente y listo para
+ * entregar. Merecen atención, pero no la de "esto se me vence".
+ */
+export const MOTIVOS_DE_PLAZO: ReadonlySet<MotivoCodigo> = new Set<MotivoCodigo>([
+  "vencido",
+  "vence_pronto",
+  "slv_vencido",
+  "slv_critico",
+  "slv_riesgo",
+]);
+
+/** El motivo de plazo más grave de un proyecto, o `null` si no tiene ninguno. */
+export function motivoDePlazo(motivos: readonly Motivo[]): Motivo | null {
+  const deP = motivos.filter((m) => MOTIVOS_DE_PLAZO.has(m.codigo));
+  if (deP.length === 0) return null;
+  return deP.reduce((a, b) => (b.peso > a.peso ? b : a));
+}
+
+/**
  * Score de un proyecto: el motivo más grave manda, y los demás desempatan.
  * Los motivos secundarios suman poco a propósito — tres motivos leves no
  * pueden pasar por encima de un vencido.

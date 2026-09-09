@@ -4,8 +4,13 @@
  * Dashboard PM — la pantalla de acción del Project Manager.
  *
  * A diferencia del Ejecutivo, acá sí hay listas: el PM abre el sistema y tiene
- * que saber en diez segundos dónde meterse hoy. Por eso "Atención PM de hoy" es
- * el bloque principal y todo lo demás son cortes de lo mismo.
+ * que saber en diez segundos dónde meterse hoy. Por eso "Vencidos y por vencer"
+ * es el bloque principal y todo lo demás son cortes de lo mismo.
+ *
+ * Esa tabla lista SÓLO lo que corre contra un plazo —la fecha prometida al
+ * cliente o el objetivo interno de tiempo—. Lo bloqueado, lo estancado y lo que
+ * volvió muchas veces de QA sigue estando en sus propios bloques: mezclado acá,
+ * lo urgente competía con lo importante en la misma lista.
  *
  * El orden de esa tabla lo decide el servidor (`priority-score.ts`), no el
  * frontend: si cada tabla ordenara a su gusto, dos pantallas mostrarían el
@@ -380,10 +385,12 @@ export default function DashboardPmClient() {
                   </Link>
                 }
               >
-                Atención PM de hoy
+                Vencidos y por vencer
               </CardTitle>
               {data.atencion.length === 0 ? (
-                <p className="text-sm text-slate-400">Nada pendiente hoy. Disfrutalo.</p>
+                <p className="text-sm text-slate-400">
+                  Nada vencido ni por vencer. Disfrutalo.
+                </p>
               ) : (
                 <TablaWrap>
                   <table className="w-full min-w-[860px] text-left">

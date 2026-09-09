@@ -12,6 +12,7 @@ import { BLOQUEO_TIPO_LABEL, categoriaBloqueo } from "./config";
 import { nivelWip } from "./semaforo";
 import { calcularWip } from "./workload";
 import { cuentaParaWip, kpisComunes, type Dataset, type ProyectoMetrica } from "./shared";
+import { motivoDePlazo, type Motivo } from "./priority-score";
 
 /**
  * Próxima acción y de quién es.
@@ -32,16 +33,24 @@ function proximaAccion(p: ProyectoMetrica): { accion: string; dueno: string } {
   return { accion: "Revisar estado", dueno: "PM" };
 }
 
-function filaProyecto(p: ProyectoMetrica) {
+/**
+ * `motivoMostrado`: el motivo que va en la columna.
+ *
+ * Se pasa desde afuera porque la tabla filtra por plazo y tiene que explicar
+ * ESE plazo. Si mostrara el primer motivo de la lista, una fila podría entrar
+ * por estar vencida y decir "Bloqueado", que no explica por qué está ahí.
+ */
+function filaProyecto(p: ProyectoMetrica, motivoMostrado?: Motivo | null) {
   const { accion, dueno } = proximaAccion(p);
+  const m = motivoMostrado ?? p.motivos[0] ?? null;
   return {
     id: p.id,
     titulo: p.titulo,
     cliente: p.cliente,
     estado_nombre: p.estado_nombre,
     estado_color: p.estado_color,
-    motivo: p.motivos[0]?.label ?? "—",
-    motivo_codigo: p.motivos[0]?.codigo ?? null,
+    motivo: m?.label ?? "—",
+    motivo_codigo: m?.codigo ?? null,
     tiempo_en_estado_ms: p.tiempo_en_estado_ms,
     fecha_prometida: p.fecha_prometida,
     proxima_accion: accion,
@@ -66,11 +75,17 @@ export function construirDashboardPm(ds: Dataset) {
   const wipAlto = wip.filter((w) => nivelWip(w.wip, wipLimite) === "sobre_limite").length;
 
   // ---- Atención PM de hoy ---------------------------------------------------
+  // Sólo lo que corre contra un plazo: vencido o por vencer, sea por la fecha
+  // prometida al cliente o por el objetivo interno de tiempo. Un proyecto
+  // bloqueado o con muchas rondas de QA necesita atención, pero no es lo que
+  // se mira para saber qué se está por incumplir hoy — y mezclarlo hacía que
+  // lo urgente compitiera con lo importante en la misma lista.
   const atencion = activos
-    .filter((p) => p.motivos.length > 0)
-    .sort((a, b) => b.score - a.score)
+    .map((p) => ({ p, plazo: motivoDePlazo(p.motivos) }))
+    .filter((x): x is { p: ProyectoMetrica; plazo: Motivo } => x.plazo !== null)
+    .sort((a, b) => b.p.score - a.p.score)
     .slice(0, 30)
-    .map(filaProyecto);
+    .map(({ p, plazo }) => filaProyecto(p, plazo));
 
   // ---- SLV por desarrollador ------------------------------------------------
   // Dos poblaciones distintas y separadas a propósito:

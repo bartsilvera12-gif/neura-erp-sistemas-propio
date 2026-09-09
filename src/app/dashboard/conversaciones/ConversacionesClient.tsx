@@ -807,7 +807,21 @@ export function ConversacionesClient({
   const [finalizeSaving, setFinalizeSaving] = useState(false);
   const [finalizeOptions, setFinalizeOptions] = useState<FinalizeOptionsResult | null>(null);
   /** Cache de opciones de cierre por conversación (se precargan al seleccionar → modal instantáneo). */
+  /**
+   * Tipificaciones de cierre, cacheadas por COLA y no por conversación.
+   *
+   * La taxonomía es de la cola: todas las conversaciones de "ventas neura"
+   * cierran con las mismas opciones. Con la clave por conversación, abrir el
+   * modal en la siguiente volvía a pedir exactamente lo mismo — y eso es todo
+   * lo que se sentía como demora.
+   */
   const finalizeOptionsCacheRef = useRef<Map<string, FinalizeOptionsResult>>(new Map());
+
+  /** La cola de una conversación, que es la clave real de su tipificación. */
+  const claveTipificacion = useCallback((conversationId: string): string => {
+    const c = conversationsRef.current.find((x) => x.id === conversationId);
+    return `cola:${(c?.queue_id as string | null | undefined) ?? "sin-cola"}`;
+  }, []);
   const [finalizeStateId, setFinalizeStateId] = useState("");
   const [finalizeSubstateId, setFinalizeSubstateId] = useState("");
   const [finalizeComment, setFinalizeComment] = useState("");
@@ -2136,19 +2150,20 @@ export function ConversacionesClient({
   // el modal de Finalizar aparezca al instante (antes tardaba ~3s al abrirlo).
   useEffect(() => {
     if (mode !== "inbox" || !selectedId) return;
-    if (finalizeOptionsCacheRef.current.has(selectedId)) return;
+    const clave = claveTipificacion(selectedId);
+    if (finalizeOptionsCacheRef.current.has(clave)) return;
     const sel = conversationsRef.current.find((c) => c.id === selectedId);
     if (!sel || sel.status === "closed") return;
     let cancelled = false;
     void loadFinalizeOptionsForConversation(selectedId)
       .then((opts) => {
-        if (!cancelled) finalizeOptionsCacheRef.current.set(selectedId, opts);
+        if (!cancelled) finalizeOptionsCacheRef.current.set(clave, opts);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [selectedId, mode]);
+  }, [selectedId, mode, claveTipificacion]);
 
   function applyFinalizeOptions(opts: FinalizeOptionsResult) {
     setFinalizeOptions(opts);
@@ -2168,8 +2183,10 @@ export function ConversacionesClient({
     setFinalizeSubstateId("");
     setFinalizeComment("");
 
-    // Si ya lo precargamos al seleccionar la conversación → aparece INSTANTÁNEO.
-    const cached = finalizeOptionsCacheRef.current.get(selectedId);
+    // Si ya lo tenemos —de esta conversación o de otra de la misma cola— el
+    // modal aparece INSTANTÁNEO.
+    const clave = claveTipificacion(selectedId);
+    const cached = finalizeOptionsCacheRef.current.get(clave);
     if (cached) {
       applyFinalizeOptions(cached);
       setFinalizeLoading(false);
@@ -2180,7 +2197,7 @@ export function ConversacionesClient({
     setFinalizeOptions(null);
     try {
       const opts = await loadFinalizeOptionsForConversation(selectedId);
-      finalizeOptionsCacheRef.current.set(selectedId, opts);
+      finalizeOptionsCacheRef.current.set(clave, opts);
       applyFinalizeOptions(opts);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "No se pudieron cargar las opciones de cierre";
@@ -2230,7 +2247,9 @@ export function ConversacionesClient({
       setFinalizeOpen(false);
       setFinalizeOptions(null);
       const closedId = selectedId;
-      finalizeOptionsCacheRef.current.delete(closedId);
+      // La tipificación NO se invalida: es de la cola, no de la conversación, y
+      // no cambió porque este chat se haya cerrado. Borrarla obligaría a
+      // pedirla de nuevo en el próximo cierre de la misma cola.
       if (mode === "inbox") {
         // Optimista: la conversación sale de la vista YA, sin esperar el refresco. Como el inbox
         // solo trae abiertas/pendientes, el refresco tampoco la devuelve.

@@ -68,42 +68,52 @@ async function loadFinalizeOptionsFromPg(
       return fallbackOptions();
     }
 
+    // Estados y subestados en UNA consulta. Eran dos seguidas, y cada viaje a
+    // la base es lo que se siente como "el modal tarda en abrir".
     const stT = quoteSchemaTable(schema, "chat_queue_closure_states");
+    const subT = quoteSchemaTable(schema, "chat_queue_closure_substates");
     const sr = await pool.query(
-      `SELECT id::text, label::text FROM ${stT}
-       WHERE empresa_id = $1::uuid AND queue_id = $2::uuid AND COALESCE(is_active, true) = true
-       ORDER BY sort_order ASC NULLS LAST`,
+      `SELECT e.id::text AS estado_id, e.label::text AS estado_label,
+              s.id::text AS sub_id, s.label::text AS sub_label
+         FROM ${stT} e
+         LEFT JOIN ${subT} s
+           ON s.closure_state_id = e.id
+          AND s.empresa_id = e.empresa_id
+          AND COALESCE(s.is_active, true) = true
+        WHERE e.empresa_id = $1::uuid
+          AND e.queue_id = $2::uuid
+          AND COALESCE(e.is_active, true) = true
+        ORDER BY e.sort_order ASC NULLS LAST, s.sort_order ASC NULLS LAST`,
       [empresaId, qid]
     );
-    const st = (sr.rows ?? []) as { id: string; label: string }[];
-    if (st.length === 0) {
-      return fallbackOptions();
+
+    const orden: string[] = [];
+    const etiqueta = new Map<string, string>();
+    const subs = new Map<string, { id: string; label: string }[]>();
+    for (const raw of sr.rows ?? []) {
+      const x = raw as Record<string, string | null>;
+      const eid = String(x.estado_id ?? "").trim();
+      if (!eid) continue;
+      if (!etiqueta.has(eid)) {
+        orden.push(eid);
+        etiqueta.set(eid, String(x.estado_label ?? ""));
+        subs.set(eid, []);
+      }
+      if (x.sub_id) {
+        subs.get(eid)!.push({ id: String(x.sub_id), label: String(x.sub_label ?? "") });
+      }
     }
 
-    const ids = st.map((x) => x.id);
-    const subT = quoteSchemaTable(schema, "chat_queue_closure_substates");
-    const subr = await pool.query(
-      `SELECT id::text, closure_state_id::text, label::text FROM ${subT}
-       WHERE empresa_id = $1::uuid AND closure_state_id = ANY($2::uuid[]) AND COALESCE(is_active, true) = true
-       ORDER BY sort_order ASC NULLS LAST`,
-      [empresaId, ids]
-    );
-    const byState = new Map<string, { id: string; label: string }[]>();
-    for (const raw of subr.rows ?? []) {
-      const x = raw as { id?: string; closure_state_id?: string; label?: string };
-      const sid = String(x.closure_state_id ?? "").trim();
-      if (!sid) continue;
-      const arr = byState.get(sid) ?? [];
-      arr.push({ id: String(x.id ?? ""), label: String(x.label ?? "") });
-      byState.set(sid, arr);
+    if (orden.length === 0) {
+      return fallbackOptions();
     }
 
     return {
       source: "queue",
-      states: st.map((s) => ({
-        id: s.id,
-        label: s.label,
-        substates: byState.get(s.id) ?? [],
+      states: orden.map((id) => ({
+        id,
+        label: etiqueta.get(id) ?? "",
+        substates: subs.get(id) ?? [],
       })),
     };
   } catch (e) {

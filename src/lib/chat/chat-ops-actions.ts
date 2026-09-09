@@ -1541,25 +1541,73 @@ export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRo
 
   // Carga total (open/pending) de cada destino — solo el número, sin exponer contenido.
   const agentIds = rows.map((r) => String(r.id));
-  const { data: convRows } = await supabase
-    .from("chat_conversations")
-    .select("assigned_agent_id, status, first_human_response_at, last_customer_message_at")
-    .eq("empresa_id", empresa_id)
-    .in("assigned_agent_id", agentIds)
-    .neq("status", "closed");
   const tally = new Map<string, number>();
   const pendingFirst = new Map<string, number>();
-  for (const c of (convRows ?? []) as Array<{ assigned_agent_id: string | null; status?: string; first_human_response_at?: string | null; last_customer_message_at?: string | null }>) {
-    const aid = c.assigned_agent_id;
-    if (!aid) continue;
-    tally.set(aid, (tally.get(aid) ?? 0) + 1);
-    // pending_first_reply solo si el CLIENTE escribió y espera (excluye outbound-only de campañas).
-    if (
-      (c.status === "open" || c.status === "pending") &&
-      (c.first_human_response_at == null || c.first_human_response_at === "") &&
-      c.last_customer_message_at != null
-    ) {
-      pendingFirst.set(aid, (pendingFirst.get(aid) ?? 0) + 1);
+
+  /**
+   * El conteo se hace EN LA BASE cuando hay conexión directa.
+   *
+   * Antes se traían todas las conversaciones abiertas del equipo por HTTP para
+   * contarlas en memoria: hoy son 800 filas para mostrar seis números al lado
+   * de seis nombres, y crece con cada chat que se abre. Eso era la demora de la
+   * lista de agentes del modal de transferencia.
+   */
+  let contadoEnBase = false;
+  const poolCount = getChatPostgresPool();
+  if (poolCount && agentIds.length > 0) {
+    try {
+      const convT = quoteSchemaTable(dataSchema, "chat_conversations");
+      const cr = await poolCount.query(
+        `SELECT assigned_agent_id::text AS id,
+                count(*)::int AS activas,
+                count(*) FILTER (
+                  WHERE status IN ('open', 'pending')
+                    AND first_human_response_at IS NULL
+                    AND last_customer_message_at IS NOT NULL
+                )::int AS esperando
+           FROM ${convT}
+          WHERE empresa_id = $1::uuid
+            AND status <> 'closed'
+            AND assigned_agent_id = ANY($2::uuid[])
+          GROUP BY 1`,
+        [empresa_id, agentIds]
+      );
+      for (const raw of cr.rows ?? []) {
+        const x = raw as { id?: string; activas?: number; esperando?: number };
+        if (!x.id) continue;
+        tally.set(x.id, Number(x.activas ?? 0));
+        pendingFirst.set(x.id, Number(x.esperando ?? 0));
+      }
+      contadoEnBase = true;
+    } catch (e) {
+      // Un schema sin alguna de esas columnas, o sin conexión directa: se cae
+      // al camino de siempre. El modal nunca queda sin números.
+      console.warn(
+        "[fetchTransferTargetAgents] conteo por SQL falló, se usa PostgREST:",
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+
+  if (!contadoEnBase) {
+    const { data: convRows } = await supabase
+      .from("chat_conversations")
+      .select("assigned_agent_id, status, first_human_response_at, last_customer_message_at")
+      .eq("empresa_id", empresa_id)
+      .in("assigned_agent_id", agentIds)
+      .neq("status", "closed");
+    for (const c of (convRows ?? []) as Array<{ assigned_agent_id: string | null; status?: string; first_human_response_at?: string | null; last_customer_message_at?: string | null }>) {
+      const aid = c.assigned_agent_id;
+      if (!aid) continue;
+      tally.set(aid, (tally.get(aid) ?? 0) + 1);
+      // pending_first_reply solo si el CLIENTE escribió y espera (excluye outbound-only de campañas).
+      if (
+        (c.status === "open" || c.status === "pending") &&
+        (c.first_human_response_at == null || c.first_human_response_at === "") &&
+        c.last_customer_message_at != null
+      ) {
+        pendingFirst.set(aid, (pendingFirst.get(aid) ?? 0) + 1);
+      }
     }
   }
 

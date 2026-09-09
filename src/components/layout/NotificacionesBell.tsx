@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  Headset,
   MessageSquare,
   PackageCheck,
   TimerOff,
@@ -27,6 +28,7 @@ import {
   leerSonidoActivado,
   reproducirSonidoNotificacion,
   reproducirSonidoReunion,
+  reproducirSonidoConversacion,
 } from "@/lib/notificaciones/sonido";
 
 type TipoNotificacion =
@@ -41,7 +43,8 @@ type TipoNotificacion =
   | "comentario_proyecto"
   | "agenda_recordatorio"
   | "qa_vence"
-  | "chat_interno_mensaje";
+  | "chat_interno_mensaje"
+  | "conversacion_asignada";
 
 type Notificacion = {
   id: string;
@@ -54,7 +57,12 @@ type Notificacion = {
   leida_at: string | null;
   created_at: string;
   /** Sólo en comentarios: canal al que apunta, para abrir la sección correcta. */
-  metadata?: { canal?: string; sala_id?: string; mencion?: boolean } | null;
+  metadata?: {
+    canal?: string;
+    sala_id?: string;
+    mencion?: boolean;
+    conversation_id?: string;
+  } | null;
   /**
    * Aviso calculado en vivo por la API, sin fila en la base (compromiso de
    * esqueleto). No se puede marcar leído: se apaga cuando el proyecto avanza.
@@ -83,6 +91,16 @@ type UsuarioSesion = { id: string | null; data_schema: string | null };
  */
 const POLL_MS = 60_000;
 
+/**
+ * Cuántos chats de cliente esperan sin abrir.
+ *
+ * Lo publica la campanita y lo consume el contador de la pestaña, que ya cuenta
+ * el chat interno. Un solo número en la pestaña —"tenés N cosas"— y la
+ * distinción de qué es cada una donde se puede mostrar: el icono y el color en
+ * la campanita, y el sonido al llegar.
+ */
+export const EVENTO_CONVERSACIONES_PENDIENTES = "conversaciones:pendientes";
+
 const ESTILO_TIPO: Record<
   TipoNotificacion,
   { icon: typeof Bell; wrap: string; label: string }
@@ -109,6 +127,14 @@ const ESTILO_TIPO: Record<
     icon: MessageSquare,
     wrap: "bg-[#4FAEB2]/12 text-[#3F8E91]",
     label: "Chat interno",
+  },
+  conversacion_asignada: {
+    // Distinto del chat interno a propósito, y en las dos señales que se leen
+    // sin pensar: el icono (un contacto, no un globo) y el color. Un chat de
+    // cliente y un mensaje de un compañero no se atienden igual.
+    icon: Headset,
+    wrap: "bg-violet-50 text-violet-600",
+    label: "Chat de cliente",
   },
   qa_aprobado: {
     icon: CheckCircle2,
@@ -171,6 +197,8 @@ export default function NotificacionesBell() {
    * esto sonaría cada 60 segundos hasta que empiece la reunión.
    */
   const reunionesAvisadasRef = useRef<Set<string>>(new Set());
+  /** Chats de cliente ya avisados, para no repetir el sonido por el mismo. */
+  const chatsAvisadosRef = useRef<Set<string>>(new Set());
   const [sonidoActivado, setSonidoActivado] = useState(true);
   const [cargando, setCargando] = useState(false);
   const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
@@ -190,6 +218,18 @@ export default function NotificacionesBell() {
       if (res.ok && j?.success && j.data) {
         setItems(j.data.notificaciones);
         setNoLeidas(j.data.no_leidas);
+        // La pestaña suma esto a su contador. Se publica desde acá y no con
+        // otro pedido: la campanita ya tiene el dato, preguntarlo dos veces
+        // sería pagar dos veces por lo mismo.
+        window.dispatchEvent(
+          new CustomEvent(EVENTO_CONVERSACIONES_PENDIENTES, {
+            detail: {
+              n: j.data.notificaciones.filter(
+                (n) => n.tipo === "conversacion_asignada" && !n.leida_at
+              ).length,
+            },
+          })
+        );
         derivadasRef.current = j.data.notificaciones.filter((n) => n.derivada).length;
         // Suena sólo si el total de no leídas SUBIÓ desde la última carga: una
         // notificación nueva de verdad, no el resultado de marcar algo leído
@@ -203,11 +243,23 @@ export default function NotificacionesBell() {
             j.data.notificaciones.filter((n) => n.tipo === "agenda_recordatorio").map((n) => n.id)
           );
           const hayReunionNueva = [...idsReunion].some((id) => !reunionesAvisadasRef.current.has(id));
+          // Un chat de cliente que cae en la cola tiene su propio sonido:
+          // descendente y más grave. Quien está trabajando oye uno solo y
+          // tiene que saber de qué es sin mirar la pantalla.
+          const idsChat = new Set(
+            j.data.notificaciones
+              .filter((n) => n.tipo === "conversacion_asignada")
+              .map((n) => n.id)
+          );
+          const hayChatNuevo = [...idsChat].some((id) => !chatsAvisadosRef.current.has(id));
           if (hayReunionNueva) {
             reproducirSonidoReunion();
+          } else if (hayChatNuevo) {
+            reproducirSonidoConversacion();
           } else {
             reproducirSonidoNotificacion();
           }
+          chatsAvisadosRef.current = idsChat;
           reunionesAvisadasRef.current = idsReunion;
         } else {
           // Se mantiene al día aunque no suene, para no volver a avisar por un
@@ -444,6 +496,11 @@ export default function NotificacionesBell() {
                   : n.tipo === "chat_interno_mensaje"
                   ? `/dashboard/chat-interno${
                       n.metadata?.sala_id ? `?sala=${n.metadata.sala_id}` : ""
+                    }`
+                  // Al inbox, y abriendo LA conversación del aviso.
+                  : n.tipo === "conversacion_asignada"
+                  ? `/dashboard/conversaciones${
+                      n.metadata?.conversation_id ? `?c=${n.metadata.conversation_id}` : ""
                     }`
                   : n.tipo === "cobro_pendiente"
                   ? "/cobranzas/conciliacion"

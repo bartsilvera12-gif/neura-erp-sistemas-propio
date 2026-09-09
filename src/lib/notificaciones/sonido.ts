@@ -128,3 +128,55 @@ export function reproducirSonidoReunion(): void {
     /* Igual que arriba: sin audio, la notificación se ve en el panel. */
   }
 }
+
+/**
+ * Un chat de cliente que cae en tu cola.
+ *
+ * Tiene que distinguirse de los otros dos SIN escucharlos al lado: quien está
+ * trabajando oye uno solo y tiene que saber de qué es. Por eso cambian las tres
+ * cosas que el oído separa mejor:
+ *
+ *  - Dirección: DESCENDENTE. Los otros dos suben.
+ *  - Timbre: onda cuadrada suavizada, más "digital" que el seno de la campanita
+ *    y que el triángulo de la reunión.
+ *  - Registro: más grave (G5 → C5), contra el A5→E6 de las notificaciones.
+ *
+ * Comparte el mismo interruptor: silenciar la campanita silencia todo.
+ */
+export function reproducirSonidoConversacion(): void {
+  if (!leerSonidoActivado()) return;
+  if (typeof window === "undefined") return;
+  try {
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const ahora = ctx.currentTime;
+    const notas: { freq: number; inicio: number }[] = [
+      { freq: 783.99, inicio: 0 }, // G5
+      { freq: 523.25, inicio: 0.1 }, // C5 — baja, al revés que las otras
+    ];
+    for (const { freq, inicio } of notas) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      // `square` sin filtrar raspa; el filtro le saca el borde y deja el timbre.
+      osc.type = "square";
+      osc.frequency.value = freq;
+      const filtro = ctx.createBiquadFilter();
+      filtro.type = "lowpass";
+      filtro.frequency.value = 1800;
+      gain.gain.setValueAtTime(0, ahora + inicio);
+      gain.gain.linearRampToValueAtTime(0.06, ahora + inicio + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ahora + inicio + 0.22);
+      osc.connect(filtro);
+      filtro.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ahora + inicio);
+      osc.stop(ahora + inicio + 0.24);
+    }
+    window.setTimeout(() => void ctx.close().catch(() => {}), 700);
+  } catch {
+    /* el sonido nunca puede romper la notificación */
+  }
+}

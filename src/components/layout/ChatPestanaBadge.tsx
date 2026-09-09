@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { supabase } from "@/lib/supabase";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
+import { EVENTO_CONVERSACIONES_PENDIENTES } from "@/components/layout/NotificacionesBell";
 
 /**
  * Red de seguridad por si el realtime se cayó sin avisar. Lo normal es que el
@@ -89,6 +90,8 @@ function pintarFavicon(base: HTMLImageElement, n: number): string | null {
 
 export default function ChatPestanaBadge() {
   const [total, setTotal] = useState(0);
+  /** Chats de cliente esperando en la cola; los publica la campanita. */
+  const [conversaciones, setConversaciones] = useState(0);
   /** El ícono original, para volver a él cuando no hay nada pendiente. */
   const baseRef = useRef<HTMLImageElement | null>(null);
   const hrefOriginalRef = useRef<string | null>(null);
@@ -139,12 +142,23 @@ export default function ChatPestanaBadge() {
     // El chat lo dispara al marcar una sala como leída, para que el número baje
     // en el momento y no en el próximo refresco.
     window.addEventListener(EVENTO_CHAT_LEIDO, contar);
+    // La campanita ya sabe cuántos chats de cliente hay sin abrir: se escucha
+    // en vez de preguntarlo otra vez.
+    const alHaberConversaciones = (e: Event) => {
+      const n = (e as CustomEvent<{ n?: number }>).detail?.n;
+      if (typeof n === "number") setConversaciones(Math.max(0, n));
+    };
+    window.addEventListener(EVENTO_CONVERSACIONES_PENDIENTES, alHaberConversaciones);
     return () => {
       clearInterval(t);
       document.removeEventListener("visibilitychange", alVolver);
       window.removeEventListener(EVENTO_CHAT_LEIDO, contar);
+      window.removeEventListener(EVENTO_CONVERSACIONES_PENDIENTES, alHaberConversaciones);
     };
   }, [contar]);
+
+  /** Lo que reclama atención, venga de donde venga. */
+  const pendientes = total + conversaciones;
 
   // Un mensaje nuevo en cualquier sala vuelve a contar. El filtro por sala no
   // se puede hacer acá —son varias—, así que se escucha la tabla y se recuenta.
@@ -191,8 +205,9 @@ export default function ChatPestanaBadge() {
   // --- El título de la pestaña ---------------------------------------------
   useEffect(() => {
     const base = document.title.replace(/^\(\d+\+?\)\s*/, "") || TITULO_BASE;
-    document.title = total > 0 ? `(${total > 99 ? "99+" : total}) ${base}` : base;
-  }, [total]);
+    document.title =
+      pendientes > 0 ? `(${pendientes > 99 ? "99+" : pendientes}) ${base}` : base;
+  }, [pendientes]);
 
   // --- El favicon -----------------------------------------------------------
   useEffect(() => {
@@ -210,7 +225,7 @@ export default function ChatPestanaBadge() {
     }
 
     const aplicar = (img: HTMLImageElement) => {
-      const url = pintarFavicon(img, total);
+      const url = pintarFavicon(img, pendientes);
       if (url) link.setAttribute("href", url);
     };
 
@@ -227,7 +242,7 @@ export default function ChatPestanaBadge() {
     };
     // Si no carga, el título ya lleva el número: el favicon es el extra.
     img.src = hrefOriginalRef.current;
-  }, [total]);
+  }, [pendientes]);
 
   return null;
 }

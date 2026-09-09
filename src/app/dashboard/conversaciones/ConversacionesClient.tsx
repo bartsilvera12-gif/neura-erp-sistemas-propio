@@ -634,6 +634,24 @@ export function ConversacionesClient({
     logInboxFlagsBoot(getInboxFlagsSnapshot());
   }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  /**
+   * `?c=` viene de la campanita: se entra a LA conversación del aviso.
+   *
+   * Se limpia la URL apenas se usa: al recargar más tarde, esa conversación ya
+   * no es "la del aviso" y volver a abrirla sería una sorpresa.
+   */
+  const abrioDelAvisoRef = useRef(false);
+  useEffect(() => {
+    if (abrioDelAvisoRef.current) return;
+    const pedida = new URLSearchParams(window.location.search).get("c");
+    if (!pedida) return;
+    abrioDelAvisoRef.current = true;
+    setSelectedId(pedida);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("c");
+    window.history.replaceState({}, "", url.pathname + url.search);
+  }, []);
   const [selectedAttribution, setSelectedAttribution] = useState<{
     source_url: string;
     headline: string | null;

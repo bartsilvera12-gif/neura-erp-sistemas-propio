@@ -429,6 +429,61 @@ export async function listChatQueues(): Promise<ChatQueueListRow[]> {
   return (data ?? []) as ChatQueueListRow[];
 }
 
+/**
+ * Las colas a las que se PUEDE transferir: todas las activas de la empresa.
+ *
+ * Distinto de `listChatQueues`, que responde otra pregunta: "¿de qué colas veo
+ * las conversaciones?" — y ahí sí corresponde limitarse a las propias.
+ *
+ * Transferir es, por definición, mandar una conversación a una cola en la que
+ * uno NO está. Ofrecer sólo las propias dejaba al comercial sin poder pasarle
+ * nada a Project Manager, que es el caso más común que tienen.
+ *
+ * Se devuelve el nombre y poco más: nada que no vea igual en el tablero.
+ */
+export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
+
+  const pool = getChatPostgresPool();
+  if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
+    try {
+      const qt = quoteSchemaTable(dataSchema, "chat_queues");
+      const r = await pool.query(
+        `SELECT id::text AS id, nombre, is_active, channel_type::text AS channel_type,
+                descripcion, distribution_strategy::text AS distribution_strategy, priority
+           FROM ${qt}
+          WHERE empresa_id = $1::uuid AND COALESCE(is_active, true) = true
+          ORDER BY priority DESC NULLS LAST, nombre ASC`,
+        [empresa_id]
+      );
+      return (r.rows ?? []).map((row: Record<string, unknown>) => ({
+        id: String(row.id ?? ""),
+        nombre: String(row.nombre ?? ""),
+        is_active: row.is_active !== false,
+        channel_type: (row.channel_type as string | null) ?? null,
+        descripcion: (row.descripcion as string | null) ?? null,
+        distribution_strategy: (row.distribution_strategy as string | undefined) ?? undefined,
+        priority: typeof row.priority === "number" ? row.priority : undefined,
+      })) as ChatQueueListRow[];
+    } catch (e) {
+      console.warn(
+        "[listTransferQueues] tenant_pg falló, se intenta PostgREST:",
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("chat_queues")
+    .select("id, nombre, is_active, channel_type, descripcion, distribution_strategy, priority")
+    .eq("empresa_id", empresa_id)
+    .eq("is_active", true)
+    .order("priority", { ascending: false })
+    .order("nombre", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ChatQueueListRow[];
+}
+
 export type MonitoringPendingReplyItem = {
   conversation_id: string;
   contact_name: string | null;

@@ -2,6 +2,7 @@ import { getUsuarioCatalogFromServerCookies } from "@/lib/auth/usuario-catalog-f
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
 import { resolveEmpresaDataSchema, type AppSupabaseClient } from "@/lib/supabase/schema";
+import { cacheSchemaEmpresa } from "@/lib/auth/cache-sesion-servidor";
 
 export type EmpresaTenantSrContext = {
   /** Service role en el schema de datos operativos de la empresa. */
@@ -22,15 +23,21 @@ export async function requireEmpresaTenantServiceRole(): Promise<EmpresaTenantSr
   if (!u) throw new Error("Usuario no autenticado o sin empresa");
 
   const catalogSr = createServiceRoleClient();
-  const { data: empRow } = await catalogSr
-    .from("empresas")
-    .select("data_schema")
-    .eq("id", u.empresa_id)
-    .maybeSingle();
 
-  const dataSchema = resolveEmpresaDataSchema(
-    (empRow as { data_schema?: string | null } | null)?.data_schema
-  );
+  // El schema de una empresa no cambia. Preguntarlo en cada acción es un viaje
+  // a la base para leer siempre lo mismo.
+  let dataSchema = cacheSchemaEmpresa.get(u.empresa_id);
+  if (!dataSchema) {
+    const { data: empRow } = await catalogSr
+      .from("empresas")
+      .select("data_schema")
+      .eq("id", u.empresa_id)
+      .maybeSingle();
+    dataSchema = resolveEmpresaDataSchema(
+      (empRow as { data_schema?: string | null } | null)?.data_schema
+    );
+    cacheSchemaEmpresa.set(u.empresa_id, dataSchema);
+  }
 
   const supabase = await createServiceRoleClientForEmpresa(u.empresa_id);
 

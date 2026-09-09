@@ -40,6 +40,7 @@ import {
   fetchTransferTargetAgents,
   getMyAgentOperationalPresence,
   listChatQueues,
+  listTransferQueues,
   setMyAgentOperationalPresence,
   touchChatAgentInboxHeartbeat,
   type ChatAgentOperationalStatus,
@@ -52,7 +53,9 @@ import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
-import { ArrowLeftRight, FileText, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
+import {
+  X,
+  CheckCircle2, ArrowLeftRight, FileText, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
 
 /** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -713,6 +716,15 @@ export function ConversacionesClient({
   const [msgMenu, setMsgMenu] = useState<string | null>(null); // id del mensaje con el menú (3 puntitos) abierto
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null); // mensaje que se está respondiendo (cita)
   const [opsQueues, setOpsQueues] = useState<ChatQueueListRow[]>([]);
+  /**
+   * A dónde se PUEDE transferir: todas las colas activas.
+   *
+   * Es una lista distinta de `opsQueues`, que responde "¿de qué colas veo las
+   * conversaciones?" y por eso se limita a las propias. Transferir es mandar la
+   * conversación a una cola en la que uno no está — con la lista acotada, un
+   * comercial no podía pasarle nada a Project Manager.
+   */
+  const [transferQueues, setTransferQueues] = useState<ChatQueueListRow[]>([]);
   const [opsAgentLoads, setOpsAgentLoads] = useState<SupervisorAgentLoadRow[]>([]);
   const [opsBusy, setOpsBusy] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
@@ -1340,6 +1352,9 @@ export function ConversacionesClient({
     listChatQueues()
       .then(setOpsQueues)
       .catch(() => setOpsQueues([]));
+    listTransferQueues()
+      .then(setTransferQueues)
+      .catch(() => setTransferQueues([]));
     fetchTransferTargetAgents()
       .then(setOpsAgentLoads)
       .catch(() => setOpsAgentLoads([]));
@@ -2704,7 +2719,7 @@ export function ConversacionesClient({
 
       {finalizeOpen ? (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[2px]"
           role="presentation"
           onClick={() => closeFinalizeModal()}
         >
@@ -2712,23 +2727,46 @@ export function ConversacionesClient({
             role="dialog"
             aria-modal="true"
             aria-labelledby="finalize-chat-title"
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl"
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-[#4FAEB2]/25 bg-white shadow-2xl shadow-[#2F6E71]/15"
             onClick={(ev) => ev.stopPropagation()}
           >
-            <h2 id="finalize-chat-title" className="text-lg font-semibold text-slate-900">
-              Finalizar conversación
-            </h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Completá el cierre para guardar el resultado en el historial. Todos los campos son obligatorios.
-            </p>
+            {/* Cabecera con el color de marca: separa el "qué estoy haciendo"
+                del formulario, sin robarle atención a los campos. */}
+            <div className="flex items-start gap-3 border-b border-[#4FAEB2]/20 bg-gradient-to-r from-[#4FAEB2]/14 via-[#4FAEB2]/6 to-transparent px-5 py-4">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2]/15 text-[#2F6E71]">
+                <CheckCircle2 className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 id="finalize-chat-title" className="text-[17px] font-semibold text-slate-900">
+                  Finalizar conversación
+                </h2>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-slate-600">
+                  El resultado queda en el historial. Todos los campos son obligatorios.
+                </p>
+              </div>
+            </div>
+            <div className="px-5 pb-5 pt-4">
             {finalizeLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Cargando opciones…</p>
+              // Esqueleto en vez de una frase: dice "acá van tres campos" y el
+              // modal no cambia de tamaño cuando llegan.
+              <div className="space-y-3">
+                {[0, 1].map((i) => (
+                  <div key={i}>
+                    <span className="mb-1.5 block h-2.5 w-20 animate-pulse rounded bg-slate-100" />
+                    <span className="block h-10 animate-pulse rounded-xl bg-slate-100" />
+                  </div>
+                ))}
+                <div>
+                  <span className="mb-1.5 block h-2.5 w-24 animate-pulse rounded bg-slate-100" />
+                  <span className="block h-20 animate-pulse rounded-xl bg-slate-100" />
+                </div>
+              </div>
             ) : finalizeOptions && finalizeOptions.states.length > 0 ? (
               <div className="mt-4 space-y-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Estado</label>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Estado</label>
                   <select
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                     value={finalizeStateId}
                     onChange={(e) => setFinalizeStateId(e.target.value)}
                   >
@@ -2744,7 +2782,7 @@ export function ConversacionesClient({
                   if (!st || st.substates.length === 0) return null;
                   return (
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Subestado</label>
+                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Subestado</label>
                       <select
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                         value={finalizeSubstateId}
@@ -2761,9 +2799,9 @@ export function ConversacionesClient({
                   );
                 })()}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Comentario</label>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Comentario</label>
                   <textarea
-                    className="w-full min-h-[88px] border border-slate-200 rounded-lg px-3 py-2 text-sm resize-y"
+                    className="w-full min-h-[88px] resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                     value={finalizeComment}
                     onChange={(e) => setFinalizeComment(e.target.value)}
                     placeholder="Resumí el resultado o próximos pasos para el equipo."
@@ -2784,12 +2822,12 @@ export function ConversacionesClient({
                 {finalizeModalError}
               </p>
             ) : null}
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
               <button
                 type="button"
                 disabled={finalizeSaving}
                 onClick={() => closeFinalizeModal()}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancelar
               </button>
@@ -2797,10 +2835,11 @@ export function ConversacionesClient({
                 type="button"
                 disabled={finalizeSaving || finalizeLoading || !finalizeOptions || finalizeOptions.states.length === 0}
                 onClick={() => void confirmFinalize()}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                className="rounded-xl bg-[#4FAEB2] px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/25 transition-colors hover:bg-[#3F8E91] disabled:opacity-50"
               >
                 {finalizeSaving ? "Guardando…" : "Confirmar finalización"}
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -2816,25 +2855,28 @@ export function ConversacionesClient({
             role="dialog"
             aria-modal="true"
             aria-labelledby="transfer-chat-title"
-            className="w-full max-w-lg max-h-[min(92vh,720px)] overflow-hidden flex flex-col rounded-2xl border border-slate-200 bg-white shadow-xl"
+            className="flex max-h-[min(92vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/25 bg-white shadow-2xl shadow-[#2F6E71]/15"
             onClick={(ev) => ev.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 shrink-0">
-              <div>
-                <h2 id="transfer-chat-title" className="text-lg font-semibold text-slate-900">
+            <div className="flex shrink-0 items-start gap-3 border-b border-[#4FAEB2]/20 bg-gradient-to-r from-[#4FAEB2]/14 via-[#4FAEB2]/6 to-transparent px-5 py-4">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4FAEB2]/15 text-[#2F6E71]">
+                <ArrowLeftRight className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 id="transfer-chat-title" className="text-[17px] font-semibold text-slate-900">
                   Transferir conversación
                 </h2>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-[13px] leading-relaxed text-slate-600">
                   Elegí cola y/o agente. Los números reflejan chats abiertos asignados al agente.
                 </p>
               </div>
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-50 shrink-0"
+                className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/70 hover:text-slate-700"
                 onClick={() => setTransferModalOpen(false)}
                 aria-label="Cerrar"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
 
@@ -2846,19 +2888,17 @@ export function ConversacionesClient({
                 <div className="flex flex-wrap gap-2">
                   <select
                     disabled={opsBusy}
-                    className="flex-1 min-w-[12rem] border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white"
+                    className="min-w-[12rem] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                     value={transferQueueTarget}
                     onChange={(e) => setTransferQueueTarget(e.target.value)}
                     aria-label="Cola destino y filtro de agentes"
                   >
                     <option value="">Todas las colas (tu alcance)</option>
-                    {opsQueues
-                      .filter((q) => q.is_active)
-                      .map((q) => (
-                        <option key={q.id} value={q.id}>
-                          {q.nombre}
-                        </option>
-                      ))}
+                    {transferQueues.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.nombre}
+                      </option>
+                    ))}
                   </select>
                   <button
                     type="button"

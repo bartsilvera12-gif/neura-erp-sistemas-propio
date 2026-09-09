@@ -160,11 +160,11 @@ function tocarCampana(
     const { ctx, salida } = c;
     const base = ctx.currentTime + 0.02;
     for (const { freq, inicio, dur } of notas) {
-      // Fundamental y octava. La segunda entra al 28 %: lo justo para dar
-      // brillo sin que se escuche como una nota aparte.
+      // Fundamental y octava. La segunda entra bajita: da cuerpo de campana,
+      // pero subirla es lo que vuelve el sonido metálico y molesto.
       for (const [mult, peso] of [
         [1, 1],
-        [2, 0.28],
+        [2, 0.12],
       ] as const) {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -189,18 +189,22 @@ function tocarCampana(
 /**
  * Campanita general (QA, cambios de estado, avisos de esqueleto).
  *
- * Dos toques cortos que suben una cuarta, con caída larga: el "bloop-bloop"
- * de los mensajeros. No es el archivo de Discord —ese tiene dueño y meterlo
- * acá sería usar algo ajeno sin licencia—, sino el mismo tipo de sonido hecho
- * con osciladores: dos notas de campana, ataque seco y cola que se apaga sola.
+ * Dos toques que suben una cuarta, con caída larga: el "bloop-bloop" de los
+ * mensajeros. No es el archivo de Discord —ese tiene dueño y meterlo acá sería
+ * usar algo ajeno sin licencia—, sino el mismo tipo de sonido con osciladores.
+ *
+ * Va una octava más abajo que la primera versión (D5→G5 en vez de C6→F6): en
+ * el registro alto el mismo aviso se percibe como agudo y punzante, y a un
+ * sonido que se escucha cincuenta veces por día eso lo vuelve insoportable.
+ * Con la cola larga se sigue oyendo igual de bien sin agredir.
  */
 export function reproducirSonidoNotificacion(): void {
   tocarCampana(
     [
-      { freq: 1046.5, inicio: 0, dur: 0.42 }, // C6
-      { freq: 1396.9, inicio: 0.13, dur: 0.58 }, // F6
+      { freq: 587.33, inicio: 0, dur: 0.5 }, // D5
+      { freq: 783.99, inicio: 0.14, dur: 0.75 }, // G5
     ],
-    0.5
+    0.44
   );
 }
 

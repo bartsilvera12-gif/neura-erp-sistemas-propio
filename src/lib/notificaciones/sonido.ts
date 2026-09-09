@@ -142,19 +142,65 @@ function tocar(
 }
 
 /**
+ * Una nota tipo campana/marimba: ataque instantáneo y caída larga.
+ *
+ * El carácter no lo da la melodía sino la forma del sonido. Un tono sostenido
+ * "pita"; este arranca de golpe y se apaga solo, que es lo que el oído lee como
+ * un toque y no como una alarma. El armónico de octava por encima, más bajito,
+ * es lo que le da el timbre de campana en vez de un pitido pelado.
+ */
+function tocarCampana(
+  notas: { freq: number; inicio: number; dur: number }[],
+  volumen: number
+): void {
+  if (!leerSonidoActivado()) return;
+  const c = obtenerContexto();
+  if (!c) return;
+  try {
+    const { ctx, salida } = c;
+    const base = ctx.currentTime + 0.02;
+    for (const { freq, inicio, dur } of notas) {
+      // Fundamental y octava. La segunda entra al 28 %: lo justo para dar
+      // brillo sin que se escuche como una nota aparte.
+      for (const [mult, peso] of [
+        [1, 1],
+        [2, 0.28],
+      ] as const) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq * mult;
+        const t = base + inicio;
+        gain.gain.setValueAtTime(0, t);
+        // 4 ms de ataque: instantáneo para el oído, sin el "click" del corte seco.
+        gain.gain.linearRampToValueAtTime(volumen * peso, t + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(gain);
+        gain.connect(salida);
+        osc.start(t);
+        osc.stop(t + dur + 0.02);
+      }
+    }
+  } catch {
+    /* Sin audio disponible: el aviso igual llegó y se ve en el panel. */
+  }
+}
+
+/**
  * Campanita general (QA, cambios de estado, avisos de esqueleto).
  *
- * Dos notas ascendentes, ahora repetidas: una sola pasaba desapercibida.
+ * Dos toques cortos que suben una cuarta, con caída larga: el "bloop-bloop"
+ * de los mensajeros. No es el archivo de Discord —ese tiene dueño y meterlo
+ * acá sería usar algo ajeno sin licencia—, sino el mismo tipo de sonido hecho
+ * con osciladores: dos notas de campana, ataque seco y cola que se apaga sola.
  */
 export function reproducirSonidoNotificacion(): void {
-  tocar(
+  tocarCampana(
     [
-      { freq: 880, inicio: 0 }, // A5
-      { freq: 1318.5, inicio: 0.1, dur: 0.26 }, // E6
-      { freq: 880, inicio: 0.34 },
-      { freq: 1318.5, inicio: 0.44, dur: 0.3 },
+      { freq: 1046.5, inicio: 0, dur: 0.42 }, // C6
+      { freq: 1396.9, inicio: 0.13, dur: 0.58 }, // F6
     ],
-    { tipo: "triangle", volumen: 0.42 }
+    0.5
   );
 }
 

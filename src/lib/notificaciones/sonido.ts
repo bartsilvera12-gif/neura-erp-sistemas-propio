@@ -1,12 +1,22 @@
 /**
- * Sonido de la campanita de notificaciones (proyectos: QA, cambios de estado,
- * avisos de esqueleto). Mismo mecanismo que `inbox-notification-preference.ts`
- * del chat —tono sintetizado, sin archivo externo—, pero en un módulo aparte:
- * son dos flujos de notificación distintos y no hay que acoplarlos.
+ * Sonidos de aviso del ERP: campanita de proyectos, recordatorio de reunión y
+ * chat de cliente. Tonos sintetizados con Web Audio, sin archivo externo: no
+ * hay asset que servir ni CORS que resolver, y el volumen queda consistente sin
+ * depender de cómo se grabó un .mp3.
  *
- * A diferencia del inbox (que es opt-in, porque un mensaje de chat nuevo puede
- * llegar cada pocos segundos), acá el default es ON: el volumen de avisos es
- * bajo —unos pocos por día— y el sonido fue un pedido explícito.
+ * Tres cosas que hacen que se escuchen de verdad, y que antes no estaban:
+ *
+ *  1. UN SOLO `AudioContext`, compartido y reutilizado. Antes se creaba uno por
+ *     aviso: el navegador los arranca en estado `suspended` y, sin un gesto del
+ *     usuario en ese instante, muchos no llegaban a sonar nunca.
+ *  2. Se DESBLOQUEA con la primera interacción de la persona en la página y se
+ *     hace `resume()` antes de cada sonido. Un contexto suspendido —lo que pasa
+ *     al volver de una pestaña de fondo— no emite nada y no avisa del problema.
+ *  3. VOLUMEN de trabajo. Los valores anteriores (0.07) se perdían contra el
+ *     ruido de una oficina; el equipo reportó que no los escuchaba.
+ *
+ * Todo pasa por un compresor: sube el volumen percibido sin que los picos
+ * distorsionen, que es lo que suena "roto" cuando uno simplemente sube el gain.
  */
 
 const STORAGE_KEY = "neura_erp_proyectos_notification_sound";
@@ -31,152 +41,154 @@ export function escribirSonidoActivado(activado: boolean): void {
   }
 }
 
+// --- El contexto compartido -------------------------------------------------
+
+let ctxCompartido: AudioContext | null = null;
+let compresor: DynamicsCompressorNode | null = null;
+
+function obtenerContexto(): { ctx: AudioContext; salida: AudioNode } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    if (!ctxCompartido) {
+      const AC =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return null;
+      ctxCompartido = new AC();
+      const c = ctxCompartido.createDynamicsCompressor();
+      // Techo firme: deja subir el volumen sin que los picos raspen.
+      c.threshold.value = -18;
+      c.knee.value = 12;
+      c.ratio.value = 8;
+      c.attack.value = 0.003;
+      c.release.value = 0.2;
+      c.connect(ctxCompartido.destination);
+      compresor = c;
+    }
+    // `suspended` es lo normal al volver de una pestaña de fondo.
+    if (ctxCompartido.state === "suspended") void ctxCompartido.resume().catch(() => {});
+    return { ctx: ctxCompartido, salida: compresor ?? ctxCompartido.destination };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Dos notas cortas ascendentes (~280 ms en total). Se resuelve con Web Audio
- * en vez de un archivo de audio: no hay asset que servir ni CORS que resolver,
- * y el volumen queda fijo y consistente sin depender de un .mp3 grabado.
+ * Deja el audio listo aprovechando un gesto del usuario.
+ *
+ * Los navegadores sólo permiten arrancar audio a partir de una interacción. Si
+ * el primer sonido llega cuando la persona está en otra pestaña, ya es tarde:
+ * hay que haber desbloqueado antes. Se llama una vez, al montar el layout.
+ */
+export function prepararSonidos(): void {
+  if (typeof window === "undefined") return;
+  const desbloquear = () => {
+    const c = obtenerContexto();
+    if (c && c.ctx.state === "running") {
+      window.removeEventListener("pointerdown", desbloquear);
+      window.removeEventListener("keydown", desbloquear);
+    }
+  };
+  window.addEventListener("pointerdown", desbloquear, { passive: true });
+  window.addEventListener("keydown", desbloquear);
+  // Al volver a la pestaña, el contexto suele quedar suspendido.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") obtenerContexto();
+  });
+}
+
+type Nota = { freq: number; inicio: number; dur?: number };
+
+/** Toca una secuencia de notas. Todo lo demás de este módulo se apoya acá. */
+function tocar(
+  notas: Nota[],
+  opciones: { tipo: OscillatorType; volumen: number; filtro?: number }
+): void {
+  if (!leerSonidoActivado()) return;
+  const c = obtenerContexto();
+  if (!c) return;
+  try {
+    const { ctx, salida } = c;
+    const ahora = ctx.currentTime + 0.02;
+    for (const { freq, inicio, dur = 0.18 } of notas) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = opciones.tipo;
+      osc.frequency.value = freq;
+
+      let nodo: AudioNode = osc;
+      if (opciones.filtro) {
+        const f = ctx.createBiquadFilter();
+        f.type = "lowpass";
+        f.frequency.value = opciones.filtro;
+        osc.connect(f);
+        nodo = f;
+      }
+
+      const t = ahora + inicio;
+      // Envolvente: sin la rampa, encender y apagar un tono seco hace "click".
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(opciones.volumen, t + 0.012);
+      gain.gain.setValueAtTime(opciones.volumen, t + dur * 0.55);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      nodo.connect(gain);
+      gain.connect(salida);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    }
+  } catch {
+    /* Sin audio disponible: el aviso igual llegó y se ve en el panel. */
+  }
+}
+
+/**
+ * Campanita general (QA, cambios de estado, avisos de esqueleto).
+ *
+ * Dos notas ascendentes, ahora repetidas: una sola pasaba desapercibida.
  */
 export function reproducirSonidoNotificacion(): void {
-  if (!leerSonidoActivado()) return;
-  if (typeof window === "undefined") return;
-  try {
-    const AC =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return;
-    const ctx = new AC();
-    const ahora = ctx.currentTime;
-    const notas: { freq: number; inicio: number }[] = [
+  tocar(
+    [
       { freq: 880, inicio: 0 }, // A5
-      { freq: 1318.5, inicio: 0.09 }, // E6
-    ];
-    for (const { freq, inicio } of notas) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      // Envolvente corta para evitar el "click" de encender/apagar el tono seco.
-      gain.gain.setValueAtTime(0, ahora + inicio);
-      gain.gain.linearRampToValueAtTime(0.07, ahora + inicio + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ahora + inicio + 0.14);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ahora + inicio);
-      osc.stop(ahora + inicio + 0.16);
-    }
-    window.setTimeout(() => {
-      void ctx.close().catch(() => {});
-    }, 400);
-  } catch {
-    /* Sin audio disponible (política del navegador, contexto bloqueado, etc.):
-       la notificación igual llegó y se ve en el panel. */
-  }
+      { freq: 1318.5, inicio: 0.1, dur: 0.26 }, // E6
+      { freq: 880, inicio: 0.34 },
+      { freq: 1318.5, inicio: 0.44, dur: 0.3 },
+    ],
+    { tipo: "triangle", volumen: 0.42 }
+  );
 }
 
 /**
- * Sonido de recordatorio de REUNIÓN. Deliberadamente distinto y más insistente
- * que el de arriba: una reunión que arranca en 30 minutos no puede sonar igual
- * que una observación de QA, o se confunde con el ruido de fondo y pasa
- * desapercibida — que es justo lo que hay que evitar.
+ * Recordatorio de REUNIÓN: el más insistente de los tres.
  *
- * Qué lo hace destacar, sin llegar a alarma de incendio:
- *  - Tres repeticiones espaciadas (~1,2 s en total) en vez de un tono corto.
- *  - Onda `triangle`, con más armónicos que la `sine` y por lo tanto más
- *    presencia sobre el ruido ambiente de una oficina.
- *  - Cada repetición son dos notas que SALTAN una quinta (E5→B5), un intervalo
- *    que el oído lee como llamada y no como confirmación.
- *  - Volumen algo mayor (0.11 contra 0.07), todavía lejos de molestar.
+ * Una reunión que arranca en 30 minutos no puede sonar igual que una
+ * observación de QA. Tres repeticiones, salto de quinta (E5→B5) —un intervalo
+ * que el oído lee como llamada y no como confirmación— y el volumen más alto.
  */
 export function reproducirSonidoReunion(): void {
-  if (!leerSonidoActivado()) return;
-  if (typeof window === "undefined") return;
-  try {
-    const AC =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return;
-    const ctx = new AC();
-    const ahora = ctx.currentTime;
-
-    const PATRON = [0, 0.4, 0.8]; // arranque de cada repetición, en segundos
-    const NOTAS = [
-      { freq: 659.25, offset: 0 }, // E5
-      { freq: 987.77, offset: 0.11 }, // B5 — salto de quinta
-    ];
-
-    for (const base of PATRON) {
-      for (const { freq, offset } of NOTAS) {
-        const inicio = ahora + base + offset;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "triangle";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, inicio);
-        gain.gain.linearRampToValueAtTime(0.11, inicio + 0.012);
-        gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.18);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(inicio);
-        osc.stop(inicio + 0.2);
-      }
-    }
-
-    window.setTimeout(() => {
-      void ctx.close().catch(() => {});
-    }, 1600);
-  } catch {
-    /* Igual que arriba: sin audio, la notificación se ve en el panel. */
+  const notas: Nota[] = [];
+  for (const base of [0, 0.42, 0.84]) {
+    notas.push({ freq: 659.25, inicio: base, dur: 0.2 });
+    notas.push({ freq: 987.77, inicio: base + 0.12, dur: 0.24 });
   }
+  tocar(notas, { tipo: "triangle", volumen: 0.5 });
 }
 
 /**
- * Un chat de cliente que cae en tu cola.
+ * Chat de cliente esperando en la cola.
  *
- * Tiene que distinguirse de los otros dos SIN escucharlos al lado: quien está
- * trabajando oye uno solo y tiene que saber de qué es. Por eso cambian las tres
- * cosas que el oído separa mejor:
- *
- *  - Dirección: DESCENDENTE. Los otros dos suben.
- *  - Timbre: onda cuadrada suavizada, más "digital" que el seno de la campanita
- *    y que el triángulo de la reunión.
- *  - Registro: más grave (G5 → C5), contra el A5→E6 de las notificaciones.
- *
- * Comparte el mismo interruptor: silenciar la campanita silencia todo.
+ * Se distingue de los otros dos sin escucharlos al lado, cambiando las tres
+ * cosas que el oído separa mejor: baja en vez de subir, timbre más "digital"
+ * (cuadrada filtrada) y registro más grave.
  */
 export function reproducirSonidoConversacion(): void {
-  if (!leerSonidoActivado()) return;
-  if (typeof window === "undefined") return;
-  try {
-    const AC =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return;
-    const ctx = new AC();
-    const ahora = ctx.currentTime;
-    const notas: { freq: number; inicio: number }[] = [
-      { freq: 783.99, inicio: 0 }, // G5
-      { freq: 523.25, inicio: 0.1 }, // C5 — baja, al revés que las otras
-    ];
-    for (const { freq, inicio } of notas) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      // `square` sin filtrar raspa; el filtro le saca el borde y deja el timbre.
-      osc.type = "square";
-      osc.frequency.value = freq;
-      const filtro = ctx.createBiquadFilter();
-      filtro.type = "lowpass";
-      filtro.frequency.value = 1800;
-      gain.gain.setValueAtTime(0, ahora + inicio);
-      gain.gain.linearRampToValueAtTime(0.06, ahora + inicio + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ahora + inicio + 0.22);
-      osc.connect(filtro);
-      filtro.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ahora + inicio);
-      osc.stop(ahora + inicio + 0.24);
-    }
-    window.setTimeout(() => void ctx.close().catch(() => {}), 700);
-  } catch {
-    /* el sonido nunca puede romper la notificación */
-  }
+  tocar(
+    [
+      { freq: 783.99, inicio: 0, dur: 0.2 }, // G5
+      { freq: 523.25, inicio: 0.11, dur: 0.3 }, // C5 — baja
+      { freq: 783.99, inicio: 0.42, dur: 0.2 },
+      { freq: 523.25, inicio: 0.53, dur: 0.34 },
+    ],
+    { tipo: "square", volumen: 0.34, filtro: 2200 }
+  );
 }

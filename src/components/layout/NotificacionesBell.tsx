@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  BellRing,
   Headset,
   MessageSquare,
   PackageCheck,
@@ -29,7 +30,14 @@ import {
   reproducirSonidoNotificacion,
   reproducirSonidoReunion,
   reproducirSonidoConversacion,
+  prepararSonidos,
 } from "@/lib/notificaciones/sonido";
+import {
+  estadoPermisoAviso,
+  mostrarAvisoSistema,
+  pedirPermisoAviso,
+  type EstadoPermiso,
+} from "@/lib/notificaciones/aviso-sistema";
 
 type TipoNotificacion =
   | "qa_novedad"
@@ -207,6 +215,16 @@ export default function NotificacionesBell() {
   const reunionesAvisadasRef = useRef<Set<string>>(new Set());
   /** Chats de cliente ya avisados, para no repetir el sonido por el mismo. */
   const chatsAvisadosRef = useRef<Set<string>>(new Set());
+  /** Avisos del sistema ya mostrados, para no repetirlos en cada recarga. */
+  const avisadosFueraRef = useRef<Set<string>>(new Set());
+  const [permisoAviso, setPermisoAviso] = useState<EstadoPermiso>("default");
+
+  useEffect(() => {
+    // El audio se desbloquea con el primer gesto de la persona. Si se espera al
+    // primer aviso, ya es tarde: para entonces suele estar en otra pestaña.
+    prepararSonidos();
+    setPermisoAviso(estadoPermisoAviso());
+  }, []);
   const [sonidoActivado, setSonidoActivado] = useState(true);
   const [cargando, setCargando] = useState(false);
   const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
@@ -274,6 +292,25 @@ export default function NotificacionesBell() {
             reproducirSonidoNotificacion();
           }
           chatsAvisadosRef.current = idsChat;
+
+          // Y afuera de la pestaña. Quien está en otro programa no ve la
+          // campanita ni oye nada si el navegador está minimizado; esto es lo
+          // único que sale de acá.
+          for (const n of j.data.notificaciones) {
+            if (n.leida_at || avisadosFueraRef.current.has(n.id)) continue;
+            const mostrado = mostrarAvisoSistema({
+              titulo: n.titulo,
+              cuerpo: n.cuerpo ?? "",
+              etiqueta: n.tipo,
+              destino:
+                n.tipo === "chat_interno_mensaje"
+                  ? "/dashboard/chat-interno"
+                  : n.tipo === "conversacion_asignada" || n.tipo === "conversacion_mensaje"
+                    ? "/dashboard/conversaciones"
+                    : null,
+            });
+            if (mostrado) avisadosFueraRef.current.add(n.id);
+          }
           reunionesAvisadasRef.current = idsReunion;
         } else {
           // Se mantiene al día aunque no suene, para no volver a avisar por un
@@ -446,6 +483,23 @@ export default function NotificacionesBell() {
               >
                 {sonidoActivado ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
               </button>
+              {/*
+                El permiso del navegador se pide DESDE ACÁ, con un clic, y no al
+                cargar la página: un navegador que recibe el pedido de entrada lo
+                bloquea para siempre, y después no hay vuelta atrás sin ir a la
+                configuración.
+              */}
+              {permisoAviso === "default" ? (
+                <button
+                  type="button"
+                  onClick={() => void pedirPermisoAviso().then(setPermisoAviso)}
+                  title="Avisarme aunque esté en otra pestaña o programa"
+                  aria-label="Activar avisos del sistema"
+                  className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <BellRing className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
               {noLeidas > 0 ? (
                 <button
                   type="button"

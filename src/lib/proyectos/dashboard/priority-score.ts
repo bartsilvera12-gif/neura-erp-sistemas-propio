@@ -44,24 +44,21 @@ export function motivo(codigo: MotivoCodigo, label: string): Motivo {
 }
 
 /**
- * Los motivos que hablan de un PLAZO: algo ya se pasó de fecha, o está por
- * pasarse.
+ * Los motivos que hablan de la FECHA PROMETIDA al cliente: ya se pasó, o está
+ * por pasarse.
  *
- * Son dos relojes distintos y los dos cuentan:
- *   · La fecha prometida al cliente — `vencido` y `vence_pronto`.
- *   · El objetivo interno de tiempo (SLV) — `slv_*`, donde "vencido" es que ya
- *     se pasó y "crítico"/"en riesgo" es que está por pasarse.
+ * Sólo esos dos. El objetivo interno de tiempo (SLV) también es un plazo, pero
+ * es otro compromiso y con otro interlocutor: pasarse del SLV es un problema
+ * de proceso, pasarse de la fecha prometida es una promesa incumplida a una
+ * persona concreta. El SLV tiene su propio bloque en el tablero.
  *
- * Quedan afuera los que son un problema pero no un plazo: bloqueado, sin
- * movimiento, estancado, rondas de QA, esperando al cliente y listo para
- * entregar. Merecen atención, pero no la de "esto se me vence".
+ * Y quedan afuera los que son un problema sin fecha: bloqueado, sin
+ * movimiento, estancado, rondas de QA, esperando al cliente, listo para
+ * entregar.
  */
 export const MOTIVOS_DE_PLAZO: ReadonlySet<MotivoCodigo> = new Set<MotivoCodigo>([
   "vencido",
   "vence_pronto",
-  "slv_vencido",
-  "slv_critico",
-  "slv_riesgo",
 ]);
 
 /** El motivo de plazo más grave de un proyecto, o `null` si no tiene ninguno. */

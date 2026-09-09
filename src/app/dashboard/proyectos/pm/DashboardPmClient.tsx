@@ -7,10 +7,10 @@
  * que saber en diez segundos dónde meterse hoy. Por eso "Vencidos y por vencer"
  * es el bloque principal y todo lo demás son cortes de lo mismo.
  *
- * Esa tabla lista SÓLO lo que corre contra un plazo —la fecha prometida al
- * cliente o el objetivo interno de tiempo—. Lo bloqueado, lo estancado y lo que
- * volvió muchas veces de QA sigue estando en sus propios bloques: mezclado acá,
- * lo urgente competía con lo importante en la misma lista.
+ * Esa tabla lista SÓLO lo que corre contra la fecha prometida al cliente. El
+ * SLV, los bloqueos, lo estancado y lo que volvió muchas veces de QA tienen sus
+ * propios bloques: mezclado acá, lo urgente competía con lo importante en la
+ * misma lista.
  *
  * El orden de esa tabla lo decide el servidor (`priority-score.ts`), no el
  * frontend: si cada tabla ordenara a su gusto, dos pantallas mostrarían el
@@ -82,6 +82,8 @@ type Data = {
   puede_ver_todo: boolean;
   pm_id: string | null;
   mi_pm_id: string | null;
+  activos_sin_fecha: number;
+  activos_total: number;
   atencion: {
     id: string;
     titulo: string;
@@ -387,9 +389,16 @@ export default function DashboardPmClient() {
               >
                 Vencidos y por vencer
               </CardTitle>
+              {data.activos_sin_fecha > 0 ? (
+                <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800">
+                  <strong>{data.activos_sin_fecha}</strong> de {data.activos_total} proyectos
+                  activos no tienen fecha prometida cargada, así que no pueden aparecer acá
+                  aunque estén atrasados.
+                </p>
+              ) : null}
               {data.atencion.length === 0 ? (
                 <p className="text-sm text-slate-400">
-                  Nada vencido ni por vencer. Disfrutalo.
+                  Nada vencido ni por vencer.
                 </p>
               ) : (
                 <TablaWrap>

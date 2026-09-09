@@ -74,18 +74,22 @@ export function construirDashboardPm(ds: Dataset) {
   const wipPorTecnico = new Map(wip.map((w) => [w.usuario_id, w.wip]));
   const wipAlto = wip.filter((w) => nivelWip(w.wip, wipLimite) === "sobre_limite").length;
 
-  // ---- Atención PM de hoy ---------------------------------------------------
-  // Sólo lo que corre contra un plazo: vencido o por vencer, sea por la fecha
-  // prometida al cliente o por el objetivo interno de tiempo. Un proyecto
-  // bloqueado o con muchas rondas de QA necesita atención, pero no es lo que
-  // se mira para saber qué se está por incumplir hoy — y mezclarlo hacía que
-  // lo urgente compitiera con lo importante en la misma lista.
+  // ---- Vencidos y por vencer ------------------------------------------------
+  // Sólo la fecha prometida al cliente. Es una promesa hecha a una persona
+  // concreta; el resto de las alertas —SLV, bloqueos, rondas de QA— tienen sus
+  // propios bloques, y mezcladas acá hacían que lo urgente compitiera con lo
+  // importante en la misma lista.
   const atencion = activos
     .map((p) => ({ p, plazo: motivoDePlazo(p.motivos) }))
     .filter((x): x is { p: ProyectoMetrica; plazo: Motivo } => x.plazo !== null)
     .sort((a, b) => b.p.score - a.p.score)
     .slice(0, 30)
     .map(({ p, plazo }) => filaProyecto(p, plazo));
+
+  // Una tabla vacía puede querer decir dos cosas MUY distintas: que no hay nada
+  // por vencer, o que nadie cargó las fechas. Sin este número, la primera se
+  // lee como tranquilidad cuando en realidad es ceguera.
+  const activos_sin_fecha = activos.filter((p) => !p.fecha_prometida).length;
 
   // ---- SLV por desarrollador ------------------------------------------------
   // Dos poblaciones distintas y separadas a propósito:
@@ -207,6 +211,8 @@ export function construirDashboardPm(ds: Dataset) {
     kpis: kpisComunes(proyectos, wipAlto),
     wip_limite: wipLimite,
     atencion,
+    activos_sin_fecha,
+    activos_total: activos.length,
     slv_por_desarrollador,
     riesgo_slv,
     wip,

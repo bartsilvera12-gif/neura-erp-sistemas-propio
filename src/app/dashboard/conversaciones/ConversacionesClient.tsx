@@ -55,7 +55,7 @@ import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recordin
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
 import {
   X,
-  CheckCircle2, ArrowLeftRight, FileText, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
+  CheckCircle2, ArrowLeftRight, Download, FileText, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
 
 /** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -376,22 +376,69 @@ function downloadFilenameFor(message: ChatMessage): string {
   return ext ? `${base}.${ext}` : base;
 }
 
-/** Descarga forzada del media (fetch → blob → <a download>). Si CORS lo bloquea, abre en pestaña. */
-async function descargarMedia(url: string, filename: string): Promise<void> {
+/** Dispara la descarga apuntando a `href`, sin abrir pestaña. */
+function dispararDescarga(href: string, filename: string): void {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename || "archivo";
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
+ * URL de Supabase Storage con `?download=<nombre>`.
+ *
+ * Storage responde ese parámetro con `Content-Disposition: attachment`, así que
+ * el navegador guarda el archivo directo desde el servidor: sin traerlo a
+ * memoria. Importa para los videos, que llegan hasta 64 MB y con el camino del
+ * blob se cargan enteros en la pestaña antes de escribirse al disco.
+ */
+function urlDeDescargaDeStorage(url: string, filename: string): string | null {
   try {
-    const res = await fetch(url);
+    const u = new URL(url);
+    if (!u.pathname.includes("/storage/v1/object/")) return null;
+    u.searchParams.set("download", filename || "archivo");
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Descarga un adjunto del chat.
+ *
+ * Los archivos no viven en nuestro dominio: están en el Storage de Supabase
+ * (`/storage/v1/object/…`) o en el CDN de YCloud. Por eso un `<a download>` a
+ * secas no alcanza —el atributo se ignora entre orígenes— y hay dos caminos:
+ *
+ *  · Storage: se pide con `?download=`, que ya devuelve el header de adjunto.
+ *  · El resto (YCloud manda `Content-Disposition: inline`): se baja con fetch y
+ *    se guarda desde un blob local, donde el `download` sí manda. Ambos hosts
+ *    responden CORS, así que el fetch pasa.
+ *
+ * Si algo falla igual, se abre en pestaña: peor que guardar solo, pero mejor
+ * que un botón que no hace nada.
+ */
+async function descargarMedia(url: string, filename: string): Promise<void> {
+  const nombre = filename || "archivo";
+
+  const directo = urlDeDescargaDeStorage(url, nombre);
+  if (directo) {
+    dispararDescarga(directo, nombre);
+    return;
+  }
+
+  try {
+    const res = await fetch(url, { credentials: "omit" });
     if (!res.ok) throw new Error(String(res.status));
     const blob = await res.blob();
     const objUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objUrl;
-    a.download = filename || "archivo";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+    dispararDescarga(objUrl, nombre);
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
   } catch {
-    // Fallback (p. ej. CORS): abrir en pestaña nueva para que el usuario guarde manualmente.
+    // Fallback (p. ej. CORS): abrir en pestaña nueva para que se guarde a mano.
     window.open(url, "_blank", "noopener,noreferrer");
   }
 }
@@ -712,7 +759,8 @@ export function ConversacionesClient({
   const [compActionId, setCompActionId] = useState<string | null>(null);
   const [compApproveConfirmId, setCompApproveConfirmId] = useState<string | null>(null);
   const [compApprovalInfo, setCompApprovalInfo] = useState<string | null>(null);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // El visor guarda también el nombre: sin él no se puede ofrecer "Descargar".
+  const [lightbox, setLightbox] = useState<{ url: string; nombre: string } | null>(null);
   const [msgMenu, setMsgMenu] = useState<string | null>(null); // id del mensaje con el menú (3 puntitos) abierto
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null); // mensaje que se está respondiendo (cita)
   const [opsQueues, setOpsQueues] = useState<ChatQueueListRow[]>([]);
@@ -2633,21 +2681,52 @@ export function ConversacionesClient({
       style={alto ? { height: `${alto}px`, maxHeight: `${alto}px` } : undefined}
       className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden"
     >
-      {lightboxUrl ? (
-        <button
-          type="button"
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 border-0 cursor-zoom-out"
-          onClick={() => setLightboxUrl(null)}
-          aria-label="Cerrar vista ampliada"
+      {lightbox ? (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col bg-black/85 p-4"
+          role="presentation"
+          onClick={() => setLightbox(null)}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxUrl}
-            alt="Vista ampliada"
-            className="max-h-[92vh] max-w-full object-contain rounded-lg shadow-2xl"
+          {/* Barra de acciones. Antes el visor era solo la imagen sobre el fondo
+              negro: se veía en grande y no había forma de guardarla. */}
+          <div
+            className="mx-auto flex w-full max-w-4xl shrink-0 items-center justify-end gap-2 pb-3"
             onClick={(ev) => ev.stopPropagation()}
-          />
-        </button>
+          >
+            <button
+              type="button"
+              onClick={() => void descargarMedia(lightbox.url, lightbox.nombre)}
+              className="flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-white/25"
+            >
+              <Download className="h-4 w-4" aria-hidden /> Descargar
+            </button>
+            <a
+              href={lightbox.url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white no-underline backdrop-blur transition-colors hover:bg-white/25"
+            >
+              Abrir en pestaña
+            </a>
+            <button
+              type="button"
+              onClick={() => setLightbox(null)}
+              aria-label="Cerrar vista ampliada"
+              className="grid h-8 w-8 place-items-center rounded-lg bg-white/15 text-white backdrop-blur transition-colors hover:bg-white/25"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={lightbox.url}
+              alt="Vista ampliada"
+              className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
+              onClick={(ev) => ev.stopPropagation()}
+            />
+          </div>
+        </div>
       ) : null}
 
       {compApproveConfirmId ? (
@@ -3997,8 +4076,26 @@ export function ConversacionesClient({
                               : "bg-white text-slate-800 rounded-bl-md border border-slate-200 shadow-sm border-l-[3px] border-l-[#4FAEB2]/55"
                           }`}
                         >
-                          {/* Menú de acciones del mensaje (3 puntitos, aparece al pasar el mouse). */}
-                          <div className="absolute right-1 top-1 z-10">
+                          {/* Acciones del mensaje (aparecen al pasar el mouse). */}
+                          <div className="absolute right-1 top-1 z-10 flex items-center gap-1">
+                            {/* La descarga estaba solo dentro del menú de los tres
+                                puntitos y no la encontraba nadie. Acá queda a un clic
+                                para todo lo que tenga archivo. */}
+                            {attachUrl ? (
+                              <button
+                                type="button"
+                                aria-label="Descargar archivo"
+                                title="Descargar"
+                                onClick={() => void descargarMedia(attachUrl, downloadFilenameFor(m))}
+                                className={`grid h-6 w-6 place-items-center rounded-full opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 ${
+                                  m.from_me
+                                    ? "bg-black/20 text-white hover:bg-black/35"
+                                    : "bg-slate-900/10 text-slate-700 hover:bg-slate-900/20"
+                                }`}
+                              >
+                                <Download className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               aria-label="Opciones del mensaje"
@@ -4073,7 +4170,7 @@ export function ConversacionesClient({
                               <button
                                 type="button"
                                 className="p-0 border-0 bg-transparent cursor-zoom-in text-left"
-                                onClick={() => setLightboxUrl(attachUrl)}
+                                onClick={() => setLightbox({ url: attachUrl, nombre: downloadFilenameFor(m) })}
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
@@ -4106,12 +4203,26 @@ export function ConversacionesClient({
                                 Audio
                               </div>
                               {attachUrl ? (
-                                <audio
-                                  controls
-                                  src={attachUrl}
-                                  className="w-full max-w-[280px] h-9"
-                                  preload="metadata"
-                                />
+                                <>
+                                  <audio
+                                    controls
+                                    src={attachUrl}
+                                    className="w-full max-w-[280px] h-9"
+                                    preload="metadata"
+                                  />
+                                  {/* El reproductor del navegador esconde su propia
+                                      descarga (y en varios la deshabilita), así que
+                                      va una explícita. */}
+                                  <button
+                                    type="button"
+                                    onClick={() => void descargarMedia(attachUrl, downloadFilenameFor(m))}
+                                    className={`flex items-center gap-1 text-[11px] font-semibold underline-offset-2 hover:underline ${
+                                      m.from_me ? "text-white/90" : "text-[#2F6E71]"
+                                    }`}
+                                  >
+                                    <Download className="h-3 w-3" aria-hidden /> Descargar audio
+                                  </button>
+                                </>
                               ) : (
                                 <p className="whitespace-pre-wrap break-words text-sm opacity-90">
                                   {attachmentCaptionForDisplay(m.content) || "[audio]"}
@@ -4121,39 +4232,61 @@ export function ConversacionesClient({
                           ) : m.message_type === "document" || m.message_type === "video" ? (
                             <div className="space-y-2">
                               {attachUrl ? (
-                                <a
-                                  href={attachUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 no-underline transition-colors ${
+                                <div
+                                  className={`rounded-xl border px-3 py-2.5 ${
                                     m.from_me
-                                      ? "border-white/30 bg-white/20 hover:bg-white/30 text-white"
-                                      : "border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900"
+                                      ? "border-white/30 bg-white/20 text-white"
+                                      : "border-slate-200 bg-slate-50 text-slate-900"
                                   }`}
                                 >
-                                  <span className="text-2xl leading-none shrink-0 select-none" aria-hidden>
-                                    {m.message_type === "video" ? "▶️" : "📎"}
-                                  </span>
-                                  <span className="min-w-0 flex-1">
-                                    <span
-                                      className={`block text-[10px] font-bold uppercase tracking-wide ${
-                                        m.from_me ? "text-sky-100" : "text-slate-500"
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-2xl leading-none shrink-0 select-none" aria-hidden>
+                                      {m.message_type === "video" ? "▶️" : "📎"}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                      <span
+                                        className={`block text-[10px] font-bold uppercase tracking-wide ${
+                                          m.from_me ? "text-sky-100" : "text-slate-500"
+                                        }`}
+                                      >
+                                        {m.message_type === "video" ? "Video" : "Documento"}
+                                      </span>
+                                      <span className="block text-sm font-semibold break-words mt-0.5">
+                                        {displayFilenameForAttachment(m)}
+                                      </span>
+                                    </span>
+                                  </div>
+                                  {/* Antes toda la tarjeta era un enlace a la pestaña
+                                      nueva, y el navegador mostraba el PDF o el video
+                                      en vez de guardarlo: "descargar" quedaba en manos
+                                      del visor de turno. Ahora son dos acciones
+                                      separadas y explícitas. */}
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void descargarMedia(attachUrl, downloadFilenameFor(m))}
+                                      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                                        m.from_me
+                                          ? "bg-white/25 text-white hover:bg-white/35"
+                                          : "bg-[#4FAEB2] text-white hover:bg-[#3F8E91]"
                                       }`}
                                     >
-                                      {m.message_type === "video" ? "Video" : "Documento"}
-                                    </span>
-                                    <span className="block text-sm font-semibold break-words mt-0.5">
-                                      {displayFilenameForAttachment(m)}
-                                    </span>
-                                    <span
-                                      className={`block text-[11px] mt-1 ${
-                                        m.from_me ? "text-sky-100" : "text-slate-500"
+                                      <Download className="h-3.5 w-3.5" aria-hidden /> Descargar
+                                    </button>
+                                    <a
+                                      href={attachUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold no-underline transition-colors ${
+                                        m.from_me
+                                          ? "bg-white/15 text-white hover:bg-white/25"
+                                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                                       }`}
                                     >
-                                      Tocá para abrir o descargar
-                                    </span>
-                                  </span>
-                                </a>
+                                      Abrir
+                                    </a>
+                                  </div>
+                                </div>
                               ) : (
                                 <div>
                                   <div
@@ -4198,7 +4331,7 @@ export function ConversacionesClient({
                                     <button
                                       type="button"
                                       className="p-0 border-0 bg-transparent cursor-zoom-in text-left"
-                                      onClick={() => setLightboxUrl(parsed.url!)}
+                                      onClick={() => setLightbox({ url: parsed.url!, nombre: downloadFilenameFor(m) })}
                                     >
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
                                       <img

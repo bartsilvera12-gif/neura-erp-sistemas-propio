@@ -30,10 +30,8 @@ const ZONA_BORDE = 90;
 const VELOCIDAD_MAX = 22;
 const VELOCIDAD_MIN = 2;
 
-function useArrastreHorizontal() {
+function useBordesQueDesplazan() {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [arrastrando, setArrastrando] = useState(false);
-  const origen = useRef<{ x: number; scroll: number } | null>(null);
 
   /** Velocidad actual del desplazamiento automático. 0 = quieto. */
   const velocidad = useRef(0);
@@ -89,8 +87,7 @@ function useArrastreHorizontal() {
   const evaluarBorde = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const el = scrollRef.current;
-      // Mientras se arrastra manda la mano, no el borde.
-      if (!el || origen.current) return;
+      if (!el) return;
 
       const caja = el.getBoundingClientRect();
       const desdeIzq = e.clientX - caja.left;
@@ -125,48 +122,7 @@ function useArrastreHorizontal() {
   // Si el componente se va con el bucle andando, hay que cortarlo.
   useEffect(() => detener, [detener]);
 
-  const alApretar = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      // Sólo el botón principal, y nunca sobre un control: dentro de la tabla
-      // hay enlaces y botones que tienen que seguir funcionando.
-      if (e.button !== 0) return;
-      if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-      const el = scrollRef.current;
-      if (!el) return;
-      detener();
-      origen.current = { x: e.clientX, scroll: el.scrollLeft };
-    },
-    [detener]
-  );
-
-  const alMover = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const el = scrollRef.current;
-      const o = origen.current;
-      if (el && o) {
-        const dx = e.clientX - o.x;
-        if (!arrastrando && Math.abs(dx) < 4) return;
-        if (!arrastrando) setArrastrando(true);
-        el.scrollLeft = o.scroll - dx;
-        return;
-      }
-      evaluarBorde(e);
-    },
-    [arrastrando, evaluarBorde]
-  );
-
-  const alSoltar = useCallback(() => {
-    origen.current = null;
-    setArrastrando(false);
-  }, []);
-
-  const alSalir = useCallback(() => {
-    origen.current = null;
-    setArrastrando(false);
-    detener();
-  }, [detener]);
-
-  return { scrollRef, arrastrando, borde, alApretar, alMover, alSoltar, alSalir };
+  return { scrollRef, borde, alMover: evaluarBorde, alSalir: detener };
 }
 
 function formatDateTime(iso: string): string {
@@ -239,8 +195,7 @@ type ChatMessageRow = {
 };
 
 export default function FinalizedClosuresClient({ filterOptions }: { filterOptions: FinalizedFilterOptions }) {
-  const { scrollRef, arrastrando, borde, alApretar, alMover, alSoltar, alSalir } =
-    useArrastreHorizontal();
+  const { scrollRef, borde, alMover, alSalir } = useBordesQueDesplazan();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [queueId, setQueueId] = useState("");
@@ -581,9 +536,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
         {/*
           Once columnas no entran en ninguna pantalla, y buscar la barra de
           abajo para leer el comentario de un cierre es un trabajo que la tabla
-          te está haciendo hacer. Dos formas de correrla, y ninguna estorba a
-          la otra: acercar el cursor a un borde la desplaza sola, y arrastrar
-          la mueve como un mapa.
+          te está haciendo hacer. Acercar el cursor a un borde la desplaza sola.
         */}
         <div className="relative">
           {/* La sombra dice hacia dónde se está yendo, y que hay más. */}
@@ -595,11 +548,9 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           ) : null}
         <div
           ref={scrollRef}
-          onPointerDown={alApretar}
           onPointerMove={alMover}
-          onPointerUp={alSoltar}
           onPointerLeave={alSalir}
-          className={`overflow-x-auto ${arrastrando ? "cursor-grabbing select-none" : "cursor-grab"}`}
+          className="overflow-x-auto"
         >
           <table className="w-full min-w-[1000px] text-left text-sm">
             <thead className="border-b border-[#4FAEB2]/20 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/6 to-transparent text-xs font-semibold uppercase tracking-wide text-[#2F6E71]">

@@ -25,6 +25,7 @@ import { getPlanes } from "@/lib/planes/storage";
 import type { Cliente, TipoCliente, OrigenCliente } from "@/lib/clientes/types";
 import { ClienteDatosSifenReceptorForm } from "@/components/clientes/ClienteDatosSifenReceptorForm";
 import type { ClienteTipoServicioRow } from "@/lib/clientes/tipo-servicio-catalogo";
+import { formatTelefonoPy } from "@/lib/clientes/format-telefono";
 import { filasTiposDesdeSistemaEstatico, fetchTiposFormCliente } from "@/lib/clientes/fetch-tipos-servicio-form";
 import type { Plan } from "@/lib/planes/types";
 
@@ -42,20 +43,6 @@ export type ClienteNuevoFormProps = {
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
 const labelClass = "block text-xs font-medium uppercase tracking-wide text-slate-500 mb-1.5";
-
-/**
- * Normaliza un teléfono a la nomenclatura paraguaya `+595 9xx-xxx-xxx`.
- * Toma lo que tipee el asesor, deja solo dígitos, saca el 595 del país si vino, recorta a 9
- * dígitos locales (móvil PY) y los agrupa 3-3-3. Vacío ⇒ cadena vacía (no guarda basura).
- */
-function formatTelefonoPy(input: string): string {
-  let digits = (input || "").replace(/\D/g, "");
-  if (digits.startsWith("595")) digits = digits.slice(3);
-  digits = digits.slice(0, 9);
-  if (!digits) return "";
-  const g = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9)].filter(Boolean);
-  return `+595 ${g.join("-")}`;
-}
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (

@@ -28,6 +28,7 @@ import {
   type HistorialClienteFila,
 } from "@/lib/api/client";
 import { getFacturas, getSuscripciones } from "@/lib/facturacion/storage";
+import { formatTelefonoPy } from "@/lib/clientes/format-telefono";
 import { AnularFacturaButton } from "@/components/facturas/AnularFacturaButton";
 import { CondonarSaldoButton } from "@/components/facturas/CondonarSaldoButton";
 import { getMarketingTasks, createMarketingTask, updateTaskStatus } from "@/lib/marketing/storage";
@@ -695,6 +696,8 @@ export default function ClienteDetalleClient({
     let normalized = value;
     if (lower.includes(name) || type === "email") normalized = value.toLowerCase();
     else if (upper.includes(name)) normalized = value.toUpperCase();
+    // El nombre de una persona no lleva números (evita que se cuele un teléfono en el nombre).
+    if (name === "nombre_contacto") normalized = normalized.replace(/[0-9]/g, "");
     setForm((prev) => ({ ...prev, [name]: normalized }));
   }
 
@@ -1725,25 +1728,50 @@ export default function ClienteDetalleClient({
                   </select>
                 </div>
 
-                {form.tipo_cliente === "empresa" && (
-                  <div>
-                    <label className={labelClass}>Nombre de empresa</label>
-                    <input type="text" name="empresa" value={form.empresa} onChange={handleChange} className={`${inputClass} uppercase`} />
+                {/* Fila principal: nombre + documento tributario (RUC empresa / CI persona) */}
+                {form.tipo_cliente === "empresa" ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelClass}>Nombre de empresa</label>
+                      <input type="text" name="empresa" value={form.empresa} onChange={handleChange} className={`${inputClass} uppercase`} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>RUC</label>
+                      <input type="text" name="ruc" value={form.ruc} onChange={handleChange} className={inputClass} placeholder="00000000-0" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelClass}>Nombre completo</label>
+                      <input type="text" name="nombre_contacto" value={form.nombre_contacto} onChange={handleChange} className={`${inputClass} uppercase`} required />
+                    </div>
+                    <div>
+                      <label className={labelClass}>CI / Documento</label>
+                      <input type="text" name="documento" value={form.documento} onChange={handleChange} className={inputClass} />
+                    </div>
                   </div>
                 )}
 
+                {/* Contacto directo: persona de contacto (solo empresa) + teléfono con formato +595 */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {form.tipo_cliente === "empresa" ? (
+                    <div>
+                      <label className={labelClass}>Persona de contacto</label>
+                      <input type="text" name="nombre_contacto" value={form.nombre_contacto} onChange={handleChange} className={`${inputClass} uppercase`} required />
+                    </div>
+                  ) : null}
                   <div>
-                    <label className={labelClass}>{form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}</label>
-                    <input type="text" name="nombre_contacto" value={form.nombre_contacto} onChange={handleChange} className={`${inputClass} uppercase`} required />
-                  </div>
-                  <div>
-                    <label className={labelClass}>{form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}</label>
-                    {form.tipo_cliente === "empresa" ? (
-                      <input type="text" name="ruc" value={form.ruc} onChange={handleChange} className={inputClass} />
-                    ) : (
-                      <input type="text" name="documento" value={form.documento} onChange={handleChange} className={inputClass} />
-                    )}
+                    <label className={labelClass}>Teléfono de contacto</label>
+                    <input
+                      type="tel"
+                      name="telefono"
+                      inputMode="numeric"
+                      value={form.telefono}
+                      onChange={(e) => setForm((p) => ({ ...p, telefono: formatTelefonoPy(e.target.value) }))}
+                      placeholder="+595 9xx-xxx-xxx"
+                      className={inputClass}
+                    />
                   </div>
                 </div>
 
@@ -1770,26 +1798,9 @@ export default function ClienteDetalleClient({
               <section className="space-y-4">
                 <SectionTitle>Contacto</SectionTitle>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Teléfono principal</label>
-                    <input type="text" name="telefono" value={form.telefono} onChange={handleChange} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Teléfono secundario</label>
-                    <input type="text" name="telefono_secundario" value={form.telefono_secundario} onChange={handleChange} className={inputClass} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Email principal</label>
-                    <input type="email" name="email" value={form.email} onChange={handleChange} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Email secundario</label>
-                    <input type="email" name="email_secundario" value={form.email_secundario} onChange={handleChange} className={inputClass} />
-                  </div>
+                <div>
+                  <label className={labelClass}>Email</label>
+                  <input type="email" name="email" value={form.email} onChange={handleChange} className={inputClass} />
                 </div>
 
                 <div>
@@ -1919,7 +1930,7 @@ export default function ClienteDetalleClient({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Condición de pago</label>
                     <select
@@ -1935,18 +1946,6 @@ export default function ClienteDetalleClient({
                       <option value="60 DÍAS">60 días</option>
                       <option value="90 DÍAS">90 días</option>
                       <option value="MENSUAL">Mensual</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>Moneda preferida</label>
-                    <select
-                      name="moneda_preferida"
-                      value={form.moneda_preferida}
-                      onChange={(e) => setForm((p) => ({ ...p, moneda_preferida: e.target.value as "GS" | "USD" }))}
-                      className={inputClass}
-                    >
-                      <option value="GS">Guaraníes (GS)</option>
-                      <option value="USD">Dólares (USD)</option>
                     </select>
                   </div>
                   <div>

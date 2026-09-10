@@ -12,6 +12,7 @@ import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import type { Cliente } from "@/lib/clientes/types";
 import type { Factura } from "@/lib/gestion-clientes/types";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 // ── Estilos base ──────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ function formatFechaHora(iso?: string) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "America/Asuncion",
+    timeZone: TZ_PY,
   });
 }
 

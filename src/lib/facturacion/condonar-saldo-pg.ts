@@ -2,6 +2,7 @@ import "server-only";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { getConfigContable, generarAsientoEnTx, ContabilidadError, type AsientoLineaInput } from "@/lib/contabilidad/asientos-pg";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 /**
  * Condonación / incobrable del SALDO restante de una factura parcialmente pagada.
@@ -19,7 +20,7 @@ export type CondonarTipo = "condonado" | "incobrable";
 export interface CondonarResult { saldo_condonado: number; asiento_id: string | null; contabilizado: boolean }
 
 function hoyPY(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 export async function condonarSaldoFactura(

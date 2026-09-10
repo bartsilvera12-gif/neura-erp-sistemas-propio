@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 /**
  * GET /api/reportes/suscripciones
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     const ym = new Intl.DateTimeFormat("en-CA", {
       year: "numeric",
       month: "2-digit",
-      timeZone: "America/Asuncion",
+      timeZone: TZ_PY,
     })
       .format(new Date())
       .slice(0, 7);
@@ -196,7 +197,7 @@ export async function GET(request: NextRequest) {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-      timeZone: "America/Asuncion",
+      timeZone: TZ_PY,
     }).format(new Date());
     const diaCorte = parseInt(hoy.slice(8, 10), 10);
     const inicioMes = `${ym}-01`;

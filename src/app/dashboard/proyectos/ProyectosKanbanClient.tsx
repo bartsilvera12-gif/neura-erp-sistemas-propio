@@ -27,6 +27,7 @@ import { FechaSelect } from "@/components/ui/FechaSelect";
 import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 type EstadoRow = {
   id: string;
@@ -116,7 +117,7 @@ function fechaEntregaDe(p: ProyectoCard): string {
   const d = new Date(p.estado_actual_desde);
   if (!Number.isFinite(d.getTime())) return "";
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Asuncion",
+    timeZone: TZ_PY,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

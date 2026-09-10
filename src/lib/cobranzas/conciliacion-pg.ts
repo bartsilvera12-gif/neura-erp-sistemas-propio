@@ -4,6 +4,7 @@ import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { getConfigContable, generarAsientoEnTx, getAsientoConDetalles, ContabilidadError, type AsientoLineaInput } from "@/lib/contabilidad/asientos-pg";
 import { clienteDisplayNameSql } from "@/lib/clientes/display-name";
 import { resolverReferencia } from "@/lib/cobranzas/referencia-familiar";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 /**
  * Conciliación bancaria — transferencias pendientes de aprobación (SOLO transferencias).
@@ -340,7 +341,7 @@ export async function rechazarTransferencia(schemaRaw: string, empresaId: string
 
 /** Fecha de hoy (America/Asuncion) para la fecha contable de la reversión. */
 function hoyPY(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
 export interface AnularResult { asiento_reversion_id: string | null }

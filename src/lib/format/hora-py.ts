@@ -9,12 +9,33 @@
  * Regla: cualquier código que corra en el servidor y muestre una hora al
  * usuario tiene que pasar por acá, nunca por los getters locales de `Date`.
  *
- * Paraguay dejó de aplicar horario de verano en 2024 y quedó fijo en UTC-3,
- * pero igual se usa el nombre del huso y no un offset fijo: si eso cambiara,
- * `Intl` ya lo sabe y el código no.
+ * POR QUÉ UN OFFSET FIJO Y NO "America/Asuncion":
+ *
+ * Paraguay dejó de aplicar horario de verano en 2024 y quedó fijo en UTC-3. Ese
+ * cambio entró en la base de husos del mundo (tzdata) recién en la versión
+ * 2024b, de septiembre de 2024. Cualquier máquina con una versión anterior
+ * sigue creyendo la regla vieja —UTC-4 en invierno, UTC-3 de octubre a marzo— y
+ * de abril a septiembre muestra TODO una hora atrasado.
+ *
+ * No es teórico: una reunión guardada para las 09:00 se anunció en la campanita
+ * como "Hoy 08:00". El dato en la base estaba bien (12:00 UTC); el que se
+ * equivocaba era el servidor al leerlo. El Postgres de la VPS tiene el mismo
+ * problema: hoy responde -4 para Asunción.
+ *
+ * Confiar en el nombre del huso significa depender de que cada servidor, cada
+ * navegador y cada contenedor tengan la tabla al día, y no la tienen. El offset
+ * fijo no depende de nadie y hoy es, además, lo que dice la ley paraguaya.
+ *
+ * La contrapartida, dicha claro: si Paraguay volviera a mover el reloj, esto
+ * hay que cambiarlo a mano. Es un cambio de una línea y se sabe dónde está.
+ *
+ * (`Etc/GMT+3` es UTC-3: en los nombres `Etc/` el signo va al revés.)
  */
 
-export const TZ_PY = "America/Asuncion";
+export const TZ_PY = "Etc/GMT+3";
+
+/** El mismo huso como sufijo ISO, para armar fechas con `new Date("…T00:00:00-03:00")`. */
+export const OFFSET_PY = "-03:00";
 
 /** "10:00" en hora de Paraguay. */
 export function horaPY(iso: string): string {

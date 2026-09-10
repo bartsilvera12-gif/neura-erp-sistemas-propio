@@ -13,6 +13,7 @@ import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { assignmentWaitBadge, assignmentWaitBadgeClass } from "@/lib/chat/inbox-assignment-labels";
 import { ArrowLeftRight, Check, ChevronDown, Copy, Eye, Flame, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { TZ_PY } from "@/lib/format/hora-py";
 import {
   attachmentCaptionForDisplay,
   getErpAttachmentPublicUrl,
@@ -170,7 +171,7 @@ export default function MonitoreoPage() {
   const todayPY = useMemo(
     () =>
       new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Asuncion",
+        timeZone: TZ_PY,
         year: "numeric",
         month: "2-digit",
         day: "2-digit",

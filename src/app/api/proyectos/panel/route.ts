@@ -6,6 +6,7 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { tipoEsMixto, tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { msLaborables, MS_JORNADA } from "@/lib/proyectos/reloj-laboral";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 /**
  * GET /api/proyectos/panel — Panel GERENCIAL de proyectos.
@@ -39,7 +40,7 @@ async function fetchAll(
 }
 
 function ymEnAsuncion(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", timeZone: "America/Asuncion" })
+  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", timeZone: TZ_PY })
     .format(d)
     .slice(0, 7);
 }
@@ -49,7 +50,7 @@ function ymdEnAsuncion(d: Date): string {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    timeZone: "America/Asuncion",
+    timeZone: TZ_PY,
   }).format(d);
 }
 

@@ -6,6 +6,7 @@ import { RefreshCw, Search, X, ChevronRight, ExternalLink } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 import { FechaSelect } from "@/components/ui/FechaSelect";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 type TramoKey = "por_vencer" | "tramo_1" | "tramo_2" | "tramo_3";
 
@@ -888,7 +889,7 @@ function PromesaModal({
   onCancel: () => void;
   onConfirm: (fecha: string) => void;
 }) {
-  const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const [fecha, setFecha] = useState(hoyLocal);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={onCancel}>
@@ -995,7 +996,7 @@ function RegistrarPagoModal({
     file: File | null;
   }) => void;
 }) {
-  const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Asuncion", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const hoyLocal = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const [monto, setMonto] = useState(String(factura.saldo));
   const [fecha, setFecha] = useState(hoyLocal);
   const [bancoOrigen, setBancoOrigen] = useState("");

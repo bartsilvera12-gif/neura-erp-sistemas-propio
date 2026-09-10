@@ -3,6 +3,7 @@ import type { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { telefonoSignificativo } from "@/lib/telefono";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 type Sb = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
 
@@ -116,7 +117,7 @@ export function tramoDe(cuotasVencidas: number): TramoKey {
 /** Hoy en America/Asuncion como YYYY-MM-DD. */
 export function hoyAsuncionYmd(now: Date): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Asuncion",
+    timeZone: TZ_PY,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

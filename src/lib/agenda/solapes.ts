@@ -1,5 +1,6 @@
 import "server-only";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 export type CitaConflicto = {
   id: string;
@@ -61,7 +62,7 @@ export function mensajeConflicto(c: CitaConflicto): string {
     Number.isNaN(d.getTime())
       ? "?"
       : d.toLocaleString("es-PY", {
-          timeZone: "America/Asuncion",
+          timeZone: TZ_PY,
           day: "2-digit",
           month: "2-digit",
           hour: "2-digit",

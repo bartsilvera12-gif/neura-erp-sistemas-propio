@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireAgendaApiAccess } from "@/lib/agenda/agenda-auth";
+import { TZ_PY } from "@/lib/format/hora-py";
 
-const TZ = "America/Asuncion";
+const TZ = TZ_PY;
 
 /** Offset (local - UTC) en ms para un instante dado en la zona de negocio. */
 function tzOffsetMs(date: Date): number {

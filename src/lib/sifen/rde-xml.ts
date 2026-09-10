@@ -13,6 +13,7 @@ import {
 } from "./sifen-ambiente-test";
 import { SIFEN_EKUATIA_TARGET_NS, SIFEN_SIRECEP_DE_V150_XSD_FILE } from "./sifen-xsi-schema-location";
 import { escapeXml } from "./xml";
+import { TZ_PY } from "@/lib/format/hora-py";
 import {
   fechaEmisionCdc,
   generarCdcFacturaElectronica,
@@ -60,7 +61,7 @@ function montoRedondeo(n: number): string {
  * Zona usada en `dFeEmiDE` / `dFecFirma`. SET valida contra su reloj en Paraguay; usar `getHours()` del servidor
  * (p. ej. UTC en la nube) provoca error **1004 — La fecha y hora de la firma digital es adelantada**.
  */
-const SIFEN_FECHA_REFERENCIA_TZ = "America/Asuncion";
+const SIFEN_FECHA_REFERENCIA_TZ = TZ_PY;
 
 /**
  * Margen si el reloj del host va algunos segundos por delante del SET (misma causa 1004).

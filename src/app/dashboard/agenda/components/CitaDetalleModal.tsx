@@ -7,8 +7,9 @@ import { estadoStyle } from "@/app/dashboard/agenda/calendar-utils";
 import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import type { AgendaCitaEnriquecida, AgendaEstado } from "@/lib/agenda/types";
+import { TZ_PY } from "@/lib/format/hora-py";
 
-const TZ = "America/Asuncion";
+const TZ = TZ_PY;
 
 /** "vie 21/08" — el día, sin la hora. */
 function fmtDia(iso: string): string {

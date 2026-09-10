@@ -260,9 +260,11 @@ function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
         if (scale === 1 && !moved.current) onClose();
       }}
     >
+      {/* Franja degradada: los botones tienen que leerse sobre cualquier imagen —
+          con un comprobante de fondo blanco, un botón translúcido desaparecía. */}
       <div
-        className="absolute left-0 right-0 z-10 flex justify-end gap-2 px-3"
-        style={{ top: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+        className="absolute left-0 right-0 top-0 z-10 flex justify-end gap-2 bg-gradient-to-b from-black/85 via-black/50 to-transparent px-3 pb-8"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
       >
         <button
           type="button"
@@ -272,7 +274,7 @@ function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
           }}
           disabled={saving}
           aria-label="Descargar imagen"
-          className="grid h-10 min-w-10 place-items-center rounded-full bg-white/15 px-3 text-sm font-semibold text-white active:bg-white/25 disabled:opacity-50"
+          className="grid h-10 min-w-10 place-items-center rounded-full bg-black/70 px-4 text-sm font-semibold text-white shadow-lg ring-1 ring-white/40 backdrop-blur-md active:bg-black/90 disabled:opacity-60"
         >
           {saving ? "…" : "⬇︎ Guardar"}
         </button>
@@ -283,14 +285,17 @@ function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
             onClose();
           }}
           aria-label="Cerrar"
-          className="grid h-10 w-10 place-items-center rounded-full bg-white/15 text-xl text-white active:bg-white/25"
+          className="grid h-10 w-10 place-items-center rounded-full bg-black/70 text-xl text-white shadow-lg ring-1 ring-white/40 backdrop-blur-md active:bg-black/90"
         >
           ✕
         </button>
       </div>
       <div
         className="flex h-full w-full items-center justify-center overflow-hidden"
-        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top) + 4rem)",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 2.5rem)",
+        }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -315,10 +320,12 @@ function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
       </div>
       {scale === 1 ? (
         <p
-          className="pointer-events-none absolute left-0 right-0 text-center text-[11px] text-white/50"
+          className="pointer-events-none absolute left-0 right-0 flex justify-center"
           style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
         >
-          Pellizcá para ampliar · doble toque para zoom
+          <span className="rounded-full bg-black/70 px-3 py-1 text-[11px] text-white/90 ring-1 ring-white/20">
+            Pellizcá para ampliar · doble toque para zoom
+          </span>
         </p>
       ) : null}
     </div>

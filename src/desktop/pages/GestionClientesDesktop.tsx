@@ -705,6 +705,16 @@ function GestionClientesPageInner() {
   const [panelFiltrosFacturas, setPanelFiltrosFacturas] = useState(false);
   /** Evita carrera: al limpiar, `?cliente=` aún no se quitó y el efecto URL→estado reabría la ficha. */
   const omitirUrlASeleccion = useRef(false);
+  /**
+   * Qué cliente está abierto, para el efecto URL→estado.
+   *
+   * Va en un ref y no en las dependencias a propósito: `router.replace()` no
+   * actualiza `searchParams` en el acto —la App Router va al servidor por el
+   * payload—, así que si el efecto se dispara al cambiar `selected` lee el
+   * `?cliente=` VIEJO y vuelve a abrir el cliente anterior. Eso era "busco otro
+   * cliente y no cambia": cambiaba, y medio segundo después volvía solo.
+   */
+  const idAbierto = useRef<string | null>(null);
   const mapNombreTipoCatalogo = useMapNombreTipoServicioCatalogo(clientes);
 
   // Al seleccionar un cliente, consultamos si tiene suscripción activa (endpoint de facturación ya
@@ -748,6 +758,7 @@ function GestionClientesPageInner() {
   /** Al elegir cliente: misma API que la ficha (`/api/facturas?cliente_id=`) y filtros de período en blanco para no ocultar filas. */
   const selectCliente = useCallback(
     (c: Cliente) => {
+      idAbierto.current = c.id;
       setSelected(c);
       setFilters({
         fecha_desde: "",
@@ -772,14 +783,14 @@ function GestionClientesPageInner() {
       return;
     }
     if (!cid || clientes.length === 0) return;
-    if (selected?.id === cid) return;
+    if (idAbierto.current === cid) return;
     const c = clientes.find((x) => x.id === cid);
     if (!c) return;
     const t = window.setTimeout(() => {
       selectCliente(c);
     }, 0);
     return () => window.clearTimeout(t);
-  }, [searchParams, clientes, selected?.id, selectCliente]);
+  }, [searchParams, clientes, selectCliente]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value, type } = e.target;
@@ -809,6 +820,7 @@ function GestionClientesPageInner() {
 
   function handleClearLookup() {
     omitirUrlASeleccion.current = true;
+    idAbierto.current = null;
     setSelected(null);
     setFacturas([]);
     setFacturaCobroModal(null);

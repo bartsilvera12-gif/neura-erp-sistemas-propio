@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Neura ERP</string>
+	<string>Zentra ERP</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,13 +25,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Neura ERP usa la cámara para adjuntar fotos y videos a las conversaciones de WhatsApp.</string>
+	<string>Zentra ERP usa la cámara para adjuntar fotos y videos a las conversaciones de WhatsApp.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Neura ERP usa el micrófono para grabar notas de voz y enviarlas por WhatsApp desde el chat del asesor.</string>
+	<string>Zentra ERP usa el micrófono para grabar notas de voz y enviarlas por WhatsApp desde el chat del asesor.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Neura ERP guarda en tus fotos las imágenes que descargás desde las conversaciones.</string>
+	<string>Zentra ERP guarda en tus fotos las imágenes que descargás desde las conversaciones.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Neura ERP accede a tus fotos para adjuntar imágenes y videos a las conversaciones de WhatsApp.</string>
+	<string>Zentra ERP accede a tus fotos para adjuntar imágenes y videos a las conversaciones de WhatsApp.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

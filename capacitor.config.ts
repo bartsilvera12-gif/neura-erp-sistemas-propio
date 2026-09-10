@@ -11,11 +11,12 @@
  * de Push Notifications registra el token FCM y lo envía a POST /api/cc/agent/device-token;
  * al tocar la notificación abre `data.route` (/m/asesor/chat/[conversationId]).
  *
- * package / app name según lo reservado: py.com.neura.erp · "Neura ERP".
+ * package / app name: py.com.neura.erp · "Zentra ERP". El package queda con "neura"
+ * a propósito: está atado a Firebase, APNs y los perfiles de firma, y el usuario no lo ve.
  */
 const config = {
   appId: "py.com.neura.erp",
-  appName: "Neura ERP",
+  appName: "Zentra ERP",
   // webDir es requerido por Capacitor; con server.url (remoto) casi no se usa.
   webDir: "public",
   server: {

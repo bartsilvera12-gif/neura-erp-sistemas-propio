@@ -199,7 +199,11 @@ async function handle(req: NextRequest) {
         tokens,
         notification: { title, body },
         data: { conversationId: ev.conversation_id ?? "", route, type: ev.type, agentId: ev.agent_id ?? "" },
-        android: { priority: "high", ...(collapseId ? { collapseKey: collapseId } : {}) },
+        android: {
+          priority: "high",
+          notification: { channelId: "neura_inbox", sound: "noti" },
+          ...(collapseId ? { collapseKey: collapseId } : {}),
+        },
         ...(collapseId
           ? { apns: { headers: { "apns-collapse-id": collapseId } } }
           : {}),

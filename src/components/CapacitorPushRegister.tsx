@@ -31,6 +31,26 @@ export default function CapacitorPushRegister() {
 
         const { PushNotifications } = await import("@capacitor/push-notifications");
 
+        // Canal de notificación con tono propio (noti.mp3 en android/app/src/main/res/raw).
+        // En Android 8+ el sonido lo manda el canal, no el payload FCM. Es idempotente:
+        // Android ignora la llamada si el canal ya existe (para cambiar sonido hay que
+        // usar otro `id` — si algún día se cambia el mp3, bumpear a "neura_inbox_v2").
+        if (Capacitor.getPlatform() === "android") {
+          try {
+            await PushNotifications.createChannel({
+              id: "neura_inbox",
+              name: "Mensajes del inbox",
+              description: "Notificaciones de nuevos mensajes/leads del contact center",
+              sound: "noti",
+              importance: 4,
+              visibility: 1,
+              vibration: true,
+            });
+          } catch {
+            /* si falla la creación del canal, seguimos con el default del sistema */
+          }
+        }
+
         const regSub = await PushNotifications.addListener("registration", async (token) => {
           try {
             await fetchWithSupabaseSession("/api/cc/agent/device-token", {

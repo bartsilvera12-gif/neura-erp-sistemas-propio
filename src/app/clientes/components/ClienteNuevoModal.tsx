@@ -52,7 +52,7 @@ export default function ClienteNuevoModal({ open, onClose, onCreated, fromProspe
         role="dialog"
         aria-modal="true"
         aria-labelledby="cliente-nuevo-titulo"
-        className="relative flex h-[88vh] max-h-[920px] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15"
+        className="relative flex h-[88vh] max-h-[920px] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-[#4FAEB2]/10 ring-1 ring-[#4FAEB2]/15"
       >
         <span
           aria-hidden="true"

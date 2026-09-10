@@ -43,6 +43,20 @@ const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
 const labelClass = "block text-xs font-medium uppercase tracking-wide text-slate-500 mb-1.5";
 
+/**
+ * Normaliza un teléfono a la nomenclatura paraguaya `+595 9xx-xxx-xxx`.
+ * Toma lo que tipee el asesor, deja solo dígitos, saca el 595 del país si vino, recorta a 9
+ * dígitos locales (móvil PY) y los agrupa 3-3-3. Vacío ⇒ cadena vacía (no guarda basura).
+ */
+function formatTelefonoPy(input: string): string {
+  let digits = (input || "").replace(/\D/g, "");
+  if (digits.startsWith("595")) digits = digits.slice(3);
+  digits = digits.slice(0, 9);
+  if (!digits) return "";
+  const g = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9)].filter(Boolean);
+  return `+595 ${g.join("-")}`;
+}
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-4 flex items-center gap-2">
@@ -225,6 +239,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     let normalized = value;
     if (lower.includes(name) || type === "email") normalized = value.toLowerCase();
     else if (upper.includes(name)) normalized = value.toUpperCase();
+    // El nombre de una persona no lleva números (evita que se cuele un teléfono en el nombre).
+    if (name === "nombre_contacto") normalized = normalized.replace(/[0-9]/g, "");
     setForm((prev) => {
       const next = { ...prev, [name]: normalized };
       // Espejo: mientras el usuario no toque la razón social, sigue al nombre del cliente
@@ -494,19 +510,61 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               </div>
             </div>
 
-            {form.tipo_cliente === "empresa" && (
-              <div>
-                <label className={labelClass}>
-                  Nombre de empresa <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="empresa"
-                  value={form.empresa}
-                  onChange={handleChange}
-                  placeholder="Cómo conocés a la empresa"
-                  className={`${inputClass} uppercase`}
-                />
+            {/* Fila principal: nombre del cliente + su documento tributario (RUC empresa / CI persona) */}
+            {form.tipo_cliente === "empresa" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>
+                    Nombre de empresa <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="empresa"
+                    value={form.empresa}
+                    onChange={handleChange}
+                    placeholder="CÓMO CONOCÉS A LA EMPRESA"
+                    className={`${inputClass} uppercase`}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>RUC</label>
+                  <input
+                    type="text"
+                    name="ruc"
+                    value={form.ruc}
+                    onChange={handleChange}
+                    placeholder="00000000-0"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass}>
+                    Nombre completo <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="nombre_contacto"
+                    value={form.nombre_contacto}
+                    onChange={handleChange}
+                    placeholder="NOMBRE Y APELLIDO"
+                    className={`${inputClass} uppercase`}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>CI / Documento</label>
+                  <input
+                    type="text"
+                    name="documento"
+                    value={form.documento}
+                    onChange={handleChange}
+                    placeholder="CI sin puntos"
+                    className={inputClass}
+                  />
+                </div>
               </div>
             )}
 
@@ -527,43 +585,35 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               </select>
             </div>
 
+            {/* Contacto directo: persona de contacto (solo empresa) + teléfono con formato +595 */}
             <div className="grid gap-4 sm:grid-cols-2">
+              {form.tipo_cliente === "empresa" ? (
+                <div>
+                  <label className={labelClass}>
+                    Persona de contacto <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="nombre_contacto"
+                    value={form.nombre_contacto}
+                    onChange={handleChange}
+                    placeholder="NOMBRE Y APELLIDO"
+                    className={`${inputClass} uppercase`}
+                    required
+                  />
+                </div>
+              ) : null}
               <div>
-                <label className={labelClass}>
-                  {form.tipo_cliente === "empresa" ? "Persona de contacto" : "Nombre completo"}{" "}
-                  <span className="text-rose-500">*</span>
-                </label>
+                <label className={labelClass}>Teléfono de contacto</label>
                 <input
-                  type="text"
-                  name="nombre_contacto"
-                  value={form.nombre_contacto}
-                  onChange={handleChange}
-                  placeholder="Nombre y apellido"
-                  className={`${inputClass} uppercase`}
-                  required
+                  type="tel"
+                  name="telefono"
+                  inputMode="numeric"
+                  value={form.telefono}
+                  onChange={(e) => setForm((prev) => ({ ...prev, telefono: formatTelefonoPy(e.target.value) }))}
+                  placeholder="+595 9xx-xxx-xxx"
+                  className={inputClass}
                 />
-              </div>
-              <div>
-                <label className={labelClass}>{form.tipo_cliente === "empresa" ? "RUC" : "CI / Documento"}</label>
-                {form.tipo_cliente === "empresa" ? (
-                  <input
-                    type="text"
-                    name="ruc"
-                    value={form.ruc}
-                    onChange={handleChange}
-                    placeholder="00000000-0"
-                    className={inputClass}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    name="documento"
-                    value={form.documento}
-                    onChange={handleChange}
-                    placeholder="CI sin puntos"
-                    className={inputClass}
-                  />
-                )}
               </div>
             </div>
           </div>
@@ -612,54 +662,16 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
         <section className={sectionWrap}>
           <SectionTitle>Contacto</SectionTitle>
           <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Teléfono principal</label>
-                <input
-                  type="text"
-                  name="telefono"
-                  value={form.telefono}
-                  onChange={handleChange}
-                  placeholder="021-000000"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Teléfono secundario</label>
-                <input
-                  type="text"
-                  name="telefono_secundario"
-                  value={form.telefono_secundario}
-                  onChange={handleChange}
-                  placeholder="0981-000000"
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Email principal</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  placeholder="contacto@empresa.com"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Email secundario</label>
-                <input
-                  type="email"
-                  name="email_secundario"
-                  value={form.email_secundario}
-                  onChange={handleChange}
-                  placeholder="otro@empresa.com"
-                  className={inputClass}
-                />
-              </div>
+            <div>
+              <label className={labelClass}>Email</label>
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                placeholder="contacto@empresa.com"
+                className={inputClass}
+              />
             </div>
 
             <div>
@@ -771,7 +783,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
         <section className={sectionWrap}>
           <SectionTitle>Datos comerciales</SectionTitle>
           <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelClass}>Condición de pago</label>
                 <select
@@ -786,18 +798,6 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   <option value="60 DÍAS">60 días</option>
                   <option value="90 DÍAS">90 días</option>
                   <option value="MENSUAL">Mensual</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Moneda preferida</label>
-                <select
-                  name="moneda_preferida"
-                  value={form.moneda_preferida}
-                  onChange={(e) => setForm((prev) => ({ ...prev, moneda_preferida: e.target.value as "GS" | "USD" }))}
-                  className={inputClass}
-                >
-                  <option value="GS">Guaraníes (GS)</option>
-                  <option value="USD">Dólares (USD)</option>
                 </select>
               </div>
               <div>
@@ -823,21 +823,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               </div>
             </div>
 
+            {/* Origen del cliente: oculto por ahora (no aporta al alta). El valor se sigue
+                seteando internamente (MANUAL, o CRM cuando viene del funnel). */}
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Origen del cliente</label>
-                <select
-                  name="origen"
-                  value={form.origen}
-                  onChange={(e) => setForm((prev) => ({ ...prev, origen: e.target.value as OrigenCliente }))}
-                  className={inputClass}
-                  disabled={!!fromCrmId}
-                >
-                  <option value="MANUAL">Manual</option>
-                  <option value="CRM">CRM</option>
-                  <option value="VENTA">Venta</option>
-                </select>
-              </div>
               <div>
                 <label className={labelClass}>Estado inicial</label>
                 <select

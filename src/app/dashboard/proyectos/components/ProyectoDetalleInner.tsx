@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { createBrowserClientForSchema } from "@/lib/supabase";
@@ -757,6 +758,21 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
   const [menciones, setMenciones] = useState<CandidatoMencion[]>([]);
   /** Texto tipeado después del `@` que está abierto, o `null` si no hay ninguno. */
   const [consulta, setConsulta] = useState<string | null>(null);
+  /**
+   * Dónde dibujar el menú de menciones, en coordenadas de ventana.
+   *
+   * Iba `absolute bottom-full` dentro del formulario, y ahí lo recortaba el
+   * `overflow-hidden` del panel: con el composer cerca del borde de arriba, la
+   * lista salía cortada por la mitad. Colgado del `body` con posición fija no
+   * depende de ningún contenedor, y además puede abrirse hacia abajo cuando
+   * arriba no entra.
+   */
+  const [posMenu, setPosMenu] = useState<{
+    left: number;
+    top: number;
+    maxHeight: number;
+    haciaArriba: boolean;
+  } | null>(null);
 
   /**
    * Detecta un `@` en curso: el que está justo antes del cursor y todavía no se
@@ -782,6 +798,43 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
       .filter((c) => (q ? c.nombre.toLowerCase().includes(q) : true))
       .slice(0, 6);
   })();
+
+  const hayMenu = consulta != null;
+
+  useEffect(() => {
+    if (!hayMenu) {
+      setPosMenu(null);
+      return;
+    }
+    const recalcular = () => {
+      const area = areaRef.current;
+      if (!area) return;
+      const caja = area.getBoundingClientRect();
+      const MARGEN = 8;
+      const arriba = caja.top - MARGEN;
+      const abajo = window.innerHeight - caja.bottom - MARGEN;
+      // Se prefiere arriba —es donde estaba y no tapa lo que se está
+      // escribiendo—, pero si no entra se da vuelta en vez de recortarse.
+      const haciaArriba = arriba >= 160 || arriba >= abajo;
+      const alto = Math.max(120, Math.min(288, haciaArriba ? arriba : abajo));
+      const ancho = 256;
+      setPosMenu({
+        left: Math.max(MARGEN, Math.min(caja.left, window.innerWidth - ancho - MARGEN)),
+        top: haciaArriba ? Math.max(MARGEN, caja.top - MARGEN - alto) : caja.bottom + MARGEN,
+        maxHeight: alto,
+        haciaArriba,
+      });
+    };
+    recalcular();
+    // `true` para capturar el scroll de CUALQUIER contenedor, no sólo el de la
+    // ventana: el composer vive dentro de un panel que scrollea por su cuenta.
+    window.addEventListener("scroll", recalcular, true);
+    window.addEventListener("resize", recalcular);
+    return () => {
+      window.removeEventListener("scroll", recalcular, true);
+      window.removeEventListener("resize", recalcular);
+    };
+  }, [hayMenu]);
 
   function elegir(c: CandidatoMencion) {
     const area = areaRef.current;
@@ -875,8 +928,17 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         }}
         disabled={enviando}
       />
-      {sugeridos.length > 0 ? (
-        <ul className="absolute bottom-full left-0 z-30 mb-1 w-64 overflow-hidden rounded-xl border border-[#4FAEB2]/25 bg-white p-1 shadow-xl">
+      {sugeridos.length > 0 && posMenu && typeof document !== "undefined"
+        ? createPortal(
+        <ul
+          className="fixed w-64 overflow-y-auto overscroll-contain rounded-xl border border-[#4FAEB2]/25 bg-white p-1 shadow-xl"
+          /*
+            Cuelga del `body`, así que compite en el stacking context RAÍZ contra
+            el modal del detalle (llega a z-[110]). Mismo valor que el panel de
+            FechaSelect, por el mismo motivo.
+          */
+          style={{ left: posMenu.left, top: posMenu.top, maxHeight: posMenu.maxHeight, zIndex: 1000 }}
+        >
           {sugeridos.map((c) => (
             <li key={c.id}>
               <button
@@ -898,8 +960,10 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
               </button>
             </li>
           ))}
-        </ul>
-      ) : null}
+        </ul>,
+            document.body
+          )
+        : null}
       </div>
       {imagenes.length > 0 ? (
         <div className="flex flex-wrap gap-2">

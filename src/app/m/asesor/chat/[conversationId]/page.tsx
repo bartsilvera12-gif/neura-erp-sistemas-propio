@@ -12,6 +12,7 @@ import {
   type SupervisorAgentLoadRow,
 } from "@/lib/chat/chat-ops-actions";
 import {
+  getErpAttachmentCaption,
   getErpAttachmentPublicUrl,
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
@@ -123,6 +124,230 @@ function fmtPhone(p: string | null): string {
   return digits ? `+${digits}` : p;
 }
 
+/**
+ * Texto que acompaña a una imagen. Misma prioridad que `parseOutgoingImageMessage`
+ * del desktop: adjunto subido desde el ERP → caption del payload de WhatsApp →
+ * líneas del `content` que no sean la URL ni el placeholder. Sin esto la burbuja
+ * mostraba sólo la imagen, aunque la vista previa de la lista sí tuviera el texto.
+ */
+/**
+ * Visor de imagen a pantalla completa con zoom y descarga.
+ *
+ * El zoom del WebView está deshabilitado (Capacitor arranca con zoomingEnabled = NO),
+ * así que el pellizco se implementa acá: dos dedos escalan, un dedo arrastra cuando hay
+ * zoom, doble toque alterna 1x ↔ 2.5x. `touch-action: none` evita que el scroll de la
+ * página pelee con el gesto.
+ *
+ * Descargar: se baja la imagen y se abre la hoja de compartir de iOS, que ofrece
+ * "Guardar imagen". Funciona con los adjuntos del storage propio (CORS permitido para
+ * este origen). Los links de YCloud suelen no permitir CORS: en ese caso se abre la
+ * imagen para que el usuario la guarde manteniéndola presionada.
+ */
+function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  const [scale, setScale] = useState(1);
+  const [tx, setTx] = useState(0);
+  const [ty, setTy] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const pinch = useRef<{ dist: number; scale: number; mx: number; my: number; tx: number; ty: number } | null>(null);
+  const pan = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const moved = useRef(false);
+  const lastTap = useRef(0);
+
+  const reset = () => {
+    setScale(1);
+    setTx(0);
+    setTy(0);
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    moved.current = false;
+    if (e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      pinch.current = {
+        dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        scale,
+        mx: (a.clientX + b.clientX) / 2,
+        my: (a.clientY + b.clientY) / 2,
+        tx,
+        ty,
+      };
+      pan.current = null;
+    } else if (e.touches.length === 1) {
+      pan.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx, ty };
+    }
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinch.current) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const p = pinch.current;
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const next = Math.min(5, Math.max(1, (p.scale * dist) / p.dist));
+      const mx = (a.clientX + b.clientX) / 2;
+      const my = (a.clientY + b.clientY) / 2;
+      setScale(next);
+      setTx(p.tx + (mx - p.mx));
+      setTy(p.ty + (my - p.my));
+      moved.current = true;
+    } else if (e.touches.length === 1 && pan.current && scale > 1) {
+      const pt = pan.current;
+      setTx(pt.tx + (e.touches[0].clientX - pt.x));
+      setTy(pt.ty + (e.touches[0].clientY - pt.y));
+      moved.current = true;
+    }
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) pinch.current = null;
+    if (e.touches.length === 0) {
+      pan.current = null;
+      if (scale < 1.03) reset();
+      if (!moved.current) {
+        const now = Date.now();
+        if (now - lastTap.current < 280) {
+          // Doble toque: alterna zoom.
+          if (scale > 1) reset();
+          else setScale(2.5);
+          lastTap.current = 0;
+        } else {
+          lastTap.current = now;
+        }
+      }
+    }
+  };
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(url, { mode: "cors" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const ext = ((blob.type || "image/jpeg").split("/")[1] || "jpg").split(";")[0];
+      const file = new File([blob], `imagen-${Date.now()}.${ext}`, { type: blob.type || "image/jpeg" });
+      const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+      if (typeof nav.share === "function" && nav.canShare?.({ files: [file] })) {
+        await nav.share({ files: [file] });
+      } else {
+        const obj = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = obj;
+        a.download = file.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(obj), 4000);
+      }
+    } catch (err) {
+      // Cancelar la hoja de compartir no es un error.
+      if ((err as { name?: string } | null)?.name !== "AbortError") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/95"
+      style={{ touchAction: "none" }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Imagen ampliada"
+      onClick={() => {
+        // Tocar el fondo cierra sólo si no hay zoom ni se venía de un gesto.
+        if (scale === 1 && !moved.current) onClose();
+      }}
+    >
+      <div
+        className="absolute left-0 right-0 z-10 flex justify-end gap-2 px-3"
+        style={{ top: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+      >
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            void save();
+          }}
+          disabled={saving}
+          aria-label="Descargar imagen"
+          className="grid h-10 min-w-10 place-items-center rounded-full bg-white/15 px-3 text-sm font-semibold text-white active:bg-white/25 disabled:opacity-50"
+        >
+          {saving ? "…" : "⬇︎ Guardar"}
+        </button>
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onClose();
+          }}
+          aria-label="Cerrar"
+          className="grid h-10 w-10 place-items-center rounded-full bg-white/15 text-xl text-white active:bg-white/25"
+        >
+          ✕
+        </button>
+      </div>
+      <div
+        className="flex h-full w-full items-center justify-center overflow-hidden"
+        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt="Imagen ampliada"
+          draggable={false}
+          onClick={(ev) => ev.stopPropagation()}
+          className="max-h-full max-w-full object-contain"
+          style={{
+            // Mantener presionado → "Guardar en Fotos" es el menú nativo de iOS, y es la
+            // vía que funciona también con links de YCloud (no le aplica CORS). `select-none`
+            // puede apagarlo en iOS, así que va sin él y con el callout habilitado explícito.
+            WebkitTouchCallout: "default",
+            transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+            transition: pinch.current || pan.current ? "none" : "transform 160ms ease-out",
+          }}
+        />
+      </div>
+      {scale === 1 ? (
+        <p
+          className="pointer-events-none absolute left-0 right-0 text-center text-[11px] text-white/50"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+        >
+          Pellizcá para ampliar · doble toque para zoom
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function imageCaption(m: Msg): string | null {
+  const raw = (m.raw_payload ?? null) as Parameters<typeof getErpAttachmentCaption>[0];
+  const erp = getErpAttachmentCaption(raw);
+  if (erp && erp.trim()) return erp.trim();
+  // messageRoot desarma el envelope de YCloud/Meta; el desktop lee `raw.image` directo.
+  const img = (messageRoot(m.raw_payload)?.["image"] ?? m.raw_payload?.["image"]) as
+    | { caption?: unknown }
+    | undefined;
+  if (img && typeof img.caption === "string" && img.caption.trim()) return img.caption.trim();
+  const text = (m.content ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l &&
+        !/^https?:\/\//i.test(l) &&
+        !/^Imagen enviada:?/i.test(l) &&
+        !/^\[(imagen|image)\]$/i.test(l)
+    )
+    .join("\n");
+  return text || null;
+}
+
 function MessageBody({ m, onZoom }: { m: Msg; onZoom: (url: string) => void }) {
   if (m.message_type === "text") {
     return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
@@ -136,18 +361,24 @@ function MessageBody({ m, onZoom }: { m: Msg; onZoom: (url: string) => void }) {
     );
   }
   if (m.message_type === "image") {
-    return url ? (
-      <button
-        type="button"
-        onClick={() => onZoom(url)}
-        className="block border-0 bg-transparent p-0 text-left"
-        aria-label="Ampliar imagen"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt="imagen" className="max-w-[220px] rounded-lg" />
-      </button>
-    ) : (
-      <span className="italic opacity-80">[imagen]</span>
+    const caption = imageCaption(m);
+    return (
+      <div className="space-y-1">
+        {url ? (
+          <button
+            type="button"
+            onClick={() => onZoom(url)}
+            className="block border-0 bg-transparent p-0 text-left"
+            aria-label="Ampliar imagen"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="imagen" className="max-w-[220px] rounded-lg" />
+          </button>
+        ) : (
+          <span className="italic opacity-80">[imagen]</span>
+        )}
+        {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+      </div>
     );
   }
   if (m.message_type === "video") {
@@ -1128,35 +1359,7 @@ export default function MAsesorChatPage() {
         </div>
       ) : null}
 
-      {zoomUrl ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
-          role="presentation"
-          // En móvil se cierra tocando en cualquier lado, como WhatsApp — no sólo
-          // en el fondo. Igual va la ✕ visible, porque sin ella no es descubrible.
-          onClick={() => setZoomUrl(null)}
-          style={{
-            paddingTop: "env(safe-area-inset-top)",
-            paddingBottom: "env(safe-area-inset-bottom)",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setZoomUrl(null)}
-            aria-label="Cerrar"
-            className="absolute right-3 grid h-10 w-10 place-items-center rounded-full bg-white/15 text-xl text-white active:bg-white/25"
-            style={{ top: "calc(env(safe-area-inset-top) + 0.75rem)" }}
-          >
-            ✕
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={zoomUrl}
-            alt="Imagen ampliada"
-            className="max-h-full max-w-full object-contain"
-          />
-        </div>
-      ) : null}
+      {zoomUrl ? <ImageViewer url={zoomUrl} onClose={() => setZoomUrl(null)} /> : null}
 
       {tplOpen ? (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40" onClick={() => setTplOpen(false)}>

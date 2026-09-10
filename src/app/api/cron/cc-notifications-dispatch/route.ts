@@ -204,9 +204,14 @@ async function handle(req: NextRequest) {
           notification: { channelId: "neura_inbox", sound: "noti" },
           ...(collapseId ? { collapseKey: collapseId } : {}),
         },
-        ...(collapseId
-          ? { apns: { headers: { "apns-collapse-id": collapseId } } }
-          : {}),
+        apns: {
+          // iOS sólo reproduce sonido si el payload trae `aps.sound`; sin esto la
+          // notificación llegaba muda aunque el teléfono tuviera volumen. El sonido
+          // "noti" de Android no sirve acá: no existe en el bundle iOS, e iOS no acepta
+          // mp3 para notificaciones (sólo aiff/wav/caf). "default" no necesita archivo.
+          payload: { aps: { sound: "default" } },
+          ...(collapseId ? { headers: { "apns-collapse-id": collapseId } } : {}),
+        },
       });
       const toDeactivate: string[] = [];
       res.responses.forEach((r, i) => {

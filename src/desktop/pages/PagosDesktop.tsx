@@ -105,6 +105,9 @@ interface PagoCobrado {
   cliente_nombre: string;
   cliente_tipo_nombre: string;
   cliente_tipo_slug: string | null;
+  /** Tipo de servicio EFECTIVO (plan de la suscripción; fallback al cliente). Se filtra por esto. */
+  servicio_tipo_slug: string | null;
+  servicio_tipo_nombre: string;
   monto: number;
   fecha_pago: string;
   metodo_pago: string;
@@ -167,6 +170,11 @@ export default function PagosPage() {
               p.cliente_tipo_slug === null || p.cliente_tipo_slug === undefined
                 ? null
                 : String(p.cliente_tipo_slug).trim() || null,
+            servicio_tipo_slug:
+              p.servicio_tipo_slug === null || p.servicio_tipo_slug === undefined
+                ? null
+                : String(p.servicio_tipo_slug).trim() || null,
+            servicio_tipo_nombre: String(p.servicio_tipo_nombre ?? "").trim() || "Sin clasificar",
             monto: Number(p.monto) || 0,
             fecha_pago: toCalendarDateStr((p.fecha_pago as string) ?? "") || String(p.fecha_pago ?? "").slice(0, 10),
             metodo_pago: (p.metodo_pago as string) ?? "efectivo",
@@ -250,13 +258,15 @@ export default function PagosPage() {
     const q = filtroNombre.trim().toLowerCase();
     const porNombre = (p: PagoCobrado) =>
       q === "" || (p.cliente_nombre ?? "").toLowerCase().includes(q);
+    // Filtra por el SERVICIO efectivo del pago (plan de la suscripción; fallback cliente),
+    // así "Contable" trae solo cobros de planes Contables — cada área mide lo suyo.
     let base: PagoCobrado[];
     if (filtroTipoCliente === "") base = cobradosPorFecha;
     else if (filtroTipoCliente === "__sin__")
-      base = cobradosPorFecha.filter((p) => p.cliente_tipo_slug == null);
+      base = cobradosPorFecha.filter((p) => p.servicio_tipo_slug == null);
     else {
       const slug = filtroTipoCliente.toLowerCase();
-      base = cobradosPorFecha.filter((p) => p.cliente_tipo_slug === slug);
+      base = cobradosPorFecha.filter((p) => p.servicio_tipo_slug === slug);
     }
     return base.filter(porNombre);
   }, [cobradosPorFecha, filtroTipoCliente, filtroNombre]);
@@ -440,7 +450,7 @@ export default function PagosPage() {
             />
           </div>
           <div className="min-w-[14rem] flex-1">
-            <label className={LABEL_CLS}>Tipo de cliente</label>
+            <label className={LABEL_CLS}>Tipo de servicio</label>
             <select
               value={filtroTipoCliente}
               onChange={(e) => setFiltroTipoCliente(e.target.value)}
@@ -724,7 +734,7 @@ export default function PagosPage() {
               <table className="w-full min-w-[1040px] table-auto border-separate border-spacing-0 text-sm">
                 <thead className="bg-slate-50/80">
                   <tr>
-                    {["Factura", "Cliente", "Tipo de cliente", "Vendedor", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
+                    {["Factura", "Cliente", "Tipo de servicio", "Vendedor", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
                       (h) => (
                         <th
                           key={h}
@@ -755,9 +765,9 @@ export default function PagosPage() {
                       <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">
                         <span
                           className="inline-block max-w-[18rem] truncate 2xl:max-w-none"
-                          title={p.cliente_tipo_nombre}
+                          title={p.servicio_tipo_nombre}
                         >
-                          {p.cliente_tipo_nombre}
+                          {p.servicio_tipo_nombre}
                         </span>
                       </td>
                       <td className="px-3 py-3 text-sm text-slate-600 sm:px-4">

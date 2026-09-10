@@ -6,7 +6,12 @@ import { registrarPago } from "@/lib/pagos/registrar-pago";
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
-type RowFacturaPago = { id?: string; numero_factura?: string | null; cliente_id?: string | null };
+type RowFacturaPago = {
+  id?: string;
+  numero_factura?: string | null;
+  cliente_id?: string | null;
+  suscripcion_id?: string | null;
+};
 type RowClientePago = {
   id: string;
   tipo_cliente?: string | null;
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
     // para encadenar facturas.cliente_id -> clientes.id sin reconsultar.
     let query = supabase
       .from("pagos")
-      .select("*, facturas(id, numero_factura, cliente_id)")
+      .select("*, facturas(id, numero_factura, cliente_id, suscripcion_id)")
       .eq("empresa_id", auth.empresa_id)
       // Excluir pagos revertidos (transferencia anulada en Conciliación): no son plata cobrada.
       .neq("estado_contable", "revertido")
@@ -112,13 +117,48 @@ export async function GET(request: NextRequest) {
       const { rows: fData, error: fErr } = await selectInBatches<RowFacturaPago>(
         supabase,
         "facturas",
-        "id, numero_factura, cliente_id",
+        "id, numero_factura, cliente_id, suscripcion_id",
         "id",
         faltanUnicos
       );
       facturasFallbackErr = fErr;
       for (const f of fData) {
         if (f?.id) facturaPorFacturaId[String(f.id)] = f;
+      }
+    }
+
+    // 1b) Tipo de servicio EFECTIVO del pago = tipo del PLAN de la suscripción que lo generó
+    //     (factura → suscripción → plan → tipo_servicio). Así cada área (Contable, SaaS…) mide
+    //     su propio cobro: si un cliente Contable paga una cuota de un plan SaaS, ese cobro es de
+    //     SaaS. Fallback al tipo del cliente cuando el pago no viene de una suscripción.
+    const suscIds = [
+      ...new Set(Object.values(facturaPorFacturaId).map((f) => f.suscripcion_id).filter(Boolean)),
+    ] as string[];
+    const subToPlan: Record<string, string> = {};
+    if (suscIds.length > 0) {
+      const { rows: subRows } = await selectInBatches<{ id?: string; plan_id?: string | null }>(
+        supabase,
+        "suscripciones",
+        "id, plan_id",
+        "id",
+        suscIds
+      );
+      for (const s of subRows) {
+        if (s?.id && s.plan_id) subToPlan[String(s.id)] = String(s.plan_id);
+      }
+    }
+    const planToTipo: Record<string, string> = {};
+    const planIds = [...new Set(Object.values(subToPlan))];
+    if (planIds.length > 0) {
+      const { rows: planRows } = await selectInBatches<{ id?: string; tipo_servicio?: string | null }>(
+        supabase,
+        "planes",
+        "id, tipo_servicio",
+        "id",
+        planIds
+      );
+      for (const p of planRows) {
+        if (p?.id) planToTipo[String(p.id)] = String(p.tipo_servicio ?? "").trim().toLowerCase();
       }
     }
 
@@ -208,6 +248,16 @@ export async function GET(request: NextRequest) {
       const factura = fid ? facturaPorFacturaId[fid] ?? null : null;
       const clienteId = factura?.cliente_id ? String(factura.cliente_id) : null;
       const cliente = clienteId ? clienteMap[clienteId] ?? null : null;
+
+      // Tipo de servicio EFECTIVO: plan de la suscripción que generó el pago; si no hay
+      // suscripción/plan, cae al tipo del cliente. Es lo que mide "cuánto cobró cada área".
+      const subId = factura?.suscripcion_id ? String(factura.suscripcion_id) : null;
+      const planTipo = subId ? planToTipo[subToPlan[subId] ?? ""] ?? null : null;
+      const servicioSlug = (planTipo && planTipo.length > 0 ? planTipo : slugTipoCliente(cliente)) || null;
+      const servicioNombre = servicioSlug
+        ? etiquetaVisibleTipoServicio(servicioSlug, catalogMap)
+        : "Sin clasificar";
+
       return {
         ...p,
         factura_numero: factura?.numero_factura ?? "—",
@@ -218,6 +268,9 @@ export async function GET(request: NextRequest) {
         cliente_tipo_nombre: labelTipoCliente(cliente),
         /** Slug normalizado para filtrar en UI sin reconsultar. */
         cliente_tipo_slug: slugTipoCliente(cliente),
+        /** Tipo de servicio EFECTIVO (plan de la suscripción; fallback al cliente). Se filtra por esto. */
+        servicio_tipo_slug: servicioSlug,
+        servicio_tipo_nombre: servicioNombre,
         usuario_email: p.usuario_id ? usuarioMap[p.usuario_id] ?? "—" : "—",
         /** Nombre legible del usuario que registró el pago (fallback: email). */
         usuario_nombre: (() => {

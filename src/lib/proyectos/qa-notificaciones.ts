@@ -34,11 +34,18 @@ export async function notificarEntradaQA(
     qaUsuarioId: string;
     tituloProyecto: string;
     actorId: string | null;
+    /** Si esta persona quedó como responsable del ciclo, o sólo se le avisa. */
+    esResponsable?: boolean;
   }
 ): Promise<void> {
   try {
     if (!args.qaUsuarioId || args.qaUsuarioId === args.actorId) return;
     const ahora = new Date().toISOString();
+    // El aviso va a todo el equipo de QA, no sólo a quien quedó asignado: el
+    // texto tiene que ser cierto para los dos casos.
+    const cuerpo = args.esResponsable
+      ? "Se te asignó para control de calidad."
+      : "Entró a control de calidad.";
 
     const refrescar = async (): Promise<boolean> => {
       const { data: existente } = await sb
@@ -54,7 +61,7 @@ export async function notificarEntradaQA(
       if (!row) return false;
       await sb
         .from("usuario_notificaciones")
-        .update({ titulo: `Entró a QA · ${args.tituloProyecto}`, cuerpo: "Se te asignó para control de calidad.", created_at: ahora, actor_id: args.actorId })
+        .update({ titulo: `Entró a QA · ${args.tituloProyecto}`, cuerpo, created_at: ahora, actor_id: args.actorId })
         .eq("empresa_id", args.empresaId)
         .eq("id", row.id);
       return true;
@@ -67,7 +74,7 @@ export async function notificarEntradaQA(
       usuario_id: args.qaUsuarioId,
       tipo: "qa_novedad",
       titulo: `Entró a QA · ${args.tituloProyecto}`,
-      cuerpo: "Se te asignó para control de calidad.",
+      cuerpo,
       proyecto_id: args.proyectoId,
       actor_id: args.actorId,
       agrupadas: 1,

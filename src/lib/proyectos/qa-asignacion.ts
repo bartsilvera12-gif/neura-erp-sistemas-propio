@@ -8,15 +8,27 @@ import { QA_ETAPA_INICIAL } from "@/lib/proyectos/etapas-qa";
  * a quién asignar y se deja para elección manual desde el selector de responsable).
  */
 export async function resolverQaUnica(empresaId: string): Promise<string | null> {
+  const ids = await qaDeLaEmpresa(empresaId);
+  return ids.length === 1 ? ids[0] : null;
+}
+
+/**
+ * Todas las personas de QA activas de la empresa (`es_qa = true`).
+ *
+ * Se usa para avisar cuando un proyecto entra a QA. Va contra el flag y no
+ * contra una persona concreta a propósito: si mañana entra otra QA, alcanza con
+ * tildarla en Usuarios y empieza a recibir los avisos, sin tocar código.
+ */
+export async function qaDeLaEmpresa(empresaId: string): Promise<string[]> {
   const catalog = createServiceRoleClient();
-  const { data } = await catalog
+  const { data, error } = await catalog
     .from("usuarios")
     .select("id")
     .eq("empresa_id", empresaId)
     .eq("es_qa", true)
     .ilike("estado", "activo");
-  const ids = (data ?? []) as { id: string }[];
-  return ids.length === 1 ? ids[0].id : null;
+  if (error || !data) return [];
+  return (data as { id: string }[]).map((u) => u.id).filter(Boolean);
 }
 
 /**

@@ -4,7 +4,7 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { cerrarSegmentoHistorialAbierto, insertHistorialCambioEstado } from "@/lib/proyectos/historial-actions";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
-import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
+import { patchAsignacionQa, qaDeLaEmpresa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { notificarEntradaQA } from "@/lib/proyectos/qa-notificaciones";
 import { abrirRevisionQA, cerrarRevisionQA } from "@/lib/proyectos/qa-revisiones";
 import { esEstadoPausado, etapaDesdeEstado } from "@/lib/proyectos/estados-tablero";
@@ -244,15 +244,41 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       });
     }
 
-    // Aviso a la QA (no bloqueante: si falla, el cambio de estado ya quedó hecho).
-    if (qaAsignadoId) {
-      await notificarEntradaQA(sb, {
-        empresaId,
-        proyectoId: pid,
-        qaUsuarioId: qaAsignadoId,
-        tituloProyecto,
-        actorId: auth.usuarioCatalogId,
-      });
+    /*
+      Aviso a QA (no bloqueante: si falla, el cambio de estado ya quedó hecho).
+
+      Antes salía sólo cuando el proyecto se le asignaba sola a la QA en ese
+      mismo movimiento, y eso dejaba afuera el caso más común: un proyecto que
+      ya pasó por QA, volvió a Cambios y entra de nuevo. La segunda vez ya tiene
+      `qa_responsable_id` cargado, así que no había asignación y tampoco aviso.
+
+      Ahora avisa siempre que el proyecto ENTRA a QA, a todo el equipo de QA de
+      la empresa. Va contra el flag `es_qa` y no contra una persona concreta: si
+      mañana entra otra QA, alcanza con tildarla en Usuarios.
+    */
+    {
+      const entraAQa =
+        codigoNuevo === "qa" &&
+        String(estadoAnteriorCodigo ?? "").trim().toLowerCase() !== "qa";
+
+      if (entraAQa) {
+        const destinatarios = new Set(await qaDeLaEmpresa(empresaId));
+        // La responsable del proyecto puede no estar tildada como QA (se la
+        // eligió a mano en el selector): igual tiene que enterarse.
+        if (qaResponsableActual) destinatarios.add(qaResponsableActual);
+        if (qaAsignadoId) destinatarios.add(qaAsignadoId);
+
+        for (const qaUsuarioId of destinatarios) {
+          await notificarEntradaQA(sb, {
+            empresaId,
+            proyectoId: pid,
+            qaUsuarioId,
+            tituloProyecto,
+            actorId: auth.usuarioCatalogId,
+            esResponsable: qaUsuarioId === (qaAsignadoId ?? qaResponsableActual),
+          });
+        }
+      }
     }
 
     // Medición del tiempo de respuesta de QA. Va después del update y no

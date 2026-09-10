@@ -28,6 +28,7 @@ import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
 import { TZ_PY } from "@/lib/format/hora-py";
+import { BLOQUEO_RESPONSABLE_LABEL, esBloqueoResponsable } from "@/lib/proyectos/dashboard/config";
 
 type EstadoRow = {
   id: string;
@@ -58,6 +59,9 @@ type ProyectoCard = Record<string, unknown> & {
    */
   bloqueo_motivo?: string | null;
   pausa_motivo?: string | null;
+  /** Quién tiene que destrabarlo y qué se hace: sin eso la pausa es un depósito. */
+  bloqueo_responsable?: string | null;
+  bloqueo_proxima_accion?: string | null;
   cancelacion_motivo?: string | null;
   /**
    * Novedades de QA sin leer *para el usuario actual*. Es un dato por persona,
@@ -1893,6 +1897,24 @@ function MotivoMeta({ p }: { p: ProyectoCard }) {
           Sin cargar
         </span>
       )}
+      {/* Quién destraba y qué sigue. Sólo en las pausas: un proyecto cancelado
+          no se destraba. Los bloqueos viejos no lo tienen y ahí no se muestra. */}
+      {!esCancelado && (esBloqueoResponsable(p.bloqueo_responsable) || p.bloqueo_proxima_accion) ? (
+        <div className="mt-1 space-y-0.5 border-t border-amber-200/70 pt-1 text-[10px] leading-snug">
+          {esBloqueoResponsable(p.bloqueo_responsable) ? (
+            <span className="block">
+              <span className={`font-semibold ${paleta.rotulo}`}>Destraba:</span>{" "}
+              {BLOQUEO_RESPONSABLE_LABEL[p.bloqueo_responsable]}
+            </span>
+          ) : null}
+          {p.bloqueo_proxima_accion ? (
+            <span className="block">
+              <span className={`font-semibold ${paleta.rotulo}`}>Próxima acción:</span>{" "}
+              {p.bloqueo_proxima_accion}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

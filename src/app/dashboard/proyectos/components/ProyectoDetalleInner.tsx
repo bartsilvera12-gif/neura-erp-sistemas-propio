@@ -40,6 +40,10 @@ import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto"
 import { subestadosParaTipo } from "@/lib/proyectos/subestados-desarrollo";
 import { nombreClienteDisplay, nombreClienteContacto } from "@/lib/clientes/display-name";
 import { FechaSelect } from "@/components/ui/FechaSelect";
+import {
+  BLOQUEO_RESPONSABLES,
+  BLOQUEO_RESPONSABLE_LABEL,
+} from "@/lib/proyectos/dashboard/config";
 
 export type ProyectoCambioCliente = {
   id: string;
@@ -108,6 +112,8 @@ function firmaDatos(v: {
   projectManagerId: string;
   bloqueoTipo: string;
   bloqueoMotivo: string;
+  bloqueoResponsable: string;
+  bloqueoProximaAccion: string;
   cancelacionMotivo: string;
   prioridad: string;
   fechaPrometida: string;
@@ -123,6 +129,8 @@ function firmaDatos(v: {
     project_manager_id: v.projectManagerId,
     bloqueo_tipo: v.bloqueoTipo,
     bloqueo_motivo: v.bloqueoMotivo,
+    bloqueo_responsable: v.bloqueoResponsable,
+    bloqueo_proxima_accion: v.bloqueoProximaAccion,
     cancelacion_motivo: v.cancelacionMotivo,
     prioridad: v.prioridad,
     fecha_prometida: v.fechaPrometida,
@@ -1171,6 +1179,8 @@ export default function ProyectoDetalleInner({
    */
   const [bloqueoTipo, setBloqueoTipo] = useState("");
   const [bloqueoMotivo, setBloqueoMotivo] = useState("");
+  const [bloqueoResponsable, setBloqueoResponsable] = useState("");
+  const [bloqueoProximaAccion, setBloqueoProximaAccion] = useState("");
   const [cancelacionMotivo, setCancelacionMotivo] = useState("");
   const [prioridad, setPrioridad] = useState("normal");
   const [fechaPrometida, setFechaPrometida] = useState("");
@@ -1223,6 +1233,8 @@ export default function ProyectoDetalleInner({
     const pm = typeof p.project_manager_id === "string" ? p.project_manager_id : "";
     const bt = typeof p.bloqueo_tipo === "string" ? p.bloqueo_tipo : "";
     const bm = typeof p.bloqueo_motivo === "string" ? p.bloqueo_motivo : "";
+    const br = typeof p.bloqueo_responsable === "string" ? p.bloqueo_responsable : "";
+    const bpa = typeof p.bloqueo_proxima_accion === "string" ? p.bloqueo_proxima_accion : "";
     const cm = typeof p.cancelacion_motivo === "string" ? p.cancelacion_motivo : "";
     const prio = typeof p.prioridad === "string" ? p.prioridad : "normal";
     // Fecha Y hora: se recorta a lo que entiende `datetime-local`.
@@ -1248,6 +1260,8 @@ export default function ProyectoDetalleInner({
         projectManagerId: pm,
         bloqueoTipo: bt,
         bloqueoMotivo: bm,
+        bloqueoResponsable: br,
+        bloqueoProximaAccion: bpa,
         cancelacionMotivo: cm,
         prioridad: prio,
         fechaPrometida: fProm,
@@ -1548,6 +1562,8 @@ export default function ProyectoDetalleInner({
         projectManagerId,
         bloqueoTipo,
         bloqueoMotivo,
+        bloqueoResponsable,
+        bloqueoProximaAccion,
         cancelacionMotivo,
         prioridad,
         fechaPrometida,
@@ -1563,6 +1579,8 @@ export default function ProyectoDetalleInner({
       projectManagerId,
       bloqueoTipo,
       bloqueoMotivo,
+      bloqueoResponsable,
+      bloqueoProximaAccion,
       cancelacionMotivo,
       prioridad,
       fechaPrometida,
@@ -1602,6 +1620,9 @@ export default function ProyectoDetalleInner({
         project_manager_id: projectManagerId || null,
         bloqueo_tipo: bloqueoTipo || null,
         bloqueo_motivo: bloqueoMotivo.trim() === "" ? null : bloqueoMotivo.trim(),
+        bloqueo_responsable: bloqueoResponsable || null,
+        bloqueo_proxima_accion:
+          bloqueoProximaAccion.trim() === "" ? null : bloqueoProximaAccion.trim(),
         cancelacion_motivo: cancelacionMotivo.trim() === "" ? null : cancelacionMotivo.trim(),
         prioridad,
         // El input ya trae fecha Y hora local; se pasa a ISO para guardar el
@@ -2866,9 +2887,41 @@ export default function ProyectoDetalleInner({
                   <input
                     value={bloqueoMotivo}
                     onChange={(e) => setBloqueoMotivo(e.target.value)}
-                    placeholder="Ej.: falta contenido del cliente"
+                    placeholder="Ej.: falta acceso a Meta"
                     className={inputCls}
                     aria-label="Motivo del bloqueo"
+                  />
+                </div>
+
+                {/*
+                  Quién destraba y qué sigue. El motivo dice por qué está
+                  parado; estos dos dicen cómo sale, y son los que convierten un
+                  bloqueo en algo que alguien puede tomar. Al pausar desde el
+                  tablero son obligatorios; acá se pueden corregir después, que
+                  es lo que pasa cuando un bloqueo cambia de manos.
+                */}
+                <div className="block text-sm">
+                  <span className={labelCls}>Quién debe destrabarlo</span>
+                  <div className="mt-1.5">
+                    <FancySelect
+                      ariaLabel="Quién debe destrabarlo"
+                      value={bloqueoResponsable}
+                      onChange={setBloqueoResponsable}
+                      options={[
+                        { value: "", label: "Sin definir" },
+                        ...BLOQUEO_RESPONSABLES.map((r) => ({
+                          value: r,
+                          label: BLOQUEO_RESPONSABLE_LABEL[r],
+                        })),
+                      ]}
+                    />
+                  </div>
+                  <input
+                    value={bloqueoProximaAccion}
+                    onChange={(e) => setBloqueoProximaAccion(e.target.value)}
+                    placeholder="Próxima acción — ej.: solicitar acceso hoy"
+                    className={inputCls}
+                    aria-label="Próxima acción para destrabar"
                   />
                 </div>
 

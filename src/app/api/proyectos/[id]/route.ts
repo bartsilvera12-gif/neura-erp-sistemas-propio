@@ -31,6 +31,7 @@ import { puedeEliminarProyectos, requireProyectosApiAccess } from "@/lib/proyect
 import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { esBloqueoResponsable, tipoDesdeResponsable } from "@/lib/proyectos/dashboard/config";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
@@ -262,6 +263,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
       patch.bloqueo_tipo = t || null;
     }
+    // Los dos campos que convierten un bloqueo en algo accionable. Se pueden
+    // corregir después sin reabrir la pausa: al pausar son obligatorios (más
+    // abajo), pero un bloqueo que cambia de manos no debería obligar a
+    // despausar y volver a pausar para que se note.
+    if ("bloqueo_responsable" in body) {
+      if (body.bloqueo_responsable !== null && !esBloqueoResponsable(body.bloqueo_responsable)) {
+        return NextResponse.json(errorResponse("Responsable de destrabe inválido"), { status: 400 });
+      }
+      const r = body.bloqueo_responsable as string | null;
+      patch.bloqueo_responsable = r;
+      if (r && !("bloqueo_tipo" in body)) patch.bloqueo_tipo = tipoDesdeResponsable(r as never);
+    }
+    if ("bloqueo_proxima_accion" in body) {
+      const a =
+        typeof body.bloqueo_proxima_accion === "string" ? body.bloqueo_proxima_accion.trim() : "";
+      patch.bloqueo_proxima_accion = a || null;
+    }
     // Objetivo de SLV técnico del proyecto (catálogo `proyecto_slv_objetivos`).
     // En null se resuelve por el tipo de proyecto.
     if ("slv_objetivo_id" in body) {
@@ -450,6 +468,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             : null;
         const estabaPausado = typeof cur.pausado_at === "string" && !!cur.pausado_at;
 
+        /*
+          Un bloqueo no queda registrado con el motivo solo. Para poder
+          destrabarlo hace falta saber QUIÉN tiene que resolverlo y QUÉ es lo
+          próximo que hay que hacer; el "desde cuándo" ya lo pone `pausado_at`.
+          Sin esas dos cosas la columna Pausado es un depósito, y por eso los
+          tres se exigen acá y no sólo en el formulario: la pausa también se
+          dispara arrastrando la tarjeta.
+        */
+        const responsable = esBloqueoResponsable(body.bloqueo_responsable)
+          ? body.bloqueo_responsable
+          : null;
+        const proximaAccion =
+          typeof body.bloqueo_proxima_accion === "string" && body.bloqueo_proxima_accion.trim()
+            ? body.bloqueo_proxima_accion.trim()
+            : null;
+
         if (quierePausado) {
           if (!motivo) {
             return NextResponse.json(
@@ -457,6 +491,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
               { status: 400 }
             );
           }
+          if (!responsable) {
+            return NextResponse.json(
+              errorResponse("Indicá quién debe destrabar el proyecto"),
+              { status: 400 }
+            );
+          }
+          if (!proximaAccion) {
+            return NextResponse.json(
+              errorResponse("Indicá la próxima acción para destrabarlo"),
+              { status: 400 }
+            );
+          }
+          patch.bloqueo_responsable = responsable;
+          patch.bloqueo_proxima_accion = proximaAccion;
+          // La categoría gruesa se deduce del responsable en vez de pedirse
+          // aparte: son el mismo dato con distinto grano, y preguntarlo dos
+          // veces es la forma más segura de que queden en desacuerdo.
+          patch.bloqueo_tipo = tipoDesdeResponsable(responsable);
           patch.pausa_motivo = motivo;
           // El campo canónico es `bloqueo_motivo`, que es el que edita la
           // pestaña Datos y el que lee el dashboard. Pausar desde el tablero lo
@@ -476,6 +528,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           patch.pausado_at = null;
           patch.pausa_motivo = null;
           patch.bloqueo_motivo = null;
+          patch.bloqueo_responsable = null;
+          patch.bloqueo_proxima_accion = null;
+          patch.bloqueo_tipo = null;
         }
       } else if (typeof body.pausa_motivo === "string") {
         // Editar sólo el texto del motivo, sin tocar el reloj de una pausa ya abierta.

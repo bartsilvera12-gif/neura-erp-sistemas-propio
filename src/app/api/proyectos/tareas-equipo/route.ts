@@ -54,12 +54,14 @@ type ProyectoRow = {
   qa_etapa_at: string | null;
   pausado_at: string | null;
   pausa_motivo: string | null;
+  bloqueo_responsable: string | null;
+  bloqueo_proxima_accion: string | null;
   pausa_acumulada_ms: number | null;
   brief_data: unknown;
 };
 
 const PROYECTO_COLUMNS =
-  "id, titulo, cliente_id, tipo_id, estado_id, prioridad, responsable_comercial_id, responsable_tecnico_id, etapa_desarrollo, etapa_desarrollo_at, etapa_finalizado_at, tecnico_asignado_at, fecha_ingreso, fecha_prometida, bloqueado, qa_responsable_id, qa_asignado_at, qa_etapa, qa_etapa_at, pausado_at, pausa_motivo, pausa_acumulada_ms, brief_data";
+  "id, titulo, cliente_id, tipo_id, estado_id, prioridad, responsable_comercial_id, responsable_tecnico_id, etapa_desarrollo, etapa_desarrollo_at, etapa_finalizado_at, tecnico_asignado_at, fecha_ingreso, fecha_prometida, bloqueado, qa_responsable_id, qa_asignado_at, qa_etapa, qa_etapa_at, pausado_at, pausa_motivo, pausa_acumulada_ms, bloqueo_responsable, bloqueo_proxima_accion, brief_data";
 
 /**
  * Tiempo de trabajo acumulado de un proyecto, en milisegundos de horario laboral.
@@ -251,6 +253,8 @@ export async function GET(request: Request) {
       bloqueado: boolean;
       pausado: boolean;
       pausa_motivo: string | null;
+      bloqueo_responsable: string | null;
+      bloqueo_proxima_accion: string | null;
       pausado_at: string | null;
       /** Compromiso de esqueleto (sólo Proyecto Web en desarrollo). */
       esqueleto: "ok" | "por_vencer" | "vencido" | null;
@@ -350,6 +354,8 @@ export async function GET(request: Request) {
         bloqueado: p.bloqueado === true,
         pausado,
         pausa_motivo: p.pausa_motivo,
+        bloqueo_responsable: p.bloqueo_responsable,
+        bloqueo_proxima_accion: p.bloqueo_proxima_accion,
         pausado_at: p.pausado_at,
         esqueleto: ev.aplica ? ev.estado : null,
         esqueleto_restante_ms: ev.restanteMs,
@@ -498,6 +504,8 @@ export async function GET(request: Request) {
       fecha_prometida: string | null;
       pausado: boolean;
       pausa_motivo: string | null;
+      bloqueo_responsable: string | null;
+      bloqueo_proxima_accion: string | null;
       tecnico_nombre: string | null;
     };
     type GrupoQA = {
@@ -540,6 +548,8 @@ export async function GET(request: Request) {
         fecha_prometida: p.fecha_prometida,
         pausado: typeof p.pausado_at === "string" && !!p.pausado_at,
         pausa_motivo: p.pausa_motivo,
+        bloqueo_responsable: p.bloqueo_responsable,
+        bloqueo_proxima_accion: p.bloqueo_proxima_accion,
         tecnico_nombre: p.responsable_tecnico_id
           ? tecnicoNombre.get(p.responsable_tecnico_id) ?? null
           : null,

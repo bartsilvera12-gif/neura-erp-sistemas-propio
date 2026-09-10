@@ -18,6 +18,12 @@ import { formatearDuracion, enJornadas, msLaborables } from "@/lib/proyectos/rel
 import { textoEsqueleto } from "@/lib/proyectos/esqueleto";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import { FechaSelect } from "@/components/ui/FechaSelect";
+import {
+  BLOQUEO_RESPONSABLES,
+  BLOQUEO_RESPONSABLE_LABEL,
+  esBloqueoResponsable,
+  type BloqueoResponsable,
+} from "@/lib/proyectos/dashboard/config";
 
 type EstadoTableroDTO = { id: string; codigo: string; nombre: string; color: string };
 
@@ -39,6 +45,8 @@ type ActivoItem = {
   bloqueado: boolean;
   pausado: boolean;
   pausa_motivo: string | null;
+  bloqueo_responsable: string | null;
+  bloqueo_proxima_accion: string | null;
   pausado_at: string | null;
   esqueleto: "ok" | "por_vencer" | "vencido" | null;
   esqueleto_restante_ms: number | null;
@@ -79,6 +87,8 @@ type QAItem = {
   fecha_prometida: string | null;
   pausado: boolean;
   pausa_motivo: string | null;
+  bloqueo_responsable: string | null;
+  bloqueo_proxima_accion: string | null;
   tecnico_nombre: string | null;
 };
 
@@ -1202,6 +1212,8 @@ function ActivosSeccion({
                     metaExtra={p.tecnico_nombre ? `dev ${nombreCorto(p.tecnico_nombre)}` : null}
                     pausado={p.pausado}
                     pausaMotivo={p.pausa_motivo}
+                    bloqueoResponsable={p.bloqueo_responsable}
+                    bloqueoProximaAccion={p.bloqueo_proxima_accion}
                     pausadoAt={null}
                     bloqueado={false}
                     qaChip={null}
@@ -1314,6 +1326,8 @@ function ActivosSeccion({
                         metaExtra={null}
                         pausado={p.pausado}
                         pausaMotivo={p.pausa_motivo}
+                        bloqueoResponsable={p.bloqueo_responsable}
+                        bloqueoProximaAccion={p.bloqueo_proxima_accion}
                         pausadoAt={p.pausado_at}
                         bloqueado={p.bloqueado}
                         qaChip={
@@ -1482,6 +1496,8 @@ function ComercialSeccion({
                         metaExtra={null}
                         pausado={p.pausado}
                         pausaMotivo={p.pausa_motivo}
+                        bloqueoResponsable={p.bloqueo_responsable}
+                        bloqueoProximaAccion={p.bloqueo_proxima_accion}
                         pausadoAt={p.pausado_at}
                         bloqueado={p.bloqueado}
                         qaChip={
@@ -1533,6 +1549,8 @@ function FilaProyecto({
   metaExtra,
   pausado,
   pausaMotivo,
+  bloqueoResponsable,
+  bloqueoProximaAccion,
   pausadoAt,
   bloqueado,
   qaChip,
@@ -1567,6 +1585,8 @@ function FilaProyecto({
   metaExtra: string | null;
   pausado: boolean;
   pausaMotivo: string | null;
+  bloqueoResponsable: string | null;
+  bloqueoProximaAccion: string | null;
   pausadoAt: string | null;
   bloqueado: boolean;
   qaChip: { nombre: string; etapa: ProyectoEtapaQA | null } | null;
@@ -1739,7 +1759,8 @@ function FilaProyecto({
       </div>
 
       {pausado && !editandoPausa ? (
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
+        <div className="mt-2.5 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-amber-700">
             <IconPause />
             Pausado
@@ -1770,37 +1791,58 @@ function FilaProyecto({
           >
             Reanudar
           </button>
+          </div>
+          {/* Lo que convierte el bloqueo en algo que alguien puede tomar. Los
+              bloqueos viejos no lo tienen cargado y ahí no se muestra nada. */}
+          {esBloqueoResponsable(bloqueoResponsable) || bloqueoProximaAccion ? (
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-amber-200/70 pt-1.5 text-[10.5px] text-amber-900">
+              {esBloqueoResponsable(bloqueoResponsable) ? (
+                <span>
+                  <span className="font-semibold text-amber-700">Destraba:</span>{" "}
+                  {BLOQUEO_RESPONSABLE_LABEL[bloqueoResponsable]}
+                </span>
+              ) : null}
+              {bloqueoProximaAccion ? (
+                <span className="min-w-0">
+                  <span className="font-semibold text-amber-700">Próxima acción:</span>{" "}
+                  {bloqueoProximaAccion}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {editandoPausa ? (
-        <MotivoForm
+        <BloqueoForm
           motivoActual={pausaMotivo}
-          etiqueta="Motivo de la pausa"
-          placeholder="Ej: esperando contenido del cliente"
-          ayuda="Se ve en el tablero y va en el mensaje de WhatsApp. El contador de días se congela."
-          textoBoton="Pausar"
-          tono="amber"
-          icono={<IconPause />}
+          responsableActual={bloqueoResponsable}
+          proximaAccionActual={bloqueoProximaAccion}
+          textoBoton={pausado ? "Guardar" : "Pausar"}
           onCancel={() => setEditandoPausa(false)}
-          onSubmit={(motivo) => {
+          onSubmit={({ motivo, responsable, proximaAccion }) => {
             setEditandoPausa(false);
+            const datos = {
+              pausa_motivo: motivo,
+              bloqueo_responsable: responsable,
+              bloqueo_proxima_accion: proximaAccion,
+            };
             if (modo !== "qa" && estadoPausadoId) {
-              // Ya está en la columna Pausado (se está editando el motivo): sólo
-              // se guarda el texto. Mover al mismo estado no haría nada y
+              // Ya está en la columna Pausado (se está corrigiendo el bloqueo):
+              // sólo se guardan los datos. Mover al mismo estado no haría nada y
               // gastaría un request de más.
               if (pausado) {
-                void onPatch(id, { pausa_motivo: motivo });
+                void onPatch(id, datos);
                 return;
               }
               // Primero el estado (abre la pausa y congela el contador) y
-              // después el motivo, que es un dato del proyecto y no del estado.
+              // después los datos, que son del proyecto y no del estado.
               void Promise.resolve(onCambiarEstado?.(id, estadoPausadoId)).then(() =>
-                onPatch(id, { pausa_motivo: motivo })
+                onPatch(id, datos)
               );
               return;
             }
-            void onPatch(id, { pausado: true, pausa_motivo: motivo });
+            void onPatch(id, { pausado: true, ...datos });
           }}
         />
       ) : null}
@@ -1858,6 +1900,132 @@ function FilaProyecto({
  * y en los dos viaja fuera del tablero (WhatsApp en uno, la notificación en el
  * otro), así que dejarlo opcional lo vaciaría de sentido.
  */
+/**
+ * Formulario de bloqueo.
+ *
+ * Poner "Pausado" y un motivo dice que el proyecto está detenido, pero no
+ * alcanza para destrabarlo: falta quién tiene que resolverlo y qué es lo
+ * próximo que hay que hacer. Con esos dos datos el bloqueo deja de ser una
+ * etiqueta y pasa a ser algo que alguien puede tomar. El "desde cuándo" lo pone
+ * el sistema solo al abrir la pausa.
+ *
+ * Los tres son obligatorios, y el botón queda deshabilitado hasta que estén:
+ * es la única forma de que el hábito cambie.
+ */
+function BloqueoForm({
+  motivoActual,
+  responsableActual,
+  proximaAccionActual,
+  textoBoton,
+  onSubmit,
+  onCancel,
+}: {
+  motivoActual: string | null;
+  responsableActual: string | null;
+  proximaAccionActual: string | null;
+  textoBoton: string;
+  onSubmit: (v: { motivo: string; responsable: BloqueoResponsable; proximaAccion: string }) => void;
+  onCancel: () => void;
+}) {
+  const [motivo, setMotivo] = useState(motivoActual ?? "");
+  const [responsable, setResponsable] = useState<string>(
+    esBloqueoResponsable(responsableActual) ? responsableActual : ""
+  );
+  const [proximaAccion, setProximaAccion] = useState(proximaAccionActual ?? "");
+
+  const completo =
+    Boolean(motivo.trim()) && esBloqueoResponsable(responsable) && Boolean(proximaAccion.trim());
+
+  const input =
+    "w-full rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-[12px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200";
+  const etiqueta = "block text-[10px] font-bold uppercase tracking-wide text-amber-700";
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!esBloqueoResponsable(responsable)) return;
+        const m = motivo.trim();
+        const a = proximaAccion.trim();
+        if (m && a) onSubmit({ motivo: m, responsable, proximaAccion: a });
+      }}
+      className="mt-2.5 space-y-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5"
+    >
+      <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+        <IconPause />
+        Registrar el bloqueo
+      </span>
+
+      <div>
+        <label className={etiqueta} htmlFor="bloqueo-motivo">
+          Motivo
+        </label>
+        <input
+          id="bloqueo-motivo"
+          autoFocus
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Ej: falta acceso a Meta"
+          className={input}
+        />
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div>
+          <label className={etiqueta} htmlFor="bloqueo-responsable">
+            Quién debe destrabarlo
+          </label>
+          <select
+            id="bloqueo-responsable"
+            value={responsable}
+            onChange={(e) => setResponsable(e.target.value)}
+            className={input}
+          >
+            <option value="">Elegir…</option>
+            {BLOQUEO_RESPONSABLES.map((r) => (
+              <option key={r} value={r}>
+                {BLOQUEO_RESPONSABLE_LABEL[r]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={etiqueta} htmlFor="bloqueo-accion">
+            Próxima acción
+          </label>
+          <input
+            id="bloqueo-accion"
+            value={proximaAccion}
+            onChange={(e) => setProximaAccion(e.target.value)}
+            placeholder="Ej: solicitar acceso hoy"
+            className={input}
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-amber-700">
+          El contador de días se congela mientras esté pausado.
+        </span>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="ml-auto rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-700"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          disabled={!completo}
+          className="rounded-md bg-amber-500 px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-200"
+        >
+          {textoBoton}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function MotivoForm({
   motivoActual,
   etiqueta,

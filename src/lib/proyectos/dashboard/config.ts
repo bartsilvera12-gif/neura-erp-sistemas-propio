@@ -91,6 +91,49 @@ export const BLOQUEO_TIPOS = ["cliente", "interno", "tercero"] as const;
 export type BloqueoTipo = (typeof BLOQUEO_TIPOS)[number];
 
 /**
+ * Quién tiene que destrabar el proyecto.
+ *
+ * Va como ROL y no como persona a propósito: la mitad de los bloqueos los traba
+ * el cliente o un proveedor, que no son usuarios del sistema. Y al ser una
+ * lista cerrada se puede contar —"cuántos proyectos están frenados por el
+ * cliente"—, que es lo que convierte un bloqueo en algo gestionable.
+ */
+export const BLOQUEO_RESPONSABLES = [
+  "cliente",
+  "pm",
+  "programador",
+  "qa",
+  "comercial",
+  "tercero",
+] as const;
+export type BloqueoResponsable = (typeof BLOQUEO_RESPONSABLES)[number];
+
+export const BLOQUEO_RESPONSABLE_LABEL: Record<BloqueoResponsable, string> = {
+  cliente: "Cliente",
+  pm: "PM",
+  programador: "Programador",
+  qa: "QA",
+  comercial: "Comercial",
+  tercero: "Proveedor / Tercero",
+};
+
+/**
+ * La categoría gruesa que ya leen el dashboard y los reportes, deducida del
+ * responsable. Se deriva en vez de pedirse: son el mismo dato con distinto
+ * grano, y preguntarlo dos veces es la forma más segura de que queden en
+ * desacuerdo.
+ */
+export function tipoDesdeResponsable(r: BloqueoResponsable): BloqueoTipo {
+  if (r === "cliente") return "cliente";
+  if (r === "tercero") return "tercero";
+  return "interno";
+}
+
+export function esBloqueoResponsable(v: unknown): v is BloqueoResponsable {
+  return typeof v === "string" && (BLOQUEO_RESPONSABLES as readonly string[]).includes(v);
+}
+
+/**
  * Categorías que se MUESTRAN.
  *
  * Suma "pausa" a las tres que se cargan a mano. Un proyecto parado en la

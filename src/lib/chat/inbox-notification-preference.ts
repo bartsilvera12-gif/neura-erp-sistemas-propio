@@ -3,6 +3,8 @@
  * Persistencia solo en el navegador (localStorage), por usuario/máquina.
  */
 
+import { obtenerUrlTonoActual } from "@/lib/notificaciones/tono-preferencia";
+
 const STORAGE_KEY = "neura_erp_inbox_notification_sound";
 
 export function readInboxNotificationSoundEnabled(): boolean {
@@ -25,11 +27,11 @@ export function writeInboxNotificationSoundEnabled(enabled: boolean): void {
   }
 }
 
-/** Tono de notificación del inbox (archivo /sounds/noti.mp3). */
+/** Tono de notificación del inbox (usa el tono elegido en la campanita). */
 export function playInboxNotificationBeep(): void {
   if (typeof window === "undefined") return;
   try {
-    const audio = new Audio("/sounds/noti.mp3");
+    const audio = new Audio(obtenerUrlTonoActual());
     audio.volume = 0.7;
     void audio.play().catch(() => {});
   } catch {

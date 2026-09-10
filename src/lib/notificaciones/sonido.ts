@@ -1,17 +1,15 @@
 /**
  * Sonidos de aviso del ERP: campanita general, recordatorio de reunión y
- * chat de cliente. Se reproduce el archivo /sounds/noti.mp3 servido desde
- * public/, el mismo tono unificado del inbox — así el operador reconoce el
- * aviso venga de donde venga.
+ * chat de cliente. Reproduce el tono elegido por el operador (12 opciones
+ * personalizables desde el dropdown de la campanita); default: Tono 1.
  *
  * `prepararSonidos()` se llama al montar el layout para desbloquear la
- * reproducción con el primer gesto (algunos navegadores/WebViews bloquean
- * audio sin interacción previa). No mantiene AudioContext propio: HTMLAudio
- * ya maneja la política de autoplay con el mismo gate del gesto.
+ * reproducción con el primer gesto (WebViews / autoplay policies).
  */
 
+import { obtenerUrlTonoActual } from "@/lib/notificaciones/tono-preferencia";
+
 const STORAGE_KEY = "neura_erp_proyectos_notification_sound";
-const SOUND_URL = "/sounds/noti.mp3";
 
 export function leerSonidoActivado(): boolean {
   if (typeof window === "undefined") return true;
@@ -33,19 +31,20 @@ export function escribirSonidoActivado(activado: boolean): void {
   }
 }
 
-// Elemento único reutilizado: evita crear un Audio por aviso y permite que
-// avisos casi simultáneos no se pisen entre sí (el segundo reinicia el clip).
-let audioCompartido: HTMLAudioElement | null = null;
+// Cache de un HTMLAudioElement por URL para no crear uno por aviso. Al cambiar
+// de tono en la config, la próxima llamada carga el nuevo y descarta el viejo.
+let audioActual: { url: string; el: HTMLAudioElement } | null = null;
 
-function obtenerAudio(): HTMLAudioElement | null {
+function obtenerAudio(url: string): HTMLAudioElement | null {
   if (typeof window === "undefined") return null;
   try {
-    if (!audioCompartido) {
-      audioCompartido = new Audio(SOUND_URL);
-      audioCompartido.preload = "auto";
-      audioCompartido.volume = 0.8;
+    if (!audioActual || audioActual.url !== url) {
+      const el = new Audio(url);
+      el.preload = "auto";
+      el.volume = 0.8;
+      audioActual = { url, el };
     }
-    return audioCompartido;
+    return audioActual.el;
   } catch {
     return null;
   }
@@ -60,7 +59,7 @@ function obtenerAudio(): HTMLAudioElement | null {
 export function prepararSonidos(): void {
   if (typeof window === "undefined") return;
   const desbloquear = () => {
-    const a = obtenerAudio();
+    const a = obtenerAudio(obtenerUrlTonoActual());
     if (!a) return;
     const volPrev = a.volume;
     a.volume = 0;
@@ -83,7 +82,7 @@ export function prepararSonidos(): void {
 
 function reproducir(): void {
   if (!leerSonidoActivado()) return;
-  const a = obtenerAudio();
+  const a = obtenerAudio(obtenerUrlTonoActual());
   if (!a) return;
   try {
     a.currentTime = 0;

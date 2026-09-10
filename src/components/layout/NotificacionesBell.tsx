@@ -33,6 +33,7 @@ import {
   reproducirSonidoReunion,
   reproducirSonidoConversacion,
   prepararSonidos,
+  probarSonido,
 } from "@/lib/notificaciones/sonido";
 import {
   TONOS,
@@ -361,14 +362,11 @@ export default function NotificacionesBell() {
   const elegirTono = useCallback((id: string) => {
     escribirTonoSeleccionado(id);
     setTonoSel(id);
-    // Previsualiza el tono elegido para que la persona escuche lo que guardó.
+    // Previsualiza con el MISMO elemento que después usa la campanita, y no con
+    // uno descartable: así el clic que elige el tono es también el gesto que lo
+    // desbloquea, y el primer aviso real ya suena sin depender de nada más.
     try {
-      const url = TONOS.find((t) => t.id === id)?.url;
-      if (url) {
-        const a = new Audio(url);
-        a.volume = 0.8;
-        void a.play().catch(() => {});
-      }
+      probarSonido();
     } catch {
       /* ignore */
     }

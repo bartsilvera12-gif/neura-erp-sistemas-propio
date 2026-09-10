@@ -31,6 +31,17 @@ export function escribirSonidoActivado(activado: boolean): void {
   }
 }
 
+/**
+ * Volumen de trabajo, como CONSTANTE y no leído del elemento.
+ *
+ * Antes el desbloqueo hacía `volPrev = a.volume` → `a.volume = 0` → play() →
+ * restaurar en el `.then()`. Con dos clics seguidos —o sea, siempre— el segundo
+ * leía el volumen que el primero ya había puesto en 0 y lo "restauraba" a 0. El
+ * elemento quedaba mudo para siempre, sin ningún error: la notificación
+ * llegaba, `play()` resolvía bien, y no se escuchaba nada.
+ */
+const VOLUMEN = 0.8;
+
 // Cache de un HTMLAudioElement por URL para no crear uno por aviso. Al cambiar
 // de tono en la config, la próxima llamada carga el nuevo y descarta el viejo.
 let audioActual: { url: string; el: HTMLAudioElement } | null = null;
@@ -41,10 +52,15 @@ function obtenerAudio(url: string): HTMLAudioElement | null {
     if (!audioActual || audioActual.url !== url) {
       const el = new Audio(url);
       el.preload = "auto";
-      el.volume = 0.8;
+      el.volume = VOLUMEN;
       audioActual = { url, el };
     }
-    return audioActual.el;
+    const el = audioActual.el;
+    // Cinturón: si algo lo dejó mudo, se corrige antes de cada uso. Es barato y
+    // es la diferencia entre un aviso que se oye y uno que no.
+    el.muted = false;
+    if (el.volume !== VOLUMEN) el.volume = VOLUMEN;
+    return el;
   } catch {
     return null;
   }
@@ -56,26 +72,45 @@ function obtenerAudio(url: string): HTMLAudioElement | null {
  * un play()+pause() silencioso en el primer pointerdown/keydown para que los
  * avisos posteriores suenen sin fricción.
  */
+let desbloqueando = false;
+let armado = false;
+
 export function prepararSonidos(): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || armado) return;
+  armado = true;
+
   const desbloquear = () => {
+    // Sin esto, dos clics seguidos se pisan: el segundo entra mientras el
+    // primero todavía tiene el elemento en silencio.
+    if (desbloqueando) return;
+    desbloqueando = true;
+
     const a = obtenerAudio(obtenerUrlTonoActual());
-    if (!a) return;
-    const volPrev = a.volume;
-    a.volume = 0;
+    if (!a) {
+      desbloqueando = false;
+      return;
+    }
+    // Se silencia con `muted` y no bajando el volumen: es un booleano, no un
+    // valor que haya que acordarse de restaurar al número correcto.
+    a.muted = true;
     void a
       .play()
       .then(() => {
         a.pause();
         a.currentTime = 0;
-        a.volume = volPrev;
         window.removeEventListener("pointerdown", desbloquear);
         window.removeEventListener("keydown", desbloquear);
       })
       .catch(() => {
-        a.volume = volPrev;
+        // Sigue armado: el próximo gesto vuelve a intentar.
+      })
+      .finally(() => {
+        a.muted = false;
+        a.volume = VOLUMEN;
+        desbloqueando = false;
       });
   };
+
   window.addEventListener("pointerdown", desbloquear, { passive: true });
   window.addEventListener("keydown", desbloquear);
 }
@@ -86,9 +121,28 @@ function reproducir(): void {
   if (!a) return;
   try {
     a.currentTime = 0;
-    void a.play().catch(() => {});
-  } catch {
-    /* Sin audio disponible: el aviso igual llegó y se ve en el panel. */
+    void a.play().catch((e: unknown) => {
+      // Se registra en vez de tragarse el error. Un aviso que no suena y no
+      // deja rastro es imposible de diagnosticar después: fue exactamente lo
+      // que pasó acá.
+      console.warn("[sonido] no se pudo reproducir el aviso", e);
+    });
+  } catch (e) {
+    console.warn("[sonido] no se pudo reproducir el aviso", e);
+  }
+}
+
+/** Reproduce el tono elegido, para probarlo desde la configuración. */
+export function probarSonido(): void {
+  const a = obtenerAudio(obtenerUrlTonoActual());
+  if (!a) return;
+  try {
+    a.currentTime = 0;
+    void a.play().catch((e: unknown) => {
+      console.warn("[sonido] no se pudo reproducir la prueba", e);
+    });
+  } catch (e) {
+    console.warn("[sonido] no se pudo reproducir la prueba", e);
   }
 }
 

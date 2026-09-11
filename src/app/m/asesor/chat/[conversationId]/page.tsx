@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { getStickerFavoritos, toggleStickerFavorito } from "@/lib/chat/sticker-favorites";
 import {
   assignConversationToAgent,
   changeConversationQueue,
@@ -40,9 +41,10 @@ type Msg = {
 type Pending = {
   tempId: string;
   status: "sending" | "error";
-  kind: "text" | "audio" | "file";
+  kind: "text" | "audio" | "file" | "sticker";
   content: string;
   file?: File;
+  stickerUrl?: string;
 };
 
 /** Raíz del mensaje dentro del raw_payload (envelope YCloud o Meta directo). */
@@ -355,7 +357,17 @@ function imageCaption(m: Msg): string | null {
   return text || null;
 }
 
-function MessageBody({ m, onZoom }: { m: Msg; onZoom: (url: string) => void }) {
+function MessageBody({
+  m,
+  onZoom,
+  favStickers,
+  onToggleFav,
+}: {
+  m: Msg;
+  onZoom: (url: string) => void;
+  favStickers: string[];
+  onToggleFav: (url: string) => void;
+}) {
   if (m.message_type === "text") {
     return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
   }
@@ -392,6 +404,11 @@ function MessageBody({ m, onZoom }: { m: Msg; onZoom: (url: string) => void }) {
     // Los stickers de WhatsApp son WebP (estáticos o animados), que el WebView de iOS
     // muestra directo. Usan la misma URL que las imágenes: la copia estable del storage
     // cuando existe, o el link de YCloud. Si no carga, queda el texto de respaldo.
+    // Sólo los que tienen copia propia se pueden guardar: son los únicos reenviables.
+    // Se usa una estrella y no "mantener presionado", porque ese gesto en iOS abre el
+    // menú nativo de "Guardar en Fotos".
+    const stable = getErpAttachmentPublicUrl(m.raw_payload);
+    const fav = !!stable && favStickers.includes(stable);
     return url ? (
       <span className="block">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -407,6 +424,16 @@ function MessageBody({ m, onZoom }: { m: Msg; onZoom: (url: string) => void }) {
           }}
         />
         <span className="hidden italic opacity-80">[sticker]</span>
+        {stable ? (
+          <button
+            type="button"
+            onClick={() => onToggleFav(stable)}
+            aria-label={fav ? "Quitar de favoritos" : "Guardar en favoritos"}
+            className="mt-1 text-[11px] font-semibold opacity-80 active:opacity-100"
+          >
+            {fav ? "★ Favorito" : "☆ Guardar"}
+          </button>
+        ) : null}
       </span>
     ) : (
       <span className="italic opacity-80">[sticker]</span>
@@ -496,6 +523,15 @@ export default function MAsesorChatPage() {
   const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
   const swipeStart = useRef<{ x: number; y: number; locked: boolean } | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  /** Pestaña del panel del botón 😊: emojis o stickers favoritos. */
+  const [emojiTab, setEmojiTab] = useState<"emoji" | "sticker">("emoji");
+  const [favStickers, setFavStickers] = useState<string[]>([]);
+  useEffect(() => {
+    setFavStickers(getStickerFavoritos());
+  }, []);
+  const toggleFavSticker = useCallback((url: string) => {
+    setFavStickers(toggleStickerFavorito(url));
+  }, []);
   const [micSupported, setMicSupported] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
@@ -695,6 +731,51 @@ export default function MAsesorChatPage() {
     [conversationId, load]
   );
 
+  const deliverSticker = useCallback(
+    (tempId: string, stickerUrl: string) => {
+      void (async () => {
+        try {
+          const res = await fetchWithSupabaseSession(
+            `/api/mobile/asesor/conversations/${conversationId}/send-sticker`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ sticker_url: stickerUrl }),
+            }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (res.status === 409 || data?.code === "whatsapp_window_closed") {
+            setWindowOpen(false);
+            setSendErr(
+              data?.error ||
+                "La ventana de 24 h de WhatsApp está cerrada. Para reabrir hay que enviar una plantilla aprobada."
+            );
+            setPending((p) => p.map((x) => (x.tempId === tempId ? { ...x, status: "error" } : x)));
+            return;
+          }
+          if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo enviar el sticker");
+          await load(true);
+          setPending((p) => p.filter((x) => x.tempId !== tempId));
+        } catch (e) {
+          setSendErr(e instanceof Error ? e.message : "Error al enviar el sticker");
+          setPending((p) => p.map((x) => (x.tempId === tempId ? { ...x, status: "error" } : x)));
+        }
+      })();
+    },
+    [conversationId, load]
+  );
+
+  const sendSticker = useCallback(
+    (stickerUrl: string) => {
+      const tempId = `tmp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+      setShowEmoji(false);
+      setSendErr(null);
+      setPending((p) => [...p, { tempId, kind: "sticker", content: "Sticker", stickerUrl, status: "sending" }]);
+      deliverSticker(tempId, stickerUrl);
+    },
+    [deliverSticker]
+  );
+
   // Se cargan al abrir el modal, no al montar: son dos consultas caras que la mayoría
   // de las veces no se usan (el asesor entra a leer, no a transferir).
   const openTransfer = useCallback(() => {
@@ -831,9 +912,10 @@ export default function MAsesorChatPage() {
       setSendErr(null);
       setPending((p) => p.map((x) => (x.tempId === item.tempId ? { ...x, status: "sending" } : x)));
       if (item.kind === "audio" && item.file) deliverAudio(item.tempId, item.file);
+      else if (item.kind === "sticker" && item.stickerUrl) deliverSticker(item.tempId, item.stickerUrl);
       else deliverText(item.tempId, item.content);
     },
-    [deliverAudio, deliverText]
+    [deliverAudio, deliverSticker, deliverText]
   );
 
   // ── Grabación de nota de voz ────────────────────────────────────────────────
@@ -1080,7 +1162,7 @@ export default function MAsesorChatPage() {
                       </div>
                     );
                   })()}
-                  <MessageBody m={m} onZoom={setZoomUrl} />
+                  <MessageBody m={m} onZoom={setZoomUrl} favStickers={favStickers} onToggleFav={toggleFavSticker} />
                   {m.from_me && m.whatsapp_delivery_status === "failed" ? (
                     <div className="mt-1 rounded-md bg-red-50 border border-red-200 px-2 py-1 text-[11px] text-red-700 flex items-start gap-1">
                       <span aria-hidden>⚠</span>
@@ -1160,18 +1242,55 @@ export default function MAsesorChatPage() {
         ) : (
           <>
             {showEmoji ? (
-              <div className="mb-2 flex flex-wrap gap-1 px-1">
-                {EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setText((t) => t + e)}
-                    className="p-1 text-xl leading-none active:scale-90"
-                    aria-label={`Emoji ${e}`}
-                  >
-                    {e}
-                  </button>
-                ))}
+              <div className="mb-2">
+                <div className="mb-1 flex gap-1 px-1">
+                  {(["emoji", "sticker"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setEmojiTab(tab)}
+                      className={`rounded-full px-3 py-1 text-[12px] font-semibold ${
+                        emojiTab === tab ? "bg-[#3F8E91] text-white" : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {tab === "emoji" ? "Emojis" : "Stickers"}
+                    </button>
+                  ))}
+                </div>
+                {emojiTab === "emoji" ? (
+                  <div className="flex flex-wrap gap-1 px-1">
+                    {EMOJIS.map((e) => (
+                      <button
+                        key={e}
+                        type="button"
+                        onClick={() => setText((t) => t + e)}
+                        className="p-1 text-xl leading-none active:scale-90"
+                        aria-label={`Emoji ${e}`}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                ) : favStickers.length === 0 ? (
+                  <p className="px-2 py-3 text-center text-[12px] text-slate-500">
+                    Todavía no tenés stickers favoritos. Tocá ☆ Guardar debajo de un sticker del chat.
+                  </p>
+                ) : (
+                  <div className="grid max-h-48 grid-cols-4 gap-2 overflow-y-auto px-1">
+                    {favStickers.map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => sendSticker(u)}
+                        aria-label="Enviar sticker"
+                        className="grid place-items-center rounded-lg p-1 active:bg-slate-100"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={u} alt="sticker" loading="lazy" className="h-16 w-16 object-contain" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : null}
             {replyTo ? (

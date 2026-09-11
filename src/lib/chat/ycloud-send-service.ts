@@ -117,7 +117,7 @@ export async function sendMessageViaYCloud(params: {
   return postYCloudWhatsappMessage(params.apiKey, payload);
 }
 
-export type YCloudOutboundMediaKind = "image" | "document" | "audio" | "video";
+export type YCloudOutboundMediaKind = "image" | "document" | "audio" | "video" | "sticker";
 
 /**
  * Envía imagen / documento / audio / video con URL https pública (p. ej. Supabase Storage),
@@ -155,6 +155,9 @@ export async function sendYCloudWhatsappMediaViaLink(params: {
     if (cap) mediaPayload.caption = cap;
   } else if (kind === "video") {
     if (cap) mediaPayload = { link, caption: cap };
+  } else if (kind === "sticker") {
+    // WhatsApp exige WebP 512x512 (≤100 KB estático, ≤500 KB animado) y no admite caption.
+    mediaPayload = { link };
   } else if (kind === "audio") {
     // AUDIO NORMAL (sin `voice:true`). Las notas de voz por API son inestables para reproducir
     // en el cliente; el audio normal (mp3) se descarga y se reproduce siempre.

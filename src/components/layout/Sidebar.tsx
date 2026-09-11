@@ -12,7 +12,7 @@ import {
   Users,
   FileText,
   Settings,
-  LifeBuoy,
+  ShieldCheck,
   UserCog,
   Building2,
   ChevronDown,
@@ -162,7 +162,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     slug: "guardias",
     label: "Guardias",
     href: "/dashboard/guardias",
-    icon: LifeBuoy,
+    icon: ShieldCheck,
   },
   {
     key: "configuracion",

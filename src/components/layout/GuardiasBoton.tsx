@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { LifeBuoy, Settings2, X } from "lucide-react";
+import { ShieldCheck, Settings2, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { lunesDeEstaSemana, rangoLegible, sumarSemanas } from "@/lib/guardias/semana";
 
@@ -151,11 +152,20 @@ export default function GuardiasBoton() {
         aria-label="Guardias de la semana"
         className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
       >
-        <LifeBuoy className="h-5 w-5 shrink-0" />
+        <ShieldCheck className="h-5 w-5 shrink-0" />
         <span className="hidden lg:inline">Guardias</span>
       </button>
 
-      {abierto ? (
+      {/*
+        El modal cuelga del `body` y no del header.
+
+        El `<header>` tiene `backdrop-blur-sm`, y un elemento con backdrop-filter
+        pasa a ser el marco de referencia de cualquier `position: fixed` que
+        tenga adentro. Con el modal ahí, `inset-0` no era la ventana sino la
+        franja de 64 px del encabezado: de ahí el recuadro oscuro arriba.
+      */}
+      {abierto && typeof document !== "undefined"
+        ? createPortal(
         <div
           className="fixed inset-0 z-[130] flex items-start justify-center bg-slate-900/40 p-4 pt-20 backdrop-blur-[2px]"
           role="presentation"
@@ -169,7 +179,7 @@ export default function GuardiasBoton() {
             className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
           >
             <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-4 py-3">
-              <LifeBuoy className="h-4 w-4 text-[#2F6E71]" />
+              <ShieldCheck className="h-4 w-4 text-[#2F6E71]" />
               <h2 className="flex-1 text-sm font-bold text-[#2F6E71]">Guardias</h2>
               {esAdmin ? (
                 <Link
@@ -206,8 +216,10 @@ export default function GuardiasBoton() {
               )}
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+            document.body
+          )
+        : null}
     </>
   );
 }

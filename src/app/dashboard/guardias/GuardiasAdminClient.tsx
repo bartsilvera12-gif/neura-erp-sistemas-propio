@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarRange, Check, LifeBuoy } from "lucide-react";
+import { CalendarRange, Check, ShieldCheck } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { lunesDeEstaSemana, rangoLegible, sumarSemanas } from "@/lib/guardias/semana";
@@ -181,7 +181,7 @@ export default function GuardiasAdminClient() {
     <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 pb-12 pt-6 md:px-6">
       <header>
         <div className="flex items-center gap-2">
-          <LifeBuoy className="h-4 w-4 text-[#4FAEB2]" />
+          <ShieldCheck className="h-4 w-4 text-[#4FAEB2]" />
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2]">
             Administración
           </p>

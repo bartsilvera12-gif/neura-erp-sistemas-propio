@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Eye, EyeOff, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, ClipboardList, Copy, Eye, EyeOff, Pencil, Plus, Trash2, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   credencialHref,
@@ -94,6 +94,68 @@ function CopyButton({
       } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400`}
     >
       {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+    </button>
+  );
+}
+
+/**
+ * La credencial entera como texto, lista para pegar.
+ *
+ * Copiar campo por campo son cuatro clics y cuatro pegados, y hay que acordarse
+ * de cuál falta. Esto es lo que uno termina escribiendo a mano en el chat, así
+ * que se arma acá y bien: una línea por dato, con la etiqueta adelante para que
+ * se entienda del otro lado, y sin las líneas de lo que está vacío.
+ */
+function credencialComoTexto(c: ProyectoCredencial): string {
+  const lineas = [c.nombre?.trim() || "Credencial"];
+  const agregar = (etiqueta: string, valor: string | null | undefined) => {
+    const v = (valor ?? "").trim();
+    if (v) lineas.push(`${etiqueta}: ${v}`);
+  };
+  agregar("URL", c.url);
+  agregar("Usuario", c.usuario);
+  agregar("Contraseña", c.password);
+  const notas = (c.notas ?? "").trim();
+  if (notas) lineas.push("", notas);
+  return lineas.join("\n");
+}
+
+/** Copia toda la credencial de una. La contraseña va en claro, esté oculta o no. */
+function CopiarTodoButton({
+  credencial,
+  onCopied,
+}: {
+  credencial: ProyectoCredencial;
+  onCopied: (ok: boolean) => void;
+}) {
+  const [copiado, setCopiado] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  return (
+    <button
+      type="button"
+      title="Copiar todos los datos"
+      aria-label="Copiar todos los datos de la credencial"
+      onClick={async () => {
+        const ok = await copiarAlPortapapeles(credencialComoTexto(credencial));
+        onCopied(ok);
+        if (!ok) return;
+        setCopiado(true);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopiado(false), 1500);
+      }}
+      className={`inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold transition-colors ${
+        copiado
+          ? "bg-emerald-50 text-emerald-600"
+          : "text-slate-400 hover:bg-[#4FAEB2]/10 hover:text-[#3F8E91]"
+      }`}
+    >
+      {copiado ? <Check className="h-4 w-4" /> : <ClipboardList className="h-4 w-4" />}
+      {copiado ? "Copiado" : "Todo"}
     </button>
   );
 }
@@ -492,6 +554,7 @@ export default function ProyectoCredencialesTab({ projectId }: { projectId: stri
                     <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
                       {c.nombre}
                     </h3>
+                    <CopiarTodoButton credencial={c} onCopied={onCopied} />
                     <button
                       type="button"
                       onClick={() => iniciarEdicion(c)}

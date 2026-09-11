@@ -15,15 +15,43 @@ type Guardia = {
   nombres: Record<string, string>;
 };
 
-type Usuario = { id: string; nombre: string | null; email: string | null };
+type Usuario = {
+  id: string;
+  nombre: string | null;
+  email: string | null;
+  es_project_manager?: boolean | null;
+  es_tecnico?: boolean | null;
+};
 
 /** Cuántas semanas se muestran: la actual y las siguientes. */
 const SEMANAS = 8;
 
+/**
+ * Cada puesto sale de su propia gente.
+ *
+ * `elegibles` filtra por el tilde del catálogo de usuarios: PM para el puesto de
+ * PM, técnico para los dos de soporte. Sin esto la lista traía a todo el mundo
+ * —comerciales, administración— y elegir mal era cuestión de un clic distraído.
+ */
 const ROLES = [
-  { campo: "pm_id", etiqueta: "PM de guardia" },
-  { campo: "soporte_principal_id", etiqueta: "Soporte principal" },
-  { campo: "soporte_suplente_id", etiqueta: "Soporte suplente" },
+  {
+    campo: "pm_id",
+    etiqueta: "PM de guardia",
+    elegibles: (u: Usuario) => u.es_project_manager === true,
+    vacio: "No hay nadie marcado como PM en Usuarios",
+  },
+  {
+    campo: "soporte_principal_id",
+    etiqueta: "Soporte principal",
+    elegibles: (u: Usuario) => u.es_tecnico === true,
+    vacio: "No hay nadie marcado como técnico en Usuarios",
+  },
+  {
+    campo: "soporte_suplente_id",
+    etiqueta: "Soporte suplente",
+    elegibles: (u: Usuario) => u.es_tecnico === true,
+    vacio: "No hay nadie marcado como técnico en Usuarios",
+  },
 ] as const;
 
 type CampoRol = (typeof ROLES)[number]["campo"];
@@ -124,15 +152,27 @@ export default function GuardiasAdminClient() {
     void cargar();
   }, [cargar]);
 
-  const opciones = useMemo(
-    () => [
-      { value: "", label: "Sin asignar" },
-      ...usuarios.map((u) => ({
-        value: u.id,
-        label: (u.nombre?.trim() || u.email?.trim() || u.id) as string,
-      })),
-    ],
-    [usuarios]
+  const nombreDe = useCallback(
+    (u: Usuario) => (u.nombre?.trim() || u.email?.trim() || u.id) as string,
+    []
+  );
+
+  /**
+   * Las opciones de un puesto, más quien ya esté asignado ahí.
+   *
+   * El agregado importa: si a alguien le sacan el tilde de técnico después de
+   * quedar de guardia, sin esto el selector se vería vacío aunque la guardia
+   * siga asignada, y al guardar cualquier otra cosa se la borraría sin querer.
+   */
+  const opcionesDe = useCallback(
+    (elegibles: (u: Usuario) => boolean, asignadoId: string) => {
+      const lista = usuarios.filter((u) => elegibles(u) || (asignadoId && u.id === asignadoId));
+      return [
+        { value: "", label: "Sin asignar" },
+        ...lista.map((u) => ({ value: u.id, label: nombreDe(u) })),
+      ];
+    },
+    [usuarios, nombreDe]
   );
 
   const editar = (semana: string, campo: keyof Borrador, valor: string) => {
@@ -257,21 +297,30 @@ export default function GuardiasAdminClient() {
                 </div>
 
                 <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
-                  {ROLES.map((r) => (
-                    <label
-                      key={r.campo}
-                      className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]"
-                    >
-                      {r.etiqueta}
-                      <FancySelect
-                        ariaLabel={`${r.etiqueta} · ${rangoLegible(semana)}`}
-                        value={b[r.campo as CampoRol]}
-                        onChange={(v) => editar(semana, r.campo as keyof Borrador, v)}
-                        placeholder="Sin asignar"
-                        options={opciones}
-                      />
-                    </label>
-                  ))}
+                  {ROLES.map((r) => {
+                    const elegido = b[r.campo as CampoRol];
+                    const ops = opcionesDe(r.elegibles, elegido);
+                    return (
+                      <label
+                        key={r.campo}
+                        className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]"
+                      >
+                        {r.etiqueta}
+                        <FancySelect
+                          ariaLabel={`${r.etiqueta} · ${rangoLegible(semana)}`}
+                          value={elegido}
+                          onChange={(v) => editar(semana, r.campo as keyof Borrador, v)}
+                          placeholder="Sin asignar"
+                          options={ops}
+                        />
+                        {ops.length === 1 ? (
+                          <span className="text-[10px] font-normal normal-case text-amber-600">
+                            {r.vacio}
+                          </span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
                 </div>
 
                 <div className="px-4 pb-3">

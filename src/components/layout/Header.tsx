@@ -8,6 +8,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import ChatPestanaBadge from "@/components/layout/ChatPestanaBadge";
+import GuardiasBoton from "@/components/layout/GuardiasBoton";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -116,6 +117,10 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
           <HelpCircle className="h-5 w-5 shrink-0" />
           <span className="hidden lg:inline">Ayuda en línea</span>
         </Link>
+
+        {/* Quién está de guardia. Va acá y no en un módulo porque el momento en
+            que hace falta es justo cuando uno no lo está buscando. */}
+        <GuardiasBoton />
 
         {/* Notificaciones */}
         <NotificacionesBell />

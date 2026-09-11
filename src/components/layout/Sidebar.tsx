@@ -12,6 +12,7 @@ import {
   Users,
   FileText,
   Settings,
+  LifeBuoy,
   UserCog,
   Building2,
   ChevronDown,
@@ -157,6 +158,13 @@ const MENU_STRUCTURE: MenuItem[] = [
   },
   { key: "usuarios", slug: "usuarios", label: "RRHH", href: "/usuarios", icon: UserCog },
   {
+    key: "guardias",
+    slug: "guardias",
+    label: "Guardias",
+    href: "/dashboard/guardias",
+    icon: LifeBuoy,
+  },
+  {
     key: "configuracion",
     slug: "configuracion",
     label: "Configuración",
@@ -275,7 +283,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Marketing y Automatización",
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "configuracion"] },
+  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion"] },
 ];
 
 function modulosSyntheticFromMenu(): ModuloEmpresa[] {

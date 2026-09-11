@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { ShieldCheck, Settings2, X } from "lucide-react";
+import { Clock, Settings2, ShieldCheck, Users, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { lunesDeEstaSemana, rangoLegible, sumarSemanas } from "@/lib/guardias/semana";
 
@@ -22,37 +22,80 @@ type Resp = {
   error?: string;
 };
 
-const ROLES = [
-  { campo: "pm_id", etiqueta: "PM de guardia" },
-  { campo: "soporte_principal_id", etiqueta: "Soporte principal" },
-  { campo: "soporte_suplente_id", etiqueta: "Soporte suplente" },
-] as const;
+/**
+ * Iniciales para el avatar. Nombre y primer apellido: con cuatro palabras el
+ * apellido es la tercera (dos nombres + dos apellidos), que es como está
+ * cargada la mayoría de la gente.
+ */
+function iniciales(nombre: string): string {
+  const w = nombre.trim().split(/\s+/).filter(Boolean);
+  if (w.length === 0) return "";
+  if (w.length >= 4) return (w[0][0] + w[2][0]).toUpperCase();
+  return w.slice(0, 2).map((x) => x[0]).join("").toUpperCase();
+}
 
-function Persona({ etiqueta, nombre }: { etiqueta: string; nombre: string }) {
-  const iniciales = nombre
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
+type Tono = {
+  /** Caja de la sección entera. */
+  caja: string;
+  rotulo: string;
+  insignia: string;
+  punto: string;
+  avatar: string;
+  etiqueta: string;
+};
 
+const TONO_ACTIVA: Tono = {
+  caja: "border-[#4FAEB2]/30 bg-[#4FAEB2]/[0.07]",
+  rotulo: "text-[#2F6E71]",
+  insignia: "border-[#4FAEB2]/30 bg-white text-[#2F6E71]",
+  punto: "bg-[#4FAEB2]",
+  avatar: "bg-[#4FAEB2]/15 text-[#2F6E71]",
+  etiqueta: "text-[#4FAEB2]",
+};
+
+const TONO_PROXIMA: Tono = {
+  caja: "border-slate-200 bg-slate-50/80",
+  rotulo: "text-slate-600",
+  insignia: "border-slate-200 bg-white text-slate-500",
+  punto: "bg-slate-300",
+  avatar: "bg-slate-100 text-slate-400",
+  etiqueta: "text-slate-400",
+};
+
+function Persona({
+  etiqueta,
+  nombre,
+  tono,
+  destacado,
+}: {
+  etiqueta: string;
+  nombre: string;
+  tono: Tono;
+  /** El PM va con el nombre más grande: es el primero a quien se escribe. */
+  destacado?: boolean;
+}) {
+  const ini = iniciales(nombre);
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+    <div className="flex items-center gap-3">
       <span
         className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
-          nombre ? "bg-[#4FAEB2]/12 text-[#2F6E71]" : "bg-slate-100 text-slate-300"
+          nombre ? tono.avatar : "bg-slate-100 text-slate-300"
         }`}
         aria-hidden
       >
-        {iniciales || "—"}
+        {ini || "—"}
       </span>
-      <span className="min-w-0">
-        <span className="block text-[10px] font-bold uppercase tracking-wide text-[#4FAEB2]">
+      <span className="min-w-0 flex-1">
+        <span
+          className={`block text-[10px] font-bold uppercase tracking-wide ${
+            destacado ? tono.etiqueta : "text-slate-400"
+          }`}
+        >
           {etiqueta}
         </span>
         <span
-          className={`block truncate text-sm ${
-            nombre ? "font-semibold text-slate-900" : "italic text-slate-400"
+          className={`block truncate ${destacado ? "text-[15px]" : "text-sm"} ${
+            nombre ? "font-semibold text-slate-900" : "italic font-normal text-slate-400"
           }`}
         >
           {nombre || "Sin asignar"}
@@ -62,26 +105,69 @@ function Persona({ etiqueta, nombre }: { etiqueta: string; nombre: string }) {
   );
 }
 
-function Semana({ g, lunes, titulo }: { g: Guardia | undefined; lunes: string; titulo: string }) {
+function Semana({
+  g,
+  lunes,
+  titulo,
+  insignia,
+  activa,
+}: {
+  g: Guardia | undefined;
+  lunes: string;
+  titulo: string;
+  insignia: string;
+  activa: boolean;
+}) {
+  const tono = activa ? TONO_ACTIVA : TONO_PROXIMA;
+  const nombre = (campo: string) => g?.nombres?.[campo] ?? "";
+
   return (
-    <section>
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">{titulo}</h3>
-        <span className="text-[11px] text-slate-400">{rangoLegible(lunes)}</span>
+    <section className={`rounded-2xl border p-3 ${tono.caja}`}>
+      <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className={`text-[13px] font-extrabold uppercase tracking-wide ${tono.rotulo}`}>
+            {titulo}
+          </h3>
+          <p className="text-[11px] text-slate-500">{rangoLegible(lunes)}</p>
+        </div>
+        <span
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${tono.insignia}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${tono.punto}`} aria-hidden />
+          {insignia}
+        </span>
       </div>
+
       {g ? (
-        <div className="space-y-1.5">
-          {ROLES.map((r) => (
-            <Persona key={r.campo} etiqueta={r.etiqueta} nombre={g.nombres?.[r.campo] ?? ""} />
-          ))}
+        <div className="space-y-2">
+          {/* El PM en su propia tarjeta: es un rol distinto, no un tercer
+              soporte, y agruparlos hacía que se leyeran como lo mismo. */}
+          <div className="rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 shadow-sm">
+            <Persona etiqueta="PM de guardia" nombre={nombre("pm_id")} tono={tono} destacado />
+          </div>
+
+          <div className="rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 shadow-sm">
+            <div className="mb-2 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+              <Users className="h-3.5 w-3.5 text-slate-400" aria-hidden />
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Soporte técnico
+              </span>
+            </div>
+            <div className="space-y-2.5">
+              <Persona etiqueta="Principal" nombre={nombre("soporte_principal_id")} tono={tono} />
+              <Persona etiqueta="Suplente" nombre={nombre("soporte_suplente_id")} tono={tono} />
+            </div>
+          </div>
+
           {g.notas ? (
-            <p className="rounded-xl bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-900">
-              {g.notas}
+            <p className="flex items-start gap-2 px-1 pt-0.5 text-[11px] leading-relaxed text-slate-500">
+              <Clock className="mt-px h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+              <span className="min-w-0">{g.notas}</span>
             </p>
           ) : null}
         </div>
       ) : (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-[12px] text-slate-500">
+        <p className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-3 py-4 text-center text-[12px] text-slate-500">
           Todavía no hay guardia asignada para esta semana.
         </p>
       )}
@@ -89,14 +175,6 @@ function Semana({ g, lunes, titulo }: { g: Guardia | undefined; lunes: string; t
   );
 }
 
-/**
- * Quién está de guardia, a un clic desde cualquier pantalla.
- *
- * Va en el header y no en un módulo porque el momento en que hace falta es
- * justamente cuando uno no está buscándolo: cae algo urgente y hay que saber a
- * quién escribir. Muestra esta semana y la que viene —la segunda importa para
- * coordinar de antemano— y no pide permisos para leer.
- */
 export default function GuardiasBoton() {
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -178,9 +256,11 @@ export default function GuardiasBoton() {
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
           >
-            <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-4 py-3">
-              <ShieldCheck className="h-4 w-4 text-[#2F6E71]" />
-              <h2 className="flex-1 text-sm font-bold text-[#2F6E71]">Guardias</h2>
+            <div className="flex items-center gap-2.5 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/14 via-[#4FAEB2]/6 to-transparent px-4 py-3.5">
+              <ShieldCheck className="h-[18px] w-[18px] text-[#2F6E71]" />
+              <h2 className="flex-1 text-base font-extrabold tracking-tight text-[#2F6E71]">
+                Guardias
+              </h2>
               {esAdmin ? (
                 <Link
                   href="/dashboard/guardias"
@@ -195,13 +275,13 @@ export default function GuardiasBoton() {
                 type="button"
                 onClick={() => setAbierto(false)}
                 aria-label="Cerrar"
-                className="grid h-7 w-7 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="max-h-[70vh] space-y-5 overflow-y-auto px-4 py-4">
+            <div className="max-h-[70vh] space-y-3 overflow-y-auto bg-slate-50/40 px-3.5 py-3.5">
               {cargando ? (
                 <p className="py-6 text-center text-sm text-slate-400">Cargando…</p>
               ) : error ? (
@@ -210,8 +290,20 @@ export default function GuardiasBoton() {
                 </p>
               ) : (
                 <>
-                  <Semana g={deLaSemana(estaSemana)} lunes={estaSemana} titulo="Esta semana" />
-                  <Semana g={deLaSemana(proxima)} lunes={proxima} titulo="La semana que viene" />
+                  <Semana
+                    g={deLaSemana(estaSemana)}
+                    lunes={estaSemana}
+                    titulo="Esta semana"
+                    insignia="Guardia activa"
+                    activa
+                  />
+                  <Semana
+                    g={deLaSemana(proxima)}
+                    lunes={proxima}
+                    titulo="Próxima semana"
+                    insignia="Próxima guardia"
+                    activa={false}
+                  />
                 </>
               )}
             </div>

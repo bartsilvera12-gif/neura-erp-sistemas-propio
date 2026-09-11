@@ -9,6 +9,8 @@ import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import ChatPestanaBadge from "@/components/layout/ChatPestanaBadge";
 import GuardiasBoton from "@/components/layout/GuardiasBoton";
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
+import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -86,6 +88,14 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
   const dropdownName = nombreReal || "Usuario";
   const avatarInitial = (nombreReal || fallbackEmail || "Usuario").charAt(0).toUpperCase();
   const displayRole = roleLabel(usuario?.rol);
+  /*
+    Quién ve el botón de Guardias. Se decide con el rol que el header ya
+    tiene en memoria y no preguntándole a la API: el header está en todas
+    las pantallas del ERP, y un pedido más por página para decidir si se
+    dibuja un ícono no se paga solo.
+  */
+  const esAdmin =
+    esRolAdminEmpresaOGlobal(usuario?.rol) || isBootstrapSuperAdminEmail(usuario?.email);
 
   return (
     <header
@@ -118,9 +128,9 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
           <span className="hidden lg:inline">Ayuda en línea</span>
         </Link>
 
-        {/* Quién está de guardia. Va acá y no en un módulo porque el momento en
-            que hace falta es justo cuando uno no lo está buscando. */}
-        <GuardiasBoton />
+        {/* Guardias: por ahora sólo para administradores. Cuando se abra al
+            resto del equipo, alcanza con sacar la condición. */}
+        {esAdmin ? <GuardiasBoton /> : null}
 
         {/* Notificaciones */}
         <NotificacionesBell />

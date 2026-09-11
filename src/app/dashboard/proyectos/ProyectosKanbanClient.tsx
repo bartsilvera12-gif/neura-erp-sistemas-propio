@@ -308,25 +308,34 @@ function saasModuleCountLabel(p: ProyectoCard): string | null {
 }
 
 /**
- * Scroll del Kanban al pasar el cursor por los bordes (horizontal y vertical).
- * - Lado izquierdo / derecho → scrollLeft.
- * - Borde superior / inferior → scrollTop (cuando hay columnas más altas que el viewport).
- * Muestra una flecha guía en el costado activo. Si el cursor está cerca de una
- * esquina ambos ejes se desplazan simultáneamente.
+ * Scroll HORIZONTAL del Kanban al pasar el cursor por los bordes laterales.
+ * Muestra una flecha guía en el costado activo.
+ *
+ * Sólo horizontal, y a propósito. Antes también arrastraba en vertical al
+ * acercar el cursor al borde de arriba o de abajo, y eso peleaba con la rueda
+ * del mouse: la franja de arriba cae justo sobre los encabezados de columna
+ * —donde el cursor descansa mientras uno lee—, así que el tablero se iba solo
+ * hacia arriba y no había forma de bajar. Para el eje vertical ya existe la
+ * rueda, que es precisa y la maneja la persona.
+ *
+ * Y aunque quede sólo el eje horizontal, cualquier rueda pausa el arrastre: lo
+ * que hace la persona le gana siempre a la ayuda automática.
  */
 function KanbanScroller({ children, className = "" }: { children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const dirXRef = useRef<-1 | 0 | 1>(0);
-  const dirYRef = useRef<-1 | 0 | 1>(0);
   const rafRef = useRef<number | null>(null);
   const [hintX, setHintX] = useState<-1 | 0 | 1>(0);
-  const [hintY, setHintY] = useState<-1 | 0 | 1>(0);
+  /** Hasta cuándo ignorar el arrastre automático por una rueda reciente. */
+  const pausaHastaRef = useRef(0);
 
   const loop = useCallback(() => {
     const el = ref.current;
-    if (el && (dirXRef.current !== 0 || dirYRef.current !== 0)) {
-      if (dirXRef.current !== 0) el.scrollLeft += dirXRef.current * 16;
-      if (dirYRef.current !== 0) el.scrollTop += dirYRef.current * 14;
+    if (el && dirXRef.current !== 0 && Date.now() >= pausaHastaRef.current) {
+      el.scrollLeft += dirXRef.current * 16;
+      rafRef.current = requestAnimationFrame(loop);
+    } else if (dirXRef.current !== 0) {
+      // En pausa por la rueda: se sigue mirando, pero sin mover nada.
       rafRef.current = requestAnimationFrame(loop);
     } else {
       rafRef.current = null;
@@ -334,7 +343,7 @@ function KanbanScroller({ children, className = "" }: { children: ReactNode; cla
   }, []);
 
   const ensureLoop = useCallback(() => {
-    if ((dirXRef.current !== 0 || dirYRef.current !== 0) && rafRef.current == null) {
+    if (dirXRef.current !== 0 && rafRef.current == null) {
       rafRef.current = requestAnimationFrame(loop);
     }
   }, [loop]);
@@ -349,39 +358,31 @@ function KanbanScroller({ children, className = "" }: { children: ReactNode; cla
     [ensureLoop]
   );
 
-  const setDirY = useCallback(
-    (d: -1 | 0 | 1) => {
-      if (d === dirYRef.current) return;
-      dirYRef.current = d;
-      setHintY(d);
-      ensureLoop();
-    },
-    [ensureLoop]
-  );
-
   const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
     const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
     const bandX = 72;
-    const bandY = 56;
     const canL = el.scrollLeft > 2;
     const canR = el.scrollLeft < el.scrollWidth - el.clientWidth - 2;
-    const canU = el.scrollTop > 2;
-    const canD = el.scrollTop < el.scrollHeight - el.clientHeight - 2;
     if (x < bandX && canL) setDirX(-1);
     else if (x > r.width - bandX && canR) setDirX(1);
     else setDirX(0);
-    if (y < bandY && canU) setDirY(-1);
-    else if (y > r.height - bandY && canD) setDirY(1);
-    else setDirY(0);
   };
 
   const stopAll = () => {
     setDirX(0);
-    setDirY(0);
+  };
+
+  /**
+   * La rueda gana. Sin esto, con el cursor apoyado en una banda lateral el
+   * tablero seguía corriéndose solo mientras la persona intenta moverlo, y se
+   * siente como que la pantalla no obedece.
+   */
+  const onWheel = () => {
+    pausaHastaRef.current = Date.now() + 500;
+    setDirX(0);
   };
 
   useEffect(
@@ -409,30 +410,13 @@ function KanbanScroller({ children, className = "" }: { children: ReactNode; cla
     </span>
   );
 
-  const arrowV = (dir: "up" | "down") => (
-    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/75 text-[#3F8E91] shadow-lg ring-1 ring-[#4FAEB2]/30 backdrop-blur">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-6 w-6"
-        aria-hidden="true"
-      >
-        {dir === "up" ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
-      </svg>
-    </span>
-  );
-
   return (
     <div className={`relative ${className}`}>
       <div
         ref={ref}
         onMouseMove={onMove}
         onMouseLeave={stopAll}
+        onWheel={onWheel}
         className="max-h-[calc(100vh-260px)] min-h-[520px] overflow-auto rounded-xl pb-4"
       >
         {children}
@@ -450,20 +434,6 @@ function KanbanScroller({ children, className = "" }: { children: ReactNode; cla
         }`}
       >
         {arrowH("right")}
-      </div>
-      <div
-        className={`pointer-events-none absolute inset-x-0 top-0 flex h-14 items-start justify-center pt-1 transition-opacity duration-150 ${
-          hintY === -1 ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        {arrowV("up")}
-      </div>
-      <div
-        className={`pointer-events-none absolute inset-x-0 bottom-0 flex h-14 items-end justify-center pb-1 transition-opacity duration-150 ${
-          hintY === 1 ? "opacity-100" : "opacity-0"
-        }`}
-      >
-        {arrowV("down")}
       </div>
     </div>
   );

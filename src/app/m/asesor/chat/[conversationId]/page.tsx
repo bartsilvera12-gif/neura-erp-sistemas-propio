@@ -388,6 +388,30 @@ function MessageBody({ m, onZoom }: { m: Msg; onZoom: (url: string) => void }) {
       </div>
     );
   }
+  if (m.message_type === "sticker") {
+    // Los stickers de WhatsApp son WebP (estáticos o animados), que el WebView de iOS
+    // muestra directo. Usan la misma URL que las imágenes: la copia estable del storage
+    // cuando existe, o el link de YCloud. Si no carga, queda el texto de respaldo.
+    return url ? (
+      <span className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt="sticker"
+          loading="lazy"
+          className="block h-32 w-32 object-contain"
+          onError={(ev) => {
+            const img = ev.currentTarget;
+            img.style.display = "none";
+            img.nextElementSibling?.classList.remove("hidden");
+          }}
+        />
+        <span className="hidden italic opacity-80">[sticker]</span>
+      </span>
+    ) : (
+      <span className="italic opacity-80">[sticker]</span>
+    );
+  }
   if (m.message_type === "video") {
     return url ? (
       <video src={url} controls preload="metadata" className="max-w-[220px] rounded-lg" />

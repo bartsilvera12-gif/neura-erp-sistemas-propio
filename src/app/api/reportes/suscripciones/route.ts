@@ -137,6 +137,9 @@ export async function GET(request: NextRequest) {
     // 4) Facturas de suscripción del mes actual (estado por suscripción) + totales facturados
     //    de este mes y del anterior (para comparar cuánta plata mueven las suscripciones).
     const factBySub = new Map<string, { estado: string; saldo: number; monto: number }>();
+    // Suscripciones cuya factura de ESTE mes quedó anulada (y no tienen otra factura válida del
+    // período): no hay nada que cobrar. Las marcamos para mostrarlas como "Anulada" (no "Sin facturar").
+    const anuladaBySub = new Set<string>();
     let totalMes = 0;
     let totalMesAnterior = 0;
     let facturasMes = 0; // cantidad de facturas de suscripción emitidas este mes (no anuladas)
@@ -151,7 +154,11 @@ export async function GET(request: NextRequest) {
         const per = String(f.periodo_facturado ?? "");
         const monto = Number(f.monto) || 0;
         const anulada = String(f.estado ?? "").trim().toLowerCase() === "anulado";
-        if (anulada) continue; // no cuenta como plata ni como estado del mes
+        if (anulada) {
+          // No cuenta como plata ni como estado del mes; solo dejamos rastro para el badge "Anulada".
+          if (per === ym && f.suscripcion_id) anuladaBySub.add(String(f.suscripcion_id));
+          continue;
+        }
         if (per === ym) {
           totalMes += monto;
           facturasMes += 1;
@@ -204,31 +211,28 @@ export async function GET(request: NextRequest) {
     const inicioMesAnt = `${ymPrev}-01`;
     const diasMesAnt = new Date(prevYear, prevMonth, 0).getDate(); // días del mes anterior
     const finMesAntCorte = `${ymPrev}-${String(Math.min(diaCorte, diasMesAnt)).padStart(2, "0")}`;
-    // cobradoBySub: plata cobrada ESTE mes atribuida a cada suscripción (por su factura de cuota,
-    // sin importar de qué período sea la factura → así "cobrado" = todo lo que entró por cuotas).
-    const cobradoBySub = new Map<string, number>();
+    // cobradoMes / cobradoMesAnterior: caja de cuotas de suscripción, mismo tramo del mes
+    // (1 → hoy) vs (1 → mismo día del mes anterior). Se usa SOLO para el % de tendencia
+    // "vs mes anterior" (comparación justa a la misma altura del mes). Los montos de la vista
+    // (facturado / cobrado / por cobrar) salen de las facturas del período, no de acá.
     let cobradoMes = 0; // caja total de cuotas de suscripción este mes (1 → hoy)
     let cobradoMesAnterior = 0; // caja total mismo tramo del mes anterior (1 → mismo día)
     {
       const { data } = await supabase
         .from("pagos")
-        .select("monto, fecha_pago, facturas(tipo, suscripcion_id)")
+        .select("monto, fecha_pago, facturas(tipo)")
         .eq("empresa_id", empresaId)
         .neq("estado_contable", "revertido")
         .gte("fecha_pago", inicioMesAnt)
         .lte("fecha_pago", hoy);
       for (const p of (data ?? []) as { monto: number | null; fecha_pago: string | null; facturas: unknown }[]) {
         const facRaw = p.facturas;
-        const fac = (Array.isArray(facRaw) ? facRaw[0] : facRaw) as
-          | { tipo?: string | null; suscripcion_id?: string | null }
-          | null;
+        const fac = (Array.isArray(facRaw) ? facRaw[0] : facRaw) as { tipo?: string | null } | null;
         if (!fac || String(fac.tipo ?? "").trim().toLowerCase() !== "suscripcion") continue; // solo suscripciones
         const fp = String(p.fecha_pago ?? "").slice(0, 10);
         const monto = Number(p.monto) || 0;
         if (fp >= inicioMes && fp <= hoy) {
           cobradoMes += monto;
-          const sid = String(fac.suscripcion_id ?? "").trim();
-          if (sid) cobradoBySub.set(sid, (cobradoBySub.get(sid) ?? 0) + monto);
         } else if (fp >= inicioMesAnt && fp <= finMesAntCorte) {
           cobradoMesAnterior += monto;
         }
@@ -255,6 +259,11 @@ export async function GET(request: NextRequest) {
         const tipoSlug = (plan?.tipo || cli.tipo || "").trim().toLowerCase();
         const monto = s.precio != null && s.precio > 0 ? Number(s.precio) : plan?.precio ?? 0;
         const fact = factBySub.get(String(s.id));
+        // Lo "cobrable" del mes sale de la factura VÁLIDA (no anulada) del período:
+        //   facturado_mes = monto de esa factura · saldo_mes = lo que resta cobrar de ella.
+        // Sin factura válida (anulada o aún sin emitir) → facturado_mes = saldo_mes = 0:
+        // no hay nada que cobrar, así que no suma ni al objetivo ni al "por cobrar".
+        const anuladaMes = !fact && anuladaBySub.has(String(s.id));
         const estadoMes = !fact
           ? "sin_facturar"
           : fact.saldo <= 0 || fact.estado.toLowerCase() === "pagado"
@@ -267,7 +276,8 @@ export async function GET(request: NextRequest) {
           tipo_label: tipoSlug ? etiquetaVisibleTipoServicio(tipoSlug, catalogMap) : "Sin tipo",
           monto: Math.round(monto),
           facturado_mes: Math.round(fact?.monto ?? 0),
-          cobrado_mes: Math.round(cobradoBySub.get(String(s.id)) ?? 0),
+          saldo_mes: Math.round(fact?.saldo ?? 0),
+          anulada_mes: anuladaMes,
           moneda: String(s.moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
           vendedor: (cli.vendedorUid ? nombrePorUid.get(cli.vendedorUid) : "") || cli.vendedorTexto || "—",
           estado_mes: estadoMes as "pagado" | "pendiente" | "sin_facturar",

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 type EstadoMes = "pagado" | "pendiente" | "sin_facturar";
-type EstadoCobro = "cobrada" | "parcial" | "sin_cobrar";
+type EstadoCobro = "cobrada" | "parcial" | "pendiente" | "sin_facturar" | "anulada";
 type Row = {
   cliente: string;
   plan: string;
@@ -13,18 +13,27 @@ type Row = {
   tipo_label: string;
   monto: number;
   facturado_mes: number;
-  cobrado_mes: number;
+  saldo_mes: number;
+  anulada_mes: boolean;
   moneda: string;
   vendedor: string;
   estado_mes: EstadoMes;
 };
 type SeriePunto = { periodo: string; label: string; monto: number };
 
-/** Estado de cobro del mes derivado de la plata cobrada vs la cuota mensual. */
+/** Cobrado de la factura del mes = facturado − saldo (0 si no hay factura válida del período). */
+const pagadoMes = (r: Row) => Math.max((r.facturado_mes || 0) - (r.saldo_mes || 0), 0);
+
+/**
+ * Estado de cobro del mes SEGÚN LA FACTURA REAL del período (no la cuota teórica):
+ * sin factura válida → "anulada" (si la del mes se anuló) o "sin_facturar"; con factura →
+ * "cobrada" (saldo 0), "parcial" (saldo < facturado) o "pendiente" (nada cobrado todavía).
+ */
 function estadoCobro(r: Row): EstadoCobro {
-  if (r.cobrado_mes <= 0) return "sin_cobrar";
-  if (r.cobrado_mes >= r.monto) return "cobrada";
-  return "parcial";
+  if ((r.facturado_mes || 0) <= 0) return r.anulada_mes ? "anulada" : "sin_facturar";
+  if ((r.saldo_mes || 0) <= 0) return "cobrada";
+  if ((r.saldo_mes || 0) < r.facturado_mes) return "parcial";
+  return "pendiente";
 }
 
 function fmtGs(n: number) {
@@ -55,7 +64,11 @@ function EstadoBadge({ estado }: { estado: EstadoCobro }) {
       ? { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", label: "Cobrada" }
       : estado === "parcial"
         ? { cls: "border-amber-200 bg-amber-50 text-amber-700", dot: "bg-amber-500", label: "Parcial" }
-        : { cls: "border-slate-200 bg-slate-50 text-slate-500", dot: "bg-slate-400", label: "Sin cobrar" };
+        : estado === "pendiente"
+          ? { cls: "border-rose-200 bg-rose-50 text-rose-700", dot: "bg-rose-500", label: "Pendiente" }
+          : estado === "anulada"
+            ? { cls: "border-zinc-200 bg-zinc-50 text-zinc-400", dot: "bg-zinc-300", label: "Anulada" }
+            : { cls: "border-slate-200 bg-slate-50 text-slate-500", dot: "bg-slate-400", label: "Sin facturar" };
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cfg.cls}`}>
       <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
@@ -265,32 +278,38 @@ export default function ReporteSuscripcionesPage() {
   // La tabla: base + filtro por estado de cobro (tiles seleccionables), ordenada por saldo pendiente.
   const filtradas = useMemo(() => {
     let list = baseFiltradas;
-    if (estadoFiltro === "cobrado") list = list.filter((r) => r.cobrado_mes > 0);
-    if (estadoFiltro === "por_cobrar") list = list.filter((r) => r.cobrado_mes < r.monto);
+    if (estadoFiltro === "cobrado") list = list.filter((r) => pagadoMes(r) > 0);
+    if (estadoFiltro === "por_cobrar") list = list.filter((r) => (r.saldo_mes || 0) > 0);
     const arr = [...list];
     const mul = orden.dir === "asc" ? 1 : -1;
     if (orden.col === "mensual") {
       arr.sort((a, b) => (a.monto - b.monto) * mul || a.cliente.localeCompare(b.cliente));
     } else if (orden.col === "estado") {
-      const rank = (r: Row) => (estadoCobro(r) === "cobrada" ? 3 : estadoCobro(r) === "parcial" ? 2 : 1);
-      arr.sort((a, b) => (rank(a) - rank(b)) * mul || (a.cobrado_mes - b.cobrado_mes) * mul || a.cliente.localeCompare(b.cliente));
+      const rank = (r: Row) => {
+        const e = estadoCobro(r);
+        return e === "cobrada" ? 4 : e === "parcial" ? 3 : e === "pendiente" ? 2 : 1;
+      };
+      arr.sort((a, b) => (rank(a) - rank(b)) * mul || (pagadoMes(a) - pagadoMes(b)) * mul || a.cliente.localeCompare(b.cliente));
     } else {
-      // Default: mayor saldo por cobrar primero.
-      arr.sort((a, b) => (b.monto - b.cobrado_mes) - (a.monto - a.cobrado_mes) || b.monto - a.monto);
+      // Default: mayor saldo por cobrar primero (según la factura real del período).
+      arr.sort((a, b) => (b.saldo_mes || 0) - (a.saldo_mes || 0) || b.facturado_mes - a.facturado_mes || b.monto - a.monto);
     }
     return arr;
   }, [baseFiltradas, estadoFiltro, orden]);
 
   const gs = (r: Row) => r.moneda === "GS";
-  const mensualObjetivo = baseFiltradas.filter(gs).reduce((s, r) => s + r.monto, 0);
-  // Facturado (emitido) este mes en suscripciones. Sin filtro = total del API (coincide con el
-  // final de la curva); con tipo seleccionado = suma de lo facturado de ese tipo.
+  // Facturado (emitido, sin anuladas) este mes en suscripciones. Sin filtro = total del API
+  // (coincide con el final de la curva); con tipo seleccionado = suma de lo facturado de ese tipo.
   const facturadoDelMes = tipo ? baseFiltradas.filter(gs).reduce((s, r) => s + (r.facturado_mes || 0), 0) : totalMes;
   const facturasCount = tipo ? baseFiltradas.filter((r) => r.facturado_mes > 0).length : facturasMes;
-  const cobradoBase = baseFiltradas.filter(gs).reduce((s, r) => s + r.cobrado_mes, 0);
-  const porCobrarBase = baseFiltradas.filter(gs).reduce((s, r) => s + Math.max(r.monto - r.cobrado_mes, 0), 0);
-  const pctCobrado = mensualObjetivo > 0 ? Math.round((cobradoBase / mensualObjetivo) * 100) : 0;
-  const pctPorCobrar = mensualObjetivo > 0 ? Math.round((porCobrarBase / mensualObjetivo) * 100) : 0;
+  // Objetivo, cobrado y por cobrar salen TODOS de las facturas reales del período → cierran entre sí
+  // (cobrado + por cobrar = objetivo). Una sub con factura anulada o aún sin emitir aporta 0 a los tres,
+  // así que ya no infla el "por cobrar" ni la meta (ese era el bug de Magno/Charme).
+  const objetivoMes = baseFiltradas.filter(gs).reduce((s, r) => s + (r.facturado_mes || 0), 0);
+  const cobradoBase = baseFiltradas.filter(gs).reduce((s, r) => s + pagadoMes(r), 0);
+  const porCobrarBase = baseFiltradas.filter(gs).reduce((s, r) => s + Math.max(r.saldo_mes || 0, 0), 0);
+  const pctCobrado = objetivoMes > 0 ? Math.round((cobradoBase / objetivoMes) * 100) : 0;
+  const pctPorCobrar = objetivoMes > 0 ? Math.round((porCobrarBase / objetivoMes) * 100) : 0;
   const deltaEmitido = totalMesAnterior > 0 ? ((totalMes - totalMesAnterior) / totalMesAnterior) * 100 : totalMes > 0 ? 100 : 0;
   const deltaCobrado = cobradoMesAnterior > 0 ? ((cobradoMes - cobradoMesAnterior) / cobradoMesAnterior) * 100 : cobradoMes > 0 ? 100 : 0;
 
@@ -368,7 +387,7 @@ export default function ReporteSuscripcionesPage() {
           </div>
           <div className="mt-1 text-lg font-extrabold tabular-nums text-emerald-700">Gs. {fmtGs(cobradoBase)}</div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">de Gs. {fmtGs(mensualObjetivo)}</span>
+            <span className="text-[11px] text-slate-400">de Gs. {fmtGs(objetivoMes)}</span>
             <DeltaChip pct={deltaCobrado} />
           </div>
         </button>
@@ -497,14 +516,20 @@ export default function ReporteSuscripcionesPage() {
                       <td className="px-4 py-3 text-slate-600">{r.plan}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-slate-600">{pref}{fmtGs(r.monto)}</td>
                       <td className="px-4 py-3">
-                        <div className="mb-1.5 text-xs font-bold tabular-nums">
-                          {r.cobrado_mes > 0 ? (
-                            <span className={r.cobrado_mes >= r.monto ? "text-emerald-700" : "text-amber-700"}>{pref}{fmtGs(r.cobrado_mes)} <span className="font-medium text-slate-400">/ {fmtGs(r.monto)}</span></span>
-                          ) : (
-                            <span className="text-slate-400">— <span className="font-medium">/ {fmtGs(r.monto)}</span></span>
-                          )}
-                        </div>
-                        <BarraAvance cobrado={r.cobrado_mes} total={r.monto} />
+                        {r.facturado_mes > 0 ? (
+                          <>
+                            <div className="mb-1.5 text-xs font-bold tabular-nums">
+                              {pagadoMes(r) > 0 ? (
+                                <span className={r.saldo_mes <= 0 ? "text-emerald-700" : "text-amber-700"}>{pref}{fmtGs(pagadoMes(r))} <span className="font-medium text-slate-400">/ {fmtGs(r.facturado_mes)}</span></span>
+                              ) : (
+                                <span className="text-slate-400">— <span className="font-medium">/ {fmtGs(r.facturado_mes)}</span></span>
+                              )}
+                            </div>
+                            <BarraAvance cobrado={pagadoMes(r)} total={r.facturado_mes} />
+                          </>
+                        ) : (
+                          <div className="text-xs font-medium text-slate-400">{r.anulada_mes ? "Factura anulada" : "Sin factura este mes"}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3"><EstadoBadge estado={estadoCobro(r)} /></td>
                       <td className="px-4 py-3 text-slate-600">{r.vendedor}</td>
@@ -521,7 +546,7 @@ export default function ReporteSuscripcionesPage() {
                     Gs. {fmtGs(filtradas.filter(gs).reduce((s, r) => s + r.monto, 0))}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm font-extrabold tabular-nums text-emerald-700">
-                    Gs. {fmtGs(filtradas.filter(gs).reduce((s, r) => s + r.cobrado_mes, 0))}
+                    Gs. {fmtGs(filtradas.filter(gs).reduce((s, r) => s + pagadoMes(r), 0))}
                   </td>
                   <td colSpan={2} />
                 </tr>

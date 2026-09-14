@@ -76,6 +76,10 @@ export default function ProyectosMobile({
   const resumen =
     proyectos.length === 0 ? "Sin proyectos cargados." : `${proyectos.length} proyectos activos`;
 
+  /* Dentro de la app, detalle y alta son los de la app; si no, los del dashboard de siempre. */
+  const hrefBase = app ? "/m/asesor/proyectos" : "/dashboard/proyectos";
+  const hrefNuevo = `${hrefBase}/nuevo`;
+
   /* Chips de estado. En la app sangran hasta el borde (-mx-3) para que se note que siguen. */
   const tabsEstado = (
     <div
@@ -129,7 +133,7 @@ export default function ProyectosMobile({
       ) : (
         <ul className="space-y-2">
           {proyectosFiltrados.map((p) => (
-            <ProyectoCardItem key={p.id} proyecto={p} />
+            <ProyectoCardItem key={p.id} proyecto={p} hrefBase={hrefBase} />
           ))}
         </ul>
       )}
@@ -150,7 +154,7 @@ export default function ProyectosMobile({
               <p className="text-[11px] text-white/80">{resumen}</p>
             </div>
             <Link
-              href="/dashboard/proyectos/nuevo"
+              href={hrefNuevo}
               className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-[#3F8E91] shadow-sm active:bg-white"
             >
               <Plus className="h-4 w-4" />
@@ -184,7 +188,7 @@ export default function ProyectosMobile({
             <p className="mt-0.5 text-xs text-slate-500">{resumen}</p>
           </div>
           <Link
-            href="/dashboard/proyectos/nuevo"
+            href={hrefNuevo}
             className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#0EA5E9] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors active:bg-[#0284C7]"
           >
             <Plus className="h-4 w-4" />
@@ -212,14 +216,20 @@ export default function ProyectosMobile({
   );
 }
 
-function ProyectoCardItem({ proyecto }: { proyecto: ProyectoCard }) {
+function ProyectoCardItem({
+  proyecto,
+  hrefBase,
+}: {
+  proyecto: ProyectoCard;
+  hrefBase: string;
+}) {
   const cliente = nombreClienteDisplay(proyecto.cliente, "Sin cliente");
   const fechaPrometida = proyecto.fecha_prometida;
   const promExpired = fechaPrometida ? fechaPrometida < new Date().toISOString().slice(0, 10) : false;
   return (
     <li>
       <Link
-        href={`/dashboard/proyectos/${proyecto.id}`}
+        href={`${hrefBase}/${proyecto.id}`}
         className="block rounded-2xl border border-slate-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-transform active:scale-[0.99]"
       >
         <div className="flex items-start gap-2">

@@ -2512,7 +2512,7 @@ export default function ProyectoDetalleInner({
       <div
         className={
           variant === "modal"
-            ? "flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-6 pb-5 pt-6"
+            ? "flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-4 pb-5 pt-6 md:px-6"
             : "flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4"
         }
       >
@@ -2616,7 +2616,7 @@ export default function ProyectoDetalleInner({
         <div
           className={
             variant === "modal"
-              ? "mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900"
+              ? "mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900 md:mx-6"
               : "rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900"
           }
         >
@@ -2624,12 +2624,17 @@ export default function ProyectoDetalleInner({
         </div>
       ) : null}
 
+      {/*
+        En un telefono estas solapas son 7 y envolvian en tres filas, comiendose media
+        pantalla antes de mostrar nada. Abajo de `md` van en una sola fila que se desliza;
+        de `md` para arriba queda el wrap de siempre (escritorio sin cambios).
+      */}
       <div
-        className={
+        className={`flex gap-1.5 overflow-x-auto [scrollbar-width:none] md:flex-wrap md:overflow-visible [&::-webkit-scrollbar]:hidden ${
           variant === "modal"
-            ? "flex flex-wrap gap-1.5 border-b border-slate-100 bg-white px-6 pb-3 pt-4"
-            : "flex flex-wrap gap-1.5 border-b border-slate-200 pb-2"
-        }
+            ? "border-b border-slate-100 bg-white px-4 pb-3 pt-4 md:px-6"
+            : "border-b border-slate-200 pb-2"
+        }`}
       >
         {tabsPara(qaResumen).map((t) => {
           const active = tab === t;
@@ -2638,7 +2643,7 @@ export default function ProyectoDetalleInner({
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`relative rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`relative shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
                 active
                   ? "border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91] shadow-sm"
                   : "border border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700"
@@ -2661,7 +2666,7 @@ export default function ProyectoDetalleInner({
       <div
         className={
           variant === "modal"
-            ? "min-h-0 flex-1 overflow-y-auto bg-slate-50/50 px-6 py-5"
+            ? "min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-slate-50/50 px-4 py-5 md:px-6"
             : ""
         }
       >

@@ -393,7 +393,16 @@ function MessageBody({
             aria-label="Ampliar imagen"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt="imagen" className="max-w-[220px] rounded-lg" />
+            <img
+              src={url}
+              alt="imagen"
+              className="max-w-[220px] rounded-lg"
+              // Sin esto, el toque largo abre el menú nativo de iOS ("Guardar en Fotos")
+              // encima del de reaccionar. Guardar sigue estando: se toca la imagen, se
+              // abre el visor, y ahí el gesto nativo funciona intacto.
+              style={{ WebkitTouchCallout: "none" }}
+              draggable={false}
+            />
           </button>
         ) : (
           <span className="italic opacity-80">[imagen]</span>
@@ -850,14 +859,17 @@ export default function MAsesorChatPage() {
     }
   }, []);
 
+  // Se puede reaccionar a todo lo que tenga WAMID real, imágenes y stickers incluidos.
+  // El conflicto con el "Guardar en Fotos" de iOS se resuelve en la miniatura, no acá:
+  // ahí se desactiva el menú nativo, y el gesto sigue funcionando dentro del visor a
+  // pantalla completa, que es donde se usa de verdad.
   const puedeReaccionar = useCallback(
-    (m: Msg) =>
-      Boolean(m.wa_message_id?.startsWith("wamid.")) &&
-      m.message_type !== "image" &&
-      m.message_type !== "sticker" &&
-      m.message_type !== "reaction",
+    (m: Msg) => Boolean(m.wa_message_id?.startsWith("wamid.")) && m.message_type !== "reaction",
     []
   );
+
+  /** Reacciones puestas en este dispositivo que todavía no volvieron del servidor. */
+  const [reaccionesLocales, setReaccionesLocales] = useState<Record<string, string>>({});
 
   const reaccionar = useCallback(
     async (m: Msg, emoji: string) => {
@@ -865,6 +877,9 @@ export default function MAsesorChatPage() {
       setReaccionError(null);
       const wamid = m.wa_message_id;
       if (!wamid) return;
+      // Se pinta ANTES de salir a la red: el viaje completo (enviar + recargar toda la
+      // conversación) tardaba segundos y parecía que el toque no había hecho nada.
+      setReaccionesLocales((prev) => ({ ...prev, [wamid]: emoji }));
       try {
         const res = await fetchWithSupabaseSession(
           `/api/mobile/asesor/conversations/${conversationId}/react`,
@@ -878,6 +893,11 @@ export default function MAsesorChatPage() {
         if (!res.ok || !j.ok) throw new Error(j.error || "No se pudo reaccionar");
         await load(true);
       } catch (e) {
+        // Falló: se saca la optimista para no mostrar una reacción que no existe.
+        setReaccionesLocales((prev) => {
+          const { [wamid]: _, ...resto } = prev;
+          return resto;
+        });
         setReaccionError(e instanceof Error ? e.message : "No se pudo reaccionar");
       }
     },
@@ -885,7 +905,16 @@ export default function MAsesorChatPage() {
   );
 
   /** Reacciones ya agrupadas sobre el WAMID al que apuntan. */
-  const reacciones = useMemo(() => agruparReacciones(messages), [messages]);
+  const reacciones = useMemo(() => {
+    const base = agruparReacciones(messages);
+    // Lo local pisa a lo del servidor mientras viaja; cuando la recarga trae la fila real,
+    // coinciden y no se nota el cambio.
+    for (const [wamid, emoji] of Object.entries(reaccionesLocales)) {
+      const otras = (base.get(wamid) ?? []).filter((r) => !r.from_me);
+      base.set(wamid, emoji ? [...otras, { emoji, from_me: true }] : otras);
+    }
+    return base;
+  }, [messages, reaccionesLocales]);
 
   const onBubbleTouchStart = useCallback((e: React.TouchEvent, m: Msg) => {
     if (puedeReaccionar(m)) {
@@ -1207,12 +1236,18 @@ export default function MAsesorChatPage() {
                   </span>
                 ) : null}
                 <div
-                  style={
-                    swipe?.id === m.id
+                  style={{
+                    // Sin `WebkitTouchCallout: none` el toque largo abre el menú nativo de
+                    // iOS encima de la hoja de emojis.
+                    WebkitTouchCallout: "none",
+                    ...(swipe?.id === m.id
                       ? { transform: `translateX(${swipe.dx}px)` }
-                      : { transform: "translateX(0)", transition: "transform 140ms ease-out" }
-                  }
-                  className={`max-w-[78%] rounded-2xl px-3 py-2 text-[14px] leading-snug shadow-sm ${
+                      : { transform: "translateX(0)", transition: "transform 140ms ease-out" }),
+                  }}
+                  // `select-none` porque el toque largo es "reaccionar", no "seleccionar
+                  // texto": sin esto aparecían las manijas de selección encima de la hoja
+                  // de emojis. Para no perder la capacidad, la hoja trae "Copiar texto".
+                  className={`max-w-[78%] select-none rounded-2xl px-3 py-2 text-[14px] leading-snug shadow-sm ${
                     m.from_me ? "bg-[#4FAEB2] text-white rounded-br-md" : "bg-white text-slate-800 border border-slate-100 rounded-bl-md"
                   }`}
                 >
@@ -1639,6 +1674,19 @@ export default function MAsesorChatPage() {
                 </button>
               ))}
             </div>
+
+            {reaccionandoA.content?.trim() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(reaccionandoA.content ?? "");
+                  setReaccionandoA(null);
+                }}
+                className="mt-1 w-full rounded-xl py-2.5 text-[14px] font-medium text-slate-600 active:bg-slate-100"
+              >
+                Copiar texto
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}

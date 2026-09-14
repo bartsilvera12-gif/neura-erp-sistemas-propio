@@ -51,6 +51,7 @@ import {
 import { INBOX_HEARTBEAT_INTERVAL_MS } from "@/lib/chat/agent-presence";
 import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
+import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
 import {
@@ -4596,6 +4597,9 @@ export function ConversacionesClient({
                           >
                             {formatTime(m.created_at)}
                             {m.message_type !== "text" && ` · ${m.message_type}`}
+                            {m.from_me ? (
+                              <MessageDeliveryTicks status={m.whatsapp_delivery_status} />
+                            ) : null}
                           </p>
                           {m.from_me && m.whatsapp_delivery_status === "failed" ? (
                             <div className="mt-1 rounded-md bg-red-50 border border-red-200 px-2 py-1 text-[11px] text-red-700 flex items-start gap-1">

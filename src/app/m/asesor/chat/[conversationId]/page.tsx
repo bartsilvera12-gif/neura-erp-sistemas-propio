@@ -18,6 +18,7 @@ import {
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
+import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import {
   extractBodyPlaceholderKeysOrdered,
@@ -1179,6 +1180,9 @@ export default function MAsesorChatPage() {
                       }`}
                     >
                       {fmtTime(m.created_at)}
+                      {m.from_me ? (
+                        <MessageDeliveryTicks status={m.whatsapp_delivery_status} />
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

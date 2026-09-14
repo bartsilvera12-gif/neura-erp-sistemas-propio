@@ -916,6 +916,44 @@ export default function MAsesorChatPage() {
     return base;
   }, [messages, reaccionesLocales]);
 
+  // ── Deslizar desde el borde izquierdo para volver ──────────────────────────
+  // El botón físico de Android lo maneja Capacitor y sin el plugin nativo JavaScript ni se
+  // entera de que lo apretaron. Este gesto no depende de nada nativo: es el mismo que hace
+  // iOS de fábrica, y en Android da una salida que no obliga a apuntarle al botón chiquito
+  // del encabezado.
+  const BORDE = 28; // zona de arranque, en píxeles desde el borde
+  const BORDE_UMBRAL = 80; // cuánto hay que arrastrar para que vuelva
+  const bordeInicio = useRef<{ x: number; y: number } | null>(null);
+  const [bordeDx, setBordeDx] = useState(0);
+
+  const onBordeStart = useCallback((e: React.TouchEvent) => {
+    const t = e.touches[0];
+    if (t.clientX > BORDE) return;
+    bordeInicio.current = { x: t.clientX, y: t.clientY };
+  }, []);
+
+  const onBordeMove = useCallback((e: React.TouchEvent) => {
+    const ini = bordeInicio.current;
+    if (!ini) return;
+    const t = e.touches[0];
+    const dx = t.clientX - ini.x;
+    const dy = t.clientY - ini.y;
+    // Si el movimiento es más vertical que horizontal es scroll: se suelta.
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+      bordeInicio.current = null;
+      setBordeDx(0);
+      return;
+    }
+    setBordeDx(Math.max(0, Math.min(dx, BORDE_UMBRAL + 40)));
+  }, []);
+
+  const onBordeEnd = useCallback(() => {
+    const dx = bordeDx;
+    bordeInicio.current = null;
+    setBordeDx(0);
+    if (dx >= BORDE_UMBRAL) volver();
+  }, [bordeDx]);
+
   /**
    * Volver a la bandeja.
    *
@@ -932,6 +970,8 @@ export default function MAsesorChatPage() {
   }, [router]);
 
   const onBubbleTouchStart = useCallback((e: React.TouchEvent, m: Msg) => {
+    // Arrancando pegado al borde manda el gesto de volver, no el de citar ni el de reaccionar.
+    if (e.touches[0].clientX <= BORDE) return;
     if (puedeReaccionar(m)) {
       cancelarHold();
       holdTimer.current = setTimeout(() => {
@@ -1189,7 +1229,15 @@ export default function MAsesorChatPage() {
       .join(" · ") || "WhatsApp";
 
   return (
-    <div className="min-h-svh max-h-svh bg-slate-50 flex flex-col">
+    <div className="min-h-svh max-h-svh bg-slate-50 flex flex-col"
+      onTouchStart={onBordeStart}
+      onTouchMove={onBordeMove}
+      onTouchEnd={onBordeEnd}
+      onTouchCancel={onBordeEnd}
+      style={{
+        transform: bordeDx ? `translateX(${bordeDx}px)` : undefined,
+        transition: bordeDx ? undefined : "transform 160ms ease-out",
+      }}>
       <header
         className="sticky top-0 z-10 bg-[#3F8E91] text-white px-2 pb-2.5 shadow-sm flex items-center gap-2"
         // iOS: respetar la barra de estado (notch). env(safe-area-inset-top)=0 en Android/web.

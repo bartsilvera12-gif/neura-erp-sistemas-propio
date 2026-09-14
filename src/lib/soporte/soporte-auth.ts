@@ -9,7 +9,7 @@ import {
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
-import { puedeConfigurarSoporte, puedeUsarSoporte } from "@/lib/soporte/permisos";
+import { SOPORTE_SLUG, puedeConfigurarSoporte, puedeUsarSoporte } from "@/lib/soporte/permisos";
 import { memoriaSesion, type SesionSoporte } from "@/lib/soporte/cache";
 
 export type SoporteContexto = {
@@ -24,6 +24,22 @@ export type SoporteContexto = {
 
 export type SoporteAuth = SoporteContexto | { ok: false; status: number; message: string };
 
+/**
+ * ¿Tiene el módulo Soporte asignado a mano? Sólo cuenta una fila explícita en
+ * `usuario_modulos`; ante un error se niega (nunca se abre por las dudas).
+ */
+async function tieneModuloConcedido(svc: ReturnType<typeof createServiceRoleClient>, usuarioId: string): Promise<boolean> {
+  const { data: modulo, error: e1 } = await svc.from("modulos").select("id").eq("slug", SOPORTE_SLUG).maybeSingle();
+  if (e1 || !modulo?.id) return false;
+  const { data, error } = await svc
+    .from("usuario_modulos")
+    .select("modulo_id")
+    .eq("usuario_id", usuarioId)
+    .eq("modulo_id", modulo.id)
+    .limit(1);
+  return !error && (data?.length ?? 0) > 0;
+}
+
 async function sesionDe(
   clave: string,
   obtenerUsuario: () => Promise<{ id: string; email?: string | null } | null>
@@ -34,13 +50,15 @@ async function sesionDe(
   }
   const user = await obtenerUsuario();
   if (!user?.id) return null;
-  const usuario = await resolveUsuarioErpFromAuthUser(createServiceRoleClient(), user as never);
+  const svc = createServiceRoleClient();
+  const usuario = await resolveUsuarioErpFromAuthUser(svc, user as never);
   if (!usuario?.id || !usuario.empresa_id) return null;
   const sesion: SesionSoporte = {
     usuarioId: usuario.id,
     empresaId: usuario.empresa_id,
     rol: usuario.rol,
     email: user.email ?? null,
+    concedido: await tieneModuloConcedido(svc, usuario.id),
   };
   // Sólo lo que salió bien: si a alguien le acaban de arreglar el acceso, tiene
   // que entrar en el próximo intento y no dentro de 30 segundos.
@@ -54,7 +72,7 @@ async function sesionDe(
  */
 async function contexto(sesion: SesionSoporte | null): Promise<SoporteAuth> {
   if (!sesion) return { ok: false, status: 401, message: "No autenticado" };
-  const sujeto = { rol: sesion.rol, email: sesion.email };
+  const sujeto = { rol: sesion.rol, email: sesion.email, concedido: sesion.concedido };
   if (!puedeUsarSoporte(sujeto)) return { ok: false, status: 403, message: "Sin acceso al módulo Soporte" };
   return {
     ok: true,

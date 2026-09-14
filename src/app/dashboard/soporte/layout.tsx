@@ -26,7 +26,7 @@ export default async function SoporteLayout({ children }: { children: React.Reac
         <p className="mt-1.5 text-sm text-slate-500">
           {acceso.status === 401
             ? "Tu sesión expiró. Volvé a iniciar sesión."
-            : "El módulo Soporte está disponible sólo para administradores."}
+            : "No tenés habilitado el módulo Soporte. Pedíselo a un administrador."}
         </p>
         <Link
           href="/"

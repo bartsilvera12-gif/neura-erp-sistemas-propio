@@ -79,7 +79,14 @@ export class MemoriaTTL<T> {
   }
 }
 
-export type SesionSoporte = { usuarioId: string; empresaId: string; rol: string | null; email: string | null };
+export type SesionSoporte = {
+  usuarioId: string;
+  empresaId: string;
+  rol: string | null;
+  email: string | null;
+  /** Tiene el módulo `soporte` asignado a mano en `usuario_modulos`. */
+  concedido: boolean;
+};
 
 export const memoriaSesion = new MemoriaTTL<SesionSoporte>(30_000, 1000);
 export const MINUTO = 60_000;

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BarChart3, Building2, CalendarRange, CheckCircle2, CircleDot, Flag, RotateCcw, Tags, Ticket, Timer, TimerOff, UserRound, type LucideIcon } from "lucide-react";
+import CountUp from "@/components/reactbits/CountUp";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import SmartCombobox from "@/components/ui/SmartCombobox";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { duracionCorta } from "@/lib/soporte/dominio";
-import { apiSoporte, obtenerCatalogos, type CatalogosConEquipo } from "../_ui/api";
-import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseEtiqueta, claseInput } from "../_ui/ui";
+import { apiSoporte, obtenerCatalogos, obtenerClientes, type CatalogosConEquipo } from "../_ui/api";
+import { Aviso, Cargando, Encabezado, IconoTile, Pagina, TONOS, Tarjeta, TarjetaViva, Vacio, claseEtiqueta, claseInput, type Tono } from "../_ui/ui";
 
 type Conteo = { clave: string; nombre: string; cantidad: number };
 type Reporte = {
@@ -27,7 +29,7 @@ type Reporte = {
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Barras horizontales simples: se leen de un vistazo y no piden una librería. */
-function Barras({ datos, vacio = "Sin datos" }: { datos: Conteo[]; vacio?: string }) {
+function Barras({ datos, vacio = "Sin datos", tono = "turquesa" }: { datos: Conteo[]; vacio?: string; tono?: Tono }) {
   if (!datos.length) return <p className="py-4 text-center text-[13px] text-slate-400">{vacio}</p>;
   const max = Math.max(...datos.map((d) => d.cantidad), 1);
   return (
@@ -36,7 +38,7 @@ function Barras({ datos, vacio = "Sin datos" }: { datos: Conteo[]; vacio?: strin
         <li key={d.clave || d.nombre} className="grid grid-cols-[minmax(0,140px)_1fr_36px] items-center gap-3 text-[12.5px]">
           <span className="truncate text-slate-600" title={d.nombre}>{d.nombre}</span>
           <span className="h-2 overflow-hidden rounded-full bg-slate-100">
-            <span className="block h-full rounded-full bg-[#4FAEB2]" style={{ width: `${(d.cantidad / max) * 100}%` }} />
+            <span className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${(d.cantidad / max) * 100}%`, background: `linear-gradient(90deg, ${TONOS[tono].hex}99, ${TONOS[tono].hex})` }} />
           </span>
           <span className="text-right font-medium tabular-nums text-slate-800">{d.cantidad}</span>
         </li>
@@ -45,13 +47,42 @@ function Barras({ datos, vacio = "Sin datos" }: { datos: Conteo[]; vacio?: strin
   );
 }
 
-function Numero({ etiqueta, valor, detalle, alerta }: { etiqueta: string; valor: React.ReactNode; detalle?: React.ReactNode; alerta?: boolean }) {
+function Numero({
+  etiqueta,
+  valor,
+  sufijo = "",
+  detalle,
+  alerta,
+  icono,
+  tono,
+}: {
+  etiqueta: string;
+  valor: number | string;
+  sufijo?: string;
+  detalle?: React.ReactNode;
+  alerta?: boolean;
+  icono: LucideIcon;
+  tono: Tono;
+}) {
+  const t: Tono = alerta ? "rosa" : tono;
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5">
-      <p className="text-[11.5px] text-slate-500">{etiqueta}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${alerta ? "text-rose-600" : "text-slate-900"}`}>{valor}</p>
+    <TarjetaViva tono={t} className="px-4 py-3.5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11.5px] font-medium text-slate-500">{etiqueta}</p>
+        <IconoTile icono={icono} tono={t} tam="sm" />
+      </div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${alerta ? "text-rose-600" : "text-slate-900"}`}>
+        {typeof valor === "number" ? (
+          <>
+            <CountUp to={valor} duration={0.6} />
+            {sufijo}
+          </>
+        ) : (
+          valor
+        )}
+      </div>
       {detalle ? <p className="mt-0.5 text-[11.5px] text-slate-400">{detalle}</p> : null}
-    </div>
+    </TarjetaViva>
   );
 }
 
@@ -71,7 +102,7 @@ export default function SoporteReportesPage() {
 
   useEffect(() => {
     void obtenerCatalogos().then(setCat).catch(() => {});
-    void apiSoporte<{ clientes: { id: string; nombre: string }[] }>("/api/soporte/opciones").then((r) => setClientes(r.clientes)).catch(() => {});
+    void obtenerClientes().then(setClientes).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -94,7 +125,7 @@ export default function SoporteReportesPage() {
 
   return (
     <Pagina>
-      <Encabezado titulo="Reportes" subtitulo="Indicadores de soporte del período" />
+      <Encabezado titulo="Reportes" subtitulo="Indicadores de soporte del período" icono={BarChart3} tono="indigo" />
 
       <Tarjeta className="mb-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
@@ -131,34 +162,37 @@ export default function SoporteReportesPage() {
       ) : (
         <div className={`space-y-5 ${cargando ? "opacity-60" : ""}`}>
           {datos.total === 0 ? (
-            <Tarjeta><Vacio titulo="No hay tickets en el período con esos filtros" /></Tarjeta>
+            <Tarjeta><Vacio icono={BarChart3} tono="indigo" titulo="No hay tickets en el período con esos filtros" /></Tarjeta>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                <Numero etiqueta="Tickets en el período" valor={datos.total} />
+                <Numero etiqueta="Tickets en el período" valor={datos.total} icono={Ticket} tono="turquesa" />
                 <Numero
                   etiqueta="Cumplimiento de SLA"
-                  valor={datos.sla.porcentaje_cumplimiento == null ? "—" : `${datos.sla.porcentaje_cumplimiento}%`}
+                  valor={datos.sla.porcentaje_cumplimiento ?? "—"}
+                  sufijo="%"
+                  icono={CheckCircle2}
+                  tono="verde"
                   detalle={`${datos.sla.cumplidos} cumplidos · ${datos.sla.incumplidos} incumplidos`}
                   alerta={datos.sla.porcentaje_cumplimiento != null && datos.sla.porcentaje_cumplimiento < 80}
                 />
-                <Numero etiqueta="SLA vencidos (abiertos)" valor={datos.sla.vencidos_abiertos} alerta={datos.sla.vencidos_abiertos > 0} detalle={`${datos.sla.en_curso} en curso`} />
-                <Numero etiqueta="Tiempo medio de resolución" valor={duracionCorta(datos.resolucion.promedio_ms)} detalle={`${datos.resolucion.resueltos} resueltos · horas laborales`} />
-                <Numero etiqueta="Devoluciones de QA" valor={datos.devoluciones_qa.total} detalle={`en ${datos.devoluciones_qa.tickets_devueltos} ticket(s)`} alerta={datos.devoluciones_qa.total > 0} />
+                <Numero etiqueta="SLA vencidos (abiertos)" valor={datos.sla.vencidos_abiertos} icono={TimerOff} tono="naranja" alerta={datos.sla.vencidos_abiertos > 0} detalle={`${datos.sla.en_curso} en curso`} />
+                <Numero etiqueta="Tiempo medio de resolución" valor={duracionCorta(datos.resolucion.promedio_ms)} icono={Timer} tono="celeste" detalle={`${datos.resolucion.resueltos} resueltos · horas laborales`} />
+                <Numero etiqueta="Devoluciones de QA" valor={datos.devoluciones_qa.total} icono={RotateCcw} tono="violeta" detalle={`en ${datos.devoluciones_qa.tickets_devueltos} ticket(s)`} alerta={datos.devoluciones_qa.total > 0} />
               </div>
 
               <div className="grid gap-5 lg:grid-cols-2">
-                <Tarjeta titulo="Tickets por período"><Barras datos={datos.por_periodo} /></Tarjeta>
-                <Tarjeta titulo="Tickets por estado"><Barras datos={datos.por_estado} /></Tarjeta>
-                <Tarjeta titulo="Tickets por cliente"><Barras datos={datos.por_cliente} /></Tarjeta>
-                <Tarjeta titulo="Tickets por responsable"><Barras datos={datos.por_responsable} /></Tarjeta>
-                <Tarjeta titulo="Tickets por tipo"><Barras datos={datos.por_tipo} /></Tarjeta>
-                <Tarjeta titulo="Tickets por prioridad"><Barras datos={datos.por_prioridad} /></Tarjeta>
+                <Tarjeta titulo="Tickets por período" icono={CalendarRange} tono="turquesa"><Barras datos={datos.por_periodo} tono="turquesa" /></Tarjeta>
+                <Tarjeta titulo="Tickets por estado" icono={CircleDot} tono="celeste"><Barras datos={datos.por_estado} tono="celeste" /></Tarjeta>
+                <Tarjeta titulo="Tickets por cliente" icono={Building2} tono="indigo"><Barras datos={datos.por_cliente} tono="indigo" /></Tarjeta>
+                <Tarjeta titulo="Tickets por responsable" icono={UserRound} tono="verde"><Barras datos={datos.por_responsable} tono="verde" /></Tarjeta>
+                <Tarjeta titulo="Tickets por tipo" icono={Tags} tono="violeta"><Barras datos={datos.por_tipo} tono="violeta" /></Tarjeta>
+                <Tarjeta titulo="Tickets por prioridad" icono={Flag} tono="ambar"><Barras datos={datos.por_prioridad} tono="ambar" /></Tarjeta>
               </div>
 
-              <Tarjeta titulo="Tickets con más devoluciones de QA" padding="p-0">
+              <Tarjeta titulo="Tickets con más devoluciones de QA" icono={RotateCcw} tono="rosa" padding="p-0">
                 {datos.devoluciones_qa.mas_devueltos.length === 0 ? (
-                  <Vacio titulo="Sin devoluciones de QA en el período" />
+                  <Vacio icono={RotateCcw} tono="verde" titulo="Sin devoluciones de QA en el período" />
                 ) : (
                   <ul className="divide-y divide-slate-100">
                     {datos.devoluciones_qa.mas_devueltos.map((t) => (

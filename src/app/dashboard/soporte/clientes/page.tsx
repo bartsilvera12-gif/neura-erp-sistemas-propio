@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Building2, Search } from "lucide-react";
 import { apiSoporte, fecha, fechaHora } from "../_ui/api";
-import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseInput } from "../_ui/ui";
+import { Aviso, Avatar, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseInput } from "../_ui/ui";
 
 type FilaCliente = {
   cliente_id: string;
@@ -19,6 +19,15 @@ type FilaCliente = {
 };
 
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+
+/** Número en píldora de color; en cero se apaga para que resalte lo que hay. */
+function Chip({ n, clase }: { n: number; clase: string }) {
+  return (
+    <span className={`inline-flex min-w-7 justify-center rounded-full px-2 py-0.5 text-[12px] font-bold tabular-nums ${n ? clase : "bg-slate-50 text-slate-300"}`}>
+      {n}
+    </span>
+  );
+}
 
 /**
  * Soporte visto por cliente. No es otra tabla de clientes: son los clientes del
@@ -43,7 +52,7 @@ export default function SoporteClientesPage() {
 
   return (
     <Pagina>
-      <Encabezado titulo="Clientes" subtitulo="Estado del soporte por cliente" />
+      <Encabezado titulo="Clientes" subtitulo="Estado del soporte por cliente" icono={Building2} tono="turquesa" />
       {error ? <Aviso>{error}</Aviso> : null}
       <Tarjeta padding="p-0">
         <div className="border-b border-slate-100 px-4 py-3">
@@ -55,7 +64,7 @@ export default function SoporteClientesPage() {
         {filas == null ? (
           error ? null : <Cargando />
         ) : visibles.length === 0 ? (
-          <Vacio titulo={filas.length ? "Ningún cliente coincide" : "Todavía no hay clientes con tickets"} />
+          <Vacio icono={Building2} titulo={filas.length ? "Ningún cliente coincide" : "Todavía no hay clientes con tickets"} />
         ) : (
           <>
             <div className="hidden overflow-x-auto md:block">
@@ -73,12 +82,17 @@ export default function SoporteClientesPage() {
                 </thead>
                 <tbody>
                   {visibles.map((f) => (
-                    <tr key={f.cliente_id} onClick={() => ir(f.cliente_id)} className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                      <td className="px-5 py-3 font-medium text-slate-900">{f.cliente_nombre}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-slate-700">{f.abiertos}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-slate-500">{f.cerrados}</td>
-                      <td className={`px-3 py-3 text-right tabular-nums ${f.urgentes ? "font-semibold text-amber-600" : "text-slate-400"}`}>{f.urgentes}</td>
-                      <td className={`px-3 py-3 text-right tabular-nums ${f.sla_vencidos ? "font-semibold text-rose-600" : "text-slate-400"}`}>{f.sla_vencidos}</td>
+                    <tr key={f.cliente_id} onClick={() => ir(f.cliente_id)} className="group cursor-pointer border-b border-slate-100 last:border-0 hover:bg-[#4FAEB2]/[0.04]">
+                      <td className="px-5 py-3">
+                        <span className="flex items-center gap-2.5 font-semibold text-slate-800 group-hover:text-[#2F6E71]">
+                          <Avatar nombre={f.cliente_nombre} tam={28} />
+                          {f.cliente_nombre}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right"><Chip n={f.abiertos} clase="bg-sky-100 text-sky-700" /></td>
+                      <td className="px-3 py-3 text-right"><Chip n={f.cerrados} clase="bg-emerald-100 text-emerald-700" /></td>
+                      <td className="px-3 py-3 text-right"><Chip n={f.urgentes} clase="bg-amber-100 text-amber-700" /></td>
+                      <td className="px-3 py-3 text-right"><Chip n={f.sla_vencidos} clase="bg-rose-100 text-rose-700" /></td>
                       <td className="max-w-[280px] px-3 py-3">
                         {f.ultimo ? (
                           <Link href={`/dashboard/soporte/tickets/${f.ultimo.id}`} onClick={(e) => e.stopPropagation()} className="block truncate text-slate-700 no-underline hover:text-[#2F6E71]">

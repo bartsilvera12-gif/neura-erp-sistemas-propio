@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   FilePlus2,
+  History,
   FileX2,
   Flag,
   Link2,
@@ -146,7 +147,7 @@ export default function TicketHistorialPage() {
       {eventos == null ? (
         error ? <Aviso>{error}</Aviso> : <Cargando />
       ) : eventos.length === 0 ? (
-        <Vacio titulo="Sin eventos registrados" />
+        <Vacio icono={History} tono="indigo" titulo="Sin eventos registrados" />
       ) : (
         <ol className="relative space-y-5 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-px before:bg-slate-200">
           {eventos.map((e) => {

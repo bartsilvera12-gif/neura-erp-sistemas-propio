@@ -2,21 +2,21 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { Bell, Check, Plus } from "lucide-react";
+import { Bell, Check, CircleDot, Flag, Plus, Settings2, Tags, Timer, Users, type LucideIcon } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { apiSoporte, invalidarCatalogos, obtenerCatalogos, type CatalogosConEquipo } from "../_ui/api";
-import { Aviso, Avatar, Boton, Cargando, Encabezado, Pagina, Tarjeta, claseInput } from "../_ui/ui";
+import { Aviso, Avatar, Boton, Cargando, Encabezado, Pagina, TONOS, Tarjeta, claseInput, type Tono } from "../_ui/ui";
 
 type Catalogo = "estados" | "tipos" | "clasificaciones" | "prioridades";
 
-const PESTANAS = [
-  { id: "estados", etiqueta: "Estados" },
-  { id: "tipos", etiqueta: "Tipos de solicitud" },
-  { id: "prioridades", etiqueta: "Prioridades" },
-  { id: "sla", etiqueta: "SLA" },
-  { id: "equipos", etiqueta: "Equipos" },
-  { id: "notificaciones", etiqueta: "Notificaciones" },
-] as const;
+const PESTANAS: readonly { id: string; etiqueta: string; icono: LucideIcon; tono: Tono }[] = [
+  { id: "estados", etiqueta: "Estados", icono: CircleDot, tono: "celeste" },
+  { id: "tipos", etiqueta: "Tipos de solicitud", icono: Tags, tono: "violeta" },
+  { id: "prioridades", etiqueta: "Prioridades", icono: Flag, tono: "ambar" },
+  { id: "sla", etiqueta: "SLA", icono: Timer, tono: "verde" },
+  { id: "equipos", etiqueta: "Equipos", icono: Users, tono: "turquesa" },
+  { id: "notificaciones", etiqueta: "Notificaciones", icono: Bell, tono: "rosa" },
+];
 
 function Interruptor({ activo, onCambio, etiqueta }: { activo: boolean; onCambio: (v: boolean) => void; etiqueta: string }) {
   return (
@@ -125,17 +125,20 @@ function Contenido() {
 
   return (
     <>
-      <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-200" aria-label="Secciones de configuración">
+      <nav className="mb-5 flex gap-1.5 overflow-x-auto pb-1" aria-label="Secciones de configuración">
         {PESTANAS.map((p) => (
           <button
             key={p.id}
             type="button"
             onClick={() => router.replace(`${pathname}?tab=${p.id}`, { scroll: false })}
             aria-current={tab === p.id ? "page" : undefined}
-            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium ${
-              tab === p.id ? "border-[#4FAEB2] text-[#2F6E71]" : "border-transparent text-slate-500 hover:text-slate-800"
+            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition ${
+              tab === p.id
+                ? `${TONOS[p.tono].suave} ${TONOS[p.tono].texto} ${TONOS[p.tono].borde} shadow-sm`
+                : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800"
             }`}
           >
+            <p.icono className="h-3.5 w-3.5" aria-hidden />
             {p.etiqueta}
           </button>
         ))}
@@ -144,7 +147,7 @@ function Contenido() {
       {error ? <div className="mb-4"><Aviso>{error}</Aviso></div> : null}
 
       {tab === "estados" ? (
-        <Tarjeta titulo="Estados de ticket" accion={<span className="text-[12px] text-slate-400">Los cambios se guardan al salir de cada campo</span>}>
+        <Tarjeta titulo="Estados de ticket" icono={CircleDot} tono="celeste" accion={<span className="text-[12px] text-slate-400">Los cambios se guardan al salir de cada campo</span>}>
           <Tabla columnas={["Nombre", "Tipo", "Área de la próxima acción", "Color", "Orden", "Detiene SLA", "Activo", ""]}>
             {cat.estados.map((e) => (
               <tr key={e.codigo} className="border-b border-slate-100 last:border-0">
@@ -176,7 +179,7 @@ function Contenido() {
       ) : null}
 
       {tab === "tipos" ? (
-        <Tarjeta titulo="Tipos de solicitud">
+        <Tarjeta titulo="Tipos de solicitud" icono={Tags} tono="violeta">
           <Tabla columnas={["Nombre", "SLA propio (h)", "Orden", "Activo", ""]}>
             {cat.tipos.map((t) => {
               const tieneClasif = cat.clasificaciones.some((c) => c.tipo_codigo === t.codigo);
@@ -207,7 +210,7 @@ function Contenido() {
       ) : null}
 
       {tab === "prioridades" ? (
-        <Tarjeta titulo="Prioridades">
+        <Tarjeta titulo="Prioridades" icono={Flag} tono="ambar">
           <Tabla columnas={["Nombre", "Color", "Orden", "Activo", ""]}>
             {cat.prioridades.map((p) => (
               <tr key={p.codigo} className="border-b border-slate-100 last:border-0">
@@ -225,7 +228,7 @@ function Contenido() {
       ) : null}
 
       {tab === "sla" ? (
-        <Tarjeta titulo="Clasificaciones y service level" accion={<span className="text-[12px] text-slate-400">Horas laborales · proceso oficial de Gestión de Soporte</span>}>
+        <Tarjeta titulo="Clasificaciones y service level" icono={Timer} tono="verde" accion={<span className="text-[12px] text-slate-400">Horas laborales · proceso oficial de Gestión de Soporte</span>}>
           <Tabla columnas={["Tipo", "Clasificación", "SLA (horas)", "Prioridad sugerida", "Activo", ""]}>
             {cat.clasificaciones.map((c) => (
               <tr key={c.codigo} className="border-b border-slate-100 last:border-0">
@@ -260,7 +263,7 @@ function Contenido() {
       ) : null}
 
       {tab === "equipos" ? (
-        <Tarjeta titulo="Equipos" accion={<span className="text-[12px] text-slate-400">Se toman de los tildes de Usuarios</span>}>
+        <Tarjeta titulo="Equipos" icono={Users} tono="turquesa" accion={<span className="text-[12px] text-slate-400">Se toman de los tildes de Usuarios</span>}>
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {(["PM", "Desarrollo", "QA", "Admin"] as const).map((area) => {
               const gente = cat.personas.filter((p) => p.area === area);
@@ -291,9 +294,9 @@ function Contenido() {
       ) : null}
 
       {tab === "notificaciones" ? (
-        <Tarjeta titulo={tituloTab}>
+        <Tarjeta titulo={tituloTab} icono={Bell} tono="rosa">
           <div className="flex gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-rose-100 text-rose-500">
               <Bell className="h-4 w-4" aria-hidden />
             </span>
             <div className="text-[13px] leading-relaxed text-slate-600">
@@ -312,7 +315,7 @@ function Contenido() {
 export default function SoporteConfiguracionPage() {
   return (
     <Pagina>
-      <Encabezado titulo="Configuración de Soporte" subtitulo="Parámetros y catálogos del módulo" />
+      <Encabezado titulo="Configuración de Soporte" subtitulo="Parámetros y catálogos del módulo" icono={Settings2} tono="pizarra" />
       <Suspense fallback={<Cargando />}>
         <Contenido />
       </Suspense>

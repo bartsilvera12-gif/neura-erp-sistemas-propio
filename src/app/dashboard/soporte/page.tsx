@@ -1,12 +1,38 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  AlarmClock,
+  BarChart3,
+  CheckCircle2,
+  Code2,
+  FlaskConical,
+  Headphones,
+  Inbox,
+  ListChecks,
+  Lock,
+  MessageSquareWarning,
+  PieChart as IconoTorta,
+  Plus,
+  Ticket,
+  UserRoundCheck,
+  type LucideIcon,
+} from "lucide-react";
+import CountUp from "@/components/reactbits/CountUp";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { apiSoporte } from "./_ui/api";
-import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseBoton } from "./_ui/ui";
+import { Aviso, Encabezado, Esqueleto, IconoTile, PALETA_TIPOS, Pagina, TONOS, Tarjeta, TarjetaViva, Vacio, claseBoton, type Tono } from "./_ui/ui";
+
+const GraficoEstados = dynamic(() => import("./_ui/GraficosDashboard").then((m) => m.GraficoEstados), {
+  ssr: false,
+  loading: () => <Esqueleto className="h-full w-full rounded-xl" />,
+});
+const GraficoTipos = dynamic(() => import("./_ui/GraficosDashboard").then((m) => m.GraficoTipos), {
+  ssr: false,
+  loading: () => <Esqueleto className="h-full w-full rounded-full" />,
+});
 
 type Dashboard = {
   dias: number;
@@ -16,19 +42,23 @@ type Dashboard = {
   por_tipo: { nombre: string; cantidad: number }[];
 };
 
-const KPIS: { clave: string; etiqueta: string; malo?: boolean; destacado?: boolean }[] = [
-  { clave: "total", etiqueta: "Total de tickets" },
-  { clave: "abiertos", etiqueta: "Abiertos" },
-  { clave: "en_desarrollo", etiqueta: "En desarrollo" },
-  { clave: "en_qa", etiqueta: "En prueba de QA" },
-  { clave: "con_observaciones", etiqueta: "Con observaciones", malo: true },
-  { clave: "resueltos", etiqueta: "Resueltos (sin cerrar)" },
-  { clave: "cerrados", etiqueta: "Cerrados" },
-  { clave: "sla_vencidos", etiqueta: "SLA vencidos", malo: true, destacado: true },
+const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
+  { clave: "total", etiqueta: "Total de tickets", icono: Ticket, tono: "turquesa", href: "/dashboard/soporte/tickets" },
+  { clave: "abiertos", etiqueta: "Abiertos", icono: Inbox, tono: "azul", href: "/dashboard/soporte/tickets?pestana=abiertos" },
+  { clave: "en_desarrollo", etiqueta: "En desarrollo", icono: Code2, tono: "celeste", href: "/dashboard/soporte/tickets?estado=en_desarrollo" },
+  { clave: "en_qa", etiqueta: "En prueba de QA", icono: FlaskConical, tono: "violeta", href: "/dashboard/soporte/tickets?pestana=qa" },
+  { clave: "con_observaciones", etiqueta: "Con observaciones", icono: MessageSquareWarning, tono: "naranja", malo: true, href: "/dashboard/soporte/tickets?pestana=observaciones" },
+  { clave: "resueltos", etiqueta: "Resueltos", icono: CheckCircle2, tono: "verde", href: "/dashboard/soporte/tickets?pestana=resueltos" },
+  { clave: "cerrados", etiqueta: "Cerrados", icono: Lock, tono: "pizarra", href: "/dashboard/soporte/tickets?pestana=cerrados" },
+  { clave: "sla_vencidos", etiqueta: "SLA vencidos", icono: AlarmClock, tono: "rosa", malo: true, href: "/dashboard/soporte/tickets" },
 ];
 
-/** Paleta del gráfico de tipos: turquesa de Zentra primero, después tonos que se distinguen. */
-const PALETA_TIPOS = ["#4FAEB2", "#2F6E71", "#8b5cf6", "#f59e0b", "#0ea5e9", "#94a3b8", "#ef4444"];
+const ACCESOS: { titulo: string; detalle: string; href: string; icono: LucideIcon; tono: Tono }[] = [
+  { titulo: "Nuevo ticket", detalle: "Registrar un pedido o error", href: "/dashboard/soporte/tickets/nuevo", icono: Plus, tono: "turquesa" },
+  { titulo: "Mis tickets", detalle: "Donde tenés la próxima acción", href: "/dashboard/soporte/mis-tickets", icono: UserRoundCheck, tono: "violeta" },
+  { titulo: "Todos los tickets", detalle: "Listado con filtros", href: "/dashboard/soporte/tickets", icono: ListChecks, tono: "celeste" },
+  { titulo: "Reportes", detalle: "SLA, tiempos y devoluciones", href: "/dashboard/soporte/reportes", icono: BarChart3, tono: "ambar" },
+];
 
 const PERIODOS = [
   { value: "7", label: "Últimos 7 días" },
@@ -37,34 +67,44 @@ const PERIODOS = [
   { value: "0", label: "Todo el historial" },
 ];
 
+// El último dashboard pedido, por período: volver a la pantalla la pinta al
+// instante con lo que había, y se actualiza en silencio.
+const recordado = new Map<string, Dashboard>();
+
 function Variacion({ valor, malo }: { valor: number | null | undefined; malo?: boolean }) {
-  if (valor == null) return <span className="text-[11px] text-slate-400">—</span>;
-  if (valor === 0) return <span className="text-[11px] font-medium text-slate-400">0%</span>;
-  // Para "con observaciones" o "SLA vencidos", subir es malo.
+  if (valor == null) return <span className="text-[11px] text-slate-400">sin comparación</span>;
+  if (valor === 0) return <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-500">= 0%</span>;
   const bueno = malo ? valor < 0 : valor > 0;
   return (
-    <span className={`text-[11px] font-medium tabular-nums ${bueno ? "text-emerald-600" : "text-rose-600"}`}>
+    <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${bueno ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
       {valor > 0 ? "▲" : "▼"} {Math.abs(valor)}%
     </span>
   );
 }
 
 /**
- * Dashboard de Soporte: vista ejecutiva.
+ * Dashboard de Soporte: la vista ejecutiva, y la puerta de entrada del módulo.
  *
- * Números y dos distribuciones, sin listas largas. Para el detalle está el
- * listado de Tickets, que es su propia página.
+ * Cada KPI es un atajo: clic y abre el listado ya filtrado por eso. Los
+ * accesos rápidos cubren lo que se hace todos los días sin pasar por el menú.
  */
 export default function SoporteDashboardPage() {
   const [dias, setDias] = useState("30");
-  const [datos, setDatos] = useState<Dashboard | null>(null);
+  const [datos, setDatos] = useState<Dashboard | null>(() => recordado.get("30") ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
-    setError(null);
+    const guardado = recordado.get(dias);
+    if (guardado) setDatos(guardado);
     apiSoporte<Dashboard>(`/api/soporte/dashboard?dias=${dias}`)
-      .then((d) => vivo && setDatos(d))
+      .then((d) => {
+        recordado.set(dias, d);
+        if (vivo) {
+          setDatos(d);
+          setError(null);
+        }
+      })
       .catch((e: Error) => vivo && setError(e.message));
     return () => {
       vivo = false;
@@ -78,6 +118,7 @@ export default function SoporteDashboardPage() {
       <Encabezado
         titulo="Soporte"
         subtitulo="Vista general del estado de los tickets"
+        icono={Headphones}
         acciones={
           <>
             <div className="w-48">
@@ -90,105 +131,104 @@ export default function SoporteDashboardPage() {
         }
       />
 
-      {error ? <Aviso>{error}</Aviso> : null}
+      {error ? <div className="mb-4"><Aviso>{error}</Aviso></div> : null}
 
-      {!datos && !error ? (
-        <Cargando />
-      ) : datos ? (
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
-            {KPIS.map((k) => (
-              <div key={k.clave} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                <p className="text-[11.5px] leading-tight text-slate-500">{k.etiqueta}</p>
-                <p
-                  className={`mt-1.5 text-2xl font-semibold tabular-nums ${
-                    k.destacado && (datos.kpis[k.clave] ?? 0) > 0 ? "text-rose-600" : "text-slate-900"
-                  }`}
-                >
-                  {datos.kpis[k.clave] ?? 0}
-                </p>
-                <div className="mt-1">
-                  <Variacion valor={datos.variacion[k.clave]} malo={k.malo} />
-                </div>
-              </div>
-            ))}
-          </div>
+      <div className="space-y-5">
+        {/* KPIs */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+          {KPIS.map((k) => {
+            const valor = datos?.kpis[k.clave] ?? 0;
+            const alerta = k.clave === "sla_vencidos" && valor > 0;
+            return (
+              <Link key={k.clave} href={k.href} className="group no-underline" prefetch>
+                <TarjetaViva tono={k.tono} className={`h-full px-4 py-3.5 ${alerta ? "!border-rose-200 bg-rose-50/40" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <IconoTile icono={k.icono} tono={k.tono} tam="sm" />
+                    {datos ? <Variacion valor={datos.variacion[k.clave]} malo={k.malo} /> : null}
+                  </div>
+                  <div className={`mt-3 text-[26px] font-bold leading-none tabular-nums ${alerta ? "text-rose-600" : "text-slate-900"}`}>
+                    {datos ? <CountUp to={valor} duration={0.6} /> : <Esqueleto className="h-6 w-10" />}
+                  </div>
+                  <p className="mt-1.5 text-[12px] font-medium leading-tight text-slate-500 group-hover:text-slate-700">{k.etiqueta}</p>
+                  <span className={`absolute inset-x-0 bottom-0 h-0.5 origin-left scale-x-0 transition-transform duration-300 group-hover:scale-x-100 ${TONOS[k.tono].solido}`} aria-hidden />
+                </TarjetaViva>
+              </Link>
+            );
+          })}
+        </div>
 
-          <div className="grid gap-5 lg:grid-cols-5">
-            <Tarjeta titulo="Tickets por estado" className="lg:col-span-3">
-              {datos.kpis.total === 0 ? (
-                <Vacio titulo="Sin tickets en el período" />
+        {/* Accesos rápidos */}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {ACCESOS.map((a) => (
+            <Link key={a.href} href={a.href} className="no-underline" prefetch>
+              <TarjetaViva tono={a.tono} className="flex items-center gap-3.5 px-4 py-4">
+                <IconoTile icono={a.icono} tono={a.tono} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">{a.titulo}</span>
+                  <span className="block truncate text-[12.5px] text-slate-500">{a.detalle}</span>
+                </span>
+              </TarjetaViva>
+            </Link>
+          ))}
+        </div>
+
+        {/* Gráficos */}
+        <div className="grid gap-5 lg:grid-cols-5">
+          <Tarjeta titulo="Tickets por estado" icono={BarChart3} tono="celeste" className="lg:col-span-3">
+            <div className="h-72">
+              {!datos ? (
+                <Esqueleto className="h-full w-full rounded-xl" />
+              ) : datos.kpis.total === 0 ? (
+                <Vacio titulo="Sin tickets en el período" icono={Ticket} />
               ) : (
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={datos.por_estado} margin={{ top: 20, right: 8, left: -18, bottom: 0 }}>
-                      <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                      <XAxis
-                        dataKey="nombre"
-                        tick={{ fontSize: 11, fill: "#64748b" }}
-                        tickLine={false}
-                        axisLine={{ stroke: "#e2e8f0" }}
-                        interval={0}
-                        tickFormatter={(v: string) => (v.length > 14 ? `${v.slice(0, 13)}…` : v)}
-                      />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
-                      <Tooltip
-                        cursor={{ fill: "#f8fafc" }}
-                        contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
-                        formatter={(v) => [v, "Tickets"]}
-                      />
-                      <Bar dataKey="cantidad" radius={[4, 4, 0, 0]} maxBarSize={44}>
-                        {datos.por_estado.map((e) => (
-                          <Cell key={e.codigo} fill={e.color} />
-                        ))}
-                        <LabelList dataKey="cantidad" position="top" style={{ fontSize: 11, fill: "#475569" }} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <GraficoEstados datos={datos.por_estado} />
               )}
-            </Tarjeta>
+            </div>
+          </Tarjeta>
 
-            <Tarjeta titulo="Por tipo de solicitud" className="lg:col-span-2">
-              {totalTipos === 0 ? (
-                <Vacio titulo="Sin tickets en el período" />
-              ) : (
-                <div className="flex flex-col items-center gap-5 sm:flex-row">
-                  <div className="relative h-52 w-52 shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={datos.por_tipo} dataKey="cantidad" nameKey="nombre" innerRadius="62%" outerRadius="92%" paddingAngle={2} stroke="none">
-                          {datos.por_tipo.map((t, i) => (
-                            <Cell key={t.nombre} fill={PALETA_TIPOS[i % PALETA_TIPOS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                      <div className="text-center">
-                        <p className="text-2xl font-semibold tabular-nums text-slate-900">{totalTipos}</p>
-                        <p className="text-[11px] text-slate-500">tickets</p>
-                      </div>
+          <Tarjeta titulo="Por tipo de solicitud" icono={IconoTorta} tono="violeta" className="lg:col-span-2">
+            {!datos ? (
+              <Esqueleto className="h-56 w-full rounded-xl" />
+            ) : totalTipos === 0 ? (
+              <Vacio titulo="Sin tickets en el período" icono={IconoTorta} tono="violeta" />
+            ) : (
+              <div className="flex flex-col items-center gap-5 sm:flex-row">
+                <div className="relative h-52 w-52 shrink-0">
+                  <GraficoTipos datos={datos.por_tipo} />
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                    <div className="text-center">
+                      <p className="text-3xl font-bold tabular-nums text-slate-900">
+                        <CountUp to={totalTipos} duration={0.6} />
+                      </p>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">tickets</p>
                     </div>
                   </div>
-                  <ul className="w-full space-y-2">
-                    {datos.por_tipo.map((t, i) => (
-                      <li key={t.nombre} className="flex items-center justify-between gap-3 text-[13px]">
-                        <span className="flex min-w-0 items-center gap-2 text-slate-600">
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: PALETA_TIPOS[i % PALETA_TIPOS.length] }} aria-hidden />
-                          <span className="truncate">{t.nombre}</span>
-                        </span>
-                        <span className="font-medium tabular-nums text-slate-800">{t.cantidad}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              )}
-            </Tarjeta>
-          </div>
+                <ul className="w-full space-y-2.5">
+                  {datos.por_tipo.map((t, i) => {
+                    const pct = Math.round((t.cantidad / totalTipos) * 100);
+                    const color = PALETA_TIPOS[i % PALETA_TIPOS.length];
+                    return (
+                      <li key={t.nombre}>
+                        <div className="flex items-center justify-between gap-3 text-[13px]">
+                          <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+                            <span className="truncate">{t.nombre}</span>
+                          </span>
+                          <span className="font-bold tabular-nums text-slate-800">{t.cantidad}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </Tarjeta>
         </div>
-      ) : null}
+      </div>
     </Pagina>
   );
 }

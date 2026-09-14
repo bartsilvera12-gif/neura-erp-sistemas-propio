@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Link2, Unlink } from "lucide-react";
+import { GitBranch, Link2, Unlink } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { TIPOS_RELACION } from "@/lib/soporte/dominio";
 import { useTicket } from "../../../_ui/TicketContexto";
@@ -69,7 +69,7 @@ export default function TicketRelacionesPage() {
 
   return (
     <div className="space-y-5">
-      <Tarjeta titulo="Vincular ticket">
+      <Tarjeta titulo="Vincular ticket" icono={Link2} tono="indigo">
         <div className="flex flex-wrap items-end gap-2">
           <div className="w-52">
             <FancySelect ariaLabel="Tipo de relación" value={tipo} onChange={setTipo} options={TIPOS_RELACION.map((t) => ({ value: t.codigo, label: t.nombre }))} />
@@ -97,7 +97,7 @@ export default function TicketRelacionesPage() {
         {lista == null ? (
           <Cargando />
         ) : lista.length === 0 ? (
-          <Vacio titulo="Sin tickets relacionados" />
+          <Vacio icono={GitBranch} tono="indigo" titulo="Sin tickets relacionados" detalle="Vinculá tickets duplicados, bloqueados o derivados para no perder el contexto." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-[13px]">

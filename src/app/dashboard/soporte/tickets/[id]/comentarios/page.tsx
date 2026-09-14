@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Paperclip, XCircle } from "lucide-react";
+import { MessageSquare, Paperclip, Send, XCircle } from "lucide-react";
 import { useTicket } from "../../../_ui/TicketContexto";
 import { apiSoporte, fechaHora, subirArchivos, type Persona } from "../../../_ui/api";
 import ZonaArchivos from "../../../_ui/ZonaArchivos";
-import { Aviso, Avatar, Boton, Cargando, Tarjeta, Vacio, claseInput } from "../../../_ui/ui";
+import { Aviso, Avatar, Boton, Cargando, TONOS, TONO_AREA, Tarjeta, Vacio, claseInput } from "../../../_ui/ui";
 
 type Comentario = {
   id: string;
@@ -77,20 +77,21 @@ export default function TicketComentariosPage() {
       {lista == null ? (
         error ? <Aviso>{error}</Aviso> : <Cargando />
       ) : lista.length === 0 ? (
-        <Vacio titulo="Todavía no hay comentarios" detalle="Usá los comentarios para la conversación del equipo sobre este ticket." />
+        <Vacio icono={MessageSquare} titulo="Todavía no hay comentarios" detalle="Usá los comentarios para la conversación del equipo sobre este ticket." />
       ) : (
         <ol className="relative space-y-5 before:absolute before:bottom-2 before:left-[17px] before:top-2 before:w-px before:bg-slate-100">
-          {lista.map((c) => (
+          {lista.map((c) => {
+            const tono = TONO_AREA[c.autor?.area ?? "Equipo"] ?? "pizarra";
+            return (
             <li key={c.id} className="relative flex gap-3">
               <span className="relative z-10 rounded-full ring-4 ring-white">
-                <Avatar nombre={c.autor?.nombre} tam={35} />
+                <Avatar nombre={c.autor?.nombre} tam={36} tono={tono} />
               </span>
               <div className="min-w-0 flex-1 pt-0.5">
-                <p className="text-[13px]">
-                  <span className="font-semibold text-slate-900">{c.autor?.nombre ?? "Usuario"}</span>
-                  <span className="text-slate-400">
-                    {" "}· {c.autor?.area ?? "Equipo"} · {fechaHora(c.created_at)}
-                  </span>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px]">
+                  <span className="font-bold text-slate-900">{c.autor?.nombre ?? "Usuario"}</span>
+                  <span className={`rounded-full px-2 py-px text-[10.5px] font-bold ${TONOS[tono].suave} ${TONOS[tono].texto}`}>{c.autor?.area ?? "Equipo"}</span>
+                  <span className="text-[12px] text-slate-400">{fechaHora(c.created_at)}</span>
                 </p>
                 {c.es_rechazo_qa ? (
                   <div className="mt-1.5 rounded-lg border border-rose-100 bg-rose-50/70 px-3 py-2">
@@ -100,7 +101,7 @@ export default function TicketComentariosPage() {
                     <p className="mt-1 whitespace-pre-line text-[13.5px] leading-relaxed text-rose-900">{c.contenido}</p>
                   </div>
                 ) : (
-                  <p className="mt-1 whitespace-pre-line text-[13.5px] leading-relaxed text-slate-700">{c.contenido}</p>
+                  <p className="mt-1.5 whitespace-pre-line rounded-2xl rounded-tl-md bg-slate-50 px-3.5 py-2.5 text-[13.5px] leading-relaxed text-slate-700">{c.contenido}</p>
                 )}
                 {c.adjuntos.length ? (
                   <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] text-slate-500">
@@ -110,11 +111,12 @@ export default function TicketComentariosPage() {
                 ) : null}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ol>
       )}
 
-      <div ref={finRef} className="mt-6 space-y-3 border-t border-slate-100 pt-5">
+      <div ref={finRef} className="mt-6 space-y-3 rounded-2xl border border-[#4FAEB2]/25 bg-gradient-to-br from-[#4FAEB2]/[0.06] to-white p-4">
         <textarea
           className={`${claseInput} min-h-24`}
           value={texto}
@@ -133,7 +135,7 @@ export default function TicketComentariosPage() {
             {archivos.length ? `${archivos.length} adjunto(s)` : "Adjuntar archivo"}
           </Boton>
           <Boton onClick={() => void comentar()} cargando={enviando} disabled={!texto.trim()}>
-            Comentar
+            <Send className="h-4 w-4" aria-hidden /> Comentar
           </Boton>
         </div>
       </div>

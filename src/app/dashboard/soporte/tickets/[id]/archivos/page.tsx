@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, ExternalLink, FileText, MoreVertical, Play, Trash2 } from "lucide-react";
+import { Download, ExternalLink, FileText, Files, MoreVertical, Play, Trash2 } from "lucide-react";
 import { tamanoLegible } from "@/lib/soporte/dominio";
 import { useTicket } from "../../../_ui/TicketContexto";
 import { apiSoporte, fechaHora, subirArchivos, type Persona } from "../../../_ui/api";
@@ -24,17 +24,18 @@ function Vista({ a }: { a: Archivo }) {
   const tipo = a.mime_type ?? "";
   if (tipo.startsWith("image/") && a.url) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={a.url} alt={a.nombre} className="h-14 w-20 rounded-md border border-slate-200 object-cover" loading="lazy" />;
+    return <img src={a.url} alt={a.nombre} className="h-14 w-20 rounded-xl border border-slate-200 object-cover shadow-sm" loading="lazy" />;
   }
   if (tipo.startsWith("video/")) {
     return (
-      <span className="grid h-14 w-20 place-items-center rounded-md bg-slate-900 text-white">
+      <span className="grid h-14 w-20 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_6px_14px_-6px_rgba(139,92,246,0.7)]">
         <Play className="h-5 w-5" aria-hidden />
       </span>
     );
   }
+  const pdf = tipo === "application/pdf";
   return (
-    <span className="grid h-14 w-20 place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400">
+    <span className={`grid h-14 w-20 place-items-center rounded-xl ${pdf ? "bg-rose-100 text-rose-600" : "bg-sky-100 text-sky-600"}`}>
       <FileText className="h-5 w-5" aria-hidden />
     </span>
   );
@@ -118,11 +119,11 @@ export default function TicketArchivosPage() {
       {lista == null ? (
         error ? <Aviso>{error}</Aviso> : <Cargando />
       ) : lista.length === 0 ? (
-        <Vacio titulo="Todavía no hay archivos" detalle="Capturas, videos o documentos del problema." />
+        <Vacio icono={Files} tono="celeste" titulo="Todavía no hay archivos" detalle="Capturas, videos o documentos del problema." />
       ) : (
         <ul className="divide-y divide-slate-100">
           {lista.map((a) => (
-            <li key={a.id} className="flex items-center gap-4 py-3.5 first:pt-0">
+            <li key={a.id} className="-mx-2 flex items-center gap-4 rounded-xl px-2 py-3 transition-colors hover:bg-[#4FAEB2]/[0.04]">
               {a.url ? (
                 <a href={a.url} target="_blank" rel="noreferrer" className="shrink-0" aria-label={`Ver ${a.nombre}`}>
                   <Vista a={a} />
@@ -150,7 +151,7 @@ export default function TicketArchivosPage() {
       )}
 
       <div className="mt-6 space-y-3 border-t border-slate-100 pt-5">
-        <p className="text-[13px] font-semibold text-slate-800">Agregar más archivos</p>
+        <p className="flex items-center gap-2 text-[13px] font-bold text-slate-800"><Files className="h-4 w-4 text-[#4FAEB2]" aria-hidden /> Agregar más archivos</p>
         <ZonaArchivos archivos={nuevos} onCambio={setNuevos} deshabilitada={!!subiendo} />
         {error && lista != null ? <Aviso>{error}</Aviso> : null}
         {nuevos.length ? (

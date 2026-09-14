@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { requireSoporteServidor } from "@/lib/soporte/soporte-auth";
+import Precarga from "./_ui/Precarga";
 
 /**
  * Puerta del módulo Soporte, en el servidor.
@@ -37,5 +38,12 @@ export default async function SoporteLayout({ children }: { children: React.Reac
     );
   }
 
-  return <div className="min-h-full bg-slate-50/60">{children}</div>;
+  return (
+    // Fondo con un degradé muy suave de la marca: saca la pantalla del gris
+    // plano sin competir con el contenido.
+    <div className="min-h-full bg-[radial-gradient(1200px_500px_at_0%_-10%,rgba(79,174,178,0.12),transparent_60%),radial-gradient(900px_420px_at_100%_0%,rgba(14,165,233,0.08),transparent_55%)] bg-slate-50/70">
+      <Precarga />
+      {children}
+    </div>
+  );
 }

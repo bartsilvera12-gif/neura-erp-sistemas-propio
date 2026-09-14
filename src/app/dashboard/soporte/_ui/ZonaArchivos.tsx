@@ -68,14 +68,16 @@ export default function ZonaArchivos({
           setSobre(false);
           if (!deshabilitada && e.dataTransfer.files.length) agregar(e.dataTransfer.files);
         }}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed text-center transition-colors ${
-          compacta ? "px-4 py-4" : "px-4 py-7"
-        } ${sobre ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : "border-slate-300 bg-slate-50/60 hover:border-[#4FAEB2]/60"} ${
+        className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed text-center transition ${
+          compacta ? "px-4 py-4" : "px-4 py-8"
+        } ${sobre ? "scale-[1.01] border-[#4FAEB2] bg-[#4FAEB2]/10" : "border-[#4FAEB2]/30 bg-gradient-to-br from-[#4FAEB2]/[0.05] to-sky-50/50 hover:border-[#4FAEB2]/60"} ${
           deshabilitada ? "cursor-not-allowed opacity-60" : ""
         }`}
       >
-        <UploadCloud className="h-5 w-5 text-slate-400" aria-hidden />
-        <p className="mt-1.5 text-[13px] text-slate-600">Arrastrá archivos aquí o hacé clic para adjuntar</p>
+        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-[#4FAEB2] shadow-[0_6px_16px_-8px_rgba(79,174,178,0.8)]">
+          <UploadCloud className="h-5 w-5" aria-hidden />
+        </span>
+        <p className="mt-2 text-[13px] font-semibold text-slate-700">Arrastrá archivos aquí o <span className="text-[#2F6E71] underline decoration-[#4FAEB2]/40 underline-offset-2">elegilos</span></p>
         <p className="mt-0.5 text-[11.5px] text-slate-400">
           PNG, JPG, WEBP, PDF, MP4, MOV, TXT (máx. {tamanoLegible(ARCHIVO_MAX_BYTES)} c/u)
         </p>

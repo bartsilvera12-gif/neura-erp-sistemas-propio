@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { TicketPlus } from "lucide-react";
 import FormTicket, { VALORES_VACIOS } from "../../_ui/FormTicket";
 import { apiSoporte, subirArchivos } from "../../_ui/api";
 import { Aviso, Encabezado, Pagina } from "../../_ui/ui";
@@ -15,6 +16,8 @@ export default function SoporteNuevoTicketPage() {
       <Encabezado
         titulo="Nuevo ticket"
         subtitulo="Crear un nuevo ticket de soporte"
+        icono={TicketPlus}
+        tono="turquesa"
         migas={[{ etiqueta: "Tickets", href: "/dashboard/soporte/tickets" }, { etiqueta: "Nuevo" }]}
       />
       {avisoArchivos ? (

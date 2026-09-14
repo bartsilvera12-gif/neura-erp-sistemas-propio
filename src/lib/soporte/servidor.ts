@@ -15,6 +15,7 @@ import {
   type SoporteTipo,
 } from "@/lib/soporte/dominio";
 import type { SoporteAuth } from "@/lib/soporte/soporte-auth";
+import { MINUTO, MemoriaTTL } from "@/lib/soporte/cache";
 
 // ------------------------------------------------------------------ respuestas
 
@@ -66,7 +67,19 @@ export async function asegurarCatalogos(sb: AppSupabaseClient, empresaId: string
   await sb.from(TABLAS.prioridades).upsert(conEmpresa(PRIORIDADES_DEFECTO), opts);
 }
 
-export async function leerCatalogos(sb: AppSupabaseClient, empresaId: string): Promise<CatalogosSoporte> {
+const memoriaCatalogos = new MemoriaTTL<CatalogosSoporte>(MINUTO, 300);
+
+/** Catálogos de la empresa, desde la memoria corta (ver `cache.ts`). */
+export function leerCatalogos(sb: AppSupabaseClient, empresaId: string): Promise<CatalogosSoporte> {
+  return memoriaCatalogos.obtener(empresaId, () => leerCatalogosDeBase(sb, empresaId));
+}
+
+/** Tras editar la configuración: la próxima lectura va a la base. */
+export function invalidarCatalogos(empresaId: string): void {
+  memoriaCatalogos.borrar(empresaId);
+}
+
+async function leerCatalogosDeBase(sb: AppSupabaseClient, empresaId: string): Promise<CatalogosSoporte> {
   await asegurarCatalogos(sb, empresaId);
   const [e, t, c, p] = await Promise.all([
     sb.from(TABLAS.estados).select("codigo, nombre, tipo, color, area, detiene_sla, es_inicial, sort_order, activo").eq("empresa_id", empresaId).order("sort_order"),
@@ -122,15 +135,24 @@ export function nombreCorto(nombre: string | null | undefined): string {
  * catálogo puede vivir en otro schema que los datos: no hay join posible, se
  * resuelve aparte en una sola consulta.
  */
+const memoriaPersona = new MemoriaTTL<Persona>(MINUTO, 3000);
+
 export async function personasPorId(ids: (string | null | undefined)[]): Promise<Map<string, Persona>> {
   const unicos = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))];
   const mapa = new Map<string, Persona>();
-  if (unicos.length === 0) return mapa;
+  // Casi siempre son las mismas diez personas: sólo se consulta lo que falta.
+  const faltan: string[] = [];
+  for (const id of unicos) {
+    const p = memoriaPersona.get(id);
+    if (p) mapa.set(id, p);
+    else faltan.push(id);
+  }
+  if (faltan.length === 0) return mapa;
   const catalog = createServiceRoleClient();
   const { data } = await catalog
     .from("usuarios")
     .select("id, nombre, email, rol, es_project_manager, es_tecnico, es_qa")
-    .in("id", unicos);
+    .in("id", faltan);
   for (const u of (data ?? []) as Record<string, unknown>[]) {
     const id = String(u.id);
     mapa.set(id, {
@@ -142,12 +164,19 @@ export async function personasPorId(ids: (string | null | undefined)[]): Promise
       es_tecnico: u.es_tecnico === true,
       es_qa: u.es_qa === true,
     });
+    memoriaPersona.set(id, mapa.get(id) as Persona);
   }
   return mapa;
 }
 
+const memoriaEquipo = new MemoriaTTL<Persona[]>(MINUTO, 300);
+
 /** Usuarios activos de la empresa, para los selectores de responsable. */
-export async function personasDeEmpresa(empresaId: string): Promise<Persona[]> {
+export function personasDeEmpresa(empresaId: string): Promise<Persona[]> {
+  return memoriaEquipo.obtener(empresaId, () => personasDeEmpresaDeBase(empresaId));
+}
+
+async function personasDeEmpresaDeBase(empresaId: string): Promise<Persona[]> {
   const catalog = createServiceRoleClient();
   const { data } = await catalog
     .from("usuarios")
@@ -166,6 +195,31 @@ export async function personasDeEmpresa(empresaId: string): Promise<Persona[]> {
   }));
 }
 
+const memoriaClientes = new MemoriaTTL<{ id: string; nombre: string }[]>(MINUTO, 300);
+
+/**
+ * Todos los clientes de la empresa (id + nombre), en memoria corta. Lo usan el
+ * selector de clientes y los nombres de las tablas: una sola lectura sirve para
+ * toda una pantalla. Paginado porque PostgREST corta en 1000.
+ */
+export function clientesDeEmpresa(sb: AppSupabaseClient, empresaId: string) {
+  return memoriaClientes.obtener(empresaId, async () => {
+    const lista: { id: string; nombre: string }[] = [];
+    for (let desde = 0; desde < 20_000; desde += 1000) {
+      const { data, error } = await sb
+        .from("clientes")
+        .select("id, empresa, nombre_contacto")
+        .eq("empresa_id", empresaId)
+        .range(desde, desde + 999);
+      if (error) throw new Error(error.message);
+      const lote = (data ?? []) as { id: string; empresa?: string | null; nombre_contacto?: string | null }[];
+      for (const c of lote) lista.push({ id: c.id, nombre: (c.empresa?.trim() || c.nombre_contacto?.trim() || "Cliente") as string });
+      if (lote.length < 1000) break;
+    }
+    return lista.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  });
+}
+
 /** Nombres de clientes existentes, por id (la tabla de Clientes no se duplica). */
 export async function clientesPorId(
   sb: AppSupabaseClient,
@@ -175,11 +229,20 @@ export async function clientesPorId(
   const unicos = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))];
   const mapa = new Map<string, string>();
   if (unicos.length === 0) return mapa;
+  const todos = await clientesDeEmpresa(sb, empresaId).catch(() => [] as { id: string; nombre: string }[]);
+  const porId = new Map(todos.map((c) => [c.id, c.nombre]));
+  const faltan = unicos.filter((id) => {
+    const n = porId.get(id);
+    if (n) mapa.set(id, n);
+    return !n;
+  });
+  // Un cliente dado de alta hace menos de un minuto todavía no está en memoria.
+  if (faltan.length === 0) return mapa;
   const { data } = await sb
     .from("clientes")
     .select("id, empresa, nombre_contacto")
     .eq("empresa_id", empresaId)
-    .in("id", unicos);
+    .in("id", faltan);
   for (const c of (data ?? []) as { id: string; empresa?: string | null; nombre_contacto?: string | null }[]) {
     mapa.set(c.id, (c.empresa?.trim() || c.nombre_contacto?.trim() || "Cliente") as string);
   }

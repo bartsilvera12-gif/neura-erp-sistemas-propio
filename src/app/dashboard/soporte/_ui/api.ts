@@ -36,21 +36,93 @@ export type CatalogosConEquipo = CatalogosSoporte & {
   usuario_id: string;
 };
 
-let cacheCatalogos: { valor: CatalogosConEquipo; vence: number } | null = null;
+/**
+ * Memoria del navegador con "en vuelo": si dos componentes piden lo mismo a la
+ * vez, comparten el mismo request. Es lo que hace que entrar a una pantalla no
+ * dispare dos veces los catálogos.
+ */
+function memoria<T>(ttlMs: number) {
+  const datos = new Map<string, { valor: T; vence: number }>();
+  const enVuelo = new Map<string, Promise<T>>();
+  return {
+    obtener(clave: string, cargar: () => Promise<T>, forzar = false): Promise<T> {
+      const e = datos.get(clave);
+      if (!forzar && e && e.vence > Date.now()) return Promise.resolve(e.valor);
+      const vuelo = enVuelo.get(clave);
+      if (!forzar && vuelo) return vuelo;
+      const p = cargar()
+        .then((valor) => {
+          datos.set(clave, { valor, vence: Date.now() + ttlMs });
+          return valor;
+        })
+        .finally(() => enVuelo.delete(clave));
+      enVuelo.set(clave, p);
+      return p;
+    },
+    /** Lo que haya, sin esperar: para pintar al instante mientras se refresca. */
+    ya(clave: string): T | undefined {
+      return datos.get(clave)?.valor;
+    },
+    borrar(clave?: string) {
+      if (clave) datos.delete(clave);
+      else datos.clear();
+    },
+  };
+}
+
+const memCatalogos = memoria<CatalogosConEquipo>(5 * 60_000);
+const memClientes = memoria<{ id: string; nombre: string }[]>(5 * 60_000);
 
 /**
- * Catálogos + equipo, con una memoria corta: casi todas las pantallas del módulo
- * los necesitan, y cambian sólo desde Configuración (que invalida la caché).
+ * Catálogos + equipo. Casi todas las pantallas los necesitan y cambian sólo
+ * desde Configuración (que invalida), así que se guardan cinco minutos.
  */
-export async function obtenerCatalogos(forzar = false): Promise<CatalogosConEquipo> {
-  if (!forzar && cacheCatalogos && cacheCatalogos.vence > Date.now()) return cacheCatalogos.valor;
-  const valor = await apiSoporte<CatalogosConEquipo>("/api/soporte/catalogos");
-  cacheCatalogos = { valor, vence: Date.now() + 60_000 };
-  return valor;
+export function obtenerCatalogos(forzar = false): Promise<CatalogosConEquipo> {
+  return memCatalogos.obtener("c", () => apiSoporte<CatalogosConEquipo>("/api/soporte/catalogos"), forzar);
+}
+
+export function catalogosEnMemoria(): CatalogosConEquipo | undefined {
+  return memCatalogos.ya("c");
 }
 
 export function invalidarCatalogos() {
-  cacheCatalogos = null;
+  memCatalogos.borrar();
+}
+
+/** Clientes para los selectores, compartidos por todas las pantallas. */
+export function obtenerClientes(): Promise<{ id: string; nombre: string }[]> {
+  return memClientes.obtener("c", () =>
+    apiSoporte<{ clientes: { id: string; nombre: string }[] }>("/api/soporte/opciones").then((r) => r.clientes)
+  );
+}
+
+export function clientesEnMemoria() {
+  return memClientes.ya("c");
+}
+
+/**
+ * Detalle de ticket precargado. La tabla lo pide al pasar el mouse por la fila:
+ * entre el hover y el clic suelen pasar 200–400 ms, que es casi todo lo que
+ * tarda la consulta, así que el detalle abre prácticamente armado.
+ */
+const memTicket = memoria<unknown>(20_000);
+
+export function precargarTicket(id: string): void {
+  void memTicket.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}`)).catch(() => {});
+}
+
+export function obtenerTicket<T>(id: string, forzar = false): Promise<T> {
+  return memTicket.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}`), forzar) as Promise<T>;
+}
+
+export function ticketEnMemoria<T>(id: string): T | undefined {
+  return memTicket.ya(id) as T | undefined;
+}
+
+/** Precarga lo común del módulo apenas se entra: la siguiente pantalla ya lo tiene. */
+export function precargarModulo(): void {
+  void obtenerCatalogos().catch(() => {});
+  void obtenerClientes().catch(() => {});
 }
 
 /**

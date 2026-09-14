@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock, Info, ListChecks, Paperclip, Tags, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import SmartCombobox from "@/components/ui/SmartCombobox";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { slaDe } from "@/lib/soporte/dominio";
-import { apiSoporte, obtenerCatalogos, type CatalogosConEquipo } from "./api";
+import { apiSoporte, obtenerCatalogos, obtenerClientes, type CatalogosConEquipo } from "./api";
 import ZonaArchivos from "./ZonaArchivos";
-import { Aviso, Boton, Cargando, claseBoton, claseEtiqueta, claseInput } from "./ui";
+import { Aviso, Boton, Cargando, IconoTile, claseBoton, claseEtiqueta, claseInput, type Tono } from "./ui";
 
 export type ValoresTicket = {
   cliente_id: string;
@@ -66,11 +66,24 @@ function Campo({ etiqueta, requerido, children, ayuda, className = "" }: { etiqu
   );
 }
 
-function Seccion({ titulo, descripcion, children }: { titulo: string; descripcion?: string; children: React.ReactNode }) {
+function Seccion({
+  titulo,
+  descripcion,
+  icono,
+  tono,
+  children,
+}: {
+  titulo: string;
+  descripcion?: string;
+  icono: LucideIcon;
+  tono: Tono;
+  children: React.ReactNode;
+}) {
   return (
     <section className="grid gap-5 border-b border-slate-100 py-6 first:pt-0 last:border-0 last:pb-0 lg:grid-cols-[220px_1fr]">
       <div>
-        <h2 className="text-sm font-semibold text-slate-800">{titulo}</h2>
+        <IconoTile icono={icono} tono={tono} />
+        <h2 className="mt-2.5 text-sm font-bold text-slate-800">{titulo}</h2>
         {descripcion ? <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500">{descripcion}</p> : null}
       </div>
       <div className="space-y-4">{children}</div>
@@ -107,8 +120,8 @@ export default function FormTicket({
 
   useEffect(() => {
     void obtenerCatalogos().then(setCat).catch((e: Error) => setError(e.message));
-    void apiSoporte<{ clientes: { id: string; nombre: string }[] }>("/api/soporte/opciones")
-      .then((r) => setClientes(r.clientes))
+    void obtenerClientes()
+      .then(setClientes)
       .catch((e: Error) => setError(e.message));
   }, []);
 
@@ -172,9 +185,9 @@ export default function FormTicket({
         e.preventDefault();
         void enviar();
       }}
-      className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] md:p-7"
+      className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)] md:p-7"
     >
-      <Seccion titulo="Clasificación" descripcion="A quién corresponde y qué tipo de pedido es. La clasificación define el SLA.">
+      <Seccion icono={Tags} tono="violeta" titulo="Clasificación" descripcion="A quién corresponde y qué tipo de pedido es. La clasificación define el SLA.">
         <div className="grid gap-4 md:grid-cols-2">
           <Campo etiqueta="Cliente" requerido ayuda={modo === "editar" ? "El cliente no se cambia desde la edición." : undefined}>
             <SmartCombobox
@@ -260,7 +273,7 @@ export default function FormTicket({
         </Campo>
       </Seccion>
 
-      <Seccion titulo="Detalle" descripcion="Lo que QA y Desarrollo necesitan para reproducirlo y validarlo sin tener que preguntar.">
+      <Seccion icono={ListChecks} tono="celeste" titulo="Detalle" descripcion="Lo que QA y Desarrollo necesitan para reproducirlo y validarlo sin tener que preguntar.">
         <Campo etiqueta="Asunto" requerido>
           <input
             className={claseInput}
@@ -314,7 +327,7 @@ export default function FormTicket({
         </div>
       </Seccion>
 
-      <Seccion titulo="Asignación" descripcion="Quién tiene la próxima acción y para cuándo.">
+      <Seccion icono={UserRoundCheck} tono="turquesa" titulo="Asignación" descripcion="Quién tiene la próxima acción y para cuándo.">
         <div className="grid gap-4 md:grid-cols-2">
           <Campo etiqueta="Responsable" ayuda={modo === "crear" ? "Con responsable, el ticket entra como Clasificado / Asignado." : undefined}>
             <FancySelect ariaLabel="Responsable" value={v.responsable_id} onChange={(x) => set("responsable_id", x)} options={responsableOpciones} />
@@ -334,7 +347,7 @@ export default function FormTicket({
         </Campo>
       </Seccion>
 
-      <Seccion titulo="Información adicional" descripcion="Contexto técnico del reporte.">
+      <Seccion icono={Info} tono="indigo" titulo="Información adicional" descripcion="Contexto técnico del reporte.">
         <div className="grid gap-4 md:grid-cols-3">
           <Campo etiqueta="Versión">
             <input className={claseInput} value={v.version} onChange={(e) => set("version", e.target.value)} placeholder="v1.2.3" maxLength={60} />
@@ -354,7 +367,7 @@ export default function FormTicket({
       </Seccion>
 
       {modo === "crear" ? (
-        <Seccion titulo="Archivos / Evidencias" descripcion="Capturas, videos o documentos del problema.">
+        <Seccion icono={Paperclip} tono="ambar" titulo="Archivos / Evidencias" descripcion="Capturas, videos o documentos del problema.">
           <ZonaArchivos archivos={archivos} onCambio={setArchivos} deshabilitada={guardando} />
         </Seccion>
       ) : null}

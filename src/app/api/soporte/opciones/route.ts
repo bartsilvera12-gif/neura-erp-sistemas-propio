@@ -1,5 +1,5 @@
 import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
-import { errorInesperado, falla, ok, sinPermiso } from "@/lib/soporte/servidor";
+import { clientesDeEmpresa, errorInesperado, falla, ok, sinPermiso } from "@/lib/soporte/servidor";
 
 /**
  * GET /api/soporte/opciones
@@ -28,24 +28,7 @@ export async function GET(request: Request) {
       return ok({ proyectos: data ?? [] });
     }
 
-    // Paginado: PostgREST corta en 1000 filas y hay empresas con más clientes.
-    const clientes: { id: string; nombre: string }[] = [];
-    for (let desde = 0; desde < 20_000; desde += 1000) {
-      const { data, error } = await auth.sb
-        .from("clientes")
-        .select("id, empresa, nombre_contacto")
-        .eq("empresa_id", auth.empresaId)
-        .order("empresa")
-        .range(desde, desde + 999);
-      if (error) return falla(error.message);
-      const lote = (data ?? []) as { id: string; empresa?: string | null; nombre_contacto?: string | null }[];
-      for (const c of lote) {
-        clientes.push({ id: c.id, nombre: (c.empresa?.trim() || c.nombre_contacto?.trim() || "Cliente") as string });
-      }
-      if (lote.length < 1000) break;
-    }
-    clientes.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-    return ok({ clientes });
+    return ok({ clientes: await clientesDeEmpresa(auth.sb, auth.empresaId) });
   } catch (e) {
     return errorInesperado(e);
   }

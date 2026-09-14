@@ -3,6 +3,7 @@ import {
   TABLAS_CATALOGO,
   errorInesperado,
   falla,
+  invalidarCatalogos,
   leerCatalogos,
   ok,
   personasDeEmpresa,
@@ -115,6 +116,7 @@ export async function PUT(request: Request) {
         return falla(error.message);
       }
     }
+    invalidarCatalogos(auth.empresaId);
     return ok(await leerCatalogos(auth.sb, auth.empresaId));
   } catch (e) {
     return errorInesperado(e);

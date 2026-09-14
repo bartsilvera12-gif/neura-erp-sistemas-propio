@@ -28,27 +28,27 @@ export async function GET(request: Request, { params }: Params) {
   if (!auth.ok) return sinPermiso(auth);
   try {
     const { id } = await params;
-    const fila = await ticketDeEmpresa<TicketFila>(auth.sb, auth.empresaId, id, TICKET_CAMPOS);
+    // Todo lo que no depende del ticket sale junto con el ticket.
+    const [fila, cat, { count: comentarios }, { count: archivos }, { count: relaciones }] = await Promise.all([
+      ticketDeEmpresa<TicketFila>(auth.sb, auth.empresaId, id, TICKET_CAMPOS),
+      leerCatalogos(auth.sb, auth.empresaId),
+      auth.sb.from("soporte_ticket_comentarios").select("id", { count: "exact", head: true }).eq("empresa_id", auth.empresaId).eq("ticket_id", id),
+      auth.sb.from("soporte_ticket_archivos").select("id", { count: "exact", head: true }).eq("empresa_id", auth.empresaId).eq("ticket_id", id),
+      auth.sb.from("soporte_ticket_relaciones").select("id", { count: "exact", head: true }).eq("empresa_id", auth.empresaId).or(`ticket_id.eq.${id},ticket_relacionado_id.eq.${id}`),
+    ]);
     if (!fila) return falla("Ticket no encontrado", 404);
 
-    const cat = await leerCatalogos(auth.sb, auth.empresaId);
-    const [ticket] = await enriquecerTickets(auth.sb, auth.empresaId, cat, [fila]);
-
-    let proyectoTitulo: string | null = null;
-    if (fila.proyecto_id) {
-      const { data } = await auth.sb
-        .from("proyectos")
-        .select("titulo")
-        .eq("empresa_id", auth.empresaId)
-        .eq("id", fila.proyecto_id)
-        .maybeSingle();
-      proyectoTitulo = (data as { titulo?: string } | null)?.titulo ?? null;
-    }
-
-    const [{ count: comentarios }, { count: archivos }, { count: relaciones }] = await Promise.all([
-      auth.sb.from("soporte_ticket_comentarios").select("id", { count: "exact", head: true }).eq("ticket_id", id),
-      auth.sb.from("soporte_ticket_archivos").select("id", { count: "exact", head: true }).eq("ticket_id", id),
-      auth.sb.from("soporte_ticket_relaciones").select("id", { count: "exact", head: true }).eq("ticket_id", id),
+    const [[ticket], proyectoTitulo] = await Promise.all([
+      enriquecerTickets(auth.sb, auth.empresaId, cat, [fila]),
+      fila.proyecto_id
+        ? auth.sb
+            .from("proyectos")
+            .select("titulo")
+            .eq("empresa_id", auth.empresaId)
+            .eq("id", fila.proyecto_id)
+            .maybeSingle()
+            .then(({ data }) => (data as { titulo?: string } | null)?.titulo ?? null)
+        : Promise.resolve(null),
     ]);
 
     return ok({

@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import { UserRoundCheck } from "lucide-react";
 import TablaTickets, { type PestanaDef } from "../_ui/TablaTickets";
 import { Cargando, Encabezado, Pagina } from "../_ui/ui";
 
@@ -19,7 +20,7 @@ const PESTANAS: readonly PestanaDef[] = [
 export default function SoporteMisTicketsPage() {
   return (
     <Pagina>
-      <Encabezado titulo="Mis tickets" subtitulo="Los tickets donde tenés la próxima acción" />
+      <Encabezado titulo="Mis tickets" subtitulo="Los tickets donde tenés la próxima acción" icono={UserRoundCheck} tono="violeta" />
       <Suspense fallback={<Cargando />}>
         <TablaTickets pestanas={PESTANAS} soloMios ocultarResponsable />
       </Suspense>

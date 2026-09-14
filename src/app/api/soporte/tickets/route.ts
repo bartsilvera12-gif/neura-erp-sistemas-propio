@@ -40,7 +40,6 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const p = url.searchParams;
-    const cat = await leerCatalogos(auth.sb, auth.empresaId);
 
     const pestana = PESTANAS_TICKETS.find((x) => x.id === p.get("pestana")) ?? PESTANAS_TICKETS[0];
     const pagina = Math.max(1, Number(p.get("pagina") ?? "1") || 1);
@@ -74,13 +73,14 @@ export async function GET(request: Request) {
     if (estadosParam.length) lista = lista.in("estado_codigo", estadosParam);
     else if (pestana.estados) lista = lista.in("estado_codigo", [...pestana.estados]);
     const desde = (pagina - 1) * porPagina;
-    const { data, error, count } = await lista
-      .order("updated_at", { ascending: false })
-      .range(desde, desde + porPagina - 1);
+    // Catálogos, página y contadores en paralelo: ninguno espera al otro.
+    const [cat, { data, error, count }, { data: todos }] = await Promise.all([
+      leerCatalogos(auth.sb, auth.empresaId),
+      lista.order("updated_at", { ascending: false }).range(desde, desde + porPagina - 1),
+      // Contadores: una consulta liviana por estado, sumada por pestaña.
+      aplicar(auth.sb.from("soporte_tickets").select("estado_codigo")).limit(10_000),
+    ]);
     if (error) return falla(error.message);
-
-    // Contadores: una consulta liviana por estado, sumada por pestaña.
-    const { data: todos } = await aplicar(auth.sb.from("soporte_tickets").select("estado_codigo")).limit(10_000);
     const porEstado = new Map<string, number>();
     for (const r of (todos ?? []) as { estado_codigo: string }[]) {
       porEstado.set(r.estado_codigo, (porEstado.get(r.estado_codigo) ?? 0) + 1);

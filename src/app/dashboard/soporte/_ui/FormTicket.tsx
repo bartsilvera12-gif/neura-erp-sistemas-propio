@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Clock, Info, ListChecks, Paperclip, Tags, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import SmartCombobox from "@/components/ui/SmartCombobox";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { slaDe } from "@/lib/soporte/dominio";
 import { apiSoporte, obtenerCatalogos, obtenerClientes, type CatalogosConEquipo } from "./api";
 import ZonaArchivos from "./ZonaArchivos";
-import { Aviso, Boton, Cargando, IconoTile, claseBoton, claseEtiqueta, claseInput, type Tono } from "./ui";
+import { SelectorBuscable } from "./SelectorBuscable";
+import { Aviso, Boton, Cargando, IconoTile, TONO_AREA, claseBoton, claseEtiqueta, claseInput, type Tono } from "./ui";
 
 export type ValoresTicket = {
   cliente_id: string;
@@ -153,7 +153,7 @@ export default function FormTicket({
   const prioridadOpciones = cat.prioridades.filter((p) => p.activo).map((p) => ({ value: p.codigo, label: p.nombre }));
   const responsableOpciones = [
     { value: "", label: "Sin asignar" },
-    ...cat.personas.map((u) => ({ value: u.id, label: u.nombre, description: u.area })),
+    ...cat.personas.map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] })),
   ];
 
   const faltantes: string[] = [];
@@ -190,13 +190,16 @@ export default function FormTicket({
       <Seccion icono={Tags} tono="violeta" titulo="Clasificación" descripcion="A quién corresponde y qué tipo de pedido es. La clasificación define el SLA.">
         <div className="grid gap-4 md:grid-cols-2">
           <Campo etiqueta="Cliente" requerido ayuda={modo === "editar" ? "El cliente no se cambia desde la edición." : undefined}>
-            <SmartCombobox
+            <SelectorBuscable
+              ariaLabel="Cliente"
+              avatares
               disabled={modo === "editar"}
-              options={clientes.map((c) => ({ id: c.id, label: c.nombre }))}
-              value={v.cliente_id || null}
-              onChange={(id) => setV((p) => ({ ...p, cliente_id: id ?? "", proyecto_id: "" }))}
+              opciones={clientes.map((c) => ({ value: c.id, label: c.nombre }))}
+              value={v.cliente_id}
+              onChange={(id) => setV((p) => ({ ...p, cliente_id: id, proyecto_id: "" }))}
               placeholder="Seleccionar cliente…"
-              allowClear={false}
+              buscarPlaceholder="Buscar cliente…"
+              vacio="Ningún cliente coincide"
             />
           </Campo>
           <Campo etiqueta="Proyecto">
@@ -330,7 +333,7 @@ export default function FormTicket({
       <Seccion icono={UserRoundCheck} tono="turquesa" titulo="Asignación" descripcion="Quién tiene la próxima acción y para cuándo.">
         <div className="grid gap-4 md:grid-cols-2">
           <Campo etiqueta="Responsable" ayuda={modo === "crear" ? "Con responsable, el ticket entra como Clasificado / Asignado." : undefined}>
-            <FancySelect ariaLabel="Responsable" value={v.responsable_id} onChange={(x) => set("responsable_id", x)} options={responsableOpciones} />
+            <SelectorBuscable ariaLabel="Responsable" avatares value={v.responsable_id} onChange={(x) => set("responsable_id", x)} opciones={responsableOpciones} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
           </Campo>
           <Campo etiqueta="Fecha objetivo">
             <FechaSelect value={v.fecha_objetivo} onChange={(e) => set("fecha_objetivo", e.target.value)} className={claseInput} anioDesde={2024} />

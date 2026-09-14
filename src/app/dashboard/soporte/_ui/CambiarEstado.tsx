@@ -7,7 +7,8 @@ import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { eventoDeTransicion, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { apiSoporte } from "./api";
 import { useTicket } from "./TicketContexto";
-import { Aviso, Boton, Insignia, claseEtiqueta, claseInput } from "./ui";
+import { Aviso, Boton, Insignia, TONO_AREA, claseEtiqueta, claseInput } from "./ui";
+import { SelectorBuscable } from "./SelectorBuscable";
 
 /**
  * Cambio de estado del ticket.
@@ -54,8 +55,8 @@ export default function CambiarEstado({ alCerrar }: { alCerrar: () => void }) {
 
   const opcionesPersona = [
     { value: "", label: "Sin asignar" },
-    ...sugeridos.map((p) => ({ value: p.id, label: p.nombre, description: `${p.area} · sugerido` })),
-    ...catalogos.personas.filter((p) => !sugeridos.includes(p)).map((p) => ({ value: p.id, label: p.nombre, description: p.area })),
+    ...sugeridos.map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area], sugerida: true })),
+    ...catalogos.personas.filter((p) => !sugeridos.includes(p)).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
   ];
 
   const guardar = async () => {
@@ -146,7 +147,7 @@ export default function CambiarEstado({ alCerrar }: { alCerrar: () => void }) {
                 <span className={claseEtiqueta}>
                   Responsable de la próxima acción{pideResponsable ? <span className="text-rose-500"> *</span> : null}
                 </span>
-                <FancySelect ariaLabel="Responsable" value={responsable} onChange={setResponsable} options={opcionesPersona} />
+                <SelectorBuscable ariaLabel="Responsable" avatares value={responsable} onChange={setResponsable} opciones={opcionesPersona} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
               </div>
 
               <div>

@@ -5,7 +5,6 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlarmClock, ChevronLeft, ChevronRight, Flame, Inbox, Search, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import SmartCombobox from "@/components/ui/SmartCombobox";
 import {
   apiSoporte,
   catalogosEnMemoria,
@@ -17,7 +16,8 @@ import {
   type CatalogosConEquipo,
   type Persona,
 } from "./api";
-import { Aviso, Avatar, Cargando, Insignia, TONOS, TONO_ESTADO, Vacio, claseInput, type Tono } from "./ui";
+import { Aviso, Avatar, Cargando, Insignia, TONOS, TONO_AREA, TONO_ESTADO, Vacio, claseInput, type Tono } from "./ui";
+import { SelectorBuscable } from "./SelectorBuscable";
 
 export type PestanaDef = { id: string; etiqueta: string; estados: readonly string[] | null };
 
@@ -166,7 +166,7 @@ export default function TablaTickets({
       estado: [...todos("Todos los estados"), ...(cat?.estados ?? []).filter((e) => e.activo).map((e) => ({ value: e.codigo, label: e.nombre }))],
       tipo: [...todos("Todos los tipos"), ...(cat?.tipos ?? []).filter((t) => t.activo).map((t) => ({ value: t.codigo, label: t.nombre }))],
       prioridad: [...todos("Toda prioridad"), ...(cat?.prioridades ?? []).filter((p) => p.activo).map((p) => ({ value: p.codigo, label: p.nombre }))],
-      responsable: [...todos("Cualquier responsable"), ...(cat?.personas ?? []).map((u) => ({ value: u.id, label: u.nombre, description: u.area }))],
+      responsable: [...todos("Cualquier responsable"), ...(cat?.personas ?? []).map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] }))],
     };
   }, [cat]);
 
@@ -209,13 +209,13 @@ export default function TablaTickets({
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
             <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por asunto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
           </label>
-          <SmartCombobox options={clientes.map((c) => ({ id: c.id, label: c.nombre }))} value={filtros.cliente_id || null} onChange={(v) => cambiar({ cliente_id: v })} placeholder="Todos los clientes" />
+          <SelectorBuscable tam="sm" avatares ariaLabel="Cliente" opciones={[{ value: "", label: "Todos los clientes" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={filtros.cliente_id} onChange={(v) => cambiar({ cliente_id: v || null })} placeholder="Todos los clientes" buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
           <FancySelect size="sm" ariaLabel="Estado" value={filtros.estado} onChange={(v) => cambiar({ estado: v || null })} options={op.estado} />
           <FancySelect size="sm" ariaLabel="Tipo" value={filtros.tipo} onChange={(v) => cambiar({ tipo: v || null })} options={op.tipo} />
           {ocultarResponsable ? (
             <span className="hidden lg:block" />
           ) : (
-            <FancySelect size="sm" ariaLabel="Asignado a" value={filtros.responsable_id} onChange={(v) => cambiar({ responsable_id: v || null })} options={op.responsable} />
+            <SelectorBuscable tam="sm" avatares ariaLabel="Asignado a" value={filtros.responsable_id} onChange={(v) => cambiar({ responsable_id: v || null })} opciones={op.responsable} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
           )}
           <FancySelect size="sm" ariaLabel="Prioridad" value={filtros.prioridad} onChange={(v) => cambiar({ prioridad: v || null })} options={op.prioridad} />
           {hayFiltros ? (

@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Building2, CalendarRange, CheckCircle2, CircleDot, Flag, RotateCcw, Tags, Ticket, Timer, TimerOff, UserRound, type LucideIcon } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
+import { SelectorBuscable } from "../_ui/SelectorBuscable";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import SmartCombobox from "@/components/ui/SmartCombobox";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { duracionCorta } from "@/lib/soporte/dominio";
 import { apiSoporte, obtenerCatalogos, obtenerClientes, type CatalogosConEquipo } from "../_ui/api";
-import { Aviso, Cargando, Encabezado, IconoTile, Pagina, TONOS, Tarjeta, TarjetaViva, Vacio, claseEtiqueta, claseInput, type Tono } from "../_ui/ui";
+import { Aviso, Cargando, Encabezado, IconoTile, Pagina, TONOS, TONO_AREA, Tarjeta, TarjetaViva, Vacio, claseEtiqueta, claseInput, type Tono } from "../_ui/ui";
 
 type Conteo = { clave: string; nombre: string; cantidad: number };
 type Reporte = {
@@ -139,11 +139,11 @@ export default function SoporteReportesPage() {
           </div>
           <div>
             <span className={claseEtiqueta}>Cliente</span>
-            <SmartCombobox options={clientes.map((c) => ({ id: c.id, label: c.nombre }))} value={clienteId || null} onChange={(v) => setClienteId(v ?? "")} placeholder="Todos" />
+            <SelectorBuscable ariaLabel="Cliente" avatares opciones={[{ value: "", label: "Todos" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={clienteId} onChange={setClienteId} buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
           </div>
           <div>
             <span className={claseEtiqueta}>Responsable</span>
-            <FancySelect ariaLabel="Responsable" value={responsableId} onChange={setResponsableId} options={[{ value: "", label: "Todos" }, ...(cat?.personas ?? []).map((p) => ({ value: p.id, label: p.nombre }))]} />
+            <SelectorBuscable ariaLabel="Responsable" avatares value={responsableId} onChange={setResponsableId} opciones={[{ value: "", label: "Todos" }, ...(cat?.personas ?? []).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] }))]} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
           </div>
           <div>
             <span className={claseEtiqueta}>Tipo</span>

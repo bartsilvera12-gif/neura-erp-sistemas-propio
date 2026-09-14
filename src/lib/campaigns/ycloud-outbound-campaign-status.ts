@@ -113,8 +113,11 @@ export async function findCampaignRecipientByProviderMessagePg(
  * cortaba en "message.updated sin_contexto" y `whatsapp_delivery_status` se quedaba para
  * siempre en el estado inicial — los mensajes nunca pasaban a delivered/read (ni a failed).
  *
- * Por eso ahora probamos AMBAS orientaciones en orden, en vez de quedarnos con la primera
- * que no sea null. Si la primera ya resolvía, el resultado es idéntico al de antes.
+ * Ahora probamos AMBAS orientaciones, empezando por la SALIENTE, que es la que corresponde
+ * a este evento. El orden importa solo por ruido: cada intento fallido recorre los canales de
+ * todas las empresas y deja un `401 ningún_canal_coincide` en los logs, aunque el evento
+ * después se procese bien. Con la saliente primero, el caso normal resuelve en el primer
+ * intento. La orientación inbound queda de fallback por si algún payload viene al revés.
  */
 export async function resolveYCloudCampaignStatusWebhookContext(params: {
   rawBody: string;
@@ -124,7 +127,7 @@ export async function resolveYCloudCampaignStatusWebhookContext(params: {
   const msg = params.whatsappMessage;
 
   const idCandidates: YCloudInboundIdentifiers[] = [];
-  for (const cand of [extractInboundIdentifiers(msg), extractSmbEchoIdentifiersForRouting(msg)]) {
+  for (const cand of [extractSmbEchoIdentifiersForRouting(msg), extractInboundIdentifiers(msg)]) {
     if (!cand) continue;
     const dup = idCandidates.some(
       (x) => x.wabaId === cand.wabaId && x.to === cand.to && x.from === cand.from

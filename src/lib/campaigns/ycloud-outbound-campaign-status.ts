@@ -10,6 +10,7 @@ import {
   resolveYCloudChannelForWebhook,
   verifyYCloudWebhookSignatureForEmpresa,
   type ResolvedYCloudChannel,
+  type YCloudInboundIdentifiers,
 } from "@/lib/chat/webhooks/ycloud-resolve-channel";
 import { refreshCampaignCounters } from "@/lib/campaigns/campaign-job-service";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
@@ -101,6 +102,19 @@ export async function findCampaignRecipientByProviderMessagePg(
  * Resuelve empresa + firma para `whatsapp.message.updated`:
  * 1) igual que inbound / eco SMB (from/to/waba),
  * 2) si falla, `externalId` campaign:…:recipient:… + firma por empresa.
+ *
+ * OJO con la orientación de from/to. `whatsapp.message.updated` describe un mensaje
+ * SALIENTE: `from` es la línea de negocio y `to` el cliente — al revés que un inbound.
+ * `extractInboundIdentifiers` asume lo contrario (`to` = línea de negocio), y como en un
+ * saliente vienen los dos campos NUNCA devuelve null, así que con `??` la variante correcta
+ * (`extractSmbEchoIdentifiersForRouting`, que invierte from/to) no se probaba nunca.
+ *
+ * Consecuencia: salvo que el canal casara por `wabaId`, el canal no se resolvía, el webhook
+ * cortaba en "message.updated sin_contexto" y `whatsapp_delivery_status` se quedaba para
+ * siempre en el estado inicial — los mensajes nunca pasaban a delivered/read (ni a failed).
+ *
+ * Por eso ahora probamos AMBAS orientaciones en orden, en vez de quedarnos con la primera
+ * que no sea null. Si la primera ya resolvía, el resultado es idéntico al de antes.
  */
 export async function resolveYCloudCampaignStatusWebhookContext(params: {
   rawBody: string;
@@ -108,10 +122,17 @@ export async function resolveYCloudCampaignStatusWebhookContext(params: {
   whatsappMessage: Record<string, unknown>;
 }): Promise<{ resolved: ResolvedYCloudChannel; hintRecipient: CampaignRecipientPick | null } | null> {
   const msg = params.whatsappMessage;
-  const ids =
-    extractInboundIdentifiers(msg) ?? extractSmbEchoIdentifiersForRouting(msg) ?? null;
 
-  if (ids) {
+  const idCandidates: YCloudInboundIdentifiers[] = [];
+  for (const cand of [extractInboundIdentifiers(msg), extractSmbEchoIdentifiersForRouting(msg)]) {
+    if (!cand) continue;
+    const dup = idCandidates.some(
+      (x) => x.wabaId === cand.wabaId && x.to === cand.to && x.from === cand.from
+    );
+    if (!dup) idCandidates.push(cand);
+  }
+
+  for (const ids of idCandidates) {
     const resolved = await resolveYCloudChannelForWebhook(params.rawBody, params.sigHeader, ids);
     if (resolved) return { resolved, hintRecipient: null };
   }

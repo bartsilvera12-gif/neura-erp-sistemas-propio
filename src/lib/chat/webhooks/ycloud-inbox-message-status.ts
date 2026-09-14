@@ -57,7 +57,16 @@ export async function applyYCloudInboxMessageStatus(params: {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (selErr || !row) return;
+  if (selErr || !row) {
+    // Sin esto el estado se perdía en silencio y no había forma de saber por qué.
+    console.info("[ycloud-inbox-status] mensaje_no_encontrado", {
+      empresa_id: empresaId,
+      status: statusRaw,
+      wa_keys: waKeys,
+      error: selErr?.message ?? null,
+    });
+    return;
+  }
 
   const cur = String(
     (row as { whatsapp_delivery_status?: string | null }).whatsapp_delivery_status ?? ""
@@ -105,5 +114,12 @@ export async function applyYCloudInboxMessageStatus(params: {
     .eq("empresa_id", empresaId);
   if (updErr) {
     console.warn("[ycloud-inbox-status] update_falló", updErr.message);
+    return;
   }
+  console.info("[ycloud-inbox-status] aplicado", {
+    empresa_id: empresaId,
+    message_id: rowId,
+    de: cur || null,
+    a: statusRaw,
+  });
 }

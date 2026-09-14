@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
+import { bearerDelContexto } from "@/lib/auth/bearer-contexto";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { cacheUsuarioSesion } from "@/lib/auth/cache-sesion-servidor";
 
@@ -35,6 +36,11 @@ export async function getUsuarioCatalogFromServerCookies(): Promise<{
   id: string;
   empresa_id: string;
 } | null> {
+  // Si la ruta dejó un Bearer en el contexto (app nativa), manda ese: no hay cookies que leer.
+  // Para todo lo demás el contexto está vacío y esto sigue exactamente como antes.
+  const delContexto = bearerDelContexto();
+  if (delContexto) return resolverDesdeBearer(delContexto);
+
   // Una ráfaga de acciones seguidas de la misma persona no tiene por qué
   // revalidar el token en cada una: es un viaje a la red antes de empezar.
   const clave = await claveDeSesion();
@@ -76,7 +82,13 @@ export async function getUsuarioCatalogFromRequest(
 ): Promise<{ id: string; empresa_id: string } | null> {
   const bearer = request ? extractBearerTokenFromRequest(request) : null;
   if (!bearer) return getUsuarioCatalogFromServerCookies();
+  return resolverDesdeBearer(bearer);
+}
 
+/** Resuelve `zentra_erp.usuarios` a partir de un JWT, sin pasar por cookies. */
+async function resolverDesdeBearer(
+  bearer: string
+): Promise<{ id: string; empresa_id: string } | null> {
   // La caché va por token: dos personas nunca comparten uno.
   const guardado = cacheUsuarioSesion.get(`bearer:${bearer}`);
   if (guardado) return guardado;

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { conBearer } from "@/lib/auth/bearer-contexto";
+import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { fetchChatConversations } from "@/lib/chat/actions";
 import { getMyAgentOperationalPresence } from "@/lib/chat/chat-ops-actions";
@@ -16,9 +18,16 @@ export const runtime = "nodejs";
  * soportado → fallaba con "Error interno".
  */
 export async function GET(request: Request) {
+  // Todo el handler corre con el token disponible: `fetchChatConversations` y
+  // `getMyAgentOperationalPresence` resuelven al usuario por su cuenta leyendo cookies, y
+  // desde la app nativa no hay ninguna. Con el contexto lo encuentran sin cambiar sus firmas.
+  return conBearer(extractBearerTokenFromRequest(request), () => manejar());
+}
+
+async function manejar() {
   // 1) Sesión.
   try {
-    await requireEmpresaTenantServiceRole(request);
+    await requireEmpresaTenantServiceRole();
   } catch {
     return NextResponse.json(
       { ok: false, error: "Iniciá sesión", code: "unauthenticated" },

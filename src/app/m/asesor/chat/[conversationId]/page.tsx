@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { getStickerFavoritos, toggleStickerFavorito } from "@/lib/chat/sticker-favorites";
@@ -18,6 +18,7 @@ import {
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
+import { agruparReacciones, EMOJIS_REACCION, type ReaccionEnUI } from "@/lib/chat/message-reactions";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import {
@@ -831,14 +832,81 @@ export default function MAsesorChatPage() {
   // (`locked`) para no pelear con el scroll vertical de la lista.
   const SWIPE_THRESHOLD = 56;
 
+  // ── Reaccionar con emoji ────────────────────────────────────────────────────
+  // Mantener presionado abre la barra de emojis. Convive con el deslizar para responder:
+  // el temporizador se cancela apenas el dedo se mueve, así un deslizamiento nunca termina
+  // abriendo la barra.
+  //
+  // Sólo texto y audio: en una imagen el mantener presionado es el gesto de iOS para
+  // "Guardar en Fotos", que los asesores usan, y no se lo pisa.
+  const [reaccionandoA, setReaccionandoA] = useState<Msg | null>(null);
+  const [reaccionError, setReaccionError] = useState<string | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelarHold = useCallback(() => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }, []);
+
+  const puedeReaccionar = useCallback(
+    (m: Msg) =>
+      Boolean(m.wa_message_id?.startsWith("wamid.")) &&
+      m.message_type !== "image" &&
+      m.message_type !== "sticker" &&
+      m.message_type !== "reaction",
+    []
+  );
+
+  const reaccionar = useCallback(
+    async (m: Msg, emoji: string) => {
+      setReaccionandoA(null);
+      setReaccionError(null);
+      const wamid = m.wa_message_id;
+      if (!wamid) return;
+      try {
+        const res = await fetchWithSupabaseSession(
+          `/api/mobile/asesor/conversations/${conversationId}/react`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target_wa_message_id: wamid, emoji }),
+          }
+        );
+        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!res.ok || !j.ok) throw new Error(j.error || "No se pudo reaccionar");
+        await load(true);
+      } catch (e) {
+        setReaccionError(e instanceof Error ? e.message : "No se pudo reaccionar");
+      }
+    },
+    [conversationId, load]
+  );
+
+  /** Reacciones ya agrupadas sobre el WAMID al que apuntan. */
+  const reacciones = useMemo(() => agruparReacciones(messages), [messages]);
+
   const onBubbleTouchStart = useCallback((e: React.TouchEvent, m: Msg) => {
+    if (puedeReaccionar(m)) {
+      cancelarHold();
+      holdTimer.current = setTimeout(() => {
+        holdTimer.current = null;
+        // Un toque largo que abre algo pide confirmación táctil; el teléfono la da si puede.
+        navigator.vibrate?.(8);
+        setReaccionandoA(m);
+        setSwipe(null);
+        swipeStart.current = null;
+      }, 420);
+    }
     if (!m.wa_message_id) return; // sin wamid no hay nada que citar
     const t = e.touches[0];
     swipeStart.current = { x: t.clientX, y: t.clientY, locked: false };
     setSwipe({ id: m.id, dx: 0 });
-  }, []);
+  }, [puedeReaccionar, cancelarHold]);
 
   const onBubbleTouchMove = useCallback((e: React.TouchEvent, m: Msg) => {
+    cancelarHold(); // cualquier movimiento descarta el toque largo
     const st = swipeStart.current;
     if (!st) return;
     const t = e.touches[0];
@@ -859,6 +927,7 @@ export default function MAsesorChatPage() {
 
   const onBubbleTouchEnd = useCallback(
     (m: Msg) => {
+      cancelarHold();
       const dx = swipe?.id === m.id ? swipe.dx : 0;
       swipeStart.current = null;
       setSwipe(null);
@@ -867,7 +936,7 @@ export default function MAsesorChatPage() {
         taRef.current?.focus();
       }
     },
-    [swipe]
+    [swipe, cancelarHold]
   );
 
   const send = useCallback(() => {
@@ -1115,7 +1184,11 @@ export default function MAsesorChatPage() {
           <div className="text-center text-slate-400 text-sm py-6">Sin mensajes.</div>
         ) : (
           <>
-            {messages.map((m) => (
+            {messages
+              // Las reacciones llegan como mensajes propios, pero no son burbujas:
+              // se dibujan colgadas del mensaje al que apuntan.
+              .filter((m) => m.message_type !== "reaction")
+              .map((m) => (
               <div
                 key={m.id}
                 className={`relative flex ${m.from_me ? "justify-end" : "justify-start"}`}
@@ -1185,9 +1258,34 @@ export default function MAsesorChatPage() {
                       ) : null}
                     </div>
                   ) : null}
+
+                  {/* Cuelgan del borde inferior, medio salidas de la burbuja, como en
+                      WhatsApp: así no empujan el texto ni se confunden con contenido. */}
+                  {(() => {
+                    const rs: ReaccionEnUI[] = m.wa_message_id
+                      ? reacciones.get(m.wa_message_id) ?? []
+                      : [];
+                    if (rs.length === 0) return null;
+                    return (
+                      <div className="-mb-3 mt-0.5 flex justify-end gap-1">
+                        {rs.map((r, i) => (
+                          <button
+                            key={`${r.emoji}-${i}`}
+                            type="button"
+                            // Tocar la propia reacción la quita, que es lo que se espera.
+                            onClick={() => r.from_me && void reaccionar(m, "")}
+                            className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[13px] leading-none shadow-sm"
+                            title={r.from_me ? "Tocá para quitar tu reacción" : "Reacción del cliente"}
+                          >
+                            {r.emoji}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
-            ))}
+              ))}
             {pending.map((p) => (
               <div key={p.tempId} className="flex justify-end">
                 <div className="max-w-[78%] rounded-2xl rounded-br-md bg-[#4FAEB2]/70 text-white px-3 py-2 text-[14px] leading-snug shadow-sm">
@@ -1510,6 +1608,47 @@ export default function MAsesorChatPage() {
               </div>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {/* Barra de emojis del toque largo. Hoja abajo, que es donde llega el pulgar. */}
+      {reaccionandoA ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/30"
+          onClick={() => setReaccionandoA(null)}
+        >
+          <div
+            className="w-full rounded-t-3xl bg-white px-4 pt-3 shadow-2xl"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300" />
+            <p className="mb-2 line-clamp-2 text-[12px] text-slate-500">
+              {reaccionandoA.content?.trim() || `[${reaccionandoA.message_type}]`}
+            </p>
+            <div className="flex justify-between gap-1 pb-1">
+              {EMOJIS_REACCION.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => void reaccionar(reaccionandoA, e)}
+                  className="grid h-12 w-12 place-items-center rounded-full text-[26px] active:bg-slate-100"
+                  aria-label={`Reaccionar con ${e}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reaccionError ? (
+        <div
+          className="fixed inset-x-3 bottom-24 z-50 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700 shadow-lg"
+          onClick={() => setReaccionError(null)}
+        >
+          {reaccionError}
         </div>
       ) : null}
 

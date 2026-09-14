@@ -173,6 +173,48 @@ export async function sendYCloudWhatsappMediaViaLink(params: {
 }
 
 /**
+ * Reacciona a un mensaje con un emoji (o lo quita mandando `emoji: ""`).
+ *
+ * OJO con el `message_id`: WhatsApp exige el WAMID REAL del mensaje, el que empieza con
+ * `wamid.`. No sirve el id interno de YCloud. Para los mensajes ENTRANTES eso ya lo
+ * guardamos bien (`extractExternalMessageId` prefiere `msg.wamid`); para los SALIENTES,
+ * al momento de aceptar el envío YCloud suele devolver solo su id propio, así que reaccionar
+ * a un mensaje nuestro puede no funcionar. Por eso el caller decide a qué se puede
+ * reaccionar y este servicio valida antes de gastar una llamada.
+ *
+ * Doc: https://docs.ycloud.com/reference/whatsapp-messaging-examples
+ */
+export async function sendYCloudWhatsappReaction(params: {
+  apiKey: string;
+  fromE164: string;
+  toDigits: string;
+  /** WAMID del mensaje al que se reacciona. */
+  targetWamid: string;
+  /** Emoji, o cadena vacía para quitar la reacción. */
+  emoji: string;
+}): Promise<SendWhatsAppTextResult> {
+  const toE164 = digitsToE164(params.toDigits);
+  if (!toE164) {
+    return { ok: false, error: "Teléfono de destino inválido para YCloud" };
+  }
+  const wamid = params.targetWamid.trim();
+  if (!wamid.startsWith("wamid.")) {
+    return {
+      ok: false,
+      error: "No se puede reaccionar a este mensaje: WhatsApp necesita su identificador real.",
+      code: "sin_wamid",
+    };
+  }
+
+  return postYCloudWhatsappMessage(params.apiKey, {
+    from: params.fromE164,
+    to: toE164,
+    type: "reaction",
+    reaction: { message_id: wamid, emoji: params.emoji },
+  });
+}
+
+/**
  * Sube un archivo de media a YCloud (Meta lo persiste ~30 días) y devuelve su `id`.
  * Endpoint: `POST /v2/whatsapp/media/{phoneNumber}/upload` (multipart, campo `file`).
  *

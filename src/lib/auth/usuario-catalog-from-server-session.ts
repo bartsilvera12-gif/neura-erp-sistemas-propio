@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { cacheUsuarioSesion } from "@/lib/auth/cache-sesion-servidor";
 
@@ -58,4 +60,38 @@ export async function getUsuarioCatalogFromServerCookies(): Promise<{
   // arreglar el acceso, tiene que entrar en el próximo intento.
   if (clave) cacheUsuarioSesion.set(clave, resuelto);
   return resuelto;
+}
+
+/**
+ * Igual que `getUsuarioCatalogFromServerCookies`, pero probando primero el header
+ * `Authorization: Bearer`.
+ *
+ * Existe por la app nativa: un cliente que no es un navegador no tiene cookies de sesión,
+ * manda el JWT en el header. El resto del ERP (páginas, server actions, la app web dentro
+ * de Capacitor) sigue entrando por cookies y no cambia en nada — si no viene Bearer, esto
+ * delega tal cual en la función de siempre.
+ */
+export async function getUsuarioCatalogFromRequest(
+  request?: Request | null
+): Promise<{ id: string; empresa_id: string } | null> {
+  const bearer = request ? extractBearerTokenFromRequest(request) : null;
+  if (!bearer) return getUsuarioCatalogFromServerCookies();
+
+  // La caché va por token: dos personas nunca comparten uno.
+  const guardado = cacheUsuarioSesion.get(`bearer:${bearer}`);
+  if (guardado) return guardado;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  if (!url || !anonKey) return null;
+
+  const { data, error } = await createClient(url, anonKey).auth.getUser(bearer);
+  if (error || !data.user?.id) return null;
+
+  const usuario = await resolveUsuarioErpFromAuthUser(createServiceRoleClient(), data.user);
+  if (!usuario?.id || !usuario.empresa_id) return null;
+
+  const salida = { id: usuario.id, empresa_id: usuario.empresa_id };
+  cacheUsuarioSesion.set(`bearer:${bearer}`, salida);
+  return salida;
 }

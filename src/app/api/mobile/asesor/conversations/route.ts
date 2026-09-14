@@ -15,10 +15,10 @@ export const runtime = "nodejs";
  * Antes este endpoint consultaba el pool PG crudo, que para neura (PostgREST) no es el camino
  * soportado → fallaba con "Error interno".
  */
-export async function GET() {
+export async function GET(request: Request) {
   // 1) Sesión.
   try {
-    await requireEmpresaTenantServiceRole();
+    await requireEmpresaTenantServiceRole(request);
   } catch {
     return NextResponse.json(
       { ok: false, error: "Iniciá sesión", code: "unauthenticated" },

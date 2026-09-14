@@ -18,7 +18,7 @@ export async function POST(
   const { conversationId } = await params;
   let ctx;
   try {
-    ctx = await requireEmpresaTenantServiceRole();
+    ctx = await requireEmpresaTenantServiceRole(request);
   } catch {
     return NextResponse.json(
       { ok: false, error: "Iniciá sesión", code: "unauthenticated" },

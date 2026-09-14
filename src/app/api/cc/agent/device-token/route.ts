@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   let ctx;
   try {
-    ctx = await requireEmpresaTenantServiceRole();
+    ctx = await requireEmpresaTenantServiceRole(request);
   } catch {
     return NextResponse.json({ ok: false, error: "Iniciá sesión", code: "unauthenticated" }, { status: 401 });
   }

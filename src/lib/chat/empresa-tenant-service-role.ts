@@ -1,4 +1,4 @@
-import { getUsuarioCatalogFromServerCookies } from "@/lib/auth/usuario-catalog-from-server-session";
+import { getUsuarioCatalogFromRequest } from "@/lib/auth/usuario-catalog-from-server-session";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
 import { resolveEmpresaDataSchema, type AppSupabaseClient } from "@/lib/supabase/schema";
@@ -18,8 +18,15 @@ export type EmpresaTenantSrContext = {
  * Sesión para mutaciones/consultas de tablas tenant (`chat_*`, etc.) sin depender de RLS del JWT.
  * Siempre filtrar por `empresa_id` en las queries.
  */
-export async function requireEmpresaTenantServiceRole(): Promise<EmpresaTenantSrContext> {
-  const u = await getUsuarioCatalogFromServerCookies();
+/**
+ * `request` es OPCIONAL a propósito: sin él se comporta exactamente como antes (cookies), que
+ * es lo que usan las 18 rutas existentes. Pasándolo, además acepta `Authorization: Bearer`,
+ * que es lo único que puede mandar un cliente que no es un navegador (la app nativa).
+ */
+export async function requireEmpresaTenantServiceRole(
+  request?: Request | null
+): Promise<EmpresaTenantSrContext> {
+  const u = await getUsuarioCatalogFromRequest(request);
   if (!u) throw new Error("Usuario no autenticado o sin empresa");
 
   const catalogSr = createServiceRoleClient();

@@ -12,13 +12,13 @@ export const runtime = "nodejs";
  * que es el camino soportado para neura. (Antes usaba el pool PG crudo → "Error interno".)
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const { conversationId } = await params;
   let ctx;
   try {
-    ctx = await requireEmpresaTenantServiceRole();
+    ctx = await requireEmpresaTenantServiceRole(request);
   } catch {
     return NextResponse.json(
       { ok: false, error: "Iniciá sesión", code: "unauthenticated" },

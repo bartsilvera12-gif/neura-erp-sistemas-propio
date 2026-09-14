@@ -13,6 +13,7 @@ import {
   FileText,
   Settings,
   ShieldCheck,
+  Headphones,
   UserCog,
   Building2,
   ChevronDown,
@@ -158,6 +159,24 @@ const MENU_STRUCTURE: MenuItem[] = [
   },
   { key: "usuarios", slug: "usuarios", label: "RRHH", href: "/usuarios", icon: UserCog },
   {
+    // Soporte: la visibilidad la da el módulo, pero el permiso real es de rol
+    // (`puedeUsarSoporte`) y lo vuelven a verificar el layout y cada API.
+    key: "soporte",
+    slug: "soporte",
+    label: "Soporte",
+    href: "/dashboard/soporte",
+    icon: Headphones,
+    children: [
+      { label: "Dashboard", href: "/dashboard/soporte", exactMatch: true },
+      { label: "Tickets", href: "/dashboard/soporte/tickets", exactMatch: true },
+      { label: "Nuevo ticket", href: "/dashboard/soporte/tickets/nuevo", exactMatch: true },
+      { label: "Mis tickets", href: "/dashboard/soporte/mis-tickets" },
+      { label: "Clientes", href: "/dashboard/soporte/clientes" },
+      { label: "Reportes", href: "/dashboard/soporte/reportes" },
+      { label: "Configuración", href: "/dashboard/soporte/configuracion" },
+    ],
+  },
+  {
     key: "guardias",
     slug: "guardias",
     label: "Guardias",
@@ -283,7 +302,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Marketing y Automatización",
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion"] },
+  { id: "administracion", title: "Administración", itemKeys: ["soporte", "usuarios", "guardias", "configuracion"] },
 ];
 
 function modulosSyntheticFromMenu(): ModuloEmpresa[] {

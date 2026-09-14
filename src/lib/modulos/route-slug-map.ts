@@ -23,6 +23,7 @@ const SIDEBAR_SLUG_HREF_ORDER: { slug: string; href: string }[] = [
   { slug: "notas_credito", href: "/notas-credito" },
   { slug: "usuarios", href: "/usuarios" },
   { slug: "guardias", href: "/dashboard/guardias" },
+  { slug: "soporte", href: "/dashboard/soporte" },
   { slug: "configuracion", href: "/configuracion" },
   { slug: "planes", href: "/planes" },
   { slug: "gestion-clientes", href: "/gestion-clientes" },
@@ -104,6 +105,7 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
 
   if (p.startsWith("/dashboard")) {
     if (p.startsWith("/dashboard/guardias")) return "guardias";
+    if (p.startsWith("/dashboard/soporte")) return "soporte";
     if (p.startsWith("/dashboard/marketing-ops")) return "marketing_ops";
     // Reporte gerencial de producción: reusa el gate del módulo Proyectos.
     if (p.startsWith("/dashboard/produccion")) return "proyectos";

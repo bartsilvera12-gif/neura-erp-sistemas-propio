@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
@@ -35,13 +36,81 @@ export type ProyectoCard = Record<string, unknown> & {
   responsable_tecnico?: { nombre?: string | null } | null;
 };
 
+export type AlcanceProyectos = "mios" | "todos";
+
+/** Misma clave que el Kanban de escritorio: la elección se comparte entre las dos vistas. */
+const ALCANCE_KEY = "proyectos:alcance:v2";
+
+/**
+ * Alcance del listado: "mios" (donde soy responsable — comercial, técnico, QA o PM) o "todos".
+ * Replica la lógica del Kanban de escritorio para que las dos pantallas se comporten igual:
+ *
+ *  - Recuerda la última elección por navegador.
+ *  - El DEFAULT lo decide el servidor (`/api/proyectos/mi-vista`): gerencia, o quien no es
+ *    responsable de ningún proyecto, arranca en "todos".
+ *  - Un "Mías" guardado para alguien que NO es responsable de nada está siempre vacío, así
+ *    que se corrige a "Todas".
+ *
+ * Queda en `null` hasta resolverlo, para no cargar con el alcance equivocado y que la lista
+ * parpadee de "todas" a "mías".
+ */
+export function useProyectosAlcance() {
+  const [alcance, setAlcance] = useState<AlcanceProyectos | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const s = window.localStorage.getItem(ALCANCE_KEY);
+      return s === "mios" || s === "todos" ? s : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      try {
+        const r = await fetchWithSupabaseSession("/api/proyectos/mi-vista", { cache: "no-store" });
+        const j = (await r.json().catch(() => ({}))) as {
+          data?: { alcance_default?: AlcanceProyectos; es_responsable?: boolean };
+        };
+        const def: AlcanceProyectos = j.data?.alcance_default === "mios" ? "mios" : "todos";
+        const esResponsable = j.data?.es_responsable === true;
+        if (cancel) return;
+        setAlcance((prev) => {
+          if (prev === "mios" && !esResponsable) return "todos";
+          return prev !== null ? prev : def;
+        });
+      } catch {
+        if (!cancel) setAlcance((prev) => prev ?? "todos");
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (alcance === null) return;
+    try {
+      window.localStorage.setItem(ALCANCE_KEY, alcance);
+    } catch {
+      /* ignore */
+    }
+  }, [alcance]);
+
+  return { alcance, setAlcance };
+}
+
 /** Hook compartido para la lista de proyectos (sin archivados por defecto). */
-export function useProyectos(opts?: { archivado?: boolean }) {
+export function useProyectos(opts?: { archivado?: boolean; mios?: boolean | null }) {
   const params = new URLSearchParams();
   if (opts?.archivado === true) params.set("archivado", "1");
+  if (opts?.mios === true) params.set("mios", "1");
   const qs = params.toString();
+  /* `mios: null` = alcance sin resolver todavía: no pedimos nada, para no traer "todas"
+     y que la lista parpadee cuando llegue la respuesta de mi-vista. */
   const swr = useSWR<ProyectoCard[]>(
-    `proyectos:lista:${qs}`,
+    opts?.mios === null ? null : `proyectos:lista:${qs}`,
     async () => {
       const res = await fetchWithSupabaseSession(`/api/proyectos${qs ? `?${qs}` : ""}`, {
         cache: "no-store",

@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AlertCircle, FolderKanban, Plus, Search } from "lucide-react";
-import { useEstadosProyecto, useProyectos, type ProyectoCard } from "@/shared/hooks/useProyectos";
+import {
+  useEstadosProyecto,
+  useProyectos,
+  useProyectosAlcance,
+  type ProyectoCard,
+} from "@/shared/hooks/useProyectos";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 
 /**
@@ -35,12 +40,18 @@ export default function ProyectosMobile({
    */
   variant?: "dashboard" | "app";
 }) {
-  const { proyectos, isLoading: loadingP, error } = useProyectos();
+  const { alcance, setAlcance } = useProyectosAlcance();
+  const {
+    proyectos,
+    isLoading: loadingP,
+    error,
+  } = useProyectos({ mios: alcance === null ? null : alcance === "mios" });
   const { estados, isLoading: loadingE } = useEstadosProyecto();
   const [estadoActivoId, setEstadoActivoId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
-  const isLoading = loadingP || loadingE;
+  /* Mientras no se resolvió el alcance no se pidió la lista: sigue siendo "cargando". */
+  const isLoading = loadingP || loadingE || alcance === null;
   const app = variant === "app";
 
   // Estados visibles: los que tengan al menos un proyecto, o el inicial.
@@ -79,6 +90,26 @@ export default function ProyectosMobile({
   /* Dentro de la app, detalle y alta son los de la app; si no, los del dashboard de siempre. */
   const hrefBase = app ? "/m/asesor/proyectos" : "/dashboard/proyectos";
   const hrefNuevo = `${hrefBase}/nuevo`;
+
+  /* Mismo control que el tablero de escritorio: "Mías" = donde soy responsable. */
+  const segmentoAlcance =
+    alcance === null ? null : (
+      <div className="inline-flex shrink-0 rounded-full bg-slate-100 p-0.5" role="group" aria-label="Alcance">
+        {(["mios", "todos"] as const).map((a) => (
+          <button
+            key={a}
+            type="button"
+            onClick={() => setAlcance(a)}
+            aria-pressed={alcance === a}
+            className={`min-h-[32px] rounded-full px-3.5 text-xs font-semibold transition-colors ${
+              alcance === a ? "bg-white text-[#3F8E91] shadow-sm" : "text-slate-500"
+            }`}
+          >
+            {a === "mios" ? "Mías" : "Todas"}
+          </button>
+        ))}
+      </div>
+    );
 
   /* Chips de estado. En la app sangran hasta el borde (-mx-3) para que se note que siguen. */
   const tabsEstado = (
@@ -172,6 +203,7 @@ export default function ProyectosMobile({
           />
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-4 pt-3">
+          {segmentoAlcance ? <div className="mb-3">{segmentoAlcance}</div> : null}
           <div className="mb-3">{tabsEstado}</div>
           {listado}
         </main>
@@ -196,6 +228,8 @@ export default function ProyectosMobile({
           </Link>
         </div>
       </header>
+
+      {segmentoAlcance ? <div className="mb-3">{segmentoAlcance}</div> : null}
 
       <div className="mb-3">{tabsEstado}</div>
 

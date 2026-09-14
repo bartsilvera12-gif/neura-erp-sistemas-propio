@@ -4,43 +4,53 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
-type EstadoMes = "pagado" | "pendiente" | "sin_facturar";
-type EstadoCobro = "cobrada" | "parcial" | "pendiente" | "sin_facturar" | "anulada";
+/** Agregado de plata por tipo de servicio (lo entrega el API, ya calculado desde facturas/pagos). */
+type Agg = {
+  facturado_mes: number; // emitido este mes en cuotas de suscripción
+  facturado_mes_ant: number; // idem mes anterior (tendencia)
+  facturas_mes: number; // cantidad de cuotas emitidas este mes
+  cobrado_mes: number; // CAJA de suscripciones este mes (cualquier mes de emisión)
+  cobrado_mes_ant: number; // caja mismo tramo del mes anterior (tendencia)
+  por_cobrar_total: number; // DEUDA total: todas las cuotas impagas, de cualquier mes
+  cuotas_impagas: number; // cantidad de cuotas con saldo pendiente
+};
+type TipoAgg = Agg & { label: string };
+const emptyAgg = (): Agg => ({
+  facturado_mes: 0,
+  facturado_mes_ant: 0,
+  facturas_mes: 0,
+  cobrado_mes: 0,
+  cobrado_mes_ant: 0,
+  por_cobrar_total: 0,
+  cuotas_impagas: 0,
+});
+
+type SortCol = "mensual" | "cobrado" | "adeudado";
 type Row = {
   cliente: string;
   plan: string;
   tipo_slug: string | null;
   tipo_label: string;
-  monto: number;
-  facturado_mes: number;
-  saldo_mes: number;
+  monto: number; // cuota mensual
+  facturado_mes: number; // cuota emitida este mes (0 si no se emitió / anulada)
+  saldo_mes: number; // saldo de la cuota de este mes
+  cobrado_mes: number; // caja de esta sub este mes (cualquier mes de emisión)
+  adeudado_total: number; // deuda total de esta sub (todas las cuotas impagas)
   anulada_mes: boolean;
   moneda: string;
   vendedor: string;
-  estado_mes: EstadoMes;
 };
 type SeriePunto = { periodo: string; label: string; monto: number };
 
-/** Cobrado de la factura del mes = facturado − saldo (0 si no hay factura válida del período). */
-const pagadoMes = (r: Row) => Math.max((r.facturado_mes || 0) - (r.saldo_mes || 0), 0);
-
-/**
- * Estado de cobro del mes SEGÚN LA FACTURA REAL del período (no la cuota teórica):
- * sin factura válida → "anulada" (si la del mes se anuló) o "sin_facturar"; con factura →
- * "cobrada" (saldo 0), "parcial" (saldo < facturado) o "pendiente" (nada cobrado todavía).
- */
-function estadoCobro(r: Row): EstadoCobro {
-  if ((r.facturado_mes || 0) <= 0) return r.anulada_mes ? "anulada" : "sin_facturar";
-  if ((r.saldo_mes || 0) <= 0) return "cobrada";
-  if ((r.saldo_mes || 0) < r.facturado_mes) return "parcial";
-  return "pendiente";
-}
+/** Estado del cliente respecto de su deuda de suscripción: al día (no debe) o debe (tiene saldo). */
+type EstadoDeuda = "al_dia" | "debe";
+const estadoDeuda = (r: Row): EstadoDeuda => ((r.adeudado_total || 0) > 0 ? "debe" : "al_dia");
 
 function fmtGs(n: number) {
   return n.toLocaleString("es-PY");
 }
 
-/** Clave para agrupar/filtrar los clientes sin tipo de servicio cargado. */
+/** Clave para agrupar/filtrar los clientes sin tipo de servicio cargado (coincide con el API). */
 const SIN_TIPO = "__sin_tipo__";
 
 function periodoLabel(ym: string) {
@@ -58,17 +68,11 @@ function iniciales(nombre: string): string {
   return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
 }
 
-function EstadoBadge({ estado }: { estado: EstadoCobro }) {
+function EstadoBadge({ estado }: { estado: EstadoDeuda }) {
   const cfg =
-    estado === "cobrada"
-      ? { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", label: "Cobrada" }
-      : estado === "parcial"
-        ? { cls: "border-amber-200 bg-amber-50 text-amber-700", dot: "bg-amber-500", label: "Parcial" }
-        : estado === "pendiente"
-          ? { cls: "border-rose-200 bg-rose-50 text-rose-700", dot: "bg-rose-500", label: "Pendiente" }
-          : estado === "anulada"
-            ? { cls: "border-zinc-200 bg-zinc-50 text-zinc-400", dot: "bg-zinc-300", label: "Anulada" }
-            : { cls: "border-slate-200 bg-slate-50 text-slate-500", dot: "bg-slate-400", label: "Sin facturar" };
+    estado === "debe"
+      ? { cls: "border-rose-200 bg-rose-50 text-rose-700", dot: "bg-rose-500", label: "Debe" }
+      : { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", label: "Al día" };
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cfg.cls}`}>
       <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
@@ -77,18 +81,7 @@ function EstadoBadge({ estado }: { estado: EstadoCobro }) {
   );
 }
 
-/** Barra de avance de cobro (cobrado / mensual) con color por estado. */
-function BarraAvance({ cobrado, total }: { cobrado: number; total: number }) {
-  const pct = total > 0 ? Math.min(100, Math.round((cobrado / total) * 100)) : 0;
-  const fill = cobrado <= 0 ? "bg-slate-200" : cobrado >= total ? "bg-gradient-to-r from-emerald-400 to-emerald-600" : "bg-gradient-to-r from-amber-400 to-amber-600";
-  return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-      <div className={`h-full rounded-full ${fill}`} style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
-
-/** Tendencia del MRR facturado (área + línea) a partir de la serie de meses. */
+/** Tendencia del facturado (área + línea) a partir de la serie de meses. */
 function TrendChart({ serie }: { serie: SeriePunto[] }) {
   const W = 520;
   const H = 150;
@@ -131,7 +124,8 @@ function TrendChart({ serie }: { serie: SeriePunto[] }) {
   );
 }
 
-/** Anillo de progreso (cobrado vs objetivo). */
+/** Anillo de progreso (cobrado del mes vs emitido del mes). El % puede pasar 100 si se cobraron
+ *  atrasados; el arco se topa en 100 pero el número muestra el valor real. */
 function Ring({ pct }: { pct: number }) {
   const r = 52;
   const c = 2 * Math.PI * r;
@@ -164,9 +158,9 @@ function DeltaChip({ pct }: { pct: number }) {
 /** Encabezado de columna ordenable: clic cicla desc → asc → default. */
 function SortHeader({ label, col, orden, onSort, align = "left" }: {
   label: string;
-  col: "mensual" | "estado";
-  orden: { col: "mensual" | "estado" | null; dir: "asc" | "desc" };
-  onSort: (col: "mensual" | "estado") => void;
+  col: SortCol;
+  orden: { col: SortCol | null; dir: "asc" | "desc" };
+  onSort: (col: SortCol) => void;
   align?: "left" | "right";
 }) {
   const active = orden.col === col;
@@ -189,23 +183,20 @@ function SortHeader({ label, col, orden, onSort, align = "left" }: {
 
 export default function ReporteSuscripcionesPage() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [tiposAgg, setTiposAgg] = useState<Record<string, TipoAgg>>({});
+  const [totales, setTotales] = useState<Agg>(emptyAgg());
   const [serie, setSerie] = useState<SeriePunto[]>([]);
   const [periodo, setPeriodo] = useState("");
   const [periodoAnterior, setPeriodoAnterior] = useState("");
-  const [totalMes, setTotalMes] = useState(0);
-  const [totalMesAnterior, setTotalMesAnterior] = useState(0);
-  const [cobradoMes, setCobradoMes] = useState(0);
-  const [cobradoMesAnterior, setCobradoMesAnterior] = useState(0);
-  const [facturasMes, setFacturasMes] = useState(0);
   const [diaCorte, setDiaCorte] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [tipo, setTipo] = useState("");
   const [q, setQ] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<"" | "cobrado" | "por_cobrar">("");
-  // Orden de la tabla por columna (clic cicla: desc → asc → default por saldo pendiente).
-  const [orden, setOrden] = useState<{ col: "mensual" | "estado" | null; dir: "asc" | "desc" }>({ col: null, dir: "desc" });
-  const toggleOrden = (col: "mensual" | "estado") =>
+  // Orden de la tabla por columna (clic cicla: desc → asc → default por deuda).
+  const [orden, setOrden] = useState<{ col: SortCol | null; dir: "asc" | "desc" }>({ col: null, dir: "desc" });
+  const toggleOrden = (col: SortCol) =>
     setOrden((p) => (p.col !== col ? { col, dir: "desc" } : p.dir === "desc" ? { col, dir: "asc" } : { col: null, dir: "desc" }));
 
   useEffect(() => {
@@ -220,12 +211,9 @@ export default function ReporteSuscripcionesPage() {
             periodo: string;
             periodo_anterior?: string;
             dia_corte?: number;
-            total_mes?: number;
-            total_mes_anterior?: number;
-            cobrado_mes?: number;
-            cobrado_mes_anterior?: number;
-            facturas_mes?: number;
             serie_mrr?: SeriePunto[];
+            tipos?: Record<string, TipoAgg>;
+            totales?: Agg;
             rows: Row[];
           };
           error?: string;
@@ -233,15 +221,12 @@ export default function ReporteSuscripcionesPage() {
         if (!res.ok || json.success !== true || !json.data) throw new Error(json.error ?? `Error ${res.status}`);
         if (!cancel) {
           setRows(json.data.rows);
+          setTiposAgg(json.data.tipos ?? {});
+          setTotales(json.data.totales ?? emptyAgg());
           setSerie(json.data.serie_mrr ?? []);
           setPeriodo(json.data.periodo);
           setPeriodoAnterior(json.data.periodo_anterior ?? "");
           setDiaCorte(Number(json.data.dia_corte) || 0);
-          setTotalMes(Number(json.data.total_mes) || 0);
-          setTotalMesAnterior(Number(json.data.total_mes_anterior) || 0);
-          setCobradoMes(Number(json.data.cobrado_mes) || 0);
-          setCobradoMesAnterior(Number(json.data.cobrado_mes_anterior) || 0);
-          setFacturasMes(Number(json.data.facturas_mes) || 0);
           setErr(null);
         }
       } catch (e) {
@@ -261,60 +246,57 @@ export default function ReporteSuscripcionesPage() {
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);
 
-  // Solo búsqueda (sin tipo): alimenta la distribución y el total de activas, para poder
-  // cambiar entre tipos siempre.
+  // KPIs de arriba: salen del AGREGADO por tipo que arma el API (facturas/pagos reales, completos).
+  // El buscador filtra solo la tabla, no los totales del concepto.
+  const agg: Agg = useMemo(() => {
+    if (!tipo) return totales;
+    return tiposAgg[tipo] ?? emptyAgg();
+  }, [tipo, tiposAgg, totales]);
+
+  const facturadoDelMes = agg.facturado_mes;
+  const facturasCount = agg.facturas_mes;
+  const cobradoMes = agg.cobrado_mes;
+  const porCobrarTotal = agg.por_cobrar_total;
+  const cuotasImpagas = agg.cuotas_impagas;
+  const pctCobrado = facturadoDelMes > 0 ? Math.round((cobradoMes / facturadoDelMes) * 100) : 0;
+  const deltaEmitido = agg.facturado_mes_ant > 0 ? ((facturadoDelMes - agg.facturado_mes_ant) / agg.facturado_mes_ant) * 100 : facturadoDelMes > 0 ? 100 : 0;
+  const deltaCobrado = agg.cobrado_mes_ant > 0 ? ((cobradoMes - agg.cobrado_mes_ant) / agg.cobrado_mes_ant) * 100 : cobradoMes > 0 ? 100 : 0;
+
+  // Base de la tabla: búsqueda + tipo seleccionado.
   const baseSinTipo = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((r) => `${r.cliente} ${r.plan} ${r.vendedor} ${r.tipo_label}`.toLowerCase().includes(needle));
   }, [rows, q]);
-  // KPIs de arriba: búsqueda + tipo seleccionado (clic en la distribución o el select).
   const baseFiltradas = useMemo(() => {
     if (!tipo) return baseSinTipo;
     if (tipo === SIN_TIPO) return baseSinTipo.filter((r) => !r.tipo_slug);
     return baseSinTipo.filter((r) => r.tipo_slug === tipo);
   }, [baseSinTipo, tipo]);
 
-  // La tabla: base + filtro por estado de cobro (tiles seleccionables), ordenada por saldo pendiente.
+  // La tabla: base + filtro por estado (tiles), ordenada.
   const filtradas = useMemo(() => {
     let list = baseFiltradas;
-    if (estadoFiltro === "cobrado") list = list.filter((r) => pagadoMes(r) > 0);
-    if (estadoFiltro === "por_cobrar") list = list.filter((r) => (r.saldo_mes || 0) > 0);
+    if (estadoFiltro === "cobrado") list = list.filter((r) => (r.cobrado_mes || 0) > 0);
+    if (estadoFiltro === "por_cobrar") list = list.filter((r) => (r.adeudado_total || 0) > 0);
     const arr = [...list];
     const mul = orden.dir === "asc" ? 1 : -1;
     if (orden.col === "mensual") {
       arr.sort((a, b) => (a.monto - b.monto) * mul || a.cliente.localeCompare(b.cliente));
-    } else if (orden.col === "estado") {
-      const rank = (r: Row) => {
-        const e = estadoCobro(r);
-        return e === "cobrada" ? 4 : e === "parcial" ? 3 : e === "pendiente" ? 2 : 1;
-      };
-      arr.sort((a, b) => (rank(a) - rank(b)) * mul || (pagadoMes(a) - pagadoMes(b)) * mul || a.cliente.localeCompare(b.cliente));
+    } else if (orden.col === "cobrado") {
+      arr.sort((a, b) => (a.cobrado_mes - b.cobrado_mes) * mul || a.cliente.localeCompare(b.cliente));
+    } else if (orden.col === "adeudado") {
+      arr.sort((a, b) => (a.adeudado_total - b.adeudado_total) * mul || a.cliente.localeCompare(b.cliente));
     } else {
-      // Default: mayor saldo por cobrar primero (según la factura real del período).
-      arr.sort((a, b) => (b.saldo_mes || 0) - (a.saldo_mes || 0) || b.facturado_mes - a.facturado_mes || b.monto - a.monto);
+      // Default: mayor deuda primero.
+      arr.sort((a, b) => b.adeudado_total - a.adeudado_total || b.monto - a.monto || a.cliente.localeCompare(b.cliente));
     }
     return arr;
   }, [baseFiltradas, estadoFiltro, orden]);
 
   const gs = (r: Row) => r.moneda === "GS";
-  // Facturado (emitido, sin anuladas) este mes en suscripciones. Sin filtro = total del API
-  // (coincide con el final de la curva); con tipo seleccionado = suma de lo facturado de ese tipo.
-  const facturadoDelMes = tipo ? baseFiltradas.filter(gs).reduce((s, r) => s + (r.facturado_mes || 0), 0) : totalMes;
-  const facturasCount = tipo ? baseFiltradas.filter((r) => r.facturado_mes > 0).length : facturasMes;
-  // Objetivo, cobrado y por cobrar salen TODOS de las facturas reales del período → cierran entre sí
-  // (cobrado + por cobrar = objetivo). Una sub con factura anulada o aún sin emitir aporta 0 a los tres,
-  // así que ya no infla el "por cobrar" ni la meta (ese era el bug de Magno/Charme).
-  const objetivoMes = baseFiltradas.filter(gs).reduce((s, r) => s + (r.facturado_mes || 0), 0);
-  const cobradoBase = baseFiltradas.filter(gs).reduce((s, r) => s + pagadoMes(r), 0);
-  const porCobrarBase = baseFiltradas.filter(gs).reduce((s, r) => s + Math.max(r.saldo_mes || 0, 0), 0);
-  const pctCobrado = objetivoMes > 0 ? Math.round((cobradoBase / objetivoMes) * 100) : 0;
-  const pctPorCobrar = objetivoMes > 0 ? Math.round((porCobrarBase / objetivoMes) * 100) : 0;
-  const deltaEmitido = totalMesAnterior > 0 ? ((totalMes - totalMesAnterior) / totalMesAnterior) * 100 : totalMes > 0 ? 100 : 0;
-  const deltaCobrado = cobradoMesAnterior > 0 ? ((cobradoMes - cobradoMesAnterior) / cobradoMesAnterior) * 100 : cobradoMes > 0 ? 100 : 0;
 
-  // Distribución por tipo de servicio (conteo), sobre la base sin filtrar por tipo → siempre
-  // muestra todos los tipos, clickeables para cambiar los KPIs.
+  // Distribución por tipo (conteo de activas) — siempre sobre todos los tipos, clickeable.
   const distribucion = useMemo(() => {
     const m = new Map<string, { key: string; label: string; count: number }>();
     for (const r of baseSinTipo) {
@@ -334,6 +316,7 @@ export default function ReporteSuscripcionesPage() {
 
   const TILE = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-[#4FAEB2]/10";
   const LBL = "text-[11px] font-bold uppercase tracking-[0.13em] text-slate-400";
+  const tipoLabelActual = !tipo ? "Todas" : tipo === SIN_TIPO ? "Sin clasificar" : tiposAgg[tipo]?.label ?? "—";
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-4 p-4 sm:p-6">
@@ -346,8 +329,8 @@ export default function ReporteSuscripcionesPage() {
         </div>
         <h1 className="mt-0.5 text-2xl font-extrabold tracking-tight text-slate-900">Suscripciones</h1>
         <p className="text-xs text-slate-500">
-          Ingreso recurrente y estado de cobro del período{" "}
-          <span className="font-semibold text-slate-700">{periodo ? periodoLabel(periodo) : "actual"}</span>.
+          Facturado y cobrado de{" "}
+          <span className="font-semibold text-slate-700">{periodo ? periodoLabel(periodo) : "este mes"}</span>, y la deuda total de suscripciones{tipo ? <> · <span className="font-semibold text-[#3F8E91]">{tipoLabelActual}</span></> : null}.
         </p>
       </div>
 
@@ -355,14 +338,14 @@ export default function ReporteSuscripcionesPage() {
 
       {/* ── Bento hero ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* MRR + tendencia (grande) */}
+        {/* Facturado del mes + tendencia (grande) */}
         <div className={`${TILE} lg:col-span-1 lg:row-span-2 flex flex-col`}>
           <div className="flex items-start justify-between">
             <span className={LBL}>Facturado del mes · Suscripciones</span>
             <span className="rounded-lg border border-[#4FAEB2]/25 bg-[#4FAEB2]/10 px-2 py-1 text-[11px] font-bold text-[#3F8E91]">6 meses</span>
           </div>
           <div className="mt-3 text-[34px] font-extrabold leading-none tracking-tight tabular-nums text-slate-900">Gs. {fmtGs(facturadoDelMes)}</div>
-          <div className="mt-2 text-[11px] text-slate-400">{facturasCount} factura{facturasCount === 1 ? "" : "s"} emitida{facturasCount === 1 ? "" : "s"}{periodo ? ` · ${periodoLabel(periodo)}` : ""}</div>
+          <div className="mt-2 text-[11px] text-slate-400">{facturasCount} cuota{facturasCount === 1 ? "" : "s"} emitida{facturasCount === 1 ? "" : "s"}{periodo ? ` · ${periodoLabel(periodo)}` : ""}</div>
           <div className="mt-4 flex items-center gap-2">
             <DeltaChip pct={deltaEmitido} />
             <span className="text-[11px] text-slate-400">vs {periodoAnterior ? periodoLabel(periodoAnterior).split(" ")[0] : "mes ant."}</span>
@@ -373,26 +356,26 @@ export default function ReporteSuscripcionesPage() {
           </div>
         </div>
 
-        {/* Cobrado vs objetivo (anillo) */}
+        {/* Cobrado del mes (caja) — anillo vs lo emitido este mes */}
         <button
           type="button"
           onClick={() => toggleEstado("cobrado")}
           aria-pressed={estadoFiltro === "cobrado"}
           className={`${TILE} flex flex-col items-center text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${estadoFiltro === "cobrado" ? "!border-emerald-400 !ring-2 !ring-emerald-300" : ""}`}
         >
-          <span className={`${LBL} self-start`}>Cobrado vs objetivo</span>
+          <span className={`${LBL} self-start`}>Cobrado del mes · Caja</span>
           <div className="relative mt-1">
             <Ring pct={pctCobrado} />
             <div className="absolute inset-x-0 bottom-[42px] text-center text-[10.5px] font-semibold text-slate-400">al día {diaCorte}</div>
           </div>
-          <div className="mt-1 text-lg font-extrabold tabular-nums text-emerald-700">Gs. {fmtGs(cobradoBase)}</div>
+          <div className="mt-1 text-lg font-extrabold tabular-nums text-emerald-700">Gs. {fmtGs(cobradoMes)}</div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">de Gs. {fmtGs(objetivoMes)}</span>
+            <span className="text-[11px] text-slate-400">de Gs. {fmtGs(facturadoDelMes)} emitido</span>
             <DeltaChip pct={deltaCobrado} />
           </div>
         </button>
 
-        {/* Por cobrar */}
+        {/* Por cobrar — DEUDA TOTAL (todas las cuotas impagas, cualquier mes) */}
         <button
           type="button"
           onClick={() => toggleEstado("por_cobrar")}
@@ -400,17 +383,12 @@ export default function ReporteSuscripcionesPage() {
           className={`${TILE} flex flex-col justify-between text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${estadoFiltro === "por_cobrar" ? "!border-amber-400 !ring-2 !ring-amber-300" : ""}`}
         >
           <div>
-            <span className={LBL}>Por cobrar</span>
-            <div className="mt-3 text-[28px] font-extrabold leading-none tracking-tight tabular-nums text-amber-700">Gs. {fmtGs(porCobrarBase)}</div>
+            <span className={LBL}>Por cobrar · Total</span>
+            <div className="mt-3 text-[28px] font-extrabold leading-none tracking-tight tabular-nums text-amber-700">Gs. {fmtGs(porCobrarTotal)}</div>
+            <div className="mt-2 text-[11px] text-slate-400">{cuotasImpagas} cuota{cuotasImpagas === 1 ? "" : "s"} impaga{cuotasImpagas === 1 ? "" : "s"}</div>
           </div>
-          <div className="mt-6">
-            <div className="mb-1.5 flex justify-between text-[11px] font-bold text-slate-400">
-              <span className="text-amber-700">{pctPorCobrar}% pendiente</span>
-              <span>meta mensual</span>
-            </div>
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-600" style={{ width: `${pctPorCobrar}%` }} />
-            </div>
+          <div className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+            Toda la deuda de suscripciones — de cualquier mes, no solo el actual.
           </div>
         </button>
 
@@ -478,7 +456,7 @@ export default function ReporteSuscripcionesPage() {
             onClick={() => { setQ(""); setTipo(""); setEstadoFiltro(""); }}
             className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           >
-            Limpiar {estadoFiltro ? `· ${estadoFiltro === "cobrado" ? "cobradas" : "por cobrar"}` : ""}
+            Limpiar {estadoFiltro ? `· ${estadoFiltro === "cobrado" ? "cobraron este mes" : "deudores"}` : ""}
           </button>
         )}
       </div>
@@ -491,14 +469,15 @@ export default function ReporteSuscripcionesPage() {
           <div className="py-16 text-center text-sm text-slate-400">No hay suscripciones para los filtros.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+            <table className="w-full min-w-[960px] text-sm">
               <thead className="border-b border-slate-200 bg-slate-50/70">
                 <tr>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Cliente</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Plan</th>
                   <SortHeader label="Mensual" col="mensual" orden={orden} onSort={toggleOrden} align="right" />
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500" style={{ width: 220 }}>Cobrado del mes</th>
-                  <SortHeader label="Estado" col="estado" orden={orden} onSort={toggleOrden} />
+                  <SortHeader label="Cobrado del mes" col="cobrado" orden={orden} onSort={toggleOrden} align="right" />
+                  <SortHeader label="Adeudado total" col="adeudado" orden={orden} onSort={toggleOrden} align="right" />
+                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Estado</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Vendedor</th>
                 </tr>
               </thead>
@@ -515,23 +494,21 @@ export default function ReporteSuscripcionesPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-600">{r.plan}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-slate-600">{pref}{fmtGs(r.monto)}</td>
-                      <td className="px-4 py-3">
-                        {r.facturado_mes > 0 ? (
-                          <>
-                            <div className="mb-1.5 text-xs font-bold tabular-nums">
-                              {pagadoMes(r) > 0 ? (
-                                <span className={r.saldo_mes <= 0 ? "text-emerald-700" : "text-amber-700"}>{pref}{fmtGs(pagadoMes(r))} <span className="font-medium text-slate-400">/ {fmtGs(r.facturado_mes)}</span></span>
-                              ) : (
-                                <span className="text-slate-400">— <span className="font-medium">/ {fmtGs(r.facturado_mes)}</span></span>
-                              )}
-                            </div>
-                            <BarraAvance cobrado={pagadoMes(r)} total={r.facturado_mes} />
-                          </>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                        {r.cobrado_mes > 0 ? (
+                          <span className="font-bold text-emerald-700">{pref}{fmtGs(r.cobrado_mes)}</span>
                         ) : (
-                          <div className="text-xs font-medium text-slate-400">{r.anulada_mes ? "Factura anulada" : "Sin factura este mes"}</div>
+                          <span className="text-slate-300">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3"><EstadoBadge estado={estadoCobro(r)} /></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                        {r.adeudado_total > 0 ? (
+                          <span className="font-bold text-rose-700">{pref}{fmtGs(r.adeudado_total)}</span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3"><EstadoBadge estado={estadoDeuda(r)} /></td>
                       <td className="px-4 py-3 text-slate-600">{r.vendedor}</td>
                     </tr>
                   );
@@ -540,13 +517,16 @@ export default function ReporteSuscripcionesPage() {
               <tfoot className="border-t border-slate-200 bg-slate-50/70">
                 <tr>
                   <td className="px-4 py-3 text-xs font-bold text-slate-600" colSpan={2}>
-                    {filtradas.length} suscripción{filtradas.length === 1 ? "" : "es"}
+                    {filtradas.length} suscripción{filtradas.length === 1 ? "" : "es"} activa{filtradas.length === 1 ? "" : "s"}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-extrabold tabular-nums text-slate-900">
                     Gs. {fmtGs(filtradas.filter(gs).reduce((s, r) => s + r.monto, 0))}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-extrabold tabular-nums text-emerald-700">
-                    Gs. {fmtGs(filtradas.filter(gs).reduce((s, r) => s + pagadoMes(r), 0))}
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-extrabold tabular-nums text-emerald-700">
+                    Gs. {fmtGs(filtradas.filter(gs).reduce((s, r) => s + r.cobrado_mes, 0))}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-extrabold tabular-nums text-rose-700">
+                    Gs. {fmtGs(filtradas.filter(gs).reduce((s, r) => s + r.adeudado_total, 0))}
                   </td>
                   <td colSpan={2} />
                 </tr>

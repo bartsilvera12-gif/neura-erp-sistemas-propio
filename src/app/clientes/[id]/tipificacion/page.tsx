@@ -3,7 +3,33 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ExternalLink, FolderKanban, LifeBuoy, Timer, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowLeftRight,
+  Bug,
+  CalendarClock,
+  CircleCheckBig,
+  ClipboardPen,
+  ExternalLink,
+  FileText,
+  Flag,
+  FolderKanban,
+  HandCoins,
+  Headset,
+  History,
+  Mail,
+  MessageCircle,
+  MessageSquareWarning,
+  Paperclip,
+  Phone,
+  Send,
+  Timer,
+  UserRound,
+  Wrench,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import CountUp from "@/components/reactbits/CountUp";
 import { getCliente, clienteNombre } from "@/lib/clientes/storage";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import type { Cliente } from "@/lib/clientes/types";
@@ -19,18 +45,43 @@ import { apiSoporte, obtenerCatalogos, subirArchivos, type CatalogosConEquipo } 
 import AccesosProyecto from "@/app/dashboard/soporte/_ui/AccesosProyecto";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
-import { TONO_AREA } from "@/app/dashboard/soporte/_ui/ui";
+import {
+  Avatar,
+  Boton,
+  Encabezado,
+  IconoTile,
+  Pagina,
+  TONOS,
+  TONO_AREA,
+  TarjetaViva,
+  claseEtiqueta,
+  claseInput,
+  type Tono,
+} from "@/app/dashboard/soporte/_ui/ui";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 /** El tipo que escala a Soporte. Su resultado es siempre "Escalar" (lo fija el servidor). */
 const TIPO_ERROR: TipoGestion = "Error";
 
-const claseCampo =
-  "w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-gray-500 transition-colors bg-white";
-const claseArea =
-  "w-full border border-gray-300 rounded-lg px-4 py-3 text-sm outline-none focus:border-gray-500 transition-colors resize-y";
-const claseLabel = "block text-sm font-medium text-gray-700 mb-1.5";
+const TIPO_UI: Record<TipoGestion, { icono: LucideIcon; tono: Tono }> = {
+  Consulta: { icono: MessageCircle, tono: "celeste" },
+  Reclamo: { icono: MessageSquareWarning, tono: "naranja" },
+  Seguimiento: { icono: CalendarClock, tono: "indigo" },
+  "Promesa de pago": { icono: HandCoins, tono: "verde" },
+  "Soporte técnico": { icono: Wrench, tono: "violeta" },
+  "Cambio plan": { icono: ArrowLeftRight, tono: "azul" },
+  Error: { icono: Bug, tono: "rosa" },
+};
+
+const RESULTADO_TONO: Record<ResultadoTipificacion, Tono> = {
+  Pendiente: "ambar",
+  Resuelto: "verde",
+  Escalar: "rosa",
+};
+
+const claseArea = `${claseInput} resize-none leading-relaxed`;
+const sombra = "shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)]";
 
 type Listado = {
   usuario_actual: { id: string | null; nombre: string };
@@ -73,36 +124,101 @@ function formatFechaHora(iso: string) {
   } catch { return ""; }
 }
 
-function duracionHoras(h: number | null): string {
-  if (h == null) return "—";
-  return h === 1 ? "1 hora" : `${h} horas`;
+/** Tono del nivel según su SLA: cuanto más corto, más urgente se ve. */
+function tonoSla(horas: number): Tono {
+  if (horas <= 2) return "rosa";
+  if (horas <= 5) return "ambar";
+  return "verde";
 }
 
-// ── Badges ────────────────────────────────────────────────────────────────────
+// ── Piezas ────────────────────────────────────────────────────────────────────
 
-function BadgeResultado({ resultado }: { resultado: ResultadoTipificacion }) {
-  const cfg: Record<ResultadoTipificacion, string> = {
-    Pendiente: "bg-amber-100 text-amber-700",
-    Resuelto:  "bg-green-100 text-green-700",
-    Escalar:   "bg-red-100 text-red-700",
-  };
+function Seccion({
+  titulo,
+  detalle,
+  icono,
+  tono,
+  children,
+}: {
+  titulo: string;
+  detalle?: string;
+  icono: LucideIcon;
+  tono: Tono;
+  children: React.ReactNode;
+}) {
   return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg[resultado] ?? "bg-gray-100 text-gray-600"}`}>
-      {resultado}
-    </span>
+    <section className={`rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
+      <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+        <IconoTile icono={icono} tono={tono} tam="sm" />
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-bold text-slate-800">{titulo}</h2>
+          {detalle ? <p className="text-[12.5px] text-slate-500">{detalle}</p> : null}
+        </div>
+      </header>
+      <div className="space-y-5 p-5">{children}</div>
+    </section>
   );
 }
 
-function BadgeTipo({ tipo }: { tipo: TipoGestion }) {
-  const error = tipo === TIPO_ERROR;
+function Campo({ etiqueta, requerido, ayuda, children }: { etiqueta: string; requerido?: boolean; ayuda?: string; children: React.ReactNode }) {
   return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${error ? "bg-rose-50 text-rose-700 border-rose-100" : "bg-blue-50 text-blue-700 border-blue-100"}`}>
-      {tipo}
-    </span>
+    <div>
+      <span className={claseEtiqueta}>
+        {etiqueta} {requerido ? <span className="text-rose-500">*</span> : null}
+      </span>
+      {children}
+      {ayuda ? <p className="mt-1 text-[11.5px] text-slate-400">{ayuda}</p> : null}
+    </div>
   );
 }
 
-// ── Componente ────────────────────────────────────────────────────────────────
+/** Opción en forma de píldora con color propio: se elige de un vistazo, sin abrir menús. */
+function Pildora({
+  activa,
+  tono,
+  icono: Icono,
+  children,
+  onClick,
+  disabled,
+}: {
+  activa: boolean;
+  tono: Tono;
+  icono?: LucideIcon;
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  const t = TONOS[tono];
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={activa}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition disabled:cursor-not-allowed ${
+        activa
+          ? `${t.suave} ${t.texto} ${t.borde} shadow-sm ring-2 ring-offset-1 ring-offset-white`
+          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+      }`}
+      style={activa ? ({ ["--tw-ring-color" as string]: `${t.hex}40` } as React.CSSProperties) : undefined}
+    >
+      {Icono ? <Icono className="h-4 w-4" aria-hidden /> : null}
+      {children}
+    </button>
+  );
+}
+
+function FilaResumen({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 text-[13px]">
+      <span className="shrink-0 text-slate-500">{etiqueta}</span>
+      <span className="min-w-0 text-right font-semibold text-slate-800">{children}</span>
+    </div>
+  );
+}
+
+// ── Página ────────────────────────────────────────────────────────────────────
 
 export default function TipificacionPage() {
   const params = useParams();
@@ -185,29 +301,38 @@ export default function TipificacionPage() {
     () => (cat?.clasificaciones ?? []).filter((c) => c.activo && c.tipo_codigo === "error"),
     [cat]
   );
+  const prioridades = useMemo(() => (cat?.prioridades ?? []).filter((p) => p.activo), [cat]);
   const slaHoras = cat && ticket.clasificacion_codigo ? slaDe(cat, "error", ticket.clasificacion_codigo) : null;
   const clasificacionElegida = clasificaciones.find((c) => c.codigo === ticket.clasificacion_codigo);
+  const prioridadElegida = prioridades.find((p) => p.codigo === ticket.prioridad_codigo);
+  const proyectoElegido = proyectos?.find((p) => p.id === ticket.proyecto_id);
+  const responsableElegido = cat?.personas.find((p) => p.id === ticket.responsable_id);
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLSelectElement | HTMLTextAreaElement>
-  ) {
+  function elegirTipo(tipo: TipoGestion) {
     setError(null);
     setExito(null);
-    const { name, value } = e.target;
-    setForm((prev) => {
-      const next = { ...prev, [name]: value };
-      if (name === "tipo_gestion") {
-        // Error siempre escala; al volver a otro tipo se restablece el valor habitual.
-        if (value === TIPO_ERROR) next.resultado = "Escalar";
-        else if (prev.tipo_gestion === TIPO_ERROR) next.resultado = "Pendiente";
-      }
-      return next as typeof prev;
-    });
+    setForm((prev) => ({
+      ...prev,
+      tipo_gestion: tipo,
+      // Error siempre escala; al volver a otro tipo se restablece el valor habitual.
+      resultado: tipo === TIPO_ERROR ? "Escalar" : prev.tipo_gestion === TIPO_ERROR ? "Pendiente" : prev.resultado,
+    }));
   }
 
   function setCampoTicket<K extends keyof DatosTicket>(k: K, v: DatosTicket[K]) {
     setError(null);
     setTicket((p) => ({ ...p, [k]: v }));
+  }
+
+  function elegirClasificacion(codigo: string) {
+    const c = clasificaciones.find((x) => x.codigo === codigo);
+    setError(null);
+    setTicket((p) => ({
+      ...p,
+      clasificacion_codigo: codigo,
+      // Sugerencia del catálogo, sólo si nadie tocó la prioridad.
+      prioridad_codigo: !prioridadTocada && c?.prioridad_sugerida ? c.prioridad_sugerida : p.prioridad_codigo,
+    }));
   }
 
   function reiniciar() {
@@ -217,8 +342,8 @@ export default function TipificacionPage() {
     setPrioridadTocada(false);
   }
 
-  async function handleGuardar(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleGuardar(e?: React.FormEvent) {
+    e?.preventDefault();
     setError(null);
     setExito(null);
 
@@ -230,7 +355,7 @@ export default function TipificacionPage() {
       if (!ticket.proyecto_id) faltan.push("proyecto / servicio afectado");
       if (!ticket.asunto.trim()) faltan.push("asunto");
       if (!ticket.descripcion.trim()) faltan.push("descripción del error");
-      if (clasificaciones.length && !ticket.clasificacion_codigo) faltan.push("clasificación");
+      if (clasificaciones.length && !ticket.clasificacion_codigo) faltan.push("nivel");
       if (!ticket.prioridad_codigo) faltan.push("prioridad");
       if (faltan.length) return setError(`Completá: ${faltan.join(", ")}.`);
     }
@@ -264,9 +389,10 @@ export default function TipificacionPage() {
           if (r.errores.length) aviso = `${r.errores.length} archivo(s) no se subieron: ${r.errores.join(" · ")}`;
         }
         setCreado({ ...j.data.ticket, aviso });
+        window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
-        setExito("✓ Tipificación registrada correctamente.");
-        setTimeout(() => setExito(null), 3000);
+        setExito("Tipificación registrada correctamente.");
+        setTimeout(() => setExito(null), 3500);
       }
       reiniciar();
       await cargarListado();
@@ -277,12 +403,14 @@ export default function TipificacionPage() {
 
   if (notFound) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-gray-800">Cliente no encontrado</h1>
-        <button onClick={() => router.push("/clientes")} className="text-sm text-gray-500 underline">
-          ← Volver a Clientes
-        </button>
-      </div>
+      <Pagina>
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center">
+          <h1 className="text-xl font-bold text-slate-800">Cliente no encontrado</h1>
+          <button onClick={() => router.push("/clientes")} className="mt-3 text-sm font-medium text-[#2F6E71] underline">
+            ← Volver a Clientes
+          </button>
+        </div>
+      </Pagina>
     );
   }
 
@@ -293,380 +421,420 @@ export default function TipificacionPage() {
     { value: "", label: "Sin asignar" },
     ...(cat?.personas ?? []).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
   ];
+  const puedeEnviar = !guardando && !!listado && (!esError || (listado.puede_soporte && !!cat && !!proyectos?.length));
+  const tipoUi = TIPO_UI[form.tipo_gestion];
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="min-h-full bg-[radial-gradient(1200px_500px_at_0%_-10%,rgba(79,174,178,0.12),transparent_60%),radial-gradient(900px_420px_at_100%_0%,rgba(14,165,233,0.08),transparent_55%)] bg-slate-50/70">
+      <Pagina ancho="max-w-[1500px]">
+        <Encabezado
+          titulo="Tipificación"
+          subtitulo="Registrá la gestión con el cliente. Un error se escala a Soporte con su ticket."
+          icono={ClipboardPen}
+          tono="turquesa"
+          migas={[
+            { etiqueta: "Gestión de clientes", href: "/gestion-clientes" },
+            { etiqueta: clienteNombre(cliente), href: `/clientes/${id}` },
+            { etiqueta: "Tipificación" },
+          ]}
+        />
 
-      {/* ── Breadcrumb ────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 text-xs text-gray-400">
-        <button onClick={() => router.push("/gestion-clientes")} className="hover:text-gray-600 transition-colors">
-          Gestión de clientes
-        </button>
-        <span>›</span>
-        <button onClick={() => router.push(`/clientes/${id}`)} className="hover:text-gray-600 transition-colors">
-          {clienteNombre(cliente)}
-        </button>
-        <span>›</span>
-        <span className="text-gray-600 font-medium">Tipificación</span>
-      </div>
-
-      {/* ── Header del cliente ────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{clienteNombre(cliente)}</h1>
-            <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-gray-500">
-              <span className="font-mono">{cliente.codigo_cliente}</span>
-              {cliente.ruc && <span>RUC: {cliente.ruc}</span>}
-              {cliente.telefono && <span>Tel: {cliente.telefono}</span>}
-              {cliente.email && <span>{cliente.email}</span>}
-            </div>
-          </div>
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-            cliente.estado === "activo" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-          }`}>
-            {cliente.estado === "activo" ? "● Activo" : "● Inactivo"}
-          </span>
-        </div>
-      </div>
-
-      {/* ── Ticket creado ─────────────────────────────────────────────── */}
-      {creado ? (
-        <div className="relative rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-          <button type="button" onClick={() => setCreado(null)} aria-label="Cerrar" className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-md text-emerald-700 hover:bg-emerald-100">
-            <X className="h-4 w-4" />
-          </button>
-          <p className="flex items-center gap-2 text-sm font-medium text-emerald-800"><CheckCircle2 className="h-4 w-4" /> Tipificación registrada</p>
-          <p className="mt-1 flex items-center gap-2 text-sm font-medium text-emerald-800"><CheckCircle2 className="h-4 w-4" /> Ticket #{creado.numero} creado correctamente</p>
-          {creado.aviso ? <p className="mt-2 text-xs text-amber-700">{creado.aviso}</p> : null}
-          <Link
-            href={`/dashboard/soporte/tickets/${creado.id}`}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white no-underline hover:bg-emerald-700"
-          >
-            Ver ticket #{creado.numero} <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-      ) : null}
-
-      {/* ── Formulario de nueva tipificación ─────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="bg-gray-50 border-b border-gray-200 px-6 py-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
-            Nueva tipificación
-          </p>
-        </div>
-
-        <form onSubmit={handleGuardar} className="p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-
-            {/* Tipo de gestión */}
-            <div>
-              <label className={claseLabel}>
-                Tipo de gestión <span className="text-red-500">*</span>
-              </label>
-              <select name="tipo_gestion" value={form.tipo_gestion} onChange={handleChange} className={claseCampo}>
-                {TIPOS_GESTION.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Resultado */}
-            <div>
-              <label className={claseLabel}>
-                Resultado <span className="text-red-500">*</span>
-              </label>
-              <select
-                name="resultado"
-                value={form.resultado}
-                onChange={handleChange}
-                disabled={esError}
-                className={`${claseCampo} disabled:bg-gray-50 disabled:text-gray-600`}
-              >
-                {RESULTADOS_TIPIFICACION.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-              {esError ? <p className="mt-1 text-xs text-gray-400">Un error se escala a Soporte con un ticket.</p> : null}
-            </div>
-          </div>
-
-          {/* Observación */}
-          <div className="mb-4">
-            <label className={claseLabel}>
-              Observación <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              name="observacion"
-              value={form.observacion}
-              onChange={handleChange}
-              rows={3}
-              placeholder={esError ? "Ej.: Cliente informa que no puede facturar" : "Describí la gestión realizada con el cliente..."}
-              className={`${claseArea} resize-none`}
-            />
-          </div>
-
-          {/* ── Ticket de soporte (sólo Error) ───────────────────────── */}
-          {esError ? (
-            <section className="mb-5 rounded-xl border border-[#4FAEB2]/30 bg-gradient-to-b from-[#4FAEB2]/[0.06] to-white">
-              <div className="flex items-center gap-2 border-b border-[#4FAEB2]/20 px-5 py-3">
-                <LifeBuoy className="h-4 w-4 text-[#3F8E91]" aria-hidden />
-                <p className="text-xs font-semibold uppercase tracking-widest text-[#2F6E71]">Ticket de soporte</p>
+        {/* ── Cliente ─────────────────────────────────────────────────── */}
+        <TarjetaViva tono="turquesa" className="mb-6 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              <Avatar nombre={clienteNombre(cliente)} tam={52} />
+              <div className="min-w-0">
+                <p className="truncate text-lg font-bold text-slate-900">{clienteNombre(cliente)}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-slate-500">
+                  {cliente.codigo_cliente ? <span className="font-mono">{cliente.codigo_cliente}</span> : null}
+                  {cliente.ruc ? <span>RUC {cliente.ruc}</span> : null}
+                  {cliente.telefono ? <span className="inline-flex items-center gap-1"><Phone className="h-3.5 w-3.5" aria-hidden />{cliente.telefono}</span> : null}
+                  {cliente.email ? <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" aria-hidden />{cliente.email}</span> : null}
+                </div>
               </div>
+            </div>
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ${cliente.estado === "activo" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+              ● {cliente.estado === "activo" ? "Activo" : "Inactivo"}
+            </span>
+          </div>
+        </TarjetaViva>
 
-              <div className="space-y-4 p-5">
-                {!listado?.puede_soporte ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    Tu usuario no tiene habilitado el módulo Soporte, así que no puede crear el ticket. Pedíselo a un administrador.
+        {/* ── Ticket creado ───────────────────────────────────────────── */}
+        <AnimatePresence>
+          {creado ? (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="relative mb-6 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-[#4FAEB2]/10 px-6 py-5 shadow-sm"
+            >
+              <button type="button" onClick={() => setCreado(null)} aria-label="Cerrar" className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg text-emerald-700 hover:bg-emerald-100">
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex flex-wrap items-center justify-between gap-4 pr-8">
+                <div className="flex items-center gap-4">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500 text-white shadow-[0_8px_20px_-8px_rgba(16,185,129,0.8)]">
+                    <CircleCheckBig className="h-6 w-6" aria-hidden />
+                  </span>
+                  <div className="space-y-0.5 text-[14px] font-semibold text-emerald-800">
+                    <p>✓ Tipificación registrada</p>
+                    <p>✓ Ticket #{creado.numero} creado correctamente</p>
+                    {creado.aviso ? <p className="text-xs font-medium text-amber-700">{creado.aviso}</p> : null}
                   </div>
-                ) : catError ? (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{catError}</div>
-                ) : !cat || proyectos == null ? (
-                  <p className="text-sm text-gray-400">Cargando datos de Soporte…</p>
-                ) : (
-                  <>
-                    {/* Proyecto */}
-                    <div>
-                      <label className={claseLabel}>
-                        Proyecto / servicio afectado <span className="text-red-500">*</span>
-                      </label>
-                      {proyectos.length === 0 ? (
-                        <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-500">
-                          <FolderKanban className="h-4 w-4" aria-hidden /> No hay proyectos asociados a este cliente.
-                        </div>
-                      ) : (
-                        <SelectorBuscable
-                          ariaLabel="Proyecto / servicio afectado"
-                          opciones={proyectos.map((p) => ({ value: p.id, label: p.titulo }))}
-                          value={ticket.proyecto_id}
-                          onChange={(v) => setCampoTicket("proyecto_id", v)}
-                          placeholder="Seleccionar proyecto…"
-                          buscarPlaceholder="Buscar proyecto…"
-                          vacio="Ningún proyecto coincide"
-                        />
-                      )}
-                    </div>
-
-                    <AccesosProyecto proyectoId={ticket.proyecto_id || null} />
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className={claseLabel}>Módulo afectado</label>
-                        <input className={claseCampo} value={ticket.modulo} maxLength={120} onChange={(e) => setCampoTicket("modulo", e.target.value)} placeholder="Ej.: Facturación electrónica" />
-                      </div>
-                      <div>
-                        <label className={claseLabel}>
-                          Asunto <span className="text-red-500">*</span>
-                        </label>
-                        <input className={claseCampo} value={ticket.asunto} maxLength={200} onChange={(e) => setCampoTicket("asunto", e.target.value)} placeholder="Ej.: No permite emitir factura" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={claseLabel}>
-                        Descripción del error <span className="text-red-500">*</span>
-                      </label>
-                      <textarea rows={4} className={claseArea} value={ticket.descripcion} onChange={(e) => setCampoTicket("descripcion", e.target.value)} placeholder="Qué pasa, desde cuándo, mensaje de error…" />
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className={claseLabel}>Resultado esperado</label>
-                        <textarea rows={3} className={claseArea} value={ticket.resultado_esperado} onChange={(e) => setCampoTicket("resultado_esperado", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className={claseLabel}>Pasos para reproducir</label>
-                        <textarea rows={3} className={claseArea} value={ticket.pasos_reproducir} onChange={(e) => setCampoTicket("pasos_reproducir", e.target.value)} placeholder={"1. …\n2. …"} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={claseLabel}>Impacto operativo</label>
-                      <input className={claseCampo} value={ticket.impacto_operativo} onChange={(e) => setCampoTicket("impacto_operativo", e.target.value)} placeholder="Ej.: El cliente no puede facturar" />
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <div>
-                        <label className={claseLabel}>
-                          Nivel / clasificación <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          className={claseCampo}
-                          value={ticket.clasificacion_codigo}
-                          onChange={(e) => {
-                            const c = clasificaciones.find((x) => x.codigo === e.target.value);
-                            setTicket((p) => ({
-                              ...p,
-                              clasificacion_codigo: e.target.value,
-                              // Sugerencia del catálogo, sólo si nadie tocó la prioridad.
-                              prioridad_codigo: !prioridadTocada && c?.prioridad_sugerida ? c.prioridad_sugerida : p.prioridad_codigo,
-                            }));
-                          }}
-                        >
-                          <option value="">Seleccionar…</option>
-                          {clasificaciones.map((c) => (
-                            <option key={c.codigo} value={c.codigo}>{c.nombre}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={claseLabel}>
-                          Prioridad <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          className={claseCampo}
-                          value={ticket.prioridad_codigo}
-                          onChange={(e) => { setPrioridadTocada(true); setCampoTicket("prioridad_codigo", e.target.value); }}
-                        >
-                          <option value="">Seleccionar…</option>
-                          {cat.prioridades.filter((p) => p.activo).map((p) => (
-                            <option key={p.codigo} value={p.codigo}>{p.nombre}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <span className={claseLabel}>Service level</span>
-                        <div className="flex h-[42px] items-center gap-2 rounded-lg border border-[#4FAEB2]/30 bg-white px-4 text-sm">
-                          <Timer className="h-4 w-4 text-[#3F8E91]" aria-hidden />
-                          <span className="font-semibold text-gray-800">{duracionHoras(slaHoras)}</span>
-                          {clasificacionElegida ? <span className="truncate text-xs text-gray-400">· {clasificacionElegida.nombre}</span> : null}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={claseLabel}>Responsable</label>
-                      <SelectorBuscable
-                        ariaLabel="Responsable"
-                        avatares
-                        opciones={personaOpciones}
-                        value={ticket.responsable_id}
-                        onChange={(v) => setCampoTicket("responsable_id", v)}
-                        buscarPlaceholder="Buscar persona o área…"
-                        vacio="Nadie coincide"
-                      />
-                      <p className="mt-1 text-xs text-gray-400">Opcional. Sin responsable entra como Registrado; con responsable, Clasificado / Asignado.</p>
-                    </div>
-
-                    <div>
-                      <span className={claseLabel}>Evidencias</span>
-                      <ZonaArchivos archivos={archivos} onCambio={setArchivos} compacta deshabilitada={guardando} />
-                    </div>
-                  </>
-                )}
+                </div>
+                <Link href={`/dashboard/soporte/tickets/${creado.id}`} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white no-underline shadow-[0_8px_20px_-10px_rgba(5,150,105,0.9)] hover:bg-emerald-700">
+                  Ver ticket #{creado.numero} <ExternalLink className="h-4 w-4" />
+                </Link>
               </div>
-            </section>
+            </motion.div>
           ) : null}
+        </AnimatePresence>
 
-          {/* Aviso usuario */}
-          <p className="text-xs text-gray-400 mb-4">
-            👤 Se registrará como: <span className="font-semibold text-gray-600">{listado?.usuario_actual.nombre ?? "…"}</span>
-          </p>
+        <form onSubmit={handleGuardar} className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+          {/* ── Columna principal ───────────────────────────────────────── */}
+          <div className="min-w-0 space-y-6">
+            <Seccion titulo="Nueva tipificación" detalle="¿Qué gestión se hizo con el cliente?" icono={ClipboardPen} tono="turquesa">
+              <Campo etiqueta="Tipo de gestión" requerido>
+                <div role="radiogroup" aria-label="Tipo de gestión" className="flex flex-wrap gap-2">
+                  {TIPOS_GESTION.map((t) => (
+                    <Pildora key={t} activa={form.tipo_gestion === t} tono={TIPO_UI[t].tono} icono={TIPO_UI[t].icono} onClick={() => elegirTipo(t)}>
+                      {t}
+                    </Pildora>
+                  ))}
+                </div>
+              </Campo>
 
-          {/* Error / Éxito */}
-          {error && (
-            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-4">
-              <span>⚠</span><span className="font-medium">{error}</span>
-            </div>
-          )}
+              <Campo etiqueta="Resultado" requerido ayuda={esError ? "Un error se escala a Soporte con un ticket." : undefined}>
+                <div role="radiogroup" aria-label="Resultado" className="flex flex-wrap gap-2">
+                  {RESULTADOS_TIPIFICACION.map((r) => (
+                    <Pildora
+                      key={r}
+                      activa={form.resultado === r}
+                      tono={RESULTADO_TONO[r]}
+                      disabled={esError && r !== "Escalar"}
+                      onClick={() => setForm((p) => ({ ...p, resultado: r }))}
+                    >
+                      {r}
+                    </Pildora>
+                  ))}
+                </div>
+              </Campo>
 
-          {exito && (
-            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2.5 text-sm text-green-700 font-medium mb-4">
-              {exito}
-            </div>
-          )}
+              <Campo etiqueta="Observación" requerido>
+                <textarea
+                  value={form.observacion}
+                  onChange={(e) => { setError(null); setExito(null); setForm((p) => ({ ...p, observacion: e.target.value })); }}
+                  rows={3}
+                  placeholder={esError ? "Ej.: Cliente informa que no puede facturar" : "Describí la gestión realizada con el cliente…"}
+                  className={claseArea}
+                />
+              </Campo>
+            </Seccion>
 
-          <button
-            type="submit"
-            disabled={guardando || !listado || (esError && (!listado.puede_soporte || !cat || !proyectos?.length))}
-            className={`${esError ? "bg-[#3F8E91] hover:bg-[#2F6E71]" : "bg-gray-900 hover:bg-gray-700"} text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50`}
-          >
-            {guardando ? (esError ? "Creando ticket…" : "Guardando…") : esError ? "Crear ticket de soporte" : "Guardar tipificación"}
-          </button>
-        </form>
-      </div>
+            {/* ── Ticket de soporte (sólo Error) ───────────────────────── */}
+            <AnimatePresence initial={false}>
+              {esError ? (
+                <motion.div
+                  key="ticket"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 12 }}
+                  transition={{ duration: 0.22 }}
+                  className="space-y-6"
+                >
+                  {!listado?.puede_soporte ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+                      Tu usuario no tiene habilitado el módulo Soporte, así que no puede crear el ticket. Pedíselo a un administrador.
+                    </div>
+                  ) : catError ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{catError}</div>
+                  ) : !cat || proyectos == null ? (
+                    <div className={`rounded-2xl border border-slate-200/80 bg-white p-6 ${sombra}`}>
+                      <div className="h-4 w-48 animate-pulse rounded bg-slate-100" />
+                      <div className="mt-4 h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+                      <div className="mt-3 h-24 w-full animate-pulse rounded-xl bg-slate-100" />
+                    </div>
+                  ) : (
+                    <>
+                      <Seccion titulo="Proyecto afectado" detalle="Sólo los proyectos de este cliente" icono={FolderKanban} tono="celeste">
+                        <Campo etiqueta="Proyecto / servicio afectado" requerido>
+                          {proyectos.length === 0 ? (
+                            <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                              <FolderKanban className="h-4 w-4" aria-hidden /> No hay proyectos asociados a este cliente.
+                            </div>
+                          ) : (
+                            <SelectorBuscable
+                              ariaLabel="Proyecto / servicio afectado"
+                              opciones={proyectos.map((p) => ({ value: p.id, label: p.titulo }))}
+                              value={ticket.proyecto_id}
+                              onChange={(v) => setCampoTicket("proyecto_id", v)}
+                              placeholder="Seleccionar proyecto…"
+                              buscarPlaceholder="Buscar proyecto…"
+                              vacio="Ningún proyecto coincide"
+                            />
+                          )}
+                        </Campo>
+                        <AccesosProyecto proyectoId={ticket.proyecto_id || null} />
+                      </Seccion>
 
-      {/* ── Historial de tipificaciones ───────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="bg-gray-50 border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
-            Historial de tipificaciones
-          </p>
-          <span className="text-xs font-bold text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
-            {tipificaciones.length}
-          </span>
-        </div>
+                      <Seccion titulo="Detalle del error" detalle="Lo que Desarrollo y QA necesitan para reproducirlo sin preguntar" icono={FileText} tono="violeta">
+                        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                          <Campo etiqueta="Módulo afectado">
+                            <input className={claseInput} value={ticket.modulo} maxLength={120} onChange={(e) => setCampoTicket("modulo", e.target.value)} placeholder="Ej.: Facturación electrónica" />
+                          </Campo>
+                          <Campo etiqueta="Asunto" requerido>
+                            <input className={claseInput} value={ticket.asunto} maxLength={200} onChange={(e) => setCampoTicket("asunto", e.target.value)} placeholder="Ej.: No permite emitir factura" />
+                          </Campo>
+                        </div>
+                        <Campo etiqueta="Descripción del error" requerido>
+                          <textarea rows={4} className={claseArea} value={ticket.descripcion} onChange={(e) => setCampoTicket("descripcion", e.target.value)} placeholder="Qué pasa, desde cuándo, qué mensaje aparece…" />
+                        </Campo>
+                        <div className="grid gap-5 lg:grid-cols-2">
+                          <Campo etiqueta="Resultado esperado">
+                            <textarea rows={3} className={claseArea} value={ticket.resultado_esperado} onChange={(e) => setCampoTicket("resultado_esperado", e.target.value)} placeholder="Qué debería pasar" />
+                          </Campo>
+                          <Campo etiqueta="Pasos para reproducir">
+                            <textarea rows={3} className={claseArea} value={ticket.pasos_reproducir} onChange={(e) => setCampoTicket("pasos_reproducir", e.target.value)} placeholder="Cómo llegar al error" />
+                          </Campo>
+                        </div>
+                        <Campo etiqueta="Impacto operativo">
+                          <input className={claseInput} value={ticket.impacto_operativo} onChange={(e) => setCampoTicket("impacto_operativo", e.target.value)} placeholder="Ej.: El cliente no puede facturar" />
+                        </Campo>
+                      </Seccion>
 
-        {tipificaciones.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">
-            {listado ? "No hay tipificaciones registradas para este cliente." : "Cargando…"}
+                      <Seccion titulo="Nivel, prioridad y responsable" detalle="El nivel define el service level del proceso de Soporte" icono={Flag} tono="ambar">
+                        <Campo etiqueta="Nivel" requerido>
+                          <div role="radiogroup" aria-label="Nivel" className="grid gap-3 sm:grid-cols-3">
+                            {clasificaciones.map((c) => {
+                              const t = TONOS[tonoSla(c.sla_horas)];
+                              const activa = ticket.clasificacion_codigo === c.codigo;
+                              return (
+                                <button
+                                  key={c.codigo}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={activa}
+                                  onClick={() => elegirClasificacion(c.codigo)}
+                                  className={`relative overflow-hidden rounded-2xl border px-4 py-3.5 text-left transition ${
+                                    activa ? `${t.borde} ${t.suave} shadow-sm` : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <span className={`absolute inset-y-0 left-0 w-1 ${activa ? t.solido : "bg-transparent"}`} aria-hidden />
+                                  <p className={`text-[14px] font-bold ${activa ? t.texto : "text-slate-800"}`}>{c.nombre}</p>
+                                  <p className="mt-1 inline-flex items-center gap-1 text-[12px] font-medium text-slate-500">
+                                    <Timer className="h-3.5 w-3.5" aria-hidden /> SLA {c.sla_horas} h
+                                  </p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </Campo>
+
+                        <Campo etiqueta="Prioridad" requerido ayuda={!prioridadTocada && clasificacionElegida?.prioridad_sugerida ? "Sugerida por el nivel. Podés cambiarla." : undefined}>
+                          <div role="radiogroup" aria-label="Prioridad" className="flex flex-wrap gap-2">
+                            {prioridades.map((p) => {
+                              const activa = ticket.prioridad_codigo === p.codigo;
+                              return (
+                                <button
+                                  key={p.codigo}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={activa}
+                                  onClick={() => { setPrioridadTocada(true); setCampoTicket("prioridad_codigo", p.codigo); }}
+                                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition ${
+                                    activa ? "border-transparent text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                  }`}
+                                  style={activa ? { backgroundColor: p.color } : undefined}
+                                >
+                                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: activa ? "#fff" : p.color }} aria-hidden />
+                                  {p.nombre}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </Campo>
+
+                        <Campo etiqueta="Responsable" ayuda="Opcional. Sin responsable entra como Registrado; con responsable, Clasificado / Asignado.">
+                          <SelectorBuscable
+                            ariaLabel="Responsable"
+                            avatares
+                            opciones={personaOpciones}
+                            value={ticket.responsable_id}
+                            onChange={(v) => setCampoTicket("responsable_id", v)}
+                            buscarPlaceholder="Buscar persona o área…"
+                            vacio="Nadie coincide"
+                          />
+                        </Campo>
+                      </Seccion>
+
+                      <Seccion titulo="Evidencias" detalle="Capturas, videos o documentos. Quedan en el ticket." icono={Paperclip} tono="indigo">
+                        <ZonaArchivos archivos={archivos} onCambio={setArchivos} deshabilitada={guardando} />
+                      </Seccion>
+                    </>
+                  )}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/40">
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Fecha</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Usuario</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Tipo</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Resultado</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">Observación</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {tipificaciones.map((t) => (
-                  <tr
+
+          {/* ── Resumen fijo ────────────────────────────────────────────── */}
+          <aside className="xl:sticky xl:top-6 xl:self-start">
+            <div className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
+              <div className="px-5 pb-4 pt-5" style={{ backgroundImage: `linear-gradient(135deg, ${TONOS[tipoUi.tono].hex}1f, transparent 70%)` }}>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Resumen</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <IconoTile icono={tipoUi.icono} tono={tipoUi.tono} />
+                  <div>
+                    <p className="text-[16px] font-bold text-slate-900">{form.tipo_gestion}</p>
+                    <p className="text-[12.5px] text-slate-500">{esError ? "Se crea un ticket de Soporte" : "Tipificación del cliente"}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="divide-y divide-slate-100 px-5">
+                <FilaResumen etiqueta="Cliente">{clienteNombre(cliente)}</FilaResumen>
+                <FilaResumen etiqueta="Resultado">
+                  <span className={`rounded-full px-2 py-0.5 text-[12px] ${TONOS[RESULTADO_TONO[form.resultado]].suave} ${TONOS[RESULTADO_TONO[form.resultado]].texto}`}>{form.resultado}</span>
+                </FilaResumen>
+                {esError ? (
+                  <>
+                    <FilaResumen etiqueta="Proyecto">{proyectoElegido?.titulo ?? <span className="font-normal text-slate-400">Sin elegir</span>}</FilaResumen>
+                    <FilaResumen etiqueta="Nivel">{clasificacionElegida?.nombre ?? <span className="font-normal text-slate-400">Sin elegir</span>}</FilaResumen>
+                    <FilaResumen etiqueta="Prioridad">
+                      {prioridadElegida ? (
+                        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: prioridadElegida.color }} aria-hidden />{prioridadElegida.nombre}</span>
+                      ) : <span className="font-normal text-slate-400">Sin elegir</span>}
+                    </FilaResumen>
+                    <FilaResumen etiqueta="Responsable">{responsableElegido?.nombre ?? <span className="font-normal text-slate-400">Sin asignar</span>}</FilaResumen>
+                    <FilaResumen etiqueta="Evidencias">{archivos.length || <span className="font-normal text-slate-400">Ninguna</span>}</FilaResumen>
+                  </>
+                ) : null}
+              </div>
+
+              {esError ? (
+                <div className={`mx-5 mb-1 mt-3 rounded-2xl px-4 py-3.5 ${slaHoras == null ? "bg-slate-50" : `${TONOS[tonoSla(slaHoras)].suave}`}`}>
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <Timer className="h-3.5 w-3.5" aria-hidden /> Service level
+                  </p>
+                  {slaHoras == null ? (
+                    <p className="mt-1 text-[13px] text-slate-400">Elegí el nivel para ver el SLA.</p>
+                  ) : (
+                    <p className={`mt-0.5 text-3xl font-extrabold tabular-nums ${TONOS[tonoSla(slaHoras)].texto}`}>
+                      <CountUp key={slaHoras} to={slaHoras} duration={0.5} /> <span className="text-base font-bold">{slaHoras === 1 ? "hora" : "horas"}</span>
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              <div className="space-y-3 p-5">
+                <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5">
+                  {listado ? <Avatar nombre={listado.usuario_actual.nombre} tam={30} /> : <UserRound className="h-5 w-5 text-slate-400" />}
+                  <div className="min-w-0 text-[12.5px]">
+                    <p className="text-slate-500">Se registrará como</p>
+                    <p className="truncate font-semibold text-slate-800">{listado?.usuario_actual.nombre ?? "…"}</p>
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {error ? (
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-[13px] font-medium text-rose-700">
+                      {error}
+                    </motion.p>
+                  ) : null}
+                  {exito ? (
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[13px] font-semibold text-emerald-700">
+                      <CircleCheckBig className="h-4 w-4" aria-hidden /> {exito}
+                    </motion.p>
+                  ) : null}
+                </AnimatePresence>
+
+                <Boton type="submit" cargando={guardando} disabled={!puedeEnviar} className="w-full py-3 text-[15px]">
+                  {esError ? <Headset className="h-4 w-4" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+                  {guardando ? (esError ? "Creando ticket…" : "Guardando…") : esError ? "Crear ticket de soporte" : "Guardar tipificación"}
+                </Boton>
+              </div>
+            </div>
+          </aside>
+        </form>
+
+        {/* ── Historial de tipificaciones ─────────────────────────────── */}
+        <section className={`mt-8 overflow-hidden rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
+          <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <IconoTile icono={History} tono="indigo" tam="sm" />
+              <h2 className="text-[15px] font-bold text-slate-800">Historial de tipificaciones</h2>
+            </div>
+            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold tabular-nums text-indigo-700">
+              <CountUp to={tipificaciones.length} duration={0.5} />
+            </span>
+          </header>
+
+          {tipificaciones.length === 0 ? (
+            <div className="py-14 text-center text-sm text-slate-400">
+              {listado ? "No hay tipificaciones registradas para este cliente." : "Cargando…"}
+            </div>
+          ) : (
+            <ol className="divide-y divide-slate-100">
+              {tipificaciones.map((t) => {
+                const ui = TIPO_UI[t.tipo_gestion] ?? TIPO_UI.Consulta;
+                const tt = TONOS[ui.tono];
+                const rt = TONOS[RESULTADO_TONO[t.resultado] ?? "pizarra"];
+                const Icono = ui.icono;
+                return (
+                  <li
                     key={t.id}
                     id={`tip-${t.id}`}
-                    className={`align-top transition-colors ${resaltada === t.id ? "bg-[#4FAEB2]/10" : "hover:bg-gray-50/40"}`}
+                    className={`grid gap-3 px-5 py-4 transition-colors md:grid-cols-[170px_minmax(0,1fr)] ${resaltada === t.id ? "bg-[#4FAEB2]/10" : "hover:bg-slate-50/60"}`}
                   >
-                    <td className="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">
-                      {formatFechaHora(t.fecha)}
-                    </td>
-                    <td className="px-5 py-3 text-xs font-medium text-gray-700 whitespace-nowrap">
-                      {t.usuario}
-                    </td>
-                    <td className="px-5 py-3">
-                      <BadgeTipo tipo={t.tipo_gestion} />
-                    </td>
-                    <td className="px-5 py-3">
-                      <BadgeResultado resultado={t.resultado} />
-                    </td>
-                    <td className="px-5 py-3 text-sm text-gray-600 max-w-sm">
-                      <p className="line-clamp-2" title={t.observacion}>{t.observacion}</p>
+                    <div className="flex items-start gap-3 md:block">
+                      <p className="text-[12px] tabular-nums text-slate-400">{formatFechaHora(t.fecha)}</p>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700">
+                        <Avatar nombre={t.usuario} tam={20} /> <span className="truncate">{t.usuario}</span>
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-bold ${tt.suave} ${tt.texto}`}>
+                          <Icono className="h-3.5 w-3.5" aria-hidden /> {t.tipo_gestion}
+                        </span>
+                        <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-bold ${rt.suave} ${rt.texto}`}>{t.resultado}</span>
+                      </div>
+                      <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-relaxed text-slate-700">{t.observacion}</p>
+
                       {t.ticket ? (
-                        <div className="mt-2 rounded-lg border border-[#4FAEB2]/25 bg-[#4FAEB2]/[0.05] px-3 py-2 text-xs">
-                          <p className="font-semibold text-gray-800">
-                            Ticket #{t.ticket.numero} <span className="font-normal text-gray-500">· {t.ticket.asunto}</span>
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-600">
-                            <span><span className="text-gray-400">Proyecto:</span> {t.ticket.proyecto_titulo ?? "—"}</span>
-                            <span className="inline-flex items-center gap-1">
-                              <span className="text-gray-400">Estado:</span>
-                              <span className="h-1.5 w-1.5 rounded-full" style={{ background: t.ticket.estado_color ?? "#94a3b8" }} aria-hidden />
-                              {t.ticket.estado_nombre}
-                            </span>
-                            <span><span className="text-gray-400">Prioridad:</span> {t.ticket.prioridad_nombre}</span>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#4FAEB2]/25 bg-gradient-to-r from-[#4FAEB2]/[0.07] to-transparent px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-bold text-slate-800">
+                              Ticket #{t.ticket.numero} <span className="font-medium text-slate-500">· {t.ticket.asunto}</span>
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-600">
+                              <span className="inline-flex items-center gap-1"><FolderKanban className="h-3.5 w-3.5 text-slate-400" aria-hidden />{t.ticket.proyecto_titulo ?? "—"}</span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="h-2 w-2 rounded-full" style={{ background: t.ticket.estado_color ?? "#94a3b8" }} aria-hidden />
+                                {t.ticket.estado_nombre}
+                              </span>
+                              <span className="inline-flex items-center gap-1"><Flag className="h-3.5 w-3.5 text-slate-400" aria-hidden />{t.ticket.prioridad_nombre}</span>
+                            </div>
                           </div>
                           {listado?.puede_soporte ? (
                             <Link
                               href={`/dashboard/soporte/tickets/${t.ticket.id}`}
-                              className="mt-2 inline-flex items-center gap-1 font-semibold text-[#2F6E71] no-underline hover:underline"
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-semibold text-[#2F6E71] no-underline shadow-sm ring-1 ring-[#4FAEB2]/30 hover:bg-[#4FAEB2]/10"
                             >
-                              Ver ticket <ExternalLink className="h-3 w-3" />
+                              Ver ticket <ExternalLink className="h-3.5 w-3.5" />
                             </Link>
                           ) : null}
                         </div>
                       ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
+      </Pagina>
     </div>
   );
 }

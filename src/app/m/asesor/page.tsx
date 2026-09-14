@@ -5,6 +5,7 @@ import Link from "next/link";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 import { attachmentCaptionForDisplay } from "@/lib/chat/message-erp-display";
 import { useAsesorInbox } from "@/shared/hooks/useAsesorInbox";
+import AsesorTabBar from "./AsesorTabBar";
 
 function shortTime(iso: string | null): string {
   if (!iso) return "";
@@ -178,6 +179,7 @@ export default function MAsesorInboxPage() {
           </ul>
         )}
       </main>
+      <AsesorTabBar />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import ProyectoDetalleInner from "@/app/dashboard/proyectos/components/ProyectoDetalleInner";
 import AsesorTabBar from "../../AsesorTabBar";
@@ -24,6 +24,9 @@ export default function AsesorProyectoDetalleClient({
   dataSchema: string;
 }) {
   const router = useRouter();
+  const sp = useSearchParams();
+  /* Un aviso de comentario abre directo esa solapa (?tab=comentarios). En "modal" la solapa
+     inicial se pasa por prop, no por URL — la URL es lo que sacaba de la app. */
   const [id, setId] = useState<string>("");
 
   useEffect(() => {
@@ -54,6 +57,7 @@ export default function AsesorProyectoDetalleClient({
             projectId={id}
             variant="modal"
             dataSchema={dataSchema}
+            initialTab={sp?.get("tab") ?? undefined}
             onClose={volver}
           />
         ) : (

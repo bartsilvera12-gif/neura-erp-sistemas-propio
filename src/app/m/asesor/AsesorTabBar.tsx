@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, MessageCircle } from "lucide-react";
+import { Bell, FolderKanban, MessageCircle } from "lucide-react";
 import { useMisModulos } from "@/shared/hooks/useMisModulos";
+import { useNotificaciones } from "@/shared/hooks/useNotificaciones";
 
 /**
  * Barra de pestañas de la app del asesor.
@@ -23,13 +24,17 @@ import { useMisModulos } from "@/shared/hooks/useMisModulos";
 const TABS = [
   { href: "/m/asesor", label: "Chats", Icon: MessageCircle, exact: true },
   { href: "/m/asesor/proyectos", label: "Proyectos", Icon: FolderKanban, exact: false },
+  { href: "/m/asesor/avisos", label: "Avisos", Icon: Bell, exact: false },
 ];
 
 export default function AsesorTabBar() {
   const { tieneModulo } = useMisModulos();
+  const habilitado = tieneModulo("proyectos_movil") === true;
   const pathname = usePathname() ?? "";
+  /* SWR deduplica: comparte la misma petición con la pantalla de Avisos, no la repite. */
+  const { noLeidas } = useNotificaciones({ enabled: habilitado });
 
-  if (tieneModulo("proyectos_movil") !== true) return null;
+  if (!habilitado) return null;
 
   return (
     <nav
@@ -49,7 +54,17 @@ export default function AsesorTabBar() {
                   active ? "text-[#3F8E91]" : "text-slate-400 active:text-slate-600"
                 }`}
               >
-                <Icon className="h-5 w-5" aria-hidden />
+                <span className="relative">
+                  <Icon className="h-5 w-5" aria-hidden />
+                  {href === "/m/asesor/avisos" && noLeidas > 0 ? (
+                    <span
+                      className="absolute -right-2 -top-1 grid h-[16px] min-w-[16px] place-items-center rounded-full bg-[#0EA5E9] px-1 text-[9px] font-bold text-white"
+                      aria-label={`${noLeidas} sin leer`}
+                    >
+                      {noLeidas > 99 ? "99+" : noLeidas}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="text-[10px] font-medium tracking-tight">{label}</span>
               </Link>
             </li>

@@ -81,7 +81,7 @@ export default function MAsesorInboxPage() {
 
 
   return (
-    <div className="min-h-svh bg-slate-50 flex flex-col">
+    <div className="flex h-svh min-h-0 flex-col bg-slate-50">
       {/* Registro de push FCM: solo actúa dentro de la APK (Capacitor nativo); no-op en web. */}
       <CapacitorPushRegister />
       <header
@@ -109,7 +109,9 @@ export default function MAsesorInboxPage() {
         onTouchEnd={onPullEnd}
         onTouchCancel={onPullEnd}
         // `contain` evita que el rebote elástico del WebView se propague a la página.
-        className="flex-1 overflow-y-auto overscroll-y-contain"
+        // `min-h-0` es obligatorio: sin él un hijo flex no puede encogerse por debajo de
+        // su contenido, el scroller nunca desborda y en Android la lista no scrollea.
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
       >
         {pull > 0 || refreshing ? (
           <div

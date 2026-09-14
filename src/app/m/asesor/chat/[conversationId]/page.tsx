@@ -916,6 +916,21 @@ export default function MAsesorChatPage() {
     return base;
   }, [messages, reaccionesLocales]);
 
+  /**
+   * Volver a la bandeja.
+   *
+   * `router.back()` y NO `push`: con push, cada ida y vuelta a un chat sumaba DOS entradas
+   * al historial, así que el botón atrás de Android terminaba recorriendo todos los chats
+   * visitados uno por uno antes de salir. Yendo hacia atrás el historial no crece.
+   *
+   * El `push` queda de respaldo para cuando no hay a dónde volver: entrar desde una
+   * notificación abre el chat sin bandeja detrás.
+   */
+  const volver = useCallback(() => {
+    if (window.history.length > 1) router.back();
+    else router.push("/m/asesor");
+  }, [router]);
+
   const onBubbleTouchStart = useCallback((e: React.TouchEvent, m: Msg) => {
     if (puedeReaccionar(m)) {
       cancelarHold();
@@ -1180,7 +1195,7 @@ export default function MAsesorChatPage() {
         // iOS: respetar la barra de estado (notch). env(safe-area-inset-top)=0 en Android/web.
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.625rem)" }}
       >
-        <button onClick={() => router.push("/m/asesor")} aria-label="Volver" className="h-9 w-9 grid place-items-center rounded-full active:bg-white/15 text-lg">
+        <button onClick={volver} aria-label="Volver" className="h-9 w-9 grid place-items-center rounded-full active:bg-white/15 text-lg">
           ‹
         </button>
         <div className="min-w-0 flex-1">

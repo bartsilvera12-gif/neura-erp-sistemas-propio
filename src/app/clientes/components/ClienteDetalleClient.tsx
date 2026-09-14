@@ -148,6 +148,7 @@ const ACCION_HISTORIAL: Record<string, { label: string; color: string }> = {
   deactivate:        { label: "Baja / inactivación",     color: "bg-rose-100 text-rose-700" },
   reactivate:        { label: "Reactivación",            color: "bg-emerald-100 text-emerald-700" },
   duplicate_blocked: { label: "Alta bloqueada (duplicado)", color: "bg-amber-100 text-amber-700" },
+  ticket_created:    { label: "Ticket de soporte",       color: "bg-teal-100 text-teal-700" },
 };
 
 const CAMPO_HISTORIAL: Record<string, string> = {
@@ -2604,6 +2605,31 @@ export default function ClienteDetalleClient({
                             ))}
                           </ul>
                         )}
+                        {h.accion === "ticket_created" && h.detalle ? (
+                          <div className="mt-2 text-xs text-slate-600">
+                            <p>
+                              Se creó <span className="font-semibold text-slate-800">Ticket de Soporte #{String(h.detalle.ticket_numero ?? "")}</span> desde Tipificación.
+                            </p>
+                            <p className="mt-1 text-slate-500">
+                              {[
+                                typeof h.detalle.asunto === "string" ? h.detalle.asunto : null,
+                                typeof h.detalle.proyecto_nombre === "string" ? `Proyecto: ${h.detalle.proyecto_nombre}` : null,
+                                typeof h.detalle.clasificacion === "string" ? `Nivel: ${h.detalle.clasificacion}` : null,
+                                typeof h.detalle.prioridad === "string" ? `Prioridad: ${h.detalle.prioridad}` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                            {typeof h.detalle.ticket_id === "string" ? (
+                              <a
+                                href={`/dashboard/soporte/tickets/${h.detalle.ticket_id}`}
+                                className="mt-1 inline-block font-semibold text-[#4FAEB2] hover:text-[#3F8E91] hover:underline"
+                              >
+                                Ver ticket →
+                              </a>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {motivo && (
                           <p className="mt-2 text-xs text-slate-500">
                             <span className="font-medium text-slate-600">Motivo:</span> {motivo}

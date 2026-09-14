@@ -43,6 +43,9 @@ export type TicketDetalle = {
   cerrado_at: string | null;
   created_at: string;
   updated_at: string;
+  /** `tipificacion_cliente` cuando nació en la tipificación de un cliente. */
+  origen: string | null;
+  tipificacion_id: string | null;
   sla: InfoSla;
 };
 

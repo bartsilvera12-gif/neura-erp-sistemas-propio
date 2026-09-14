@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { ArrowRightCircle, ClipboardCheck, FileText, Gauge, Info, ListOrdered, Target, type LucideIcon } from "lucide-react";
 import { useTicket } from "../../_ui/TicketContexto";
 import CambiarEstado from "../../_ui/CambiarEstado";
+import AccesosProyecto from "../../_ui/AccesosProyecto";
 import { fecha, fechaHora } from "../../_ui/api";
 import { Avatar, Boton, IconoTile, TONOS, TONO_AREA, Tarjeta, type Tono } from "../../_ui/ui";
 
@@ -83,7 +85,24 @@ export default function TicketDescripcionPage() {
         <Tarjeta titulo="Información adicional" icono={Info} tono="indigo" padding="px-5 py-2">
           <div className="divide-y divide-slate-100">
             <Fila etiqueta="Módulo" valor={t.modulo} />
-            <Fila etiqueta="Proyecto" valor={t.proyecto_titulo} />
+            <Fila
+              etiqueta="Proyecto"
+              valor={
+                t.proyecto_id ? (
+                  <Link href={`/dashboard/proyectos/${t.proyecto_id}`} className="text-[#2F6E71] no-underline hover:underline">{t.proyecto_titulo ?? "Ver proyecto"}</Link>
+                ) : null
+              }
+            />
+            <Fila
+              etiqueta="Origen"
+              valor={
+                t.origen === "tipificacion_cliente" && t.cliente_id ? (
+                  <Link href={`/clientes/${t.cliente_id}/tipificacion${t.tipificacion_id ? `#tip-${t.tipificacion_id}` : ""}`} className="text-[#2F6E71] no-underline hover:underline">
+                    Tipificación de cliente
+                  </Link>
+                ) : t.origen === "manual" ? "Alta en Soporte" : null
+              }
+            />
             <Fila etiqueta="Clasificación" valor={t.clasificacion_nombre} />
             <Fila etiqueta="Versión" valor={t.version} />
             <Fila etiqueta="Entorno" valor={t.entorno} />
@@ -93,6 +112,13 @@ export default function TicketDescripcionPage() {
             <Fila etiqueta="Fecha objetivo" valor={t.fecha_objetivo ? fecha(t.fecha_objetivo) : null} />
           </div>
         </Tarjeta>
+
+        {t.proyecto_id ? (
+          <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)]">
+            {/* En vivo desde el proyecto, con el permiso de Proyectos: el ticket no guarda credenciales. */}
+            <AccesosProyecto proyectoId={t.proyecto_id} compacto />
+          </section>
+        ) : null}
       </aside>
 
       {cambiando ? <CambiarEstado alCerrar={() => setCambiando(false)} /> : null}

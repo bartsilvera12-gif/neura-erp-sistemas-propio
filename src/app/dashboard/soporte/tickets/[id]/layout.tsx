@@ -9,6 +9,7 @@ import {
   Clock3,
   FileText,
   Flag,
+  Headset,
   Flame,
   History,
   Link2,
@@ -214,7 +215,21 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
               <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
                 <Dato etiqueta="Cliente" icono={Building2} tono="turquesa">
                   {t.cliente_id ? (
-                    <Link href={`/dashboard/soporte/tickets?cliente_id=${t.cliente_id}`} className="text-slate-800 no-underline hover:text-[#2F6E71]">{t.cliente_nombre ?? "—"}</Link>
+                    <>
+                      <Link href={`/clientes/${t.cliente_id}`} title="Abrir la ficha del cliente" className="text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">{t.cliente_nombre ?? "—"}</Link>
+                      <span className="mt-0.5 flex flex-wrap gap-x-2 text-[11.5px] font-medium">
+                        <Link href={`/dashboard/soporte/tickets?cliente_id=${t.cliente_id}`} className="text-slate-400 no-underline hover:text-[#2F6E71]">Sus tickets</Link>
+                        {t.origen === "tipificacion_cliente" ? (
+                          <Link
+                            href={`/clientes/${t.cliente_id}/tipificacion${t.tipificacion_id ? `#tip-${t.tipificacion_id}` : ""}`}
+                            title="Origen: tipificación de cliente"
+                            className="inline-flex items-center gap-1 rounded-full bg-[#4FAEB2]/12 px-1.5 text-[#2F6E71] no-underline hover:underline"
+                          >
+                            <Headset className="h-3 w-3" aria-hidden /> Desde tipificación
+                          </Link>
+                        ) : null}
+                      </span>
+                    </>
                   ) : "—"}
                 </Dato>
                 <Dato etiqueta="Tipo" icono={Tag} tono="violeta">

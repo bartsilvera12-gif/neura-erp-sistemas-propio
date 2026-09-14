@@ -251,10 +251,13 @@ export type TicketFila = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  /** `manual` (alta en Soporte) o `tipificacion_cliente`. Null en tickets anteriores. */
+  origen: string | null;
+  tipificacion_id: string | null;
 };
 
 export const TICKET_CAMPOS =
-  "id, numero, asunto, descripcion, resultado_esperado, impacto_operativo, pasos_reproducir, criterios_aceptacion, cliente_id, proyecto_id, modulo, version, entorno, navegador, tipo_codigo, clasificacion_codigo, prioridad_codigo, estado_codigo, responsable_id, proxima_accion, sla_horas, fecha_objetivo, resuelto_at, cerrado_at, created_by, updated_by, created_at, updated_at";
+  "id, numero, asunto, descripcion, resultado_esperado, impacto_operativo, pasos_reproducir, criterios_aceptacion, cliente_id, proyecto_id, modulo, version, entorno, navegador, tipo_codigo, clasificacion_codigo, prioridad_codigo, estado_codigo, responsable_id, proxima_accion, sla_horas, fecha_objetivo, resuelto_at, cerrado_at, created_by, updated_by, created_at, updated_at, origen, tipificacion_id";
 
 /**
  * Etiqueta del "tipo de solicitud" para gráficos y listados.

@@ -28,7 +28,7 @@ const labelCls = "text-xs font-medium uppercase tracking-wide text-slate-500";
  * `navigator.clipboard` sólo existe en contexto seguro (https o localhost). En
  * la VPS por IP no está, así que cae al textarea + execCommand de toda la vida.
  */
-async function copiarAlPortapapeles(texto: string): Promise<boolean> {
+export async function copiarAlPortapapeles(texto: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(texto);
@@ -54,7 +54,7 @@ async function copiarAlPortapapeles(texto: string): Promise<boolean> {
 }
 
 /** Botón de copiar con confirmación efímera (✓ por 1.5 s). */
-function CopyButton({
+export function CopyButton({
   value,
   label,
   onCopied,
@@ -106,7 +106,7 @@ function CopyButton({
  * que se arma acá y bien: una línea por dato, con la etiqueta adelante para que
  * se entienda del otro lado, y sin las líneas de lo que está vacío.
  */
-function credencialComoTexto(c: ProyectoCredencial): string {
+export function credencialComoTexto(c: ProyectoCredencial): string {
   const lineas = [c.nombre?.trim() || "Credencial"];
   const agregar = (etiqueta: string, valor: string | null | undefined) => {
     const v = (valor ?? "").trim();
@@ -121,7 +121,7 @@ function credencialComoTexto(c: ProyectoCredencial): string {
 }
 
 /** Copia toda la credencial de una. La contraseña va en claro, esté oculta o no. */
-function CopiarTodoButton({
+export function CopiarTodoButton({
   credencial,
   onCopied,
 }: {
@@ -161,7 +161,7 @@ function CopiarTodoButton({
 }
 
 /** Fila etiqueta / valor con botón de copiar al final. */
-function CampoFila({
+export function CampoFila({
   label,
   value,
   mono,

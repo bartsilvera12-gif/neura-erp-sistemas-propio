@@ -5,7 +5,9 @@ export type AccionCliente =
   | "update"
   | "deactivate"
   | "reactivate"
-  | "duplicate_blocked";
+  | "duplicate_blocked"
+  /** Ticket de Soporte creado desde la tipificación del cliente (tipo "soporte"). */
+  | "ticket_created";
 
 /**
  * Registra una entrada de auditoría en `cliente_historial` (tabla existente, RLS por empresa).
@@ -19,17 +21,19 @@ export async function registrarHistorialCliente(
     empresaId: string;
     clienteId: string;
     accion: AccionCliente;
+    /** Área del evento. Por defecto "cliente"; los tickets usan "soporte". */
+    tipo?: "cliente" | "soporte";
     detalle?: Record<string, unknown>;
     authUserId?: string | null;
     email?: string | null;
-    source?: "clientes_ui" | "api" | "system";
+    source?: "clientes_ui" | "api" | "system" | "tipificacion_cliente";
   }
 ): Promise<void> {
   try {
     await supabase.from("cliente_historial").insert({
       empresa_id: params.empresaId,
       cliente_id: params.clienteId,
-      tipo: "cliente",
+      tipo: params.tipo ?? "cliente",
       accion: params.accion,
       detalle: { ...(params.detalle ?? {}), source: params.source ?? "api" },
       creado_por_auth_user_id: params.authUserId ?? null,

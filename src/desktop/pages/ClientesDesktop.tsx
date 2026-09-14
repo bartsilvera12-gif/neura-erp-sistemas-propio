@@ -118,7 +118,8 @@ type ClienteColumnKey =
   | "creado_por"
   | "ruc_documento"
   | "email"
-  | "vendedor_responsable";
+  | "vendedor_responsable"
+  | "project_manager";
 
 type ClienteColumnDef = {
   key: ClienteColumnKey;
@@ -140,6 +141,7 @@ const DEFAULT_VISIBLE_COLUMN_KEYS: ClienteColumnKey[] = [
   "tipo_servicio",
   "estado",
   "desde",
+  "project_manager",
 ];
 
 function normalizeVisibleColumnKeys(raw: unknown, columns: ClienteColumnDef[]): ClienteColumnKey[] {
@@ -333,6 +335,19 @@ function buildClienteColumns(mapNombreTipo: Record<string, string>): ClienteColu
       headerClassName: th,
       className: `${td} text-xs text-slate-500 whitespace-nowrap`,
       render: (c) => <VendedorResponsableCell cliente={c} />,
+    },
+    {
+      key: "project_manager",
+      label: "Project Manager",
+      visibleDefault: true,
+      headerClassName: th,
+      className: `${td} text-xs whitespace-nowrap`,
+      render: (c) =>
+        c.project_manager_id ? (
+          <span className="font-medium text-slate-700">{c.project_manager_nombre?.trim() || "Asignado"}</span>
+        ) : (
+          <span className="text-slate-400">Sin asignar</span>
+        ),
     },
   ];
 }

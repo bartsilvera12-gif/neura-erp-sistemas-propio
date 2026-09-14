@@ -61,6 +61,8 @@ export interface Cliente {
   vendedor_usuario_email?:  string | null;
   /** Project Manager del cliente (FK usuarios, es_project_manager). NULL = sin asignar. */
   project_manager_id?: string | null;
+  /** Nombre del PM (lo agrega GET /api/clientes). */
+  project_manager_nombre?: string | null;
 
   origen:              OrigenCliente;
   prospecto_id?:       number;          // ID del prospecto CRM de origen

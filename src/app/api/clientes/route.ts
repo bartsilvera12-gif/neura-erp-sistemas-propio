@@ -67,7 +67,8 @@ function vendedorUsuarioIds(rows: Record<string, unknown>[]): string[] {
   return Array.from(
     new Set(
       rows
-        .map((r) => (typeof r.vendedor_usuario_id === "string" ? r.vendedor_usuario_id.trim() : ""))
+        .flatMap((r) => [r.vendedor_usuario_id, r.project_manager_id])
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
         .filter(Boolean)
     )
   );
@@ -103,6 +104,9 @@ function attachVendedoresResponsables(
   map: Map<string, { nombre: string | null; email: string | null }>
 ): void {
   for (const r of rows) {
+    const pmId = typeof r.project_manager_id === "string" ? r.project_manager_id.trim() : "";
+    const pm = pmId ? map.get(pmId) : undefined;
+    if (pm) r.project_manager_nombre = pm.nombre ?? pm.email;
     const uid = typeof r.vendedor_usuario_id === "string" ? r.vendedor_usuario_id.trim() : "";
     if (!uid) continue;
     const vendedor = map.get(uid);

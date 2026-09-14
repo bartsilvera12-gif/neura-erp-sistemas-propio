@@ -55,6 +55,8 @@ interface SupabaseRow {
   vendedor_usuario_id?: string | null;
   vendedor_usuario_nombre?: string | null;
   vendedor_usuario_email?: string | null;
+  project_manager_id?: string | null;
+  project_manager_nombre?: string | null;
   origen:             string | null;
   prospecto_id:       number | null;
   estado:             string | null;
@@ -109,6 +111,9 @@ function rowToCliente(row: SupabaseRow): Cliente {
     vendedor_usuario_id: row.vendedor_usuario_id ?? undefined,
     vendedor_usuario_nombre: row.vendedor_usuario_nombre ?? undefined,
     vendedor_usuario_email:  row.vendedor_usuario_email ?? undefined,
+    // Sin esto la ficha cargaba el PM vacío y al guardar cualquier cambio lo borraba.
+    project_manager_id:  row.project_manager_id ?? null,
+    project_manager_nombre: row.project_manager_nombre ?? undefined,
     origen:              (row.origen as Cliente["origen"]) ?? "MANUAL",
     prospecto_id:        row.prospecto_id ?? undefined,
     estado:              (row.estado === "inactivo" ? "inactivo" : "activo") as EstadoCliente,

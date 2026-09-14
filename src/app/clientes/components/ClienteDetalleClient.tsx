@@ -1300,7 +1300,7 @@ export default function ClienteDetalleClient({
         </div>
 
         {/* Estadísticas rápidas */}
-        <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100 bg-slate-50/40 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100 bg-slate-50/40 sm:grid-cols-4 xl:grid-cols-8">
           {(
             [
               { label: "Origen", value: cliente.origen },
@@ -1333,6 +1333,15 @@ export default function ClienteDetalleClient({
                     if (nom) return nom;
                   }
                   return cliente.vendedor_asignado ?? "—";
+                })(),
+              },
+              {
+                label: "Project Manager",
+                value: (() => {
+                  const uid = cliente.project_manager_id?.trim();
+                  if (!uid) return <span className="text-slate-400">Sin asignar</span>;
+                  const u = usuariosEmpresa.find((x) => x.id === uid);
+                  return (u?.nombre ?? "").trim() || u?.email?.trim() || "Asignado";
                 })(),
               },
               { label: "Creado por", value: cliente.created_by_nombre?.trim() || "—" },

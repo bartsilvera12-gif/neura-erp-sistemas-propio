@@ -2,6 +2,7 @@
 
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import type { OmnicanalScope } from "@/lib/chat/omnicanal-scope";
+import { alcanceFinalizados } from "@/lib/chat/finalizados-visibilidad";
 import {
   appendOmnicanalConversationScopeToQuery,
   getOmnicanalScope,
@@ -470,11 +471,14 @@ async function loadFinalizedFilterOptionsOwn(
 export async function loadFinalizedFilterOptions(): Promise<FinalizedFilterOptions> {
   const { supabase, catalogSr, empresa_id, usuario_id, dataSchema } =
     await requireEmpresaTenantServiceRole();
-  const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id);
-  const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
-  if (bypass || isOmnicanalAdminScope(scope)) {
+  const scopeOmnicanal = await getOmnicanalScope(supabase, empresa_id, usuario_id);
+  const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scopeOmnicanal);
+  if (bypass || isOmnicanalAdminScope(scopeOmnicanal)) {
     return loadFinalizedFilterOptionsAllEmpresa(supabase, catalogSr, empresa_id);
   }
+  // Visibilidad extra solo de finalizadas (chat_finalizados_visibilidad): el asesor
+  // que la tiene recibe la vista de equipo, con selector de agente.
+  const scope = await alcanceFinalizados(supabase, empresa_id, usuario_id, scopeOmnicanal);
   // Asesor puro (no supervisor): vista simplificada "own" → el cliente muestra solo Fecha,
   // Estado y búsqueda. Opciones acotadas a SUS finalizadas (mismo alcance que la lista).
   if (scope.role !== "supervisor") {
@@ -519,8 +523,10 @@ export async function listFinalizedClosures(
 
   let conversationIdFilter: string[] | null = null;
 
-  const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id);
-  const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
+  const scopeOmnicanal = await getOmnicanalScope(supabase, empresa_id, usuario_id);
+  const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scopeOmnicanal);
+  // Mismo alcance que las opciones de filtro: base omnicanal + visibilidad de finalizadas.
+  const scope = await alcanceFinalizados(supabase, empresa_id, usuario_id, scopeOmnicanal);
 
   /**
    * Camino rápido: todo en una consulta SQL.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pgLoadConversationForSend, pgSelectChatMessagesForInboxApi } from "@/lib/chat/chat-send-persist-pg";
 import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
+import { puedeVerCierreAjeno } from "@/lib/chat/finalizados-visibilidad";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
@@ -47,7 +48,10 @@ export async function GET(request: NextRequest) {
             usuarioId,
             [conversationId]
           );
-          if (!visible.has(conversationId)) {
+          if (
+            !visible.has(conversationId) &&
+            !(await puedeVerCierreAjeno(supabase, auth.empresa_id, usuarioId, conversationId))
+          ) {
             return NextResponse.json(errorResponse("Sin acceso a esta conversación"), { status: 403 });
           }
         } catch (e) {
@@ -83,7 +87,11 @@ export async function GET(request: NextRequest) {
           usuarioId,
           [conversationId]
         );
-        if (!visible.has(conversationId)) {
+        // Chats cerrados de usuarios que puede ver en Finalizados (solo lectura).
+        if (
+          !visible.has(conversationId) &&
+          !(await puedeVerCierreAjeno(supabase, auth.empresa_id, usuarioId, conversationId))
+        ) {
           return NextResponse.json(errorResponse("Sin acceso a esta conversación"), { status: 403 });
         }
       } catch (e) {

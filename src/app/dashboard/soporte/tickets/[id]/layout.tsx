@@ -20,7 +20,6 @@ import {
   RefreshCw,
   Tag,
   Timer,
-  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import { duracionCorta } from "@/lib/soporte/dominio";
@@ -34,8 +33,8 @@ import {
   type CatalogosConEquipo,
 } from "../../_ui/api";
 import { TicketContext, type TicketCtx, type TicketDetalle } from "../../_ui/TicketContexto";
-import CambiarEstado from "../../_ui/CambiarEstado";
-import { Aviso, Avatar, Esqueleto, Insignia, Pagina, PestanasRuta, TONOS, claseBoton, type Tono } from "../../_ui/ui";
+import EstadoRapido from "../../_ui/EstadoRapido";
+import { Aviso, Esqueleto, Insignia, Pagina, PestanasRuta, TONOS, claseBoton, type Tono } from "../../_ui/ui";
 
 type Detalle = { ticket: TicketDetalle; contadores: TicketCtx["contadores"] };
 
@@ -89,7 +88,6 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
   const [catalogos, setCatalogos] = useState<CatalogosConEquipo | null>(() => catalogosEnMemoria() ?? null);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
-  const [cambiando, setCambiando] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const recargar = useCallback(async () => {
@@ -200,7 +198,6 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                   {menu ? (
                     <div className="absolute right-0 top-11 z-30 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-[13px] shadow-xl">
                       {[
-                        { et: "Cambiar estado", ic: Flag, onClick: () => setCambiando(true) },
                         { et: "Agregar comentario", ic: MessageSquare, href: `${base}#comentarios` },
                         { et: "Adjuntar archivos", ic: Paperclip, href: `${base}/archivos` },
                         { et: "Vincular ticket", ic: Link2, href: `${base}/relaciones` },
@@ -220,6 +217,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
               </div>
             )}
           </div>
+          {editando ? null : <EstadoRapido />}
         </header>
 
         {editando ? (
@@ -227,7 +225,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
         ) : (
           <>
             <section className="mb-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-[0_1px_3px_rgba(15,23,42,0.05)]">
-              <div className="grid grid-cols-2 items-center gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+              <div className="grid grid-cols-2 items-center gap-x-5 gap-y-3 sm:grid-cols-3 xl:grid-cols-6">
                 <Dato
                   etiqueta="Cliente"
                   icono={Building2}
@@ -260,11 +258,6 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.prioridad_color }} aria-hidden />
                     {t.prioridad_nombre}
                   </span>
-                </Dato>
-                <Dato etiqueta="Asignado a" icono={UserRound} tono="celeste">
-                  {t.responsable ? (
-                    <span className="inline-flex min-w-0 items-center gap-1.5"><Avatar nombre={t.responsable.nombre} tam={18} /><span className="truncate">{t.responsable.nombre}</span></span>
-                  ) : <span className="italic text-slate-400">Sin asignar</span>}
                 </Dato>
                 <Dato etiqueta="Creado" icono={CalendarPlus} tono="indigo">{fechaHora(t.created_at)}</Dato>
                 <Dato etiqueta="Actualizado" icono={Clock3} tono="pizarra">{fechaHora(t.updated_at)}</Dato>
@@ -310,7 +303,6 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
           </>
         )}
 
-        {cambiando ? <CambiarEstado alCerrar={() => setCambiando(false)} /> : null}
       </Pagina>
     </TicketContext.Provider>
   );

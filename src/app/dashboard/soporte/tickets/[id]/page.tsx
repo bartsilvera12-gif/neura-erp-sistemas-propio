@@ -1,16 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { ArrowRightCircle, FileText, Info, Lock, MessageSquare, type LucideIcon } from "lucide-react";
-import { mensajeEstadoFinal } from "@/lib/soporte/dominio";
+import { FileText, Info, MessageSquare, type LucideIcon } from "lucide-react";
 import { useTicket } from "../../_ui/TicketContexto";
-import CambiarEstado from "../../_ui/CambiarEstado";
 import AccesosProyecto from "../../_ui/AccesosProyecto";
 import ComentariosTicket from "../../_ui/ComentariosTicket";
 import SubtareasTicket from "../../_ui/SubtareasTicket";
 import { fecha, fechaHora } from "../../_ui/api";
-import { Avatar, Boton, IconoTile, TONOS, TONO_AREA, Tarjeta, type Tono } from "../../_ui/ui";
+import { IconoTile, Tarjeta, type Tono } from "../../_ui/ui";
 
 function Bloque({ titulo, texto, vacio, icono, tono }: { titulo: string; texto: string | null; vacio: string; icono: LucideIcon; tono: Tono }) {
   return (
@@ -43,11 +40,6 @@ function Fila({ etiqueta, valor }: { etiqueta: string; valor: React.ReactNode })
  */
 export default function TicketDescripcionPage() {
   const { ticket: t, contadores } = useTicket();
-  const [cambiando, setCambiando] = useState(false);
-  const activo = t.estado_tipo === "abierto";
-  const area = t.estado_area ?? t.responsable?.area ?? "Equipo";
-  const tonoArea = TONO_AREA[area.includes("QA") ? "QA" : area.includes("Desarrollo") ? "Desarrollo" : area.includes("PM") ? "PM" : area] ?? "turquesa";
-  const ta = TONOS[tonoArea];
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
@@ -66,32 +58,6 @@ export default function TicketDescripcionPage() {
       </Tarjeta>
 
       <aside className="min-w-0 space-y-5">
-        {/* Quién lo tiene: la tarjeta más importante del ticket, en el color del área a cargo. */}
-        <section className={`relative overflow-hidden rounded-2xl border bg-white p-5 shadow-[0_8px_28px_-14px_rgba(15,23,42,0.25)] ${ta.borde}`}>
-          <span className={`absolute inset-x-0 top-0 h-1 ${ta.solido}`} aria-hidden />
-          <p className={`flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider ${ta.texto}`}>
-            <ArrowRightCircle className="h-4 w-4" aria-hidden /> A cargo
-          </p>
-          {t.responsable ? (
-            <div className="mt-3 flex items-center gap-3">
-              <Avatar nombre={t.responsable.nombre} tam={44} tono={tonoArea} />
-              <div className="min-w-0">
-                <p className="truncate text-[15px] font-bold text-slate-900">{t.responsable.nombre}</p>
-                <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${ta.suave} ${ta.texto}`}>{area}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="mt-3 text-[13px] text-slate-500">{activo ? "Todavía no tiene responsable." : "El ticket está cerrado."}</p>
-          )}
-          {mensajeEstadoFinal(t, t.estado_nombre) ? (
-            <p className="mt-4 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5 text-[12.5px] font-medium text-slate-600">
-              <Lock className="h-4 w-4 shrink-0" aria-hidden /> {mensajeEstadoFinal(t, t.estado_nombre)}
-            </p>
-          ) : (
-            <Boton className="mt-4 w-full" onClick={() => setCambiando(true)}>Cambiar estado</Boton>
-          )}
-        </section>
-
         <Tarjeta titulo="Información adicional" icono={Info} tono="indigo" padding="px-5 py-2">
           <div className="divide-y divide-slate-100">
             <Fila etiqueta="Módulo" valor={t.modulo} />
@@ -128,7 +94,6 @@ export default function TicketDescripcionPage() {
         ) : null}
       </aside>
 
-      {cambiando ? <CambiarEstado alCerrar={() => setCambiando(false)} /> : null}
     </div>
   );
 }

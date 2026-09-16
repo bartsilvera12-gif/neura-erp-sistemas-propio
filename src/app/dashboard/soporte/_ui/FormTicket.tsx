@@ -222,7 +222,7 @@ export default function FormTicket({
                   clasificacion_codigo: x,
                   prioridad_codigo: c?.prioridad_sugerida || p.prioridad_codigo || "normal",
                   fecha_objetivo:
-                    !fechaTocada && p.tipo_codigo === "error" && c
+                    !fechaTocada && c
                       ? isoAFechaHoraLocal(vencimientoSla(creadoEn ?? Date.now(), c.sla_horas))
                       : p.fecha_objetivo,
                 }));
@@ -282,8 +282,8 @@ export default function FormTicket({
           <Campo
             etiqueta="Fecha objetivo"
             ayuda={
-              v.tipo_codigo === "error" && sla != null && !fechaTocada
-                ? `Calculada por el nivel: ${sla} horas laborales desde ${modo === "crear" ? "el alta" : "que se creó"}. Podés cambiarla.`
+              v.clasificacion_codigo && sla != null && !fechaTocada
+                ? `Calculada por la clasificación: ${sla} horas laborales desde ${modo === "crear" ? "el alta" : "que se creó"}. Podés cambiarla.`
                 : undefined
             }
           >

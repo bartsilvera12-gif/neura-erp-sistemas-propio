@@ -144,8 +144,9 @@ export async function prepararTicket(
   if (requiereResponsable(estado) && !responsableId) return falla("Elegí un responsable");
 
   const slaHoras = slaDe(cat, tipo.codigo, clasificacion?.codigo ?? null);
-  // Un error sin fecha objetivo vence cuando se cumple el SLA de su nivel, en horas laborales.
-  if (!fechaObjetivo && tipo.codigo === "error") fechaObjetivo = vencimientoSla(Date.now(), slaHoras);
+  // Sin fecha objetivo, vence cuando se cumple el SLA de su clasificación (error o
+  // cambio) en horas laborales. Un tipo sin SLA queda sin fecha.
+  if (!fechaObjetivo && clasificacion) fechaObjetivo = vencimientoSla(Date.now(), slaHoras);
 
   return {
     ok: true,

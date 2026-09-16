@@ -99,7 +99,7 @@ export default function SoporteTicketModal({
 
   const niveles = useMemo(() => (datos?.clasificaciones ?? []).filter((c) => c.tipo_codigo === tipo), [datos, tipo]);
   const nivelElegido = niveles.find((c) => c.codigo === nivel);
-  const entrega = tipo === "error" && nivelElegido ? vencimientoSla(Date.now(), nivelElegido.sla_horas) : null;
+  const entrega = nivelElegido ? vencimientoSla(Date.now(), nivelElegido.sla_horas) : null;
 
   const faltan: string[] = [];
   if (!cliente) faltan.push("cliente");

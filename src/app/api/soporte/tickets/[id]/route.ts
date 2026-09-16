@@ -198,8 +198,8 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     // ---- fecha objetivo
-    // Si un error cambia de nivel y no se mandó fecha, vence con el SLA nuevo desde el alta.
-    const nivelCambiado = patch.clasificacion_codigo !== undefined && tipoNuevo === "error";
+    // Si cambia la clasificación (error o cambio) y no se mandó fecha, vence con el SLA nuevo desde el alta.
+    const nivelCambiado = patch.clasificacion_codigo !== undefined && clasifNueva != null;
     if ("fecha_objetivo" in body || nivelCambiado) {
       let v: string | null = null;
       if (typeof body.fecha_objetivo === "string" && body.fecha_objetivo) {

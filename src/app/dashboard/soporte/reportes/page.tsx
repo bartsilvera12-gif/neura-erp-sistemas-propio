@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Building2, CalendarRange, CheckCircle2, CircleDot, Flag, RotateCcw, Tags, Ticket, Timer, TimerOff, UserRound, type LucideIcon } from "lucide-react";
+import { BarChart3, Building2, CalendarRange, CheckCircle2, CircleDot, RotateCcw, Tags, Ticket, Timer, TimerOff, UserRound, type LucideIcon } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
 import { SelectorBuscable } from "../_ui/SelectorBuscable";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
@@ -187,7 +187,6 @@ export default function SoporteReportesPage() {
                 <Tarjeta titulo="Tickets por cliente" icono={Building2} tono="indigo"><Barras datos={datos.por_cliente} tono="indigo" /></Tarjeta>
                 <Tarjeta titulo="Tickets por responsable" icono={UserRound} tono="verde"><Barras datos={datos.por_responsable} tono="verde" /></Tarjeta>
                 <Tarjeta titulo="Tickets por tipo" icono={Tags} tono="violeta"><Barras datos={datos.por_tipo} tono="violeta" /></Tarjeta>
-                <Tarjeta titulo="Tickets por prioridad" icono={Flag} tono="ambar"><Barras datos={datos.por_prioridad} tono="ambar" /></Tarjeta>
               </div>
 
               <Tarjeta titulo="Tickets con más devoluciones de QA" icono={RotateCcw} tono="rosa" padding="p-0">

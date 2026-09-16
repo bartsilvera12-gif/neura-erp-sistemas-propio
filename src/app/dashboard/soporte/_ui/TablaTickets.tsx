@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlarmClock, ChevronLeft, ChevronRight, Flame, Inbox, Search, X } from "lucide-react";
+import { AlarmClock, ChevronLeft, ChevronRight, Inbox, Search, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   apiSoporte,
@@ -36,9 +36,8 @@ type TicketLista = {
   estado_codigo: string;
   estado_nombre: string;
   estado_color: string;
-  prioridad_codigo: string;
-  prioridad_nombre: string;
-  prioridad_color: string;
+  tipo_codigo: string;
+  clasificacion_nombre: string | null;
   responsable: Persona | null;
   updated_at: string;
   sla: { estado: string };
@@ -95,7 +94,6 @@ export default function TablaTickets({
     estado: params.get("estado") ?? "",
     tipo: params.get("tipo") ?? "",
     responsable_id: params.get("responsable_id") ?? "",
-    prioridad: params.get("prioridad") ?? "",
   };
   const pagina = Math.max(1, Number(params.get("pagina") ?? "1") || 1);
 
@@ -176,7 +174,6 @@ export default function TablaTickets({
     return {
       estado: [...todos("Todos los estados"), ...(cat?.estados ?? []).filter((e) => e.activo).map((e) => ({ value: e.codigo, label: e.nombre }))],
       tipo: [...todos("Todos los tipos"), ...(cat?.tipos ?? []).filter((t) => t.activo).map((t) => ({ value: t.codigo, label: t.nombre }))],
-      prioridad: [...todos("Toda prioridad"), ...(cat?.prioridades ?? []).filter((p) => p.activo).map((p) => ({ value: p.codigo, label: p.nombre }))],
       responsable: [...todos("Cualquier responsable"), ...(cat?.personas ?? []).map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] }))],
     };
   }, [cat]);
@@ -215,7 +212,7 @@ export default function TablaTickets({
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)]">
         {/* Filtros */}
-        <div className="grid gap-2 border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_repeat(5,minmax(130px,1fr))_auto]">
+        <div className="grid gap-2 border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(130px,1fr))_auto]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
             <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por asunto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
@@ -228,13 +225,12 @@ export default function TablaTickets({
           ) : (
             <SelectorBuscable tam="sm" avatares ariaLabel="Asignado a" value={filtros.responsable_id} onChange={(v) => cambiar({ responsable_id: v || null })} opciones={op.responsable} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
           )}
-          <FancySelect size="sm" ariaLabel="Prioridad" value={filtros.prioridad} onChange={(v) => cambiar({ prioridad: v || null })} options={op.prioridad} />
           {hayFiltros ? (
             <button
               type="button"
               onClick={() => {
                 setTexto("");
-                cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null, prioridad: null });
+                cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null });
               }}
               className="inline-flex items-center justify-center gap-1 rounded-xl px-2.5 text-[12px] font-semibold text-rose-500 hover:bg-rose-50"
             >
@@ -272,7 +268,7 @@ export default function TablaTickets({
                     <th className="px-3 py-3">Cliente</th>
                     <th className="px-3 py-3">Tipo</th>
                     <th className="px-3 py-3">Estado</th>
-                    <th className="px-3 py-3">Prioridad</th>
+                    <th className="px-3 py-3">Clasificación</th>
                     {ocultarResponsable ? null : <th className="px-3 py-3">Asignado a</th>}
                     <th className="px-5 py-3 text-right">Actualizado</th>
                   </tr>
@@ -309,12 +305,12 @@ export default function TablaTickets({
                         ) : null}
                       </td>
                       <td className="max-w-[190px] truncate px-3 py-3.5 font-medium text-slate-600">{t.cliente_nombre ?? "—"}</td>
-                      <td className="px-3 py-3.5 text-slate-600">{t.tipo_etiqueta}</td>
+                      <td className="px-3 py-3.5 text-slate-600">{cat?.tipos.find((x) => x.codigo === t.tipo_codigo)?.nombre ?? t.tipo_etiqueta}</td>
                       <td className="px-3 py-3.5">
                         <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
                       </td>
                       <td className="px-3 py-3.5">
-                        <Insignia color={t.prioridad_color} icono={t.prioridad_codigo === "urgente" ? Flame : undefined}>{t.prioridad_nombre}</Insignia>
+                        <span className="text-slate-600">{t.clasificacion_nombre ?? <span className="text-slate-300">—</span>}</span>
                       </td>
                       {ocultarResponsable ? null : (
                         <td className="px-3 py-3.5">
@@ -348,7 +344,7 @@ export default function TablaTickets({
                     <p className="mt-1 text-sm font-semibold text-slate-900">{t.asunto}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
-                      <Insignia color={t.prioridad_color} icono={t.prioridad_codigo === "urgente" ? Flame : undefined}>{t.prioridad_nombre}</Insignia>
+                      {t.clasificacion_nombre ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600">{t.clasificacion_nombre}</span> : null}
                     </div>
                   </Link>
                 </li>

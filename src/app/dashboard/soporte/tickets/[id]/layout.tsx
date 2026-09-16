@@ -8,10 +8,10 @@ import {
   CalendarPlus,
   Clock3,
   FileText,
-  Flag,
   Headset,
-  Flame,
   History,
+  Layers,
+  ListChecks,
   Link2,
   MessageSquare,
   MoreHorizontal,
@@ -175,7 +175,6 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
               </h1>
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
-                <Insignia color={t.prioridad_color} icono={t.prioridad_codigo === "urgente" ? Flame : undefined}>{t.prioridad_nombre}</Insignia>
                 {t.sla.estado === "vencido" || t.sla.estado === "en_riesgo" ? (
                   <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${sla.fondo} ${sla.texto}`}>
                     <Timer className="h-3 w-3" aria-hidden /> SLA {sla.etiqueta.toLowerCase()}
@@ -230,13 +229,18 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                   etiqueta="Cliente"
                   icono={Building2}
                   tono="turquesa"
-                  extra={t.cliente_id ? (
-                    <Link href={`/dashboard/soporte/tickets?cliente_id=${t.cliente_id}`} className="ml-auto shrink-0 normal-case tracking-normal text-slate-400 no-underline hover:text-[#2F6E71]">Sus tickets</Link>
-                  ) : null}
                 >
                   {t.cliente_id ? (
                     <span className="flex min-w-0 items-center gap-1.5">
                       <Link href={`/clientes/${t.cliente_id}`} title={t.cliente_nombre ?? "Abrir la ficha del cliente"} className="truncate text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">{t.cliente_nombre ?? "—"}</Link>
+                      <Link
+                        href={`/dashboard/soporte/tickets?cliente_id=${t.cliente_id}`}
+                        title="Ver los tickets de este cliente"
+                        aria-label="Ver los tickets de este cliente"
+                        className="inline-flex shrink-0 items-center rounded-full bg-slate-100 p-1 text-slate-500 hover:bg-[#4FAEB2]/15 hover:text-[#2F6E71]"
+                      >
+                        <ListChecks className="h-3 w-3" aria-hidden />
+                      </Link>
                       {t.origen === "tipificacion_cliente" ? (
                         <Link
                           href={`/clientes/${t.cliente_id}/tipificacion${t.tipificacion_id ? `#tip-${t.tipificacion_id}` : ""}`}
@@ -251,13 +255,10 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                   ) : "—"}
                 </Dato>
                 <Dato etiqueta="Tipo" icono={Tag} tono="violeta">
-                  {t.tipo_etiqueta}{t.clasificacion_nombre && t.tipo_codigo === "error" ? <span className="font-medium text-slate-500"> · {t.clasificacion_nombre}</span> : null}
+                  {catalogos.tipos.find((x) => x.codigo === t.tipo_codigo)?.nombre ?? t.tipo_etiqueta}
                 </Dato>
-                <Dato etiqueta="Prioridad" icono={Flag} tono="ambar">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.prioridad_color }} aria-hidden />
-                    {t.prioridad_nombre}
-                  </span>
+                <Dato etiqueta="Clasificación" icono={Layers} tono="ambar">
+                  {t.clasificacion_nombre ?? <span className="font-medium text-slate-400">—</span>}
                 </Dato>
                 <Dato etiqueta="Creado" icono={CalendarPlus} tono="indigo">{fechaHora(t.created_at)}</Dato>
                 <Dato etiqueta="Actualizado" icono={Clock3} tono="pizarra">{fechaHora(t.updated_at)}</Dato>

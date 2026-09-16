@@ -191,6 +191,49 @@ function mismaSel(a: Sel, b: Sel): boolean {
   return false;
 }
 
+/** Columnas por las que se puede ordenar la tabla de proyectos. */
+type OrdenCol =
+  | "titulo"
+  | "cliente"
+  | "estado_nombre"
+  | "tecnico"
+  | "pm"
+  | "fecha_prometida"
+  | "tiempo_en_estado_ms";
+
+/**
+ * Compara dos filas por una columna, ya con la dirección aplicada. Los vacíos
+ * (sin fecha / sin tiempo) van SIEMPRE al final, ordene como ordene, para que
+ * "—" no se mezcle con los datos reales.
+ */
+function cmpOrden(
+  a: Data["criticos"][number],
+  b: Data["criticos"][number],
+  col: OrdenCol,
+  dir: "asc" | "desc"
+): number {
+  const mul = dir === "asc" ? 1 : -1;
+  if (col === "tiempo_en_estado_ms") {
+    const av = a.tiempo_en_estado_ms;
+    const bv = b.tiempo_en_estado_ms;
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return (av - bv) * mul;
+  }
+  if (col === "fecha_prometida") {
+    const av = a.fecha_prometida ? Date.parse(a.fecha_prometida) : Number.NaN;
+    const bv = b.fecha_prometida ? Date.parse(b.fecha_prometida) : Number.NaN;
+    const an = Number.isNaN(av);
+    const bn = Number.isNaN(bv);
+    if (an && bn) return 0;
+    if (an) return 1;
+    if (bn) return -1;
+    return (av - bv) * mul;
+  }
+  return String(a[col] ?? "").localeCompare(String(b[col] ?? ""), "es", { sensitivity: "base" }) * mul;
+}
+
 /**
  * Lee la respuesta con cuidado.
  *
@@ -325,6 +368,45 @@ export default function DashboardEjecutivoClient() {
     }
     return "Demorados";
   }, [sel, data]);
+
+  /**
+   * Orden de la tabla. `null` = orden por prioridad (el que arma el backend).
+   * Al clickear un encabezado se ordena por esa columna; volver a clickear
+   * invierte. El texto va A→Z; el tiempo y la fecha arrancan de mayor a menor.
+   */
+  const [orden, setOrden] = useState<{ col: OrdenCol; dir: "asc" | "desc" } | null>(null);
+  const clickOrden = useCallback((col: OrdenCol) => {
+    setOrden((prev) => {
+      if (prev?.col === col) return { col, dir: prev.dir === "asc" ? "desc" : "asc" };
+      const numerica = col === "tiempo_en_estado_ms" || col === "fecha_prometida";
+      return { col, dir: numerica ? "desc" : "asc" };
+    });
+  }, []);
+
+  const filasOrdenadas = useMemo(() => {
+    if (!orden) return filasLista;
+    return [...filasLista].sort((a, b) => cmpOrden(a, b, orden.col, orden.dir));
+  }, [filasLista, orden]);
+
+  /** Encabezado clickeable con la flechita de orden. */
+  const th = (label: string, col: OrdenCol, extra = "pr-2") => {
+    const activo = orden?.col === col;
+    return (
+      <th className={`pb-1.5 font-medium ${extra}`}>
+        <button
+          type="button"
+          onClick={() => clickOrden(col)}
+          className="inline-flex items-center gap-1 transition-colors hover:text-slate-600"
+          title="Ordenar por esta columna"
+        >
+          {label}
+          <span className={activo ? "text-[#4FAEB2]" : "text-slate-300"}>
+            {activo ? (orden.dir === "asc" ? "▲" : "▼") : "↕"}
+          </span>
+        </button>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -563,17 +645,17 @@ export default function DashboardEjecutivoClient() {
                     <table className="w-full min-w-[680px] text-left">
                       <thead>
                         <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wide text-slate-400">
-                          <th className="pb-1.5 pr-2 font-medium">Proyecto</th>
-                          <th className="pb-1.5 pr-2 font-medium">Cliente</th>
-                          <th className="pb-1.5 pr-2 font-medium">Estado</th>
-                          <th className="pb-1.5 pr-2 font-medium">Técnico</th>
-                          <th className="pb-1.5 pr-2 font-medium">Prometida</th>
-                          <th className="pb-1.5 pr-2 font-medium">PM</th>
-                          <th className="pb-1.5 font-medium">En estado</th>
+                          {th("Proyecto", "titulo")}
+                          {th("Cliente", "cliente")}
+                          {th("Estado", "estado_nombre")}
+                          {th("Técnico", "tecnico")}
+                          {th("Prometida", "fecha_prometida")}
+                          {th("PM", "pm")}
+                          {th("En estado", "tiempo_en_estado_ms", "")}
                         </tr>
                       </thead>
                       <tbody>
-                        {filasLista.map((c) => (
+                        {filasOrdenadas.map((c) => (
                           <tr key={c.id} className="border-b border-slate-50 text-[11px] last:border-0">
                             <td className="max-w-[150px] truncate py-1.5 pr-2 font-medium text-slate-700">
                               <Link href={`/dashboard/proyectos?proyecto=${c.id}&from=tablero`} className="hover:underline" title={c.titulo}>

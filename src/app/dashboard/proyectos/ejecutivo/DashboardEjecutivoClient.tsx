@@ -40,6 +40,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import type { KpiBucket } from "@/lib/proyectos/dashboard/shared";
 import { nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 import {
   AMBAR,
@@ -102,6 +103,7 @@ type Data = {
     motivo: string;
     semaforo: "vencido" | "critico" | "en_riesgo";
   }[];
+  proyectos_activos: (Data["criticos"][number] & { buckets: KpiBucket[] })[];
   bloqueos_por_tipo: { tipo: string; label: string; cantidad: number }[];
   bloqueos_detalle: {
     id: string;
@@ -162,6 +164,17 @@ const SEMAFORO_PILL: Record<Data["criticos"][number]["semaforo"], string> = {
   en_riesgo: "bg-amber-50 text-amber-700",
 };
 
+/** Nombre de cada tarjeta KPI, para el título de la lista al filtrar por click. */
+const KPI_LABEL: Record<KpiBucket, string> = {
+  vencen_pronto: "Vencen pronto",
+  vencidos: "Vencidos",
+  bloqueados: "Estancados",
+  en_desarrollo: "En desarrollo",
+  esperando_cliente: "Esperando cliente",
+  esperando_qa: "Esperando QA",
+  listos_entregar: "Listos para entregar",
+};
+
 /**
  * Lee la respuesta con cuidado.
  *
@@ -213,6 +226,10 @@ export default function DashboardEjecutivoClient() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [actualizado, setActualizado] = useState<string | null>(null);
+  /** Tarjeta KPI seleccionada: filtra la lista de abajo por ese bucket. */
+  const [kpiSel, setKpiSel] = useState<KpiBucket | null>(null);
+  /** Apretar la tarjeta activa la apaga (vuelve a la lista de críticos). */
+  const toggleKpi = useCallback((b: KpiBucket) => setKpiSel((prev) => (prev === b ? null : b)), []);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -262,6 +279,17 @@ export default function DashboardEjecutivoClient() {
     if (desde) return `En curso + entregados desde ${fmtFecha(desde)}`;
     return `En curso + entregados hasta ${fmtFecha(hasta)}`;
   }, [desde, hasta]);
+
+  /**
+   * La lista de abajo: por defecto los proyectos críticos; con una tarjeta KPI
+   * seleccionada, TODOS los proyectos de ese bucket (aunque estén sanos y no
+   * sean críticos). El número de la tarjeta y esta lista salen del mismo
+   * criterio, así que coinciden.
+   */
+  const filasLista = useMemo(() => {
+    if (!data) return [];
+    return kpiSel ? data.proyectos_activos.filter((p) => p.buckets.includes(kpiSel)) : data.criticos;
+  }, [data, kpiSel]);
 
   /**
    * Descarga del resumen en CSV. Es el formato que abre Excel sin pedir nada y
@@ -392,18 +420,57 @@ export default function DashboardEjecutivoClient() {
                 label="Vencen pronto"
                 sublabel="≤ 3 días"
                 numero={data.kpis.vencen_pronto}
+                onClick={() => toggleKpi("vencen_pronto")}
+                seleccionado={kpiSel === "vencen_pronto"}
               />
-              <Kpi icon={AlertCircle} tono={TONO.rojo} label="Vencidos" numero={data.kpis.vencidos} />
-              <Kpi icon={Hourglass} tono={TONO.gris} label="Estancados" numero={data.kpis.bloqueados} />
-              <Kpi icon={Code2} tono={TONO.violeta} label="En desarrollo" numero={data.kpis.en_desarrollo} />
+              <Kpi
+                icon={AlertCircle}
+                tono={TONO.rojo}
+                label="Vencidos"
+                numero={data.kpis.vencidos}
+                onClick={() => toggleKpi("vencidos")}
+                seleccionado={kpiSel === "vencidos"}
+              />
+              <Kpi
+                icon={Hourglass}
+                tono={TONO.gris}
+                label="Estancados"
+                numero={data.kpis.bloqueados}
+                onClick={() => toggleKpi("bloqueados")}
+                seleccionado={kpiSel === "bloqueados"}
+              />
+              <Kpi
+                icon={Code2}
+                tono={TONO.violeta}
+                label="En desarrollo"
+                numero={data.kpis.en_desarrollo}
+                onClick={() => toggleKpi("en_desarrollo")}
+                seleccionado={kpiSel === "en_desarrollo"}
+              />
               <Kpi
                 icon={Users}
                 tono={TONO.violeta}
                 label="Esperando cliente"
                 numero={data.kpis.esperando_cliente}
+                onClick={() => toggleKpi("esperando_cliente")}
+                seleccionado={kpiSel === "esperando_cliente"}
               />
-              <Kpi icon={AlertTriangle} tono={TONO.azul} label="Esperando QA" numero={data.kpis.esperando_qa} />
-              <Kpi icon={Flag} tono={TONO.verde} label="Listos para entregar" numero={data.kpis.listos_entregar} />
+              <Kpi
+                icon={AlertTriangle}
+                tono={TONO.azul}
+                label="Esperando QA"
+                numero={data.kpis.esperando_qa}
+                onClick={() => toggleKpi("esperando_qa")}
+                seleccionado={kpiSel === "esperando_qa"}
+              />
+              <Kpi
+                icon={Flag}
+                tono={TONO.verde}
+                label="Listos para entregar"
+                numero={data.kpis.listos_entregar}
+                onClick={() => toggleKpi("listos_entregar")}
+                seleccionado={kpiSel === "listos_entregar"}
+              />
               <Kpi
                 icon={UsersRound}
                 tono={TONO.rojo}
@@ -508,18 +575,39 @@ export default function DashboardEjecutivoClient() {
               <Card className="lg:col-span-2">
                 <CardTitle
                   right={
-                    <Link
-                      href="/dashboard/proyectos"
-                      className="whitespace-nowrap text-[11px] font-medium text-[#4FAEB2] hover:underline"
-                    >
-                      Ver todos →
-                    </Link>
+                    kpiSel ? (
+                      <button
+                        type="button"
+                        onClick={() => setKpiSel(null)}
+                        className="whitespace-nowrap text-[11px] font-medium text-[#4FAEB2] hover:underline"
+                      >
+                        ← Ver críticos
+                      </button>
+                    ) : (
+                      <Link
+                        href="/dashboard/proyectos"
+                        className="whitespace-nowrap text-[11px] font-medium text-[#4FAEB2] hover:underline"
+                      >
+                        Ver todos →
+                      </Link>
+                    )
                   }
                 >
-                  Proyectos críticos
+                  {kpiSel ? (
+                    <span className="flex items-center gap-1.5">
+                      {KPI_LABEL[kpiSel]}
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                        {filasLista.length}
+                      </span>
+                    </span>
+                  ) : (
+                    "Proyectos críticos"
+                  )}
                 </CardTitle>
-                {data.criticos.length === 0 ? (
-                  <p className="text-sm text-slate-400">Nada crítico. Buen día.</p>
+                {filasLista.length === 0 ? (
+                  <p className="text-sm text-slate-400">
+                    {kpiSel ? "Sin proyectos en esta tarjeta." : "Nada crítico. Buen día."}
+                  </p>
                 ) : (
                   <TablaWrap>
                     <table className="w-full min-w-[680px] text-left">
@@ -535,7 +623,7 @@ export default function DashboardEjecutivoClient() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.criticos.map((c) => (
+                        {filasLista.map((c) => (
                           <tr key={c.id} className="border-b border-slate-50 text-[11px] last:border-0">
                             <td className="max-w-[150px] truncate py-1.5 pr-2 font-medium text-slate-700">
                               <Link href={`/dashboard/proyectos?proyecto=${c.id}`} className="hover:underline" title={c.titulo}>
@@ -558,7 +646,11 @@ export default function DashboardEjecutivoClient() {
                               {fmtDias(c.dias_restantes)}
                             </td>
                             <td className="py-1.5">
-                              <Pill className={SEMAFORO_PILL[c.semaforo]}>{c.motivo}</Pill>
+                              {c.motivo && c.motivo !== "—" ? (
+                                <Pill className={SEMAFORO_PILL[c.semaforo]}>{c.motivo}</Pill>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
                             </td>
                           </tr>
                         ))}

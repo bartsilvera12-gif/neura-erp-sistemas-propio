@@ -623,3 +623,38 @@ export function kpisComunes(proyectos: ProyectoMetrica[], wipAlto: number) {
     tecnicos_wip_alto: wipAlto,
   };
 }
+
+/**
+ * Claves de las tarjetas KPI que un proyecto puede "prender". Son las siete
+ * clickeables del tablero (WIP alto queda afuera: cuenta técnicos, no
+ * proyectos). Comparten definición EXACTA con `kpisComunes` — misma condición,
+ * un solo lugar — para que el número de la tarjeta y la lista que aparece al
+ * apretarla siempre cierren.
+ */
+export type KpiBucket =
+  | "vencen_pronto"
+  | "vencidos"
+  | "bloqueados"
+  | "en_desarrollo"
+  | "esperando_cliente"
+  | "esperando_qa"
+  | "listos_entregar";
+
+/**
+ * A qué tarjetas pertenece un proyecto activo. El proyecto ENTRA en una tarjeta
+ * bajo la misma regla con que `kpisComunes` lo cuenta, así el filtro por click
+ * muestra exactamente lo que dice el número. Asume que `p` ya es activo (ni
+ * entregado ni cancelado).
+ */
+export function bucketsDeProyecto(p: ProyectoMetrica): KpiBucket[] {
+  const buckets: KpiBucket[] = [];
+  if (p.dias_restantes != null && p.dias_restantes >= 0 && p.dias_restantes <= DIAS_VENCE_PRONTO)
+    buckets.push("vencen_pronto");
+  if (p.dias_restantes != null && p.dias_restantes < 0) buckets.push("vencidos");
+  if (p.bloqueado) buckets.push("bloqueados");
+  if (p.estado_codigo === CODIGO_DESARROLLO) buckets.push("en_desarrollo");
+  if (p.espera_cliente) buckets.push("esperando_cliente");
+  if (p.en_qa) buckets.push("esperando_qa");
+  if (p.listo_entregar) buckets.push("listos_entregar");
+  return buckets;
+}

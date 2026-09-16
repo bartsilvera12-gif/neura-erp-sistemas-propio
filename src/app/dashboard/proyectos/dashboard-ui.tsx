@@ -383,6 +383,7 @@ export function Kpi({
   pie,
   pieBueno,
   onClick,
+  seleccionado,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   tono: KpiTono;
@@ -394,9 +395,14 @@ export function Kpi({
   pie?: string | null;
   pieBueno?: boolean;
   onClick?: () => void;
+  seleccionado?: boolean;
 }) {
   const contenido = (
-    <Card className={onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""}>
+    <Card
+      className={`${onClick ? "cursor-pointer transition-shadow hover:shadow-md" : ""} ${
+        seleccionado ? "ring-2 ring-[#4FAEB2] ring-offset-1" : ""
+      }`}
+    >
       <div className="flex items-start gap-2.5">
         <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tono.circulo}`}>
           <Icon className={`h-4 w-4 ${tono.icono}`} />
@@ -421,7 +427,13 @@ export function Kpi({
   );
   if (!onClick) return contenido;
   return (
-    <div role="button" tabIndex={0} onClick={onClick} onKeyDown={(e) => e.key === "Enter" && onClick()}>
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={seleccionado}
+      onClick={onClick}
+      onKeyDown={(e) => e.key === "Enter" && onClick()}
+    >
       {contenido}
     </div>
   );

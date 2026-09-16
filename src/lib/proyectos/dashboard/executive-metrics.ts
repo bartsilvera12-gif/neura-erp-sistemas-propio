@@ -12,7 +12,7 @@ import { BLOQUEO_CATEGORIAS, BLOQUEO_TIPO_LABEL, categoriaBloqueo } from "./conf
 import { resumirQa } from "./qa-metrics";
 import { nivelWip } from "./semaforo";
 import { calcularWip } from "./workload";
-import { cuentaParaWip, kpisComunes, type Dataset, type ProyectoMetrica } from "./shared";
+import { bucketsDeProyecto, cuentaParaWip, kpisComunes, type Dataset, type ProyectoMetrica } from "./shared";
 
 /** Estados que Dirección mira en "Tiempo promedio en cada estado". */
 const ESTADOS_DESTACADOS = ["cola_produccion", "desarrollo", "qa", "enviado_cliente", "pausado"];
@@ -125,6 +125,15 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     .slice(0, 25)
     .map(filaCritica);
 
+  // Toda la cartera activa, con la MISMA fila que la tabla de críticos más la
+  // etiqueta de a qué tarjetas pertenece. Alimenta el filtro por click: apretar
+  // "En desarrollo" muestra sus proyectos aunque estén sanos y no aparezcan como
+  // críticos. Se ordena por score para que, dentro de una tarjeta, lo más urgente
+  // quede arriba.
+  const proyectos_activos = [...activos]
+    .sort((a, b) => b.score - a.score)
+    .map((p) => ({ ...filaCritica(p), buckets: bucketsDeProyecto(p) }));
+
   // ---- H. Bloqueos por tipo -------------------------------------------------
   const bloqueados = activos.filter((p) => p.bloqueado);
   const porTipo = new Map<string, number>();
@@ -171,6 +180,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     tiempo_por_estado,
     calidad,
     criticos,
+    proyectos_activos,
     bloqueos_por_tipo,
     bloqueos_detalle,
     bloqueados_total: bloqueados.length,

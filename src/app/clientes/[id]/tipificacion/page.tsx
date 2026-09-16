@@ -23,7 +23,7 @@ import {
   MessageCircle,
   MessageSquareWarning,
   Paperclip,
-  PenTool,
+  RefreshCw,
   Phone,
   Send,
   Timer,
@@ -87,7 +87,7 @@ const TIPO_UI: Record<TipoGestion, { icono: LucideIcon; tono: Tono }> = {
   "Soporte técnico": { icono: Wrench, tono: "violeta" },
   "Cambio plan": { icono: ArrowLeftRight, tono: "azul" },
   Error: { icono: Bug, tono: "rosa" },
-  Cambio: { icono: PenTool, tono: "ambar" },
+  Cambio: { icono: RefreshCw, tono: "ambar" },
   "Capacitación": { icono: GraduationCap, tono: "indigo" },
 };
 

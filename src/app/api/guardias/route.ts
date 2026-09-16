@@ -85,6 +85,7 @@ export async function GET(request: Request) {
         desde,
         semanas,
         es_admin: auth.esAdmin,
+        usuario_id: auth.usuarioCatalogId,
         guardias: await conNombres((data ?? []) as FilaGuardia[]),
       })
     );

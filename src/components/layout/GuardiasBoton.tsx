@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Clock, Settings2, ShieldCheck, Users, X } from "lucide-react";
+import { ArrowUpDown, Clock, Loader2, Settings2, ShieldCheck, Users, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { lunesDeEstaSemana, rangoLegible, sumarSemanas } from "@/lib/guardias/semana";
 
@@ -18,7 +18,7 @@ type Guardia = {
 
 type Resp = {
   success: boolean;
-  data?: { es_admin: boolean; guardias: Guardia[] };
+  data?: { es_admin: boolean; usuario_id?: string; guardias: Guardia[] };
   error?: string;
 };
 
@@ -111,13 +111,19 @@ function Semana({
   titulo,
   insignia,
   activa,
+  puedeIntercambiar = false,
+  onIntercambiar,
 }: {
   g: Guardia | undefined;
   lunes: string;
   titulo: string;
   insignia: string;
   activa: boolean;
+  /** Admin o integrante de esa guardia, y con principal y suplente cargados. */
+  puedeIntercambiar?: boolean;
+  onIntercambiar?: () => Promise<void>;
 }) {
+  const [intercambiando, setIntercambiando] = useState(false);
   const tono = activa ? TONO_ACTIVA : TONO_PROXIMA;
   const nombre = (campo: string) => g?.nombres?.[campo] ?? "";
 
@@ -152,6 +158,25 @@ function Semana({
               <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
                 Soporte técnico
               </span>
+              {puedeIntercambiar && onIntercambiar ? (
+                <button
+                  type="button"
+                  disabled={intercambiando}
+                  onClick={async () => {
+                    setIntercambiando(true);
+                    try {
+                      await onIntercambiar();
+                    } finally {
+                      setIntercambiando(false);
+                    }
+                  }}
+                  title="Activar al suplente: pasa a principal y el principal queda de suplente"
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10.5px] font-bold text-slate-600 transition hover:border-[#4FAEB2]/60 hover:text-[#2F6E71] disabled:opacity-60"
+                >
+                  {intercambiando ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <ArrowUpDown className="h-3 w-3" aria-hidden />}
+                  Intercambiar
+                </button>
+              ) : null}
             </div>
             <div className="space-y-2.5">
               <Persona etiqueta="Principal" nombre={nombre("soporte_principal_id")} tono={tono} />
@@ -181,6 +206,7 @@ export default function GuardiasBoton() {
   const [error, setError] = useState<string | null>(null);
   const [esAdmin, setEsAdmin] = useState(false);
   const [guardias, setGuardias] = useState<Guardia[]>([]);
+  const [usuarioId, setUsuarioId] = useState<string | null>(null);
 
   const estaSemana = lunesDeEstaSemana();
   const proxima = sumarSemanas(estaSemana, 1);
@@ -194,6 +220,7 @@ export default function GuardiasBoton() {
       if (res.ok && j?.success && j.data) {
         setGuardias(j.data.guardias);
         setEsAdmin(j.data.es_admin);
+        setUsuarioId(j.data.usuario_id ?? null);
       } else {
         setError(j?.error ?? "No se pudieron cargar las guardias");
       }
@@ -220,6 +247,58 @@ export default function GuardiasBoton() {
   }, [abierto]);
 
   const deLaSemana = (lunes: string) => guardias.find((g) => g.semana_inicio === lunes);
+
+  // Activar al suplente: admin o integrante de esa guardia, con los dos cargados.
+  const puedeIntercambiar = (g: Guardia | undefined) =>
+    Boolean(
+      g?.soporte_principal_id &&
+        g.soporte_suplente_id &&
+        (esAdmin || (usuarioId && [g.pm_id, g.soporte_principal_id, g.soporte_suplente_id].includes(usuarioId)))
+    );
+
+  const intercambiar = async (lunes: string) => {
+    const g = deLaSemana(lunes);
+    if (!g) return;
+    const motivo = window.prompt(
+      `¿Activar a ${g.nombres.soporte_suplente_id || "el suplente"} como principal?
+` +
+        `${g.nombres.soporte_principal_id || "El principal"} queda de suplente. Motivo (opcional):`,
+      ""
+    );
+    if (motivo === null) return;
+    try {
+      const res = await fetchWithSupabaseSession("/api/guardias/intercambiar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ semana_inicio: lunes, motivo }),
+      });
+      const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (!res.ok || !j?.success) {
+        // Un error acá no tiene que tapar las semanas: se avisa y listo.
+        window.alert(j?.error ?? "No se pudo intercambiar");
+        return;
+      }
+      // Se actualiza en el lugar: no hace falta volver a pedir las semanas.
+      setGuardias((lista) =>
+        lista.map((x) =>
+          x.semana_inicio !== lunes
+            ? x
+            : {
+                ...x,
+                soporte_principal_id: x.soporte_suplente_id,
+                soporte_suplente_id: x.soporte_principal_id,
+                nombres: {
+                  ...x.nombres,
+                  soporte_principal_id: x.nombres.soporte_suplente_id ?? "",
+                  soporte_suplente_id: x.nombres.soporte_principal_id ?? "",
+                },
+              }
+        )
+      );
+    } catch {
+      window.alert("No se pudo intercambiar");
+    }
+  };
 
   return (
     <>
@@ -296,6 +375,8 @@ export default function GuardiasBoton() {
                     titulo="Esta semana"
                     insignia="Guardia activa"
                     activa
+                    puedeIntercambiar={puedeIntercambiar(deLaSemana(estaSemana))}
+                    onIntercambiar={() => intercambiar(estaSemana)}
                   />
                   <Semana
                     g={deLaSemana(proxima)}
@@ -303,6 +384,8 @@ export default function GuardiasBoton() {
                     titulo="Próxima semana"
                     insignia="Próxima guardia"
                     activa={false}
+                    puedeIntercambiar={puedeIntercambiar(deLaSemana(proxima))}
+                    onIntercambiar={() => intercambiar(proxima)}
                   />
                 </>
               )}

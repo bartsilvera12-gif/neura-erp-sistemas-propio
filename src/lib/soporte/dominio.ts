@@ -134,11 +134,37 @@ export function mensajeEstadoFinal(ticket: { numero: number; estado_codigo: stri
   return `Error, Ticket #${ticket.numero} ${nombreEstado}: ya no pueden realizarse cambios de estado`;
 }
 
+/** Cierre de la franja de guardia: 20:00, hora de Paraguay. */
+const FIN_GUARDIA_MIN = 20 * 60;
+
+/**
+ * ¿Está activa la guardia? (Proceso de Gestión de Soporte v1.4, §11.1)
+ *
+ * Se activa cuando termina la jornada y cubre hasta las 20:00: lunes a viernes
+ * de 17 a 20, sábados de 12 a 20 y domingos de 8 a 20. Antes de las 8 y después
+ * de las 20 no hay guardia: rige el proceso ordinario.
+ */
+export function enFranjaDeGuardia(ahora: number = Date.now()): boolean {
+  const local = new Date(ahora + TZ_OFFSET_MIN * 60_000);
+  const dia = local.getUTCDay(); // 0 = domingo
+  const minuto = local.getUTCHours() * 60 + local.getUTCMinutes();
+  // Domingo no hay jornada: la guardia cubre de 8 a 20.
+  const finJornada = dia === 0 ? 8 * 60 : dia === 6 ? 12 * 60 : 17 * 60;
+  return minuto >= finJornada && minuto < FIN_GUARDIA_MIN;
+}
+
 /** Estados a los que no se puede pasar con subtareas sin finalizar. */
 export const ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS = ["resuelto", "cerrado"];
 
-export function transicionPermitida(desde: string, hacia: string): boolean {
+/**
+ * En horario de guardia no hay QA: un ticket en proceso (o reabierto) puede
+ * pasar directo a Resuelto, sin "Listo para revisión".
+ */
+export const ESTADOS_RESOLUBLES_EN_GUARDIA = ["en_proceso", "reabierto"];
+
+export function transicionPermitida(desde: string, hacia: string, opciones: { guardia?: boolean } = {}): boolean {
   if (desde === hacia) return false;
+  if (opciones.guardia && hacia === "resuelto" && ESTADOS_RESOLUBLES_EN_GUARDIA.includes(desde)) return true;
   const reglas = TRANSICIONES[desde];
   if (!reglas) return true;
   if (!(hacia in TRANSICIONES)) return true;
@@ -156,6 +182,7 @@ export function eventoDeTransicion(desde: string, hacia: string): string {
   if (hacia === "listo_revision") return "entrega_qa";
   if (desde === "listo_revision" && hacia === "reabierto") return "devolucion_qa";
   if (desde === "listo_revision" && hacia === "resuelto") return "confirmacion_qa";
+  if (hacia === "resuelto" && ESTADOS_RESOLUBLES_EN_GUARDIA.includes(desde)) return "resuelto_guardia";
   if (hacia === "cerrado") return "cierre";
   if (hacia === "cancelado") return "cancelacion";
   if (hacia === "reabierto") return "reapertura";

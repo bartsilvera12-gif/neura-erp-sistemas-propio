@@ -4,7 +4,7 @@ import type { TipoGestion } from "@/lib/gestion-clientes/types";
 import { prepararTicket, registrarAltaTicket } from "@/lib/soporte/crear-ticket";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import { leerCatalogos, personasDeEmpresa } from "@/lib/soporte/servidor";
-import { puedeEstarACargo } from "@/lib/soporte/dominio";
+import { enFranjaDeGuardia, puedeEstarACargo } from "@/lib/soporte/dominio";
 import { enHorarioLaboral, TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
 import { lunesDe } from "@/lib/guardias/semana";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
@@ -27,31 +27,14 @@ const RESPONSABLE_HORARIO_LABORAL: Record<string, string> = {
   "9fd29108-4b0f-4faf-9eee-c509f6227d47": "5566a978-05b6-4300-8df1-b35e6b7d74dc",
 };
 
+export { enFranjaDeGuardia };
+
 export type MotivoAsignacion = "ordinario" | "guardia" | "guardia_sin_asignar";
 
 export type AsignacionAutomatica = {
   responsableId: string | null;
   motivo: MotivoAsignacion;
 };
-
-/** Cierre de la franja de guardia: 20:00, hora de Paraguay. */
-const FIN_GUARDIA_MIN = 20 * 60;
-
-/**
- * ¿Está activa la guardia? (Proceso de Gestión de Soporte v1.4, §11.1)
- *
- * Se activa cuando termina la jornada y cubre hasta las 20:00: lunes a viernes
- * de 17 a 20, sábados de 12 a 20 y domingos de 8 a 20. Antes de las 8 y después
- * de las 20 no hay guardia: rige el proceso ordinario.
- */
-export function enFranjaDeGuardia(ahora: number = Date.now()): boolean {
-  const local = new Date(ahora + TZ_OFFSET_MIN * 60_000);
-  const dia = local.getUTCDay(); // 0 = domingo
-  const minuto = local.getUTCHours() * 60 + local.getUTCMinutes();
-  // Domingo no hay jornada: la guardia cubre de 8 a 20.
-  const finJornada = dia === 0 ? 8 * 60 : dia === 6 ? 12 * 60 : 17 * 60;
-  return minuto >= finJornada && minuto < FIN_GUARDIA_MIN;
-}
 
 /**
  * Quién recibe un ticket nuevo. Quien lo carga no elige.

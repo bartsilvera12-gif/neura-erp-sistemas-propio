@@ -8,6 +8,7 @@ import {
   puedeEstarACargo,
   requiereResponsable,
   slaDe,
+  enFranjaDeGuardia,
   transicionPermitida,
   vencimientoSla,
   type TicketFila,
@@ -221,7 +222,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if ("estado_codigo" in body && body.estado_codigo !== actual.estado_codigo) {
       const hacia = cat.estados.find((e) => e.activo && e.codigo === body.estado_codigo);
       if (!hacia) return falla("Estado inválido");
-      if (!transicionPermitida(actual.estado_codigo, hacia.codigo)) {
+      if (!transicionPermitida(actual.estado_codigo, hacia.codigo, { guardia: enFranjaDeGuardia() })) {
         const desde = cat.estados.find((e) => e.codigo === actual.estado_codigo)?.nombre ?? actual.estado_codigo;
         const final = mensajeEstadoFinal(actual, desde);
         if (final) return falla(final);

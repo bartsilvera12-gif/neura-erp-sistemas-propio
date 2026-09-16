@@ -59,7 +59,7 @@ export async function GET(request: Request, { params }: Params) {
 
     const traducir = (evento: string, v: string | null): string | null => {
       if (v == null) return null;
-      if (["cambio_estado", "entrega_qa", "devolucion_qa", "confirmacion_qa", "cierre", "cancelacion", "reapertura", "creacion"].includes(evento)) {
+      if (["cambio_estado", "entrega_qa", "devolucion_qa", "confirmacion_qa", "resuelto_guardia", "cierre", "cancelacion", "reapertura", "creacion"].includes(evento)) {
         return cat.estados.find((e) => e.codigo === v)?.nombre ?? v;
       }
       if (evento === "cambio_prioridad") return cat.prioridades.find((p) => p.codigo === v)?.nombre ?? v;

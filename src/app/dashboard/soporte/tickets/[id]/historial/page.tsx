@@ -86,6 +86,8 @@ function describir(e: Evento): Vista {
       return estado("QA pidió cambios", XCircle, "bg-rose-100 text-rose-700", "qa");
     case "confirmacion_qa":
       return estado("Resuelto tras la revisión", CheckCircle2, "bg-emerald-100 text-emerald-700");
+    case "resuelto_guardia":
+      return { ...estado("Resuelto en guardia", CheckCircle2, "bg-emerald-100 text-emerald-700"), nota: "Horario de guardia: sin revisión de QA" };
     case "cierre":
       return estado("Ticket cerrado", Lock, "bg-slate-200 text-slate-700");
     case "cancelacion":

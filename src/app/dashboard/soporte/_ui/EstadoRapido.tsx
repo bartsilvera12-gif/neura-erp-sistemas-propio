@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight, Hand, Loader2, Lock, UserRound } from "lucide-react";
-import { TRANSICIONES, mensajeEstadoFinal, puedeEstarACargo, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
+import { TRANSICIONES, enFranjaDeGuardia, mensajeEstadoFinal, puedeEstarACargo, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte } from "./api";
 import { Aviso, TONO_AREA } from "./ui";
@@ -28,7 +28,9 @@ export default function EstadoRapido() {
   const [guardando, setGuardando] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const destinos = catalogos.estados.filter((e) => e.activo && transicionPermitida(t.estado_codigo, e.codigo));
+  // En horario de guardia (sin QA) se puede resolver directo desde En proceso.
+  const [guardia] = useState(() => enFranjaDeGuardia(Date.now()));
+  const destinos = catalogos.estados.filter((e) => e.activo && transicionPermitida(t.estado_codigo, e.codigo, { guardia }));
   const final = mensajeEstadoFinal(t, t.estado_nombre);
 
   const guardar = async (clave: string, json: Record<string, unknown>) => {
@@ -72,7 +74,13 @@ export default function EstadoRapido() {
                     key={d.codigo}
                     type="button"
                     disabled={guardando != null}
-                    title={faltaResponsable ? "Primero elegí quién queda a cargo" : PISTA[d.codigo]}
+                    title={
+                      faltaResponsable
+                        ? "Primero elegí quién queda a cargo"
+                        : guardia && d.codigo === "resuelto" && t.estado_codigo !== "listo_revision"
+                          ? "Horario de guardia: se resuelve sin revisión de QA"
+                          : PISTA[d.codigo]
+                    }
                     onClick={() =>
                       faltaResponsable
                         ? setError(`Para pasar a "${d.nombre}" elegí primero quién queda a cargo.`)

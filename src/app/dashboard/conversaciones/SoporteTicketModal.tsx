@@ -7,6 +7,8 @@ import { CalendarCheck, CheckCircle2, Headset, Loader2, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { fechaHoraPy, vencimientoSla, type SoporteClasificacion, type SoporteTipo } from "@/lib/soporte/dominio";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
+import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
+import { subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 
 type Persona = { id: string; nombre: string; area: string };
 type Datos = {
@@ -69,6 +71,8 @@ export default function SoporteTicketModal({
   const [nivel, setNivel] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [archivos, setArchivos] = useState<File[]>([]);
+  const [avisoArchivos, setAvisoArchivos] = useState<string | null>(null);
   const [creado, setCreado] = useState<{ id: string; numero: number } | null>(null);
 
   useEffect(() => {
@@ -153,6 +157,12 @@ export default function SoporteTicketModal({
           descripcion,
         }),
       });
+      // El ticket ya existe: si alguna evidencia falla se avisa y se puede volver
+      // a subir desde la pestaña Archivos del ticket.
+      if (archivos.length) {
+        const sub = await subirArchivos(r.id, archivos);
+        if (sub.errores.length) setAvisoArchivos(`${sub.errores.length} archivo(s) no se subieron: ${sub.errores.join(" · ")}`);
+      }
       setCreado(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear el ticket");
@@ -192,6 +202,7 @@ export default function SoporteTicketModal({
             <CheckCircle2 className="h-12 w-12 text-emerald-500" aria-hidden />
             <p className="text-lg font-semibold text-slate-900">Ticket #{creado.numero} creado</p>
             <p className="text-sm text-slate-500">Quedó en Soporte como Pendiente y en el historial del cliente.</p>
+            {avisoArchivos ? <p className="text-xs font-medium text-amber-700">{avisoArchivos}</p> : null}
             <div className="mt-2 flex gap-2">
               <Link
                 href={`/dashboard/soporte/tickets/${creado.id}`}
@@ -313,6 +324,10 @@ export default function SoporteTicketModal({
                   placeholder="Qué pasa, desde cuándo, qué mensaje aparece…"
                 />
               </div>
+              <div>
+                <span className={claseEtiqueta}>Evidencias</span>
+                <ZonaArchivos archivos={archivos} onCambio={setArchivos} compacta deshabilitada={guardando} />
+              </div>
               {datos.responsable ? (
                 <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">
                   Se asigna a <strong className="text-slate-800">{datos.responsable.nombre}</strong> (Desarrollo de Soporte).
@@ -332,7 +347,7 @@ export default function SoporteTicketModal({
                 className="inline-flex items-center gap-2 rounded-xl bg-[#4FAEB2] px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 hover:bg-[#3F8E91] disabled:opacity-60"
               >
                 {guardando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                Crear ticket
+                {guardando && archivos.length ? "Creando y subiendo…" : "Crear ticket"}
               </button>
             </div>
           </>

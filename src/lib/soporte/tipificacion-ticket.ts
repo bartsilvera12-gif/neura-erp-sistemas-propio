@@ -3,7 +3,8 @@ import { registrarHistorialCliente } from "@/lib/clientes/historial";
 import type { TipoGestion } from "@/lib/gestion-clientes/types";
 import { prepararTicket, registrarAltaTicket } from "@/lib/soporte/crear-ticket";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
-import { leerCatalogos, personasDeEmpresa } from "@/lib/soporte/servidor";
+import { clientesPorId, leerCatalogos, personasDeEmpresa } from "@/lib/soporte/servidor";
+import { avisarSoporte } from "@/lib/soporte/subtareas";
 import { enFranjaDeGuardia, puedeEstarACargo } from "@/lib/soporte/dominio";
 import { enHorarioLaboral, TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
 import { lunesDe } from "@/lib/guardias/semana";
@@ -196,6 +197,18 @@ export async function crearTipificacionConTicket(
       },
     }),
   ]);
+
+  // Aviso en la campanita a quien le cayó el ticket (no-throwing; si lo cargó
+  // la misma persona no se avisa).
+  const clienteNombre = (await clientesPorId(soporte.sb, soporte.empresaId, [args.clienteId])).get(args.clienteId) ?? "Cliente";
+  await avisarSoporte(soporte, {
+    usuarioId: prep.ticket.fila.responsable_id,
+    titulo: `Nuevo ticket #${r.numero} · ${tipoNombre}${prep.ticket.resumen.clasificacion_nombre ? ` ${prep.ticket.resumen.clasificacion_nombre}` : ""}${
+      asignacion.motivo === "guardia" ? " (guardia)" : ""
+    }`,
+    cuerpo: `${clienteNombre} · ${prep.ticket.fila.asunto}`,
+    ticketId: r.ticket_id,
+  });
 
   return { ok: true, tipificacion_id: r.tipificacion_id, ticket_id: r.ticket_id, numero: r.numero };
 }

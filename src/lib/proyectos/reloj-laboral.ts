@@ -192,6 +192,22 @@ export function sumarMsLaborables(desdeMs: number, ms: number): number {
   return local - TZ_OFFSET_MIN * MIN_MS;
 }
 
+/**
+ * ¿El rango [desde, hasta] entra completo en UNA jornada laboral?
+ * (lun–vie 8–17, sáb 8–12; domingo no). Para agendar algo "en horario".
+ */
+export function rangoEnHorarioLaboral(desdeMs: number, hastaMs: number): boolean {
+  if (!Number.isFinite(desdeMs) || !Number.isFinite(hastaMs) || hastaMs <= desdeMs) return false;
+  const local = aLocal(desdeMs);
+  const delta = local - ANCLA_LOCAL_MS;
+  const enSemana = ((delta % SEMANA_MS) + SEMANA_MS) % SEMANA_MS;
+  const dia = Math.floor(enSemana / DIA_MS);
+  const ventana = HORARIO_LABORAL[dia];
+  if (!ventana) return false;
+  const inicioDia = local - (enSemana - dia * DIA_MS);
+  return local >= inicioDia + ventana[0] * MIN_MS && aLocal(hastaMs) <= inicioDia + ventana[1] * MIN_MS;
+}
+
 /** ¿El instante cae dentro del horario de trabajo? Sirve para explicar un contador congelado. */
 export function enHorarioLaboral(ms: number = Date.now()): boolean {
   const local = aLocal(ms);

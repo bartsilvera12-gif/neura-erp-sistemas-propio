@@ -3,6 +3,10 @@ import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { fechaObjetivoAIso } from "@/lib/soporte/dominio";
 import { buscarConflictoHorario, mensajeConflicto } from "@/lib/agenda/solapes";
 import { guardarResponsables } from "@/lib/agenda/responsables";
+import { rangoEnHorarioLaboral } from "@/lib/proyectos/reloj-laboral";
+
+export const HORARIO_CAPACITACION =
+  "La capacitación tiene que entrar en horario laboral: lunes a viernes de 8 a 17 y sábados de 8 a 12.";
 
 /** Tipo de cita en Agenda para las capacitaciones que salen de una tipificación. */
 export const TIPO_CITA_CAPACITACION = "capacitacion";
@@ -32,6 +36,9 @@ export function leerAgendaCapacitacion(
   if (!equipo.some((p) => p.id === responsableId)) return { ok: false, mensaje: "Elegí quién da la capacitación" };
   const ubicacion = typeof a.ubicacion === "string" && a.ubicacion.trim() ? a.ubicacion.trim().slice(0, 500) : null;
   const finIso = new Date(Date.parse(inicioIso) + duracion * 60_000).toISOString();
+  if (!rangoEnHorarioLaboral(Date.parse(inicioIso), Date.parse(finIso))) {
+    return { ok: false, mensaje: HORARIO_CAPACITACION };
+  }
   return { ok: true, agenda: { inicioIso, finIso, responsableId, ubicacion } };
 }
 

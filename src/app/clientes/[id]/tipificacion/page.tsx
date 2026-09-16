@@ -47,6 +47,7 @@ import { fechaHoraPy, vencimientoSla, type SoporteClasificacion, type SoporteTip
 import { apiSoporte, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraSelect";
+import { rangoEnHorarioLaboral } from "@/lib/proyectos/reloj-laboral";
 import AccesosProyecto from "@/app/dashboard/soporte/_ui/AccesosProyecto";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
@@ -276,6 +277,8 @@ export default function TipificacionPage() {
   // Quien da la capacitación: por defecto, quien la registra.
   const capacitador = agenda.responsable_id || listado?.usuario_actual.id || "";
   const capacitadorNombre = listado?.equipo.find((p) => p.id === capacitador)?.nombre ?? null;
+  const inicioCapacitacionMs = agenda.inicio ? Date.parse(`${agenda.inicio}:00-03:00`) : NaN;
+  const capacitacionEnHorario = rangoEnHorarioLaboral(inicioCapacitacionMs, inicioCapacitacionMs + agenda.duracion_min * 60_000);
 
   const cargarListado = useCallback(async () => {
     const res = await fetchWithSupabaseSession(`/api/clientes/${id}/tipificaciones`, { cache: "no-store" });
@@ -379,6 +382,9 @@ export default function TipificacionPage() {
     if (!form.observacion.trim()) return setError("La observación es obligatoria.");
 
     if (esCapacitacion && agendar && !agenda.inicio) return setError("Elegí fecha y hora de la capacitación, o desmarcá “Agendar”.");
+    if (esCapacitacion && agendar && !capacitacionEnHorario) {
+      return setError("La capacitación tiene que entrar en horario laboral: lunes a viernes de 8 a 17 y sábados de 8 a 12.");
+    }
 
     if (esError) {
       if (!listado?.puede_soporte) return setError("Tu usuario no puede cargar tickets de Soporte.");
@@ -569,7 +575,15 @@ export default function TipificacionPage() {
                 {agendar ? (
                   <>
                     <div className="grid gap-5 lg:grid-cols-2">
-                      <Campo etiqueta="Fecha y hora" requerido>
+                      <Campo
+                        etiqueta="Fecha y hora"
+                        requerido
+                        ayuda={
+                          agenda.inicio && !capacitacionEnHorario
+                            ? "Fuera de horario: lun a vie 8 a 17, sáb 8 a 12."
+                            : "Horario laboral: lun a vie 8 a 17, sáb 8 a 12."
+                        }
+                      >
                         <FechaHoraSelect ariaLabel="Fecha y hora de la capacitación" value={agenda.inicio} onChange={(v) => { setError(null); setAgenda((a) => ({ ...a, inicio: v })); }} />
                       </Campo>
                       <Campo etiqueta="Duración" requerido>

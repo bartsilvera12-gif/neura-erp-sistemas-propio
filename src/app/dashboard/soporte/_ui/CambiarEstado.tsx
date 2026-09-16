@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import { eventoDeTransicion, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
+import { eventoDeTransicion, mensajeEstadoFinal, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { apiSoporte } from "./api";
 import { useTicket } from "./TicketContexto";
 import { Aviso, Boton, Insignia, TONO_AREA, claseEtiqueta, claseInput } from "./ui";
@@ -111,7 +111,7 @@ export default function CambiarEstado({ alCerrar }: { alCerrar: () => void }) {
 
         <div className="space-y-4 px-5 py-4">
           {destinos.length === 0 ? (
-            <Aviso tipo="info">Desde &ldquo;{ticket.estado_nombre}&rdquo; no hay pasos siguientes en el flujo.</Aviso>
+            <Aviso tipo="info">{mensajeEstadoFinal(ticket, ticket.estado_nombre) ?? `Desde "${ticket.estado_nombre}" no hay pasos siguientes en el flujo.`}</Aviso>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2 text-[13px]">

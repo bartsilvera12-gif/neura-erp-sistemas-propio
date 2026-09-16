@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRightCircle, FileText, Info, MessageSquare, type LucideIcon } from "lucide-react";
+import { ArrowRightCircle, FileText, Info, Lock, MessageSquare, type LucideIcon } from "lucide-react";
+import { mensajeEstadoFinal } from "@/lib/soporte/dominio";
 import { useTicket } from "../../_ui/TicketContexto";
 import CambiarEstado from "../../_ui/CambiarEstado";
 import AccesosProyecto from "../../_ui/AccesosProyecto";
@@ -82,7 +83,13 @@ export default function TicketDescripcionPage() {
           ) : (
             <p className="mt-3 text-[13px] text-slate-500">{activo ? "Todavía no tiene responsable." : "El ticket está cerrado."}</p>
           )}
-          <Boton className="mt-4 w-full" onClick={() => setCambiando(true)}>Cambiar estado</Boton>
+          {mensajeEstadoFinal(t, t.estado_nombre) ? (
+            <p className="mt-4 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5 text-[12.5px] font-medium text-slate-600">
+              <Lock className="h-4 w-4 shrink-0" aria-hidden /> {mensajeEstadoFinal(t, t.estado_nombre)}
+            </p>
+          ) : (
+            <Boton className="mt-4 w-full" onClick={() => setCambiando(true)}>Cambiar estado</Boton>
+          )}
         </section>
 
         <Tarjeta titulo="Información adicional" icono={Info} tono="indigo" padding="px-5 py-2">

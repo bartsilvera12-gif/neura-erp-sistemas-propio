@@ -3,6 +3,7 @@ import {
   ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS,
   TICKET_CAMPOS,
   eventoDeTransicion,
+  mensajeEstadoFinal,
   requiereResponsable,
   slaDe,
   transicionPermitida,
@@ -210,6 +211,8 @@ export async function PATCH(request: Request, { params }: Params) {
       if (!hacia) return falla("Estado inválido");
       if (!transicionPermitida(actual.estado_codigo, hacia.codigo)) {
         const desde = cat.estados.find((e) => e.codigo === actual.estado_codigo)?.nombre ?? actual.estado_codigo;
+        const final = mensajeEstadoFinal(actual, desde);
+        if (final) return falla(final);
         return falla(`No se puede pasar de "${desde}" a "${hacia.nombre}"`);
       }
       if (requiereResponsable(hacia) && !responsableFinal) {

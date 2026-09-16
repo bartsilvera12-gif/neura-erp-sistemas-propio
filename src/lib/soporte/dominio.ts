@@ -127,6 +127,13 @@ export const TRANSICIONES: Record<string, string[]> = {
   cerrado: [],
 };
 
+/** Mensaje de un estado final: desde acá ya no hay cambios de estado. */
+export function mensajeEstadoFinal(ticket: { numero: number; estado_codigo: string }, nombreEstado: string): string | null {
+  const reglas = TRANSICIONES[ticket.estado_codigo];
+  if (!reglas || reglas.length > 0) return null;
+  return `Error, Ticket #${ticket.numero} ${nombreEstado}: ya no pueden realizarse cambios de estado`;
+}
+
 /** Estados a los que no se puede pasar con subtareas sin finalizar. */
 export const ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS = ["resuelto", "cerrado"];
 

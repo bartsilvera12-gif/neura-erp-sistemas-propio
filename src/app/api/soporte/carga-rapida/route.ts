@@ -118,7 +118,6 @@ export async function POST(request: Request) {
       datosTicket: {
         proyecto_id: body.proyecto_id,
         clasificacion_codigo: body.clasificacion_codigo,
-        asunto: body.asunto,
         descripcion: body.descripcion,
       },
       // Como en la tipificación: el ticket siempre va sobre un proyecto del cliente.

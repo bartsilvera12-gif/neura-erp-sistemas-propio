@@ -405,7 +405,6 @@ export default function TipificacionPage() {
       if (!listado?.puede_soporte) return setError("Tu usuario no puede cargar tickets de Soporte.");
       const faltan: string[] = [];
       if (!ticket.proyecto_id) faltan.push("proyecto / servicio afectado");
-      if (!ticket.asunto.trim()) faltan.push("asunto");
       if (!ticket.descripcion.trim()) faltan.push(esCambio ? "descripción del cambio" : "descripción del error");
       if (clasificaciones.length && !ticket.clasificacion_codigo) faltan.push("clasificación");
       if (faltan.length) return setError(`Completá: ${faltan.join(", ")}.`);
@@ -679,12 +678,9 @@ export default function TipificacionPage() {
                       </Seccion>
 
                       <Seccion titulo={esCambio ? "Detalle del cambio" : "Detalle del error"} detalle={esCambio ? "Qué hay que cambiar y en qué módulo" : "Qué pasa y en qué módulo"} icono={FileText} tono="violeta">
-                        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                        <div className="max-w-md">
                           <Campo etiqueta="Módulo afectado">
                             <input className={claseInput} value={ticket.modulo} maxLength={120} onChange={(e) => setCampoTicket("modulo", e.target.value)} placeholder="Ej.: Facturación electrónica" />
-                          </Campo>
-                          <Campo etiqueta="Asunto" requerido>
-                            <input className={claseInput} value={ticket.asunto} maxLength={200} onChange={(e) => setCampoTicket("asunto", e.target.value)} placeholder={esCambio ? "Ej.: Cambiar el logo de la factura" : "Ej.: No permite emitir factura"} />
                           </Campo>
                         </div>
                         <Campo etiqueta={esCambio ? "Descripción del cambio" : "Descripción del error"} requerido>

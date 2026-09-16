@@ -62,7 +62,6 @@ export default function SoporteTicketModal({
   const [proyecto, setProyecto] = useState("");
   const [tipo, setTipo] = useState("error");
   const [nivel, setNivel] = useState("");
-  const [asunto, setAsunto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [creado, setCreado] = useState<{ id: string; numero: number } | null>(null);
@@ -109,7 +108,6 @@ export default function SoporteTicketModal({
   if (!proyecto) faltan.push("proyecto");
   if (!tipo) faltan.push("tipo");
   if (niveles.length > 0 && !nivel) faltan.push("clasificación");
-  if (!asunto.trim()) faltan.push("asunto");
   if (!descripcion.trim()) faltan.push("descripción");
 
   const guardar = async () => {
@@ -129,7 +127,6 @@ export default function SoporteTicketModal({
           proyecto_id: proyecto || null,
           tipo_codigo: tipo,
           clasificacion_codigo: nivel || null,
-          asunto,
           descripcion,
         }),
       });
@@ -270,10 +267,6 @@ export default function SoporteTicketModal({
                 </div>
               ) : null}
 
-              <div>
-                <span className={claseEtiqueta}>Asunto *</span>
-                <input className={claseCampo} value={asunto} maxLength={200} onChange={(e) => setAsunto(e.target.value)} placeholder="Ej.: No permite emitir factura" />
-              </div>
               <div>
                 <span className={claseEtiqueta}>Descripción *</span>
                 <textarea

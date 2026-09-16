@@ -33,6 +33,19 @@ export function gestionDeTipoTicket(tipoCodigo: unknown): TipoGestion | null {
   return (par?.[0] as TipoGestion | undefined) ?? null;
 }
 
+/**
+ * Asunto del ticket, sacado de la descripción: su primera línea, cortada en
+ * una palabra. Quien carga ya no escribe un asunto aparte.
+ */
+export function asuntoDesdeDescripcion(descripcion: unknown, max = 90): string {
+  const texto = typeof descripcion === "string" ? descripcion.trim() : "";
+  const linea = texto.split(/\r?\n/).find((l) => l.trim())?.trim().replace(/\s+/g, " ") ?? "";
+  if (linea.length <= max) return linea;
+  const corte = linea.slice(0, max);
+  const espacio = corte.lastIndexOf(" ");
+  return `${(espacio > max * 0.6 ? corte.slice(0, espacio) : corte).trim()}…`;
+}
+
 export type ResultadoAlta =
   | { ok: true; tipificacion_id: string; ticket_id: string; numero: number }
   | { ok: false; mensaje: string; status: number };
@@ -66,6 +79,7 @@ export async function crearTipificacionConTicket(
     soporte,
     {
       ...args.datosTicket,
+      asunto: asuntoDesdeDescripcion(args.datosTicket.descripcion),
       cliente_id: args.clienteId,
       tipo_codigo: tipoCodigo,
       prioridad_codigo: args.datosTicket.prioridad_codigo ?? "normal",

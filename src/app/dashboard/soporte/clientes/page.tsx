@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Building2, Search } from "lucide-react";
 import { apiSoporte, fecha, fechaHora } from "../_ui/api";
 import { Aviso, Avatar, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseInput } from "../_ui/ui";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 type FilaCliente = {
   cliente_id: string;
@@ -96,7 +97,7 @@ export default function SoporteClientesPage() {
                       <td className="max-w-[280px] px-3 py-3">
                         {f.ultimo ? (
                           <Link href={`/dashboard/soporte/tickets/${f.ultimo.id}`} onClick={(e) => e.stopPropagation()} className="block truncate text-slate-700 no-underline hover:text-[#2F6E71]">
-                            <span className="tabular-nums text-slate-400">#{f.ultimo.numero}</span> {f.ultimo.asunto}
+                            <span className="tabular-nums text-slate-400">{numeroTicket(f.ultimo.numero)}</span> {f.ultimo.asunto}
                           </Link>
                         ) : "—"}
                       </td>

@@ -9,6 +9,7 @@ import { FechaSelect } from "@/components/ui/FechaSelect";
 import { duracionCorta } from "@/lib/soporte/dominio";
 import { apiSoporte, obtenerCatalogos, obtenerClientes, type CatalogosConEquipo } from "../_ui/api";
 import { Aviso, Cargando, Encabezado, IconoTile, Pagina, TONOS, TONO_AREA, Tarjeta, TarjetaViva, Vacio, claseEtiqueta, claseInput, type Tono } from "../_ui/ui";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Conteo = { clave: string; nombre: string; cantidad: number };
 type Reporte = {
@@ -197,7 +198,7 @@ export default function SoporteReportesPage() {
                     {datos.devoluciones_qa.mas_devueltos.map((t) => (
                       <li key={t.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-[13px]">
                         <a href={`/dashboard/soporte/tickets/${t.id}`} className="min-w-0 truncate text-slate-700 no-underline hover:text-[#2F6E71]">
-                          <span className="tabular-nums text-slate-400">#{t.numero}</span> {t.asunto}
+                          <span className="tabular-nums text-slate-400">{numeroTicket(t.numero)}</span> {t.asunto}
                         </a>
                         <span className="shrink-0 font-semibold tabular-nums text-rose-600">{t.devoluciones}</span>
                       </li>

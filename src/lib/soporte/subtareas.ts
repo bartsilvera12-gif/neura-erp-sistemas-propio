@@ -2,6 +2,7 @@ import "server-only";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import { subtareaAbierta } from "@/lib/soporte/dominio";
 import { personasDeEmpresa, registrarHistorial } from "@/lib/soporte/servidor";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 export type SubtareaFila = {
   id: string;
@@ -94,7 +95,7 @@ export async function abrirRevisionQa(
     });
     await avisarSoporte(auth, {
       usuarioId: sub.asignado_id,
-      titulo: `Ticket #${ticket.numero} corregido, listo para revisar de nuevo`,
+      titulo: `Ticket ${numeroTicket(ticket.numero)} corregido, listo para revisar de nuevo`,
       cuerpo: ticket.asunto,
       ticketId: ticket.id,
       subtareaId: sub.id,
@@ -143,7 +144,7 @@ export async function abrirRevisionQa(
   });
   await avisarSoporte(auth, {
     usuarioId: sub.asignado_id,
-    titulo: `Ticket #${ticket.numero} listo para revisión`,
+    titulo: `Ticket ${numeroTicket(ticket.numero)} listo para revisión`,
     cuerpo: ticket.asunto,
     ticketId: ticket.id,
     subtareaId: sub.id,

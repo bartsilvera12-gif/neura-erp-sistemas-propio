@@ -127,11 +127,17 @@ export const TRANSICIONES: Record<string, string[]> = {
   cerrado: [],
 };
 
+/** Número visible del ticket, con cuatro dígitos: 1 → "#0001". */
+export function numeroTicket(numero: number | string | null | undefined): string {
+  const n = Number(numero);
+  return Number.isFinite(n) && n > 0 ? `#${String(Math.trunc(n)).padStart(4, "0")}` : "#—";
+}
+
 /** Mensaje de un estado final: desde acá ya no hay cambios de estado. */
 export function mensajeEstadoFinal(ticket: { numero: number; estado_codigo: string }, nombreEstado: string): string | null {
   const reglas = TRANSICIONES[ticket.estado_codigo];
   if (!reglas || reglas.length > 0) return null;
-  return `Error, Ticket #${ticket.numero} ${nombreEstado}: ya no pueden realizarse cambios de estado`;
+  return `Error, Ticket ${numeroTicket(ticket.numero)} ${nombreEstado}: ya no pueden realizarse cambios de estado`;
 }
 
 /** Cierre de la franja de guardia: 20:00, hora de Paraguay. */

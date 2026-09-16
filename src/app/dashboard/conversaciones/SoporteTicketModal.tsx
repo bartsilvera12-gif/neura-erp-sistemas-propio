@@ -9,6 +9,7 @@ import { fechaHoraPy, vencimientoSla, type SoporteClasificacion, type SoporteTip
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
 import { subirArchivos } from "@/app/dashboard/soporte/_ui/api";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Datos = {
   tipos: SoporteTipo[];
@@ -199,7 +200,7 @@ export default function SoporteTicketModal({
         {creado ? (
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
             <CheckCircle2 className="h-12 w-12 text-emerald-500" aria-hidden />
-            <p className="text-lg font-semibold text-slate-900">Ticket #{creado.numero} creado</p>
+            <p className="text-lg font-semibold text-slate-900">Ticket {numeroTicket(creado.numero)} creado</p>
             <p className="text-sm text-slate-500">Quedó en Soporte como Pendiente y en el historial del cliente.</p>
             {avisoArchivos ? <p className="text-xs font-medium text-amber-700">{avisoArchivos}</p> : null}
             <div className="mt-2 flex gap-2">

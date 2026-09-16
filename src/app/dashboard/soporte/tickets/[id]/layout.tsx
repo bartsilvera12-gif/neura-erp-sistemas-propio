@@ -36,6 +36,7 @@ import {
 import { TicketContext, type TicketCtx, type TicketDetalle } from "../../_ui/TicketContexto";
 import EstadoRapido from "../../_ui/EstadoRapido";
 import { Aviso, Esqueleto, Insignia, Pagina, PestanasRuta, TONOS, claseBoton, type Tono } from "../../_ui/ui";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Detalle = { ticket: TicketDetalle; contadores: TicketCtx["contadores"] };
 
@@ -165,7 +166,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
         <nav className="mb-3 flex items-center gap-1.5 text-[12px] text-slate-400" aria-label="Ruta">
           <Link href="/dashboard/soporte/tickets" className="font-semibold text-[#2F6E71] no-underline hover:underline">Tickets</Link>
           <span aria-hidden>›</span>
-          <Link href={base} className="font-medium text-slate-500 no-underline hover:underline">#{t.numero}</Link>
+          <Link href={base} className="font-medium text-slate-500 no-underline hover:underline">{numeroTicket(t.numero)}</Link>
           {editando ? (<><span aria-hidden>›</span><span>Editar</span></>) : null}
         </nav>
 
@@ -178,7 +179,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-[22px] font-bold leading-snug tracking-tight text-slate-900">
-                <span className="mr-2 rounded-lg bg-slate-900/[0.06] px-2 py-0.5 text-[16px] font-bold tabular-nums text-slate-500">#{t.numero}</span>
+                <span className="mr-2 rounded-lg bg-slate-900/[0.06] px-2 py-0.5 text-[16px] font-bold tabular-nums text-slate-500">{numeroTicket(t.numero)}</span>
                 {t.asunto}
               </h1>
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">

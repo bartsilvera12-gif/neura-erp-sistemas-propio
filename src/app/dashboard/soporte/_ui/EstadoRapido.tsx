@@ -7,6 +7,7 @@ import { useTicket } from "./TicketContexto";
 import { apiSoporte } from "./api";
 import { Aviso, TONO_AREA } from "./ui";
 import { SelectorBuscable } from "./SelectorBuscable";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 /** Pista corta de lo que pasa al elegir cada estado. */
 const PISTA: Record<string, string> = {
@@ -85,7 +86,7 @@ export default function EstadoRapido() {
                       faltaResponsable
                         ? setError(`Para pasar a "${d.nombre}" elegí primero quién queda a cargo.`)
                         : TRANSICIONES[d.codigo]?.length === 0 &&
-                            !window.confirm(`¿Pasar el ticket #${t.numero} a "${d.nombre}"? Después ya no se puede cambiar de estado.`)
+                            !window.confirm(`¿Pasar el ticket ${numeroTicket(t.numero)} a "${d.nombre}"? Después ya no se puede cambiar de estado.`)
                           ? undefined
                           : void guardar(d.codigo, { estado_codigo: d.codigo })
                     }

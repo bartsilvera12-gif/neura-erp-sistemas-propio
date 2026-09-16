@@ -18,6 +18,7 @@ import {
 } from "./api";
 import { Aviso, Avatar, Cargando, Insignia, TONOS, TONO_AREA, TONO_ESTADO, Vacio, claseInput, type Tono } from "./ui";
 import { SelectorBuscable } from "./SelectorBuscable";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 export type PestanaDef = {
   id: string;
@@ -306,7 +307,7 @@ export default function TablaTickets({
                       <td className="relative px-5 py-3.5">
                         {/* Filete del color del estado al pasar el mouse. */}
                         <span className="absolute inset-y-2 left-0 w-1 rounded-r-full opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundColor: t.estado_color }} aria-hidden />
-                        <span className="font-bold tabular-nums text-slate-400 group-hover:text-[#2F6E71]">#{t.numero}</span>
+                        <span className="font-bold tabular-nums text-slate-400 group-hover:text-[#2F6E71]">{numeroTicket(t.numero)}</span>
                       </td>
                       <td className="max-w-[340px] px-3 py-3.5">
                         <Link
@@ -376,7 +377,7 @@ export default function TablaTickets({
                   <Link href={`/dashboard/soporte/tickets/${t.id}`} className="relative block px-4 py-3 no-underline active:bg-slate-50">
                     <span className="absolute inset-y-3 left-0 w-1 rounded-r-full" style={{ backgroundColor: t.estado_color }} aria-hidden />
                     <div className="flex items-center justify-between gap-2 text-[12px] text-slate-500">
-                      <span className="font-bold tabular-nums">#{t.numero} · {t.cliente_nombre ?? "Sin cliente"}</span>
+                      <span className="font-bold tabular-nums">{numeroTicket(t.numero)} · {t.cliente_nombre ?? "Sin cliente"}</span>
                       <span className="tabular-nums">{fechaHora(t.updated_at)}</span>
                     </div>
                     <p className="mt-1 text-sm font-semibold text-slate-900">{t.asunto}</p>

@@ -65,6 +65,7 @@ import {
   type TributarioFormState,
 } from "@/components/clientes/ClientePerfilTributarioForm";
 import { ClienteDatosSifenReceptorForm } from "@/components/clientes/ClienteDatosSifenReceptorForm";
+import { numeroTicket } from "@/lib/soporte/dominio";
 // ── Estilos ────────────────────────────────────────────────────────────────────
 
 const inputClass =
@@ -2617,7 +2618,7 @@ export default function ClienteDetalleClient({
                         {h.accion === "ticket_created" && h.detalle ? (
                           <div className="mt-2 text-xs text-slate-600">
                             <p>
-                              Se creó <span className="font-semibold text-slate-800">Ticket de Soporte #{String(h.detalle.ticket_numero ?? "")}</span>{" "}
+                              Se creó <span className="font-semibold text-slate-800">Ticket de Soporte {numeroTicket(h.detalle.ticket_numero as number)}</span>{" "}
                               {h.detalle.source === "conversacion" ? "desde Conversaciones" : "desde Tipificación"}
                               {typeof h.detalle.usuario === "string" && h.detalle.usuario ? ` · por ${h.detalle.usuario}` : ""}.
                             </p>

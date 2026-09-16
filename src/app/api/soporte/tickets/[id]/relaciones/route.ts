@@ -10,6 +10,7 @@ import {
   sinPermiso,
   ticketDeEmpresa,
 } from "@/lib/soporte/servidor";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -102,7 +103,7 @@ export async function POST(request: Request, { params }: Params) {
       .eq("numero", numero)
       .maybeSingle();
     const dst = destino as { id: string; numero: number } | null;
-    if (!dst) return falla(`No existe el ticket #${numero}`);
+    if (!dst) return falla(`No existe el ticket ${numeroTicket(numero)}`);
     if (dst.id === id) return falla("Un ticket no puede relacionarse consigo mismo");
 
     // Evita el mismo vínculo cargado desde el otro ticket.
@@ -113,7 +114,7 @@ export async function POST(request: Request, { params }: Params) {
       .eq("tipo", tipo)
       .or(`and(ticket_id.eq.${id},ticket_relacionado_id.eq.${dst.id}),and(ticket_id.eq.${dst.id},ticket_relacionado_id.eq.${id})`)
       .limit(1);
-    if ((existe ?? []).length) return falla(`Ya está vinculado con #${numero}`);
+    if ((existe ?? []).length) return falla(`Ya está vinculado con ${numeroTicket(numero)}`);
 
     const { data, error } = await auth.sb
       .from("soporte_ticket_relaciones")
@@ -127,13 +128,13 @@ export async function POST(request: Request, { params }: Params) {
       empresaId: auth.empresaId,
       ticketId: id,
       usuarioId: auth.usuarioId,
-      eventos: [{ tipo_evento: "relacion_agregada", valor_nuevo: `#${dst.numero}`, metadata: { tipo, relacion_id: data.id } }],
+      eventos: [{ tipo_evento: "relacion_agregada", valor_nuevo: numeroTicket(dst.numero), metadata: { tipo, relacion_id: data.id } }],
     });
     await registrarHistorial(auth.sb, {
       empresaId: auth.empresaId,
       ticketId: dst.id,
       usuarioId: auth.usuarioId,
-      eventos: [{ tipo_evento: "relacion_agregada", valor_nuevo: `#${origen.numero}`, metadata: { tipo, relacion_id: data.id, inversa: true } }],
+      eventos: [{ tipo_evento: "relacion_agregada", valor_nuevo: numeroTicket(origen.numero), metadata: { tipo, relacion_id: data.id, inversa: true } }],
     });
     return ok({ id: data.id });
   } catch (e) {

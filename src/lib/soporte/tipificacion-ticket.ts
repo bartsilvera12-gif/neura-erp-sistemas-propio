@@ -9,6 +9,7 @@ import { enFranjaDeGuardia, puedeEstarACargo } from "@/lib/soporte/dominio";
 import { enHorarioLaboral, TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
 import { lunesDe } from "@/lib/guardias/semana";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 /**
  * Tipos de gestión que crean un ticket de Soporte, y el tipo de ticket de cada uno.
@@ -203,7 +204,7 @@ export async function crearTipificacionConTicket(
   const clienteNombre = (await clientesPorId(soporte.sb, soporte.empresaId, [args.clienteId])).get(args.clienteId) ?? "Cliente";
   await avisarSoporte(soporte, {
     usuarioId: prep.ticket.fila.responsable_id,
-    titulo: `Nuevo ticket #${r.numero} · ${tipoNombre}${prep.ticket.resumen.clasificacion_nombre ? ` ${prep.ticket.resumen.clasificacion_nombre}` : ""}${
+    titulo: `Nuevo ticket ${numeroTicket(r.numero)} · ${tipoNombre}${prep.ticket.resumen.clasificacion_nombre ? ` ${prep.ticket.resumen.clasificacion_nombre}` : ""}${
       asignacion.motivo === "guardia" ? " (guardia)" : ""
     }`,
     cuerpo: `${clienteNombre} · ${prep.ticket.fila.asunto}`,

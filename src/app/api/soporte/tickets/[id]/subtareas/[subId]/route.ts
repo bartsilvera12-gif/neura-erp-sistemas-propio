@@ -7,6 +7,7 @@ import {
 } from "@/lib/soporte/dominio";
 import { errorInesperado, falla, ok, registrarHistorial, sinPermiso, ticketDeEmpresa, type EventoHistorial } from "@/lib/soporte/servidor";
 import { SUBTAREA_CAMPOS, avisarSoporte, type SubtareaFila } from "@/lib/soporte/subtareas";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Params = { params: Promise<{ id: string; subId: string }> };
 
@@ -105,7 +106,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (hacia === "cambios_solicitados") {
       await avisarSoporte(auth, {
         usuarioId: ticket.responsable_id,
-        titulo: `QA pidió cambios en el ticket #${ticket.numero}`,
+        titulo: `QA pidió cambios en el ticket ${numeroTicket(ticket.numero)}`,
         cuerpo: comentario,
         ticketId: id,
         subtareaId: sub.id,
@@ -113,7 +114,7 @@ export async function PATCH(request: Request, { params }: Params) {
     } else if (hacia === "finalizado") {
       await avisarSoporte(auth, {
         usuarioId: ticket.responsable_id,
-        titulo: `QA finalizó la revisión del ticket #${ticket.numero}`,
+        titulo: `QA finalizó la revisión del ticket ${numeroTicket(ticket.numero)}`,
         cuerpo: ticket.asunto,
         ticketId: id,
         subtareaId: sub.id,

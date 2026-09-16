@@ -8,6 +8,7 @@ import { TIPOS_RELACION } from "@/lib/soporte/dominio";
 import { useTicket } from "../../../_ui/TicketContexto";
 import { apiSoporte, obtenerRelaciones, relacionesEnMemoria } from "../../../_ui/api";
 import { Aviso, Boton, Cargando, Insignia, Tarjeta, Vacio, claseInput } from "../../../_ui/ui";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Relacion = {
   id: string;
@@ -59,7 +60,7 @@ export default function TicketRelacionesPage() {
   };
 
   const quitar = async (r: Relacion) => {
-    if (!window.confirm(`¿Quitar el vínculo con #${r.ticket.numero}?`)) return;
+    if (!window.confirm(`¿Quitar el vínculo con ${numeroTicket(r.ticket.numero)}?`)) return;
     try {
       await apiSoporte(`/api/soporte/tickets/${ticket.id}/relaciones?relacion_id=${r.id}`, { method: "DELETE" });
       await Promise.all([cargar(true), recargar()]);
@@ -116,7 +117,7 @@ export default function TicketRelacionesPage() {
                 {lista.map((r) => (
                   <tr key={r.id} className="border-b border-slate-100 last:border-0">
                     <td className="px-5 py-3 text-slate-600">{r.tipo_nombre}{r.inversa ? <span className="text-slate-400"> (desde el otro)</span> : null}</td>
-                    <td className="px-3 py-3 tabular-nums text-slate-500">#{r.ticket.numero}</td>
+                    <td className="px-3 py-3 tabular-nums text-slate-500">{numeroTicket(r.ticket.numero)}</td>
                     <td className="max-w-[300px] px-3 py-3">
                       <Link href={`/dashboard/soporte/tickets/${r.ticket.id}`} className="font-medium text-slate-900 no-underline hover:text-[#2F6E71]">
                         {r.ticket.asunto}
@@ -125,7 +126,7 @@ export default function TicketRelacionesPage() {
                     <td className="px-3 py-3"><Insignia color={r.ticket.estado_color} punto>{r.ticket.estado_nombre}</Insignia></td>
                     <td className="px-3 py-3 text-slate-600">{r.ticket.cliente_nombre ?? "—"}</td>
                     <td className="px-5 py-3 text-right">
-                      <button type="button" onClick={() => void quitar(r)} aria-label={`Quitar vínculo con #${r.ticket.numero}`} className="inline-grid h-8 w-8 place-items-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+                      <button type="button" onClick={() => void quitar(r)} aria-label={`Quitar vínculo con ${numeroTicket(r.ticket.numero)}`} className="inline-grid h-8 w-8 place-items-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600">
                         <Unlink className="h-4 w-4" />
                       </button>
                     </td>

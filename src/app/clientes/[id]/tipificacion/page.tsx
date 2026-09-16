@@ -62,6 +62,7 @@ import {
   claseInput,
   type Tono,
 } from "@/app/dashboard/soporte/_ui/ui";
+import { numeroTicket } from "@/lib/soporte/dominio";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -523,12 +524,12 @@ export default function TipificacionPage() {
                   </span>
                   <div className="space-y-0.5 text-[14px] font-semibold text-emerald-800">
                     <p>✓ Tipificación registrada</p>
-                    <p>✓ Ticket #{creado.numero} creado correctamente</p>
+                    <p>✓ Ticket {numeroTicket(creado.numero)} creado correctamente</p>
                     {creado.aviso ? <p className="text-xs font-medium text-amber-700">{creado.aviso}</p> : null}
                   </div>
                 </div>
                 <Link href={`/dashboard/soporte/tickets/${creado.id}`} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white no-underline shadow-[0_8px_20px_-10px_rgba(5,150,105,0.9)] hover:bg-emerald-700">
-                  Ver ticket #{creado.numero} <ExternalLink className="h-4 w-4" />
+                  Ver ticket {numeroTicket(creado.numero)} <ExternalLink className="h-4 w-4" />
                 </Link>
               </div>
             </motion.div>
@@ -894,7 +895,7 @@ export default function TipificacionPage() {
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#4FAEB2]/25 bg-gradient-to-r from-[#4FAEB2]/[0.07] to-transparent px-4 py-3">
                           <div className="min-w-0">
                             <p className="text-[13px] font-bold text-slate-800">
-                              Ticket #{t.ticket.numero} <span className="font-medium text-slate-500">· {t.ticket.asunto}</span>
+                              Ticket {numeroTicket(t.ticket.numero)} <span className="font-medium text-slate-500">· {t.ticket.asunto}</span>
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-600">
                               <span className="inline-flex items-center gap-1"><FolderKanban className="h-3.5 w-3.5 text-slate-400" aria-hidden />{t.ticket.proyecto_titulo ?? "—"}</span>

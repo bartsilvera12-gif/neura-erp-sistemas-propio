@@ -55,18 +55,52 @@ export async function avisarSoporte(
 }
 
 /**
- * Al pasar a "Listo para revisión": abre la subtarea de revisión y avisa a QA.
+ * Al pasar a "Listo para revisión": deja lista la revisión de QA y le avisa.
+ *
+ *   · Si hay una revisión que pidió cambios, vuelve a Pendiente: es la misma
+ *     revisión, con su conversación, esperando que QA confirme la corrección.
+ *   · Si hay una pendiente o en proceso, se usa esa.
+ *   · Si no hay ninguna abierta, se crea "Revisión QA #N".
  *
  * Se asigna sola a la persona de QA de la empresa (hoy hay una sola; si hubiera
- * varias, la primera por nombre). Si ya hay una revisión sin terminar no se abre
- * otra: la entrega es la misma.
+ * varias, la primera por nombre).
  */
 export async function abrirRevisionQa(
   auth: SoporteContexto,
   ticket: { id: string; numero: number; asunto: string }
 ): Promise<SubtareaFila | null> {
   const abiertas = await subtareasSinFinalizar(auth, ticket.id);
-  if (abiertas.length > 0) return abiertas[0];
+  const enCurso = abiertas.find((s) => s.estado === "pendiente" || s.estado === "en_proceso");
+  if (enCurso) return enCurso;
+
+  const devuelta = abiertas.find((s) => s.estado === "cambios_solicitados");
+  if (devuelta) {
+    const { data: reabierta } = await auth.sb
+      .from("soporte_subtareas")
+      .update({ estado: "pendiente", updated_at: new Date().toISOString(), finalizado_at: null })
+      .eq("empresa_id", auth.empresaId)
+      .eq("id", devuelta.id)
+      .eq("estado", "cambios_solicitados")
+      .select(SUBTAREA_CAMPOS)
+      .maybeSingle();
+    const sub = (reabierta as SubtareaFila | null) ?? devuelta;
+    await registrarHistorial(auth.sb, {
+      empresaId: auth.empresaId,
+      ticketId: ticket.id,
+      usuarioId: auth.usuarioId,
+      eventos: [
+        { tipo_evento: "subtarea_estado", valor_anterior: "cambios_solicitados", valor_nuevo: "pendiente", metadata: { subtarea_id: sub.id, titulo: sub.titulo, reentrega: true } },
+      ],
+    });
+    await avisarSoporte(auth, {
+      usuarioId: sub.asignado_id,
+      titulo: `Ticket #${ticket.numero} corregido, listo para revisar de nuevo`,
+      cuerpo: ticket.asunto,
+      ticketId: ticket.id,
+      subtareaId: sub.id,
+    });
+    return sub;
+  }
 
   const [{ data: ultimas }, equipo] = await Promise.all([
     auth.sb

@@ -174,9 +174,9 @@ export const ESTADOS_SUBTAREA: { codigo: EstadoSubtarea; nombre: string; color: 
 ];
 
 /**
- * Una subtarea de revisión se mueve hacia adelante: la revisión termina
- * finalizada o pidiendo cambios. Si pide cambios, el ticket vuelve a
- * Desarrollo y la próxima entrega abre una revisión nueva.
+ * Pasos de una subtarea de revisión. "Cambios solicitados" espera a Desarrollo:
+ * cuando el ticket vuelve a "Listo para revisión" la MISMA subtarea vuelve a
+ * Pendiente (no se abre otra), y QA la revisa de nuevo hasta finalizarla.
  */
 export const TRANSICIONES_SUBTAREA: Record<EstadoSubtarea, EstadoSubtarea[]> = {
   pendiente: ["en_proceso", "cambios_solicitados", "finalizado"],
@@ -185,9 +185,13 @@ export const TRANSICIONES_SUBTAREA: Record<EstadoSubtarea, EstadoSubtarea[]> = {
   finalizado: [],
 };
 
-/** Pendiente o en proceso: la revisión todavía no terminó. */
+/**
+ * Toda subtarea que no está Finalizada sigue abierta, también la que pidió
+ * cambios: esa revisión vuelve a QA en la próxima entrega y bloquea pasar el
+ * ticket a Resuelto o Cerrado hasta que QA la finalice.
+ */
 export function subtareaAbierta(estado: string): boolean {
-  return estado === "pendiente" || estado === "en_proceso";
+  return estado !== "finalizado";
 }
 
 export function nombreEstadoSubtarea(codigo: string): string {

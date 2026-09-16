@@ -40,6 +40,12 @@ async function tieneModuloConcedido(svc: ReturnType<typeof createServiceRoleClie
   return !error && (data?.length ?? 0) > 0;
 }
 
+/** Tilde de Project Manager del catálogo de usuarios. Ante un error, no. */
+async function esProjectManager(svc: ReturnType<typeof createServiceRoleClient>, usuarioId: string): Promise<boolean> {
+  const { data, error } = await svc.from("usuarios").select("es_project_manager").eq("id", usuarioId).maybeSingle();
+  return !error && (data as { es_project_manager?: boolean | null } | null)?.es_project_manager === true;
+}
+
 async function sesionDe(
   clave: string,
   obtenerUsuario: () => Promise<{ id: string; email?: string | null } | null>
@@ -59,6 +65,7 @@ async function sesionDe(
     rol: usuario.rol,
     email: user.email ?? null,
     concedido: await tieneModuloConcedido(svc, usuario.id),
+    pm: await esProjectManager(svc, usuario.id),
   };
   // Sólo lo que salió bien: si a alguien le acaban de arreglar el acceso, tiene
   // que entrar en el próximo intento y no dentro de 30 segundos.
@@ -82,6 +89,27 @@ async function contexto(sesion: SesionSoporte | null): Promise<SoporteAuth> {
     puedeConfigurar: puedeConfigurarSoporte(sujeto),
     sb: await getChatServiceClientForEmpresa(sesion.empresaId),
   };
+}
+
+/**
+ * Permiso SÓLO para cargar un ticket desde Conversaciones: quien usa Soporte y,
+ * además, los Project Managers aunque no tengan el módulo. No abre el resto
+ * del módulo (listados, edición, configuración).
+ */
+export async function requireCargaSoporteApi(request: Request): Promise<SoporteAuth> {
+  const token = extractBearerTokenFromRequest(request);
+  const sesion = await sesionDe(token ? `bearer:${token}` : "", () => getAuthUserForApiRoute(request));
+  if (sesion?.pm) {
+    return {
+      ok: true,
+      empresaId: sesion.empresaId,
+      usuarioId: sesion.usuarioId,
+      rol: sesion.rol,
+      puedeConfigurar: false,
+      sb: await getChatServiceClientForEmpresa(sesion.empresaId),
+    };
+  }
+  return contexto(sesion);
 }
 
 /**

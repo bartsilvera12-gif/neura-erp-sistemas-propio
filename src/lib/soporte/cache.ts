@@ -86,6 +86,8 @@ export type SesionSoporte = {
   email: string | null;
   /** Tiene el módulo `soporte` asignado a mano en `usuario_modulos`. */
   concedido: boolean;
+  /** Es Project Manager: puede cargar tickets desde Conversaciones sin tener el módulo. */
+  pm?: boolean;
 };
 
 export const memoriaSesion = new MemoriaTTL<SesionSoporte>(30_000, 1000);

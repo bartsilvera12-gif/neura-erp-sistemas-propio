@@ -26,7 +26,7 @@ export async function registrarHistorialCliente(
     detalle?: Record<string, unknown>;
     authUserId?: string | null;
     email?: string | null;
-    source?: "clientes_ui" | "api" | "system" | "tipificacion_cliente";
+    source?: "clientes_ui" | "api" | "system" | "tipificacion_cliente" | "conversacion";
   }
 ): Promise<void> {
   try {

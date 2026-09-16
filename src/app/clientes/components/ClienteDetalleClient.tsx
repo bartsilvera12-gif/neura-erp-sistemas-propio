@@ -2617,14 +2617,16 @@ export default function ClienteDetalleClient({
                         {h.accion === "ticket_created" && h.detalle ? (
                           <div className="mt-2 text-xs text-slate-600">
                             <p>
-                              Se creó <span className="font-semibold text-slate-800">Ticket de Soporte #{String(h.detalle.ticket_numero ?? "")}</span> desde Tipificación.
+                              Se creó <span className="font-semibold text-slate-800">Ticket de Soporte #{String(h.detalle.ticket_numero ?? "")}</span>{" "}
+                              {h.detalle.source === "conversacion" ? "desde Conversaciones" : "desde Tipificación"}
+                              {typeof h.detalle.usuario === "string" && h.detalle.usuario ? ` · por ${h.detalle.usuario}` : ""}.
                             </p>
                             <p className="mt-1 text-slate-500">
                               {[
                                 typeof h.detalle.asunto === "string" ? h.detalle.asunto : null,
                                 typeof h.detalle.proyecto_nombre === "string" ? `Proyecto: ${h.detalle.proyecto_nombre}` : null,
+                                typeof h.detalle.tipo === "string" ? `Tipo: ${h.detalle.tipo}` : null,
                                 typeof h.detalle.clasificacion === "string" ? `Nivel: ${h.detalle.clasificacion}` : null,
-                                typeof h.detalle.prioridad === "string" ? `Prioridad: ${h.detalle.prioridad}` : null,
                               ]
                                 .filter(Boolean)
                                 .join(" · ")}

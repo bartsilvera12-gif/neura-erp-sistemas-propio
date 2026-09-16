@@ -56,7 +56,7 @@ import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recordin
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
 import {
   X,
-  CheckCircle2, ArrowLeftRight, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
+  CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, RefreshCw, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
 
 /** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -97,6 +97,11 @@ import { playInboxNotificationBeep, readInboxNotificationSoundEnabled } from "@/
 import { createBrowserClientForSchema } from "@/lib/supabase";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { ChannelBadge } from "@/components/chat/ChannelBadge";
+import dynamic from "next/dynamic";
+import { puedeCargarSoporte } from "./SoporteTicketModal";
+
+// La ventana de Soporte sólo se descarga cuando alguien la abre.
+const SoporteTicketModal = dynamic(() => import("./SoporteTicketModal"), { ssr: false });
 
 type ChatMessage = {
   id: string;
@@ -1051,6 +1056,16 @@ export function ConversacionesClient({
   const [opsAgentLoads, setOpsAgentLoads] = useState<SupervisorAgentLoadRow[]>([]);
   const [opsBusy, setOpsBusy] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+  // Soporte desde el chat: PM o quien usa Soporte. Se consulta una vez al entrar.
+  const [puedeSoporte, setPuedeSoporte] = useState(false);
+  const [soporteModalOpen, setSoporteModalOpen] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    void puedeCargarSoporte().then((p) => vivo && setPuedeSoporte(p));
+    return () => {
+      vivo = false;
+    };
+  }, []);
   /** Cola elegida: transferencia a cola y filtro de agentes en el modal. */
   const [transferQueueTarget, setTransferQueueTarget] = useState("");
   const [transferAgentSearch, setTransferAgentSearch] = useState("");
@@ -3921,6 +3936,26 @@ export function ConversacionesClient({
                                 <ArrowLeftRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
                                 Transferir
                               </button>
+                            ) : null}
+                            {puedeSoporte ? (
+                              <button
+                                type="button"
+                                onClick={() => setSoporteModalOpen(true)}
+                                title="Cargar un ticket de soporte para este cliente"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-violet-700 shadow-sm transition-colors hover:border-violet-300 hover:bg-violet-50"
+                              >
+                                <Headset className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                Soporte
+                              </button>
+                            ) : null}
+                            {soporteModalOpen ? (
+                              <SoporteTicketModal
+                                key={selected.id}
+                                conversationId={selected.id}
+                                clienteId={selected.contact.cliente_id ?? null}
+                                contacto={contactDisplayName}
+                                alCerrar={() => setSoporteModalOpen(false)}
+                              />
                             ) : null}
                             {selected.status !== "closed" && mode === "inbox" ? (
                               <button

@@ -29,6 +29,7 @@ import {
   fechaHora,
   obtenerCatalogos,
   obtenerTicket,
+  precargarPestanas,
   ticketEnMemoria,
   type CatalogosConEquipo,
 } from "../../_ui/api";
@@ -101,6 +102,11 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar el ticket");
     }
+  }, [id]);
+
+  // Las pestañas se preparan apenas se abre el ticket: cambiar de pestaña no espera.
+  useEffect(() => {
+    precargarPestanas(id);
   }, [id]);
 
   useEffect(() => {

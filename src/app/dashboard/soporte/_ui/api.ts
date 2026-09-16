@@ -135,6 +135,30 @@ export function subtareasEnMemoria<T>(id: string): T | undefined {
   return memSubtareas.ya(id) as T | undefined;
 }
 
+/**
+ * Pestañas del detalle (historial, archivos, relaciones). Se precargan apenas
+ * se abre el ticket: pasar de una pestaña a otra no espera a la red.
+ */
+const memHistorial = memoria<unknown>(20_000);
+const memArchivos = memoria<unknown>(20_000);
+const memRelaciones = memoria<unknown>(20_000);
+
+export function precargarPestanas(id: string): void {
+  void memHistorial.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/historial`)).catch(() => {});
+  void memArchivos.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/archivos`)).catch(() => {});
+  void memRelaciones.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/relaciones`)).catch(() => {});
+}
+
+export const obtenerHistorial = <T,>(id: string, forzar = false) =>
+  memHistorial.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/historial`), forzar) as Promise<T>;
+export const historialEnMemoria = <T,>(id: string) => memHistorial.ya(id) as T | undefined;
+export const obtenerArchivos = <T,>(id: string, forzar = false) =>
+  memArchivos.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/archivos`), forzar) as Promise<T>;
+export const archivosEnMemoria = <T,>(id: string) => memArchivos.ya(id) as T | undefined;
+export const obtenerRelaciones = <T,>(id: string, forzar = false) =>
+  memRelaciones.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/relaciones`), forzar) as Promise<T>;
+export const relacionesEnMemoria = <T,>(id: string) => memRelaciones.ya(id) as T | undefined;
+
 export function obtenerTicket<T>(id: string, forzar = false): Promise<T> {
   return memTicket.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}`), forzar) as Promise<T>;
 }

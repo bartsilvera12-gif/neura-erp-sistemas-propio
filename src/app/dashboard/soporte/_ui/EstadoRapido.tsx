@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight, Hand, Loader2, Lock, UserRound } from "lucide-react";
-import { mensajeEstadoFinal, puedeEstarACargo, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
+import { TRANSICIONES, mensajeEstadoFinal, puedeEstarACargo, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte } from "./api";
 import { Aviso, TONO_AREA } from "./ui";
@@ -76,7 +76,10 @@ export default function EstadoRapido() {
                     onClick={() =>
                       faltaResponsable
                         ? setError(`Para pasar a "${d.nombre}" elegí primero quién queda a cargo.`)
-                        : void guardar(d.codigo, { estado_codigo: d.codigo })
+                        : TRANSICIONES[d.codigo]?.length === 0 &&
+                            !window.confirm(`¿Pasar el ticket #${t.numero} a "${d.nombre}"? Después ya no se puede cambiar de estado.`)
+                          ? undefined
+                          : void guardar(d.codigo, { estado_codigo: d.codigo })
                     }
                     className="group inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-[13px] font-semibold shadow-sm transition hover:-translate-y-px hover:shadow disabled:translate-y-0 disabled:opacity-60"
                     style={{ borderColor: `${d.color}66`, color: d.color }}

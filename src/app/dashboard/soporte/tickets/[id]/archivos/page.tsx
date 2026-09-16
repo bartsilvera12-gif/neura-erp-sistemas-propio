@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, ExternalLink, FileText, Files, MoreVertical, Play, Trash2 } from "lucide-react";
 import { tamanoLegible } from "@/lib/soporte/dominio";
 import { useTicket } from "../../../_ui/TicketContexto";
-import { apiSoporte, fechaHora, subirArchivos, type Persona } from "../../../_ui/api";
+import { apiSoporte, fechaHora, subirArchivos, type Persona, obtenerArchivos, archivosEnMemoria } from "../../../_ui/api";
 import ZonaArchivos from "../../../_ui/ZonaArchivos";
 import { Aviso, Boton, Cargando, Tarjeta, Vacio } from "../../../_ui/ui";
 
@@ -74,14 +74,15 @@ function MenuArchivo({ a, onEliminar }: { a: Archivo; onEliminar: () => void }) 
 /** Archivos y evidencias del ticket. Quitar uno no borra su rastro del historial. */
 export default function TicketArchivosPage() {
   const { ticket, recargar } = useTicket();
-  const [lista, setLista] = useState<Archivo[] | null>(null);
+  // Lo precargado al abrir el ticket se pinta al instante y se refresca en silencio.
+  const [lista, setLista] = useState<Archivo[] | null>(() => archivosEnMemoria<Archivo[]>(ticket.id) ?? null);
   const [nuevos, setNuevos] = useState<File[]>([]);
   const [subiendo, setSubiendo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (forzar = false) => {
     try {
-      setLista(await apiSoporte<Archivo[]>(`/api/soporte/tickets/${ticket.id}/archivos`));
+      setLista(await obtenerArchivos<Archivo[]>(ticket.id, forzar));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar los archivos");
     }
@@ -101,14 +102,14 @@ export default function TicketArchivosPage() {
     setSubiendo(null);
     setNuevos([]);
     if (r.errores.length) setError(r.errores.join(" · "));
-    await Promise.all([cargar(), recargar()]);
+    await Promise.all([cargar(true), recargar()]);
   };
 
   const eliminar = async (a: Archivo) => {
     if (!window.confirm(`¿Eliminar "${a.nombre}"? El historial conserva que existió.`)) return;
     try {
       await apiSoporte(`/api/soporte/tickets/${ticket.id}/archivos/${a.id}`, { method: "DELETE" });
-      await Promise.all([cargar(), recargar()]);
+      await Promise.all([cargar(true), recargar()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo eliminar");
     }

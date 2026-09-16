@@ -6,7 +6,7 @@ import { GitBranch, Link2, Unlink } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { TIPOS_RELACION } from "@/lib/soporte/dominio";
 import { useTicket } from "../../../_ui/TicketContexto";
-import { apiSoporte } from "../../../_ui/api";
+import { apiSoporte, obtenerRelaciones, relacionesEnMemoria } from "../../../_ui/api";
 import { Aviso, Boton, Cargando, Insignia, Tarjeta, Vacio, claseInput } from "../../../_ui/ui";
 
 type Relacion = {
@@ -23,15 +23,16 @@ type Relacion = {
  */
 export default function TicketRelacionesPage() {
   const { ticket, recargar } = useTicket();
-  const [lista, setLista] = useState<Relacion[] | null>(null);
+  // Lo precargado al abrir el ticket se pinta al instante y se refresca en silencio.
+  const [lista, setLista] = useState<Relacion[] | null>(() => relacionesEnMemoria<Relacion[]>(ticket.id) ?? null);
   const [numero, setNumero] = useState("");
   const [tipo, setTipo] = useState("relacionado");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (forzar = false) => {
     try {
-      setLista(await apiSoporte<Relacion[]>(`/api/soporte/tickets/${ticket.id}/relaciones`));
+      setLista(await obtenerRelaciones<Relacion[]>(ticket.id, forzar));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar las relaciones");
     }
@@ -49,7 +50,7 @@ export default function TicketRelacionesPage() {
     try {
       await apiSoporte(`/api/soporte/tickets/${ticket.id}/relaciones`, { method: "POST", json: { numero: n, tipo } });
       setNumero("");
-      await Promise.all([cargar(), recargar()]);
+      await Promise.all([cargar(true), recargar()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo vincular");
     } finally {
@@ -61,7 +62,7 @@ export default function TicketRelacionesPage() {
     if (!window.confirm(`¿Quitar el vínculo con #${r.ticket.numero}?`)) return;
     try {
       await apiSoporte(`/api/soporte/tickets/${ticket.id}/relaciones?relacion_id=${r.id}`, { method: "DELETE" });
-      await Promise.all([cargar(), recargar()]);
+      await Promise.all([cargar(true), recargar()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo quitar el vínculo");
     }

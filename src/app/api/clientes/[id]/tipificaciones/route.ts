@@ -37,7 +37,7 @@ async function contexto(request: Request, params: Promise<{ id: string }>) {
   const usuarioId = auth.usuarioCatalogId ?? null;
   const persona = usuarioId ? (await personasPorId([usuarioId])).get(usuarioId) : undefined;
   const nombre = persona?.nombre?.trim() || auth.user.email || "Usuario";
-  return { ok: true as const, auth, sb, clienteId, clienteNombre, usuario: { id: usuarioId, nombre } };
+  return { ok: true as const, auth, sb, clienteId, clienteNombre, usuario: { id: usuarioId, nombre }, esPm: persona?.es_project_manager === true };
 }
 
 /**
@@ -131,6 +131,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     return ok({
       usuario_actual: usuario,
+      // Los PM ven primero Error y Cambio: es lo que más cargan.
+      es_pm: ctx.esPm,
       equipo,
       puede_soporte: soporte.ok,
       tipificaciones: lista.map((f) => ({

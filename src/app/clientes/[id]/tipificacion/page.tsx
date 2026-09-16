@@ -105,6 +105,7 @@ const sombra = "shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,2
 
 type Listado = {
   usuario_actual: { id: string | null; nombre: string };
+  es_pm: boolean;
   equipo: { id: string; nombre: string; area: string }[];
   puede_soporte: boolean;
   tipificaciones: Tipificacion[];
@@ -529,7 +530,10 @@ export default function TipificacionPage() {
                     ariaLabel="Tipo de gestión"
                     value={form.tipo_gestion}
                     onChange={(v) => elegirTipo(v as TipoGestion)}
-                    options={TIPOS_GESTION.map((t) => ({
+                    options={(listado?.es_pm
+                      ? [...TIPOS_GESTION.filter((t) => TIPO_TICKET[t]), ...TIPOS_GESTION.filter((t) => !TIPO_TICKET[t])]
+                      : TIPOS_GESTION
+                    ).map((t) => ({
                       value: t,
                       label: t,
                       description: TIPO_TICKET[t] ? "Crea un ticket de Soporte" : undefined,

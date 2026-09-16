@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeftRight,
@@ -281,11 +281,21 @@ export default function TipificacionPage() {
   const inicioCapacitacionMs = agenda.inicio ? Date.parse(`${agenda.inicio}:00-03:00`) : NaN;
   const capacitacionEnHorario = rangoEnHorarioLaboral(inicioCapacitacionMs, inicioCapacitacionMs + agenda.duracion_min * 60_000);
 
+  // Para un PM el formulario arranca en Error. Sólo la primera vez, y sólo si
+  // nadie empezó a cargar otra cosa mientras llegaba el listado.
+  const tipoInicialAplicado = useRef(false);
   const cargarListado = useCallback(async () => {
     const res = await fetchWithSupabaseSession(`/api/clientes/${id}/tipificaciones`, { cache: "no-store" });
     const j = (await res.json().catch(() => null)) as { success?: boolean; data?: Listado; error?: string } | null;
-    if (res.ok && j?.success && j.data) setListado(j.data);
-    else setError(j?.error ?? "No se pudo cargar el historial de tipificaciones.");
+    if (res.ok && j?.success && j.data) {
+      setListado(j.data);
+      if (!tipoInicialAplicado.current) {
+        tipoInicialAplicado.current = true;
+        if (j.data.es_pm) {
+          setForm((f) => (f.tipo_gestion === "Consulta" && !f.observacion ? { ...f, tipo_gestion: "Error", resultado: "Escalar" } : f));
+        }
+      }
+    } else setError(j?.error ?? "No se pudo cargar el historial de tipificaciones.");
   }, [id]);
 
   useEffect(() => {
@@ -367,7 +377,11 @@ export default function TipificacionPage() {
   }
 
   function reiniciar() {
-    setForm({ tipo_gestion: "Consulta", resultado: "Pendiente", observacion: "" });
+    setForm(
+      listado?.es_pm
+        ? { tipo_gestion: "Error", resultado: "Escalar", observacion: "" }
+        : { tipo_gestion: "Consulta", resultado: "Pendiente", observacion: "" }
+    );
     // Se conserva el proyecto si es el único del cliente.
     setTicket({ ...TICKET_VACIO, proyecto_id: proyectos?.length === 1 ? proyectos[0].id : "" });
     setArchivos([]);

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRightCircle, ClipboardCheck, FileText, Gauge, Info, ListOrdered, Target, type LucideIcon } from "lucide-react";
+import { ArrowRightCircle, FileText, Info, MessageSquare, type LucideIcon } from "lucide-react";
 import { useTicket } from "../../_ui/TicketContexto";
 import CambiarEstado from "../../_ui/CambiarEstado";
 import AccesosProyecto from "../../_ui/AccesosProyecto";
+import ComentariosTicket from "../../_ui/ComentariosTicket";
 import { fecha, fechaHora } from "../../_ui/api";
 import { Avatar, Boton, IconoTile, TONOS, TONO_AREA, Tarjeta, type Tono } from "../../_ui/ui";
 
@@ -35,11 +36,11 @@ function Fila({ etiqueta, valor }: { etiqueta: string; valor: React.ReactNode })
 }
 
 /**
- * Descripción del ticket: qué pasa, cómo reproducirlo y cómo se valida. Sin
- * comentarios, archivos ni historial: cada uno tiene su propia página.
+ * Descripción del ticket: qué pasa y la conversación del equipo. Sin
+ * archivos ni historial: cada uno tiene su propia página.
  */
 export default function TicketDescripcionPage() {
-  const { ticket: t } = useTicket();
+  const { ticket: t, contadores } = useTicket();
   const [cambiando, setCambiando] = useState(false);
   const activo = t.estado_tipo === "abierto";
   const area = t.estado_area ?? t.responsable?.area ?? "Equipo";
@@ -49,12 +50,15 @@ export default function TicketDescripcionPage() {
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_330px]">
       <Tarjeta>
-        <div className="space-y-5 [&>div:last-child>div]:border-0 [&>div:last-child>div]:pb-0">
-          <Bloque titulo="Descripción del problema" texto={t.descripcion} vacio="Sin descripción." icono={FileText} tono="turquesa" />
-          <Bloque titulo="Pasos para reproducir" texto={t.pasos_reproducir} vacio="No se cargaron pasos para reproducir." icono={ListOrdered} tono="celeste" />
-          <Bloque titulo="Resultado esperado" texto={t.resultado_esperado} vacio="No se indicó el resultado esperado." icono={Target} tono="verde" />
-          <Bloque titulo="Impacto operativo" texto={t.impacto_operativo} vacio="No se indicó el impacto." icono={Gauge} tono="ambar" />
-          <Bloque titulo="Criterios de aceptación QA" texto={t.criterios_aceptacion} vacio="Sin criterios de validación definidos." icono={ClipboardCheck} tono="violeta" />
+        <Bloque titulo="Descripción del problema" texto={t.descripcion} vacio="Sin descripción." icono={FileText} tono="turquesa" />
+        <div id="comentarios" className="mt-5 flex scroll-mt-24 gap-3.5">
+          <IconoTile icono={MessageSquare} tono="violeta" tam="sm" />
+          <div className="min-w-0 flex-1">
+            <h3 className="mb-3 text-[13.5px] font-bold text-slate-800">
+              Comentarios{contadores.comentarios ? <span className="ml-1.5 font-semibold text-slate-400">{contadores.comentarios}</span> : null}
+            </h3>
+            <ComentariosTicket enTarjeta={false} />
+          </div>
         </div>
       </Tarjeta>
 

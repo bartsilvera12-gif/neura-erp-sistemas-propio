@@ -94,9 +94,6 @@ type DatosTicket = {
   modulo: string;
   asunto: string;
   descripcion: string;
-  resultado_esperado: string;
-  pasos_reproducir: string;
-  impacto_operativo: string;
   clasificacion_codigo: string;
   prioridad_codigo: string;
   responsable_id: string;
@@ -107,9 +104,6 @@ const TICKET_VACIO: DatosTicket = {
   modulo: "",
   asunto: "",
   descripcion: "",
-  resultado_esperado: "",
-  pasos_reproducir: "",
-  impacto_operativo: "",
   clasificacion_codigo: "",
   prioridad_codigo: "",
   responsable_id: "",
@@ -578,7 +572,7 @@ export default function TipificacionPage() {
                         <AccesosProyecto proyectoId={ticket.proyecto_id || null} />
                       </Seccion>
 
-                      <Seccion titulo="Detalle del error" detalle="Lo que Desarrollo y QA necesitan para reproducirlo sin preguntar" icono={FileText} tono="violeta">
+                      <Seccion titulo="Detalle del error" detalle="Qué pasa y en qué módulo" icono={FileText} tono="violeta">
                         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                           <Campo etiqueta="Módulo afectado">
                             <input className={claseInput} value={ticket.modulo} maxLength={120} onChange={(e) => setCampoTicket("modulo", e.target.value)} placeholder="Ej.: Facturación electrónica" />
@@ -589,17 +583,6 @@ export default function TipificacionPage() {
                         </div>
                         <Campo etiqueta="Descripción del error" requerido>
                           <textarea rows={4} className={claseArea} value={ticket.descripcion} onChange={(e) => setCampoTicket("descripcion", e.target.value)} placeholder="Qué pasa, desde cuándo, qué mensaje aparece…" />
-                        </Campo>
-                        <div className="grid gap-5 lg:grid-cols-2">
-                          <Campo etiqueta="Resultado esperado">
-                            <textarea rows={3} className={claseArea} value={ticket.resultado_esperado} onChange={(e) => setCampoTicket("resultado_esperado", e.target.value)} placeholder="Qué debería pasar" />
-                          </Campo>
-                          <Campo etiqueta="Pasos para reproducir">
-                            <textarea rows={3} className={claseArea} value={ticket.pasos_reproducir} onChange={(e) => setCampoTicket("pasos_reproducir", e.target.value)} placeholder="Cómo llegar al error" />
-                          </Campo>
-                        </div>
-                        <Campo etiqueta="Impacto operativo">
-                          <input className={claseInput} value={ticket.impacto_operativo} onChange={(e) => setCampoTicket("impacto_operativo", e.target.value)} placeholder="Ej.: El cliente no puede facturar" />
                         </Campo>
                       </Seccion>
 

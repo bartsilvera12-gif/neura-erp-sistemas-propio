@@ -35,7 +35,7 @@ import {
 } from "../../_ui/api";
 import { TicketContext, type TicketCtx, type TicketDetalle } from "../../_ui/TicketContexto";
 import CambiarEstado from "../../_ui/CambiarEstado";
-import { Aviso, Avatar, Esqueleto, IconoTile, Insignia, Pagina, PestanasRuta, claseBoton, type Tono } from "../../_ui/ui";
+import { Aviso, Avatar, Esqueleto, Insignia, Pagina, PestanasRuta, TONOS, claseBoton, type Tono } from "../../_ui/ui";
 
 type Detalle = { ticket: TicketDetalle; contadores: TicketCtx["contadores"] };
 
@@ -48,14 +48,29 @@ const SLA: Record<string, { barra: string; texto: string; fondo: string; etiquet
   sin_sla: { barra: "bg-slate-300", texto: "text-slate-500", fondo: "bg-slate-50", etiqueta: "Sin SLA" },
 };
 
-function Dato({ etiqueta, icono, tono, children }: { etiqueta: string; icono: LucideIcon; tono: Tono; children: React.ReactNode }) {
+/** Dato compacto del resumen: ícono chico en la etiqueta, valor en una línea. */
+function Dato({
+  etiqueta,
+  icono: Icono,
+  tono,
+  extra,
+  children,
+}: {
+  etiqueta: string;
+  icono: LucideIcon;
+  tono: Tono;
+  /** Acción chica a la derecha de la etiqueta (p. ej. "Sus tickets"). */
+  extra?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex min-w-0 items-start gap-3">
-      <IconoTile icono={icono} tono={tono} tam="sm" />
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{etiqueta}</p>
-        <div className="mt-0.5 truncate text-[13.5px] font-semibold text-slate-800">{children}</div>
-      </div>
+    <div className="min-w-0">
+      <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+        <Icono className={`h-3.5 w-3.5 shrink-0 ${TONOS[tono].texto}`} strokeWidth={2.2} aria-hidden />
+        <span className="truncate">{etiqueta}</span>
+        {extra}
+      </p>
+      <div className="mt-0.5 truncate text-[13px] font-semibold text-slate-800">{children}</div>
     </div>
   );
 }
@@ -186,7 +201,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                     <div className="absolute right-0 top-11 z-30 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-[13px] shadow-xl">
                       {[
                         { et: "Cambiar estado", ic: Flag, onClick: () => setCambiando(true) },
-                        { et: "Agregar comentario", ic: MessageSquare, href: `${base}/comentarios` },
+                        { et: "Agregar comentario", ic: MessageSquare, href: `${base}#comentarios` },
                         { et: "Adjuntar archivos", ic: Paperclip, href: `${base}/archivos` },
                         { et: "Vincular ticket", ic: Link2, href: `${base}/relaciones` },
                         { et: "Copiar enlace", ic: Link2, onClick: () => void navigator.clipboard?.writeText(`${window.location.origin}${base}`) },
@@ -211,25 +226,30 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
           children
         ) : (
           <>
-            <section className="mb-5 rounded-2xl border border-slate-200/80 bg-white px-5 py-5 shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)]">
-              <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
-                <Dato etiqueta="Cliente" icono={Building2} tono="turquesa">
+            <section className="mb-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-[0_1px_3px_rgba(15,23,42,0.05)]">
+              <div className="grid grid-cols-2 items-center gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+                <Dato
+                  etiqueta="Cliente"
+                  icono={Building2}
+                  tono="turquesa"
+                  extra={t.cliente_id ? (
+                    <Link href={`/dashboard/soporte/tickets?cliente_id=${t.cliente_id}`} className="ml-auto shrink-0 normal-case tracking-normal text-slate-400 no-underline hover:text-[#2F6E71]">Sus tickets</Link>
+                  ) : null}
+                >
                   {t.cliente_id ? (
-                    <>
-                      <Link href={`/clientes/${t.cliente_id}`} title="Abrir la ficha del cliente" className="text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">{t.cliente_nombre ?? "—"}</Link>
-                      <span className="mt-0.5 flex flex-wrap gap-x-2 text-[11.5px] font-medium">
-                        <Link href={`/dashboard/soporte/tickets?cliente_id=${t.cliente_id}`} className="text-slate-400 no-underline hover:text-[#2F6E71]">Sus tickets</Link>
-                        {t.origen === "tipificacion_cliente" ? (
-                          <Link
-                            href={`/clientes/${t.cliente_id}/tipificacion${t.tipificacion_id ? `#tip-${t.tipificacion_id}` : ""}`}
-                            title="Origen: tipificación de cliente"
-                            className="inline-flex items-center gap-1 rounded-full bg-[#4FAEB2]/12 px-1.5 text-[#2F6E71] no-underline hover:underline"
-                          >
-                            <Headset className="h-3 w-3" aria-hidden /> Desde tipificación
-                          </Link>
-                        ) : null}
-                      </span>
-                    </>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Link href={`/clientes/${t.cliente_id}`} title={t.cliente_nombre ?? "Abrir la ficha del cliente"} className="truncate text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">{t.cliente_nombre ?? "—"}</Link>
+                      {t.origen === "tipificacion_cliente" ? (
+                        <Link
+                          href={`/clientes/${t.cliente_id}/tipificacion${t.tipificacion_id ? `#tip-${t.tipificacion_id}` : ""}`}
+                          title="Creado desde la tipificación de cliente"
+                          aria-label="Creado desde la tipificación de cliente"
+                          className="inline-flex shrink-0 items-center rounded-full bg-[#4FAEB2]/12 p-1 text-[#2F6E71] hover:bg-[#4FAEB2]/25"
+                        >
+                          <Headset className="h-3 w-3" aria-hidden />
+                        </Link>
+                      ) : null}
+                    </span>
                   ) : "—"}
                 </Dato>
                 <Dato etiqueta="Tipo" icono={Tag} tono="violeta">
@@ -243,29 +263,34 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                 </Dato>
                 <Dato etiqueta="Asignado a" icono={UserRound} tono="celeste">
                   {t.responsable ? (
-                    <span className="inline-flex items-center gap-2"><Avatar nombre={t.responsable.nombre} tam={20} />{t.responsable.nombre}</span>
+                    <span className="inline-flex min-w-0 items-center gap-1.5"><Avatar nombre={t.responsable.nombre} tam={18} /><span className="truncate">{t.responsable.nombre}</span></span>
                   ) : <span className="italic text-slate-400">Sin asignar</span>}
                 </Dato>
                 <Dato etiqueta="Creado" icono={CalendarPlus} tono="indigo">{fechaHora(t.created_at)}</Dato>
-                <Dato etiqueta="Última actualización" icono={Clock3} tono="pizarra">{fechaHora(t.updated_at)}</Dato>
-                <Dato etiqueta="SLA" icono={Timer} tono="verde">
-                  {t.sla_horas == null ? <span className="text-slate-400">Sin SLA</span> : `${Number(t.sla_horas)} horas laborales`}
-                  {t.fecha_objetivo ? <span className="block text-[11.5px] font-medium text-slate-400">objetivo {fecha(t.fecha_objetivo)}</span> : null}
-                </Dato>
-                <div className={`rounded-xl px-3.5 py-2.5 ${sla.fondo}`}>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tiempo transcurrido</p>
-                  <p className={`mt-0.5 text-[15px] font-bold tabular-nums ${sla.texto}`}>
-                    {duracionCorta(t.sla.transcurridoMs)}
-                    {t.sla.objetivoMs ? <span className="text-[12px] font-semibold text-slate-400"> de {duracionCorta(t.sla.objetivoMs)}</span> : null}
+                <Dato etiqueta="Actualizado" icono={Clock3} tono="pizarra">{fechaHora(t.updated_at)}</Dato>
+                <div
+                  className={`min-w-0 rounded-lg px-2.5 py-1.5 ${sla.fondo}`}
+                  title={t.fecha_objetivo ? `Objetivo: ${fecha(t.fecha_objetivo)}` : undefined}
+                >
+                  <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-500">
+                    <Timer className={`h-3.5 w-3.5 shrink-0 ${sla.texto}`} strokeWidth={2.2} aria-hidden />
+                    <span className="truncate">SLA {t.sla_horas == null ? "" : `${Number(t.sla_horas)} h laborales`}</span>
                   </p>
-                  {t.sla.objetivoMs ? (
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/80">
-                        <div className={`h-full rounded-full ${sla.barra} transition-[width] duration-700`} style={{ width: `${Math.max(4, proporcion * 100)}%` }} />
-                      </div>
-                      <span className={`text-[11px] font-bold ${sla.texto}`}>{sla.etiqueta}</span>
+                  {t.sla_horas == null ? (
+                    <p className="mt-0.5 text-[13px] font-semibold text-slate-400">Sin SLA</p>
+                  ) : (
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span className={`shrink-0 text-[13px] font-bold tabular-nums ${sla.texto}`}>
+                        {duracionCorta(t.sla.transcurridoMs)}
+                        {t.sla.objetivoMs ? <span className="text-[11px] font-semibold text-slate-400"> / {duracionCorta(t.sla.objetivoMs)}</span> : null}
+                      </span>
+                      {t.sla.objetivoMs ? (
+                        <div className="h-1.5 min-w-6 flex-1 overflow-hidden rounded-full bg-white/80" title={sla.etiqueta}>
+                          <div className={`h-full rounded-full ${sla.barra} transition-[width] duration-700`} style={{ width: `${Math.max(4, proporcion * 100)}%` }} />
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </div>
             </section>
@@ -275,7 +300,6 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                 activo={activo}
                 items={[
                   { id: "descripcion", etiqueta: "Descripción", href: base, icono: FileText },
-                  { id: "comentarios", etiqueta: "Comentarios", href: `${base}/comentarios`, contador: detalle.contadores.comentarios, icono: MessageSquare },
                   { id: "archivos", etiqueta: "Archivos", href: `${base}/archivos`, contador: detalle.contadores.archivos, icono: Paperclip },
                   { id: "historial", etiqueta: "Historial", href: `${base}/historial`, icono: History },
                   { id: "relaciones", etiqueta: "Relaciones", href: `${base}/relaciones`, contador: detalle.contadores.relaciones, icono: Link2 },

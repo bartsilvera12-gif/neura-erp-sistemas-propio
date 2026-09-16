@@ -20,10 +20,6 @@ export type ValoresTicket = {
   prioridad_codigo: string;
   asunto: string;
   descripcion: string;
-  resultado_esperado: string;
-  impacto_operativo: string;
-  pasos_reproducir: string;
-  criterios_aceptacion: string;
   responsable_id: string;
   proxima_accion: string;
   fecha_objetivo: string;
@@ -41,10 +37,6 @@ export const VALORES_VACIOS: ValoresTicket = {
   prioridad_codigo: "normal",
   asunto: "",
   descripcion: "",
-  resultado_esperado: "",
-  impacto_operativo: "",
-  pasos_reproducir: "",
-  criterios_aceptacion: "",
   responsable_id: "",
   proxima_accion: "",
   fecha_objetivo: "",
@@ -294,40 +286,6 @@ export default function FormTicket({
             placeholder="Describí en detalle el problema, solicitud o consulta…"
           />
         </Campo>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Campo etiqueta="Pasos para reproducir">
-            <textarea
-              className={`${claseInput} min-h-28`}
-              value={v.pasos_reproducir}
-              onChange={(e) => set("pasos_reproducir", e.target.value)}
-              placeholder={"1. Ir a Ventas\n2. Crear factura\n3. Presionar Emitir FE"}
-            />
-          </Campo>
-          <Campo etiqueta="Resultado esperado">
-            <textarea
-              className={`${claseInput} min-h-28`}
-              value={v.resultado_esperado}
-              onChange={(e) => set("resultado_esperado", e.target.value)}
-              placeholder="Qué debería pasar"
-            />
-          </Campo>
-          <Campo etiqueta="Impacto operativo">
-            <textarea
-              className={`${claseInput} min-h-24`}
-              value={v.impacto_operativo}
-              onChange={(e) => set("impacto_operativo", e.target.value)}
-              placeholder="A quién afecta y cuánto. Ej.: no pueden facturar."
-            />
-          </Campo>
-          <Campo etiqueta="Criterios de aceptación / validación QA">
-            <textarea
-              className={`${claseInput} min-h-24`}
-              value={v.criterios_aceptacion}
-              onChange={(e) => set("criterios_aceptacion", e.target.value)}
-              placeholder="Cómo se comprueba que quedó resuelto"
-            />
-          </Campo>
-        </div>
       </Seccion>
 
       <Seccion icono={UserRoundCheck} tono="turquesa" titulo="Asignación" descripcion="Quién tiene la próxima acción y para cuándo.">

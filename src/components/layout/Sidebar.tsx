@@ -296,12 +296,13 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
       "etiquetas",
     ],
   },
+  { id: "soporte", title: "Soporte", itemKeys: ["soporte"] },
   {
     id: "marketing",
     title: "Marketing y Automatización",
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  { id: "administracion", title: "Administración", itemKeys: ["soporte", "usuarios", "guardias", "configuracion"] },
+  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion"] },
 ];
 
 function modulosSyntheticFromMenu(): ModuloEmpresa[] {

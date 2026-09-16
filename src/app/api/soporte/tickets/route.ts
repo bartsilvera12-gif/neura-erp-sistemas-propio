@@ -12,7 +12,8 @@ const POR_PAGINA_MAX = 100;
  *
  * Filtros: pestana, estados (lista separada por comas; manda sobre pestana),
  * q (texto o #número), cliente_id, estado, tipo, responsable_id, prioridad,
- * mios=1 (asignados a quien consulta), pagina, por_pagina.
+ * mios=1 (asignados a quien consulta), revision=1 (con una revisión de QA sin
+ * terminar asignada a quien consulta), pagina, por_pagina.
  *
  * Devuelve además el conteo por estado con el resto de los filtros aplicados:
  * cada pantalla arma sus propias pestañas con eso ("Tickets" y "Mis tickets"
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     const porPagina = Math.min(POR_PAGINA_MAX, Math.max(5, Number(p.get("por_pagina") ?? "20") || 20));
 
     // Filtros comunes a la lista y a los contadores.
-    const aplicar = (q: ConsultaFiltrable): ConsultaFiltrable => {
+    const aplicarSinMios = (q: ConsultaFiltrable): ConsultaFiltrable => {
       let b = q.eq("empresa_id", auth.empresaId);
       const texto = (p.get("q") ?? "").trim();
       if (texto) {
@@ -49,14 +50,35 @@ export async function GET(request: Request) {
         const v = p.get(param);
         if (v) b = b.eq(columna, v);
       }
-      if (p.get("mios") === "1") b = b.eq("responsable_id", auth.usuarioId);
       return b;
     };
+    const aplicar = (q: ConsultaFiltrable): ConsultaFiltrable =>
+      p.get("mios") === "1" ? aplicarSinMios(q).eq("responsable_id", auth.usuarioId) : aplicarSinMios(q);
 
-    let lista = aplicar(auth.sb.from("soporte_tickets").select(TICKET_CAMPOS, { count: "exact" }));
+    // Revisiones de QA sin terminar asignadas a quien consulta (pestaña "Por revisar").
+    const soloMios = p.get("mios") === "1";
+    const revision = p.get("revision") === "1";
+    let idsRevision: string[] = [];
+    if (soloMios || revision) {
+      const { data: subs } = await auth.sb
+        .from("soporte_subtareas")
+        .select("ticket_id")
+        .eq("empresa_id", auth.empresaId)
+        .eq("asignado_id", auth.usuarioId)
+        .in("estado", ["pendiente", "en_proceso"]);
+      idsRevision = [...new Set(((subs ?? []) as { ticket_id: string }[]).map((x) => x.ticket_id))];
+    }
+
+    let lista = revision
+      ? aplicarSinMios(auth.sb.from("soporte_tickets").select(TICKET_CAMPOS, { count: "exact" })).in(
+          "id",
+          idsRevision.length ? idsRevision : ["00000000-0000-0000-0000-000000000000"]
+        )
+      : aplicar(auth.sb.from("soporte_tickets").select(TICKET_CAMPOS, { count: "exact" }));
     const estadosParam = (p.get("estados") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-    if (estadosParam.length) lista = lista.in("estado_codigo", estadosParam);
-    else if (pestana.estados) lista = lista.in("estado_codigo", [...pestana.estados]);
+    // La pestaña de revisiones no filtra por estado.
+    if (!revision && estadosParam.length) lista = lista.in("estado_codigo", estadosParam);
+    else if (!revision && pestana.estados) lista = lista.in("estado_codigo", [...pestana.estados]);
     const desde = (pagina - 1) * porPagina;
     // Catálogos, página y contadores en paralelo: ninguno espera al otro.
     const [cat, { data, error, count }, { data: todos }] = await Promise.all([
@@ -85,6 +107,7 @@ export async function GET(request: Request) {
       por_pagina: porPagina,
       contadores,
       por_estado: Object.fromEntries(porEstado),
+      ...(soloMios || revision ? { revisiones_pendientes: idsRevision.length } : {}),
     });
   } catch (e) {
     return errorInesperado(e);
@@ -95,8 +118,8 @@ export async function GET(request: Request) {
  * POST /api/soporte/tickets — crea un ticket.
  *
  * El SLA se congela acá, desde la clasificación. Si el ticket entra con
- * responsable queda "Clasificado / Asignado"; sin responsable, "Registrado",
- * que es el único estado activo que puede quedar sin nadie a cargo. La regla
+ * ticket entra siempre como "Pendiente", el único estado activo que puede
+ * quedar sin nadie a cargo. La regla
  * vive en `prepararTicket`, la misma que usa la tipificación de cliente.
  */
 export async function POST(request: Request) {

@@ -44,12 +44,12 @@ type Dashboard = {
 
 const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
   { clave: "total", etiqueta: "Total de tickets", icono: Ticket, tono: "turquesa", href: "/dashboard/soporte/tickets" },
-  { clave: "abiertos", etiqueta: "Abiertos", icono: Inbox, tono: "azul", href: "/dashboard/soporte/tickets?pestana=abiertos" },
-  { clave: "en_desarrollo", etiqueta: "En desarrollo", icono: Code2, tono: "celeste", href: "/dashboard/soporte/tickets?estado=en_desarrollo" },
-  { clave: "en_qa", etiqueta: "En prueba de QA", icono: FlaskConical, tono: "violeta", href: "/dashboard/soporte/tickets?pestana=qa" },
-  { clave: "con_observaciones", etiqueta: "Con observaciones", icono: MessageSquareWarning, tono: "naranja", malo: true, href: "/dashboard/soporte/tickets?pestana=observaciones" },
+  { clave: "pendientes", etiqueta: "Pendientes", icono: Inbox, tono: "azul", href: "/dashboard/soporte/tickets?pestana=pendientes" },
+  { clave: "en_proceso", etiqueta: "En proceso", icono: Code2, tono: "celeste", href: "/dashboard/soporte/tickets?pestana=en_proceso" },
+  { clave: "falta_informacion", etiqueta: "Falta información", icono: MessageSquareWarning, tono: "ambar", malo: true, href: "/dashboard/soporte/tickets?pestana=falta_informacion" },
+  { clave: "en_revision", etiqueta: "En revisión", icono: FlaskConical, tono: "violeta", href: "/dashboard/soporte/tickets?pestana=revision" },
   { clave: "resueltos", etiqueta: "Resueltos", icono: CheckCircle2, tono: "verde", href: "/dashboard/soporte/tickets?pestana=resueltos" },
-  { clave: "cerrados", etiqueta: "Cerrados", icono: Lock, tono: "pizarra", href: "/dashboard/soporte/tickets?pestana=cerrados" },
+  { clave: "cerrados", etiqueta: "Cerrados / cancelados", icono: Lock, tono: "pizarra", href: "/dashboard/soporte/tickets?pestana=cerrados" },
   { clave: "sla_vencidos", etiqueta: "SLA vencidos", icono: AlarmClock, tono: "rosa", malo: true, href: "/dashboard/soporte/tickets" },
 ];
 

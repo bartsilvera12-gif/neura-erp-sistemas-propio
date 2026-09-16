@@ -19,7 +19,13 @@ import {
 import { Aviso, Avatar, Cargando, Insignia, TONOS, TONO_AREA, TONO_ESTADO, Vacio, claseInput, type Tono } from "./ui";
 import { SelectorBuscable } from "./SelectorBuscable";
 
-export type PestanaDef = { id: string; etiqueta: string; estados: readonly string[] | null };
+export type PestanaDef = {
+  id: string;
+  etiqueta: string;
+  estados: readonly string[] | null;
+  /** Tickets con una revisión de QA sin terminar asignada a quien mira. */
+  revision?: boolean;
+};
 
 type TicketLista = {
   id: string;
@@ -44,6 +50,8 @@ type RespLista = {
   pagina: number;
   por_pagina: number;
   por_estado: Record<string, number>;
+  /** Sólo en "Mis tickets": revisiones de QA pendientes asignadas a quien mira. */
+  revisiones_pendientes?: number;
 };
 
 const POR_PAGINA = 20;
@@ -56,6 +64,7 @@ const POR_PAGINA = 20;
 const recordado = new Map<string, RespLista>();
 
 function tonoPestana(p: PestanaDef): Tono {
+  if (p.revision) return "violeta";
   if (!p.estados) return "turquesa";
   return TONO_ESTADO[p.estados[p.estados.length - 1]] ?? "turquesa";
 }
@@ -93,6 +102,7 @@ export default function TablaTickets({
   const consulta = useMemo(() => {
     const q = new URLSearchParams();
     if (pestana.estados) q.set("estados", pestana.estados.join(","));
+    if (pestana.revision) q.set("revision", "1");
     for (const [k, v] of Object.entries(filtros)) if (v) q.set(k, v);
     if (soloMios) q.set("mios", "1");
     q.set("pagina", String(pagina));
@@ -156,6 +166,7 @@ export default function TablaTickets({
 
   const contador = (p: PestanaDef) => {
     const pe = datos?.por_estado ?? {};
+    if (p.revision) return datos?.revisiones_pendientes ?? 0;
     if (!p.estados) return Object.values(pe).reduce((s, n) => s + n, 0);
     return p.estados.reduce((s, e) => s + (pe[e] ?? 0), 0);
   };

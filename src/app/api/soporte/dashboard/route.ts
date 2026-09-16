@@ -36,12 +36,12 @@ export async function GET(request: Request) {
       const cuenta = (...codigos: string[]) => lista.filter((t) => codigos.includes(t.estado_codigo)).length;
       return {
         total: lista.length,
-        abiertos: cuenta("registrado", "clasificado"),
-        en_desarrollo: cuenta("en_desarrollo"),
-        en_qa: cuenta("en_qa"),
-        con_observaciones: cuenta("con_observaciones"),
+        pendientes: cuenta("pendiente"),
+        en_proceso: cuenta("en_proceso", "reabierto"),
+        falta_informacion: cuenta("falta_informacion"),
+        en_revision: cuenta("listo_revision"),
         resueltos: cuenta("resuelto"),
-        cerrados: cuenta("cerrado"),
+        cerrados: cuenta("cerrado", "cancelado"),
         sla_vencidos: lista.filter((t) => calcularSla(t, ahoraIso).estado === "vencido").length,
       };
     };

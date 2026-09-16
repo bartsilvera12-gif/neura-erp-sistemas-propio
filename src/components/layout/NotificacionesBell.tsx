@@ -61,7 +61,8 @@ type TipoNotificacion =
   | "qa_vence"
   | "chat_interno_mensaje"
   | "conversacion_asignada"
-  | "conversacion_mensaje";
+  | "conversacion_mensaje"
+  | "soporte_revision";
 
 type Notificacion = {
   id: string;
@@ -79,6 +80,8 @@ type Notificacion = {
     sala_id?: string;
     mencion?: boolean;
     conversation_id?: string;
+    /** Soporte: el ticket del aviso. */
+    ticket_id?: string;
   } | null;
   /**
    * Aviso calculado en vivo por la API, sin fila en la base (compromiso de
@@ -159,6 +162,11 @@ const ESTILO_TIPO: Record<
     icon: Headset,
     wrap: "bg-violet-50 text-violet-600",
     label: "Chat de cliente",
+  },
+  soporte_revision: {
+    icon: Headset,
+    wrap: "bg-violet-50 text-violet-600",
+    label: "Soporte",
   },
   qa_aprobado: {
     icon: CheckCircle2,
@@ -639,6 +647,8 @@ export default function NotificacionesBell() {
                   ? `/dashboard/conversaciones${
                       n.metadata?.conversation_id ? `?c=${n.metadata.conversation_id}` : ""
                     }`
+                  : n.tipo === "soporte_revision" && n.metadata?.ticket_id
+                  ? `/dashboard/soporte/tickets/${n.metadata.ticket_id}`
                   : n.tipo === "cobro_pendiente"
                   ? "/cobranzas/conciliacion"
                   : n.tipo === "comentario_proyecto" && n.proyecto_id

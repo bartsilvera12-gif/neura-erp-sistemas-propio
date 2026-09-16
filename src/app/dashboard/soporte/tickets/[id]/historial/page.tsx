@@ -11,6 +11,7 @@ import {
   FileX2,
   Flag,
   Link2,
+  ListChecks,
   Lock,
   MessageSquare,
   Pencil,
@@ -64,13 +65,24 @@ function describir(e: Evento): { icono: LucideIcon; tono: string; titulo: React.
     case "cambio_estado":
       return { icono: ArrowRightLeft, tono: "bg-sky-500", titulo: <><strong>Cambio de estado</strong> por {quien}</>, detalle: cambio("Estado") };
     case "entrega_qa":
-      return { icono: Flag, tono: "bg-violet-500", titulo: <><strong>Entregado a QA</strong> por {quien}</>, detalle: cambio("Estado") };
+      return { icono: Flag, tono: "bg-violet-500", titulo: <><strong>Listo para revisión</strong> por {quien}</>, detalle: cambio("Estado") };
     case "devolucion_qa":
-      return { icono: XCircle, tono: "bg-rose-500", titulo: <><strong>QA devolvió el ticket</strong> ({quien})</>, detalle: cambio("Estado") };
+      return { icono: XCircle, tono: "bg-rose-500", titulo: <><strong>QA pidió cambios</strong> ({quien})</>, detalle: cambio("Estado") };
     case "confirmacion_qa":
       return { icono: CheckCircle2, tono: "bg-emerald-500", titulo: <><strong>QA confirmó la resolución</strong> ({quien})</>, detalle: cambio("Estado") };
     case "cierre":
       return { icono: Lock, tono: "bg-slate-700", titulo: <><strong>Ticket cerrado</strong> por {quien}</>, detalle: cambio("Estado") };
+    case "cancelacion":
+      return { icono: XCircle, tono: "bg-rose-500", titulo: <><strong>Ticket cancelado</strong> por {quien}</>, detalle: cambio("Estado") };
+    case "subtarea_creada":
+      return { icono: ListChecks, tono: "bg-violet-500", titulo: <><strong>Subtarea creada: {e.nuevo}</strong></>, detalle: "Asignada a QA" };
+    case "subtarea_estado":
+      return {
+        icono: ListChecks,
+        tono: e.metadata?.titulo ? "bg-violet-500" : "bg-slate-400",
+        titulo: <><strong>{String(e.metadata?.titulo ?? "Subtarea")}</strong> · {quien}</>,
+        detalle: cambio("Estado"),
+      };
     case "reapertura":
       return { icono: RotateCcw, tono: "bg-amber-500", titulo: <><strong>Ticket reabierto</strong> por {quien}</>, detalle: cambio("Estado") };
     case "cambio_responsable":

@@ -25,6 +25,7 @@ export async function GET(request: Request, { params }: Params) {
       .select("id, usuario_id, contenido, es_rechazo_qa, created_at")
       .eq("empresa_id", auth.empresaId)
       .eq("ticket_id", id)
+      .is("subtarea_id", null)
       .order("created_at", { ascending: true });
     if (error) return falla(error.message);
 

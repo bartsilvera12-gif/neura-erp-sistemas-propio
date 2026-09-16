@@ -137,8 +137,8 @@ export async function prepararTicket(
   }
 
   const inicial = cat.estados.find((e) => e.es_inicial) ?? cat.estados[0];
-  const asignado = cat.estados.find((e) => e.codigo === "clasificado");
-  const estado = responsableId && asignado ? asignado : inicial;
+  // Todo ticket nuevo entra en el estado inicial (Pendiente), tenga o no responsable.
+  const estado = inicial;
   if (!estado) return falla("Soporte no tiene estados configurados", 500);
   if (requiereResponsable(estado) && !responsableId) return falla("Elegí un responsable");
 

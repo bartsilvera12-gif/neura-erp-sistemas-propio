@@ -59,19 +59,20 @@ export type CatalogosSoporte = {
 };
 
 /**
- * Estados del flujo oficial de Gestión de Soporte de Neura.
+ * Estados del flujo de Gestión de Soporte de Neura.
  *
- * `area` es quién suele tener la próxima acción en ese estado; se usa para
- * mostrar "Área: Desarrollo" en la tarjeta de próxima acción.
+ * `area` es quién suele tener la acción en ese estado. "Re-abierto" es el
+ * estado al que vuelve un ticket cuando QA pide cambios en la revisión.
  */
 export const ESTADOS_DEFECTO: SoporteEstado[] = [
-  { codigo: "registrado", nombre: "Registrado", tipo: "abierto", color: "#94a3b8", area: "ATC / PM", detiene_sla: false, es_inicial: true, sort_order: 1, activo: true },
-  { codigo: "clasificado", nombre: "Clasificado / Asignado", tipo: "abierto", color: "#3b82f6", area: "ATC / PM", detiene_sla: false, es_inicial: false, sort_order: 2, activo: true },
-  { codigo: "en_desarrollo", nombre: "En desarrollo", tipo: "abierto", color: "#0ea5e9", area: "Desarrollo", detiene_sla: false, es_inicial: false, sort_order: 3, activo: true },
-  { codigo: "en_qa", nombre: "En prueba de QA", tipo: "abierto", color: "#8b5cf6", area: "QA", detiene_sla: false, es_inicial: false, sort_order: 4, activo: true },
-  { codigo: "con_observaciones", nombre: "Con observaciones", tipo: "abierto", color: "#f97316", area: "Desarrollo", detiene_sla: false, es_inicial: false, sort_order: 5, activo: true },
-  { codigo: "resuelto", nombre: "Resuelto confirmado", tipo: "cerrado", color: "#10b981", area: "ATC / PM", detiene_sla: true, es_inicial: false, sort_order: 6, activo: true },
-  { codigo: "cerrado", nombre: "Comunicado / Cerrado", tipo: "cerrado", color: "#334155", area: null, detiene_sla: true, es_inicial: false, sort_order: 7, activo: true },
+  { codigo: "pendiente", nombre: "Pendiente", tipo: "abierto", color: "#94a3b8", area: "ATC / PM", detiene_sla: false, es_inicial: true, sort_order: 1, activo: true },
+  { codigo: "en_proceso", nombre: "En proceso", tipo: "abierto", color: "#0ea5e9", area: "Desarrollo", detiene_sla: false, es_inicial: false, sort_order: 2, activo: true },
+  { codigo: "falta_informacion", nombre: "Falta información", tipo: "abierto", color: "#f59e0b", area: "ATC / PM", detiene_sla: false, es_inicial: false, sort_order: 3, activo: true },
+  { codigo: "listo_revision", nombre: "Listo para revisión", tipo: "abierto", color: "#8b5cf6", area: "QA", detiene_sla: false, es_inicial: false, sort_order: 4, activo: true },
+  { codigo: "reabierto", nombre: "Re-abierto", tipo: "abierto", color: "#f97316", area: "Desarrollo", detiene_sla: false, es_inicial: false, sort_order: 5, activo: true },
+  { codigo: "resuelto", nombre: "Resuelto", tipo: "cerrado", color: "#10b981", area: "ATC / PM", detiene_sla: true, es_inicial: false, sort_order: 6, activo: true },
+  { codigo: "cancelado", nombre: "Cancelado", tipo: "cerrado", color: "#f43f5e", area: null, detiene_sla: true, es_inicial: false, sort_order: 7, activo: true },
+  { codigo: "cerrado", nombre: "Cerrado", tipo: "cerrado", color: "#334155", area: null, detiene_sla: true, es_inicial: false, sort_order: 8, activo: true },
 ];
 
 export const TIPOS_DEFECTO: SoporteTipo[] = [
@@ -101,24 +102,33 @@ export const PRIORIDADES_DEFECTO: SoportePrioridad[] = [
 // -------------------------------------------------------------------- flujo
 
 /**
- * Transiciones del flujo oficial:
+ * Transiciones del flujo:
  *
- *   Registrado → Clasificado / Asignado → En desarrollo → En prueba de QA
- *   QA rechaza → Con observaciones → vuelve a Desarrollo → vuelve a QA
- *   QA confirma → Resuelto confirmado → (ATC/PM) Comunicado / Cerrado
+ *   Pendiente → En proceso · Falta información · Cancelado
+ *   En proceso → Cancelado · Falta información · Listo para revisión
+ *   Falta información → En proceso · Cancelado
+ *   Listo para revisión → Resuelto (con las subtareas finalizadas)
+ *     · a Re-abierto lo lleva QA al pedir cambios en la subtarea, no a mano
+ *   Re-abierto → En proceso · Falta información · Cancelado
+ *   Resuelto → Re-abierto · Cerrado
+ *   Cancelado y Cerrado son finales.
  *
  * Un estado creado desde Configuración no tiene reglas propias: se permite
  * moverse libremente desde y hacia él, en vez de dejar el ticket trabado.
  */
 export const TRANSICIONES: Record<string, string[]> = {
-  registrado: ["clasificado", "en_desarrollo", "cerrado"],
-  clasificado: ["en_desarrollo", "registrado", "cerrado"],
-  en_desarrollo: ["en_qa", "clasificado"],
-  en_qa: ["resuelto", "con_observaciones"],
-  con_observaciones: ["en_desarrollo", "en_qa"],
-  resuelto: ["cerrado", "con_observaciones", "en_desarrollo"],
-  cerrado: ["en_desarrollo"],
+  pendiente: ["en_proceso", "falta_informacion", "cancelado"],
+  en_proceso: ["cancelado", "falta_informacion", "listo_revision"],
+  falta_informacion: ["en_proceso", "cancelado"],
+  listo_revision: ["resuelto"],
+  reabierto: ["en_proceso", "falta_informacion", "cancelado"],
+  resuelto: ["reabierto", "cerrado"],
+  cancelado: [],
+  cerrado: [],
 };
+
+/** Estados a los que no se puede pasar con subtareas sin finalizar. */
+export const ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS = ["resuelto", "cerrado"];
 
 export function transicionPermitida(desde: string, hacia: string): boolean {
   if (desde === hacia) return false;
@@ -136,12 +146,45 @@ export function transicionPermitida(desde: string, hacia: string): boolean {
  * confirmaciones), y buscarlos por par de estados sería frágil.
  */
 export function eventoDeTransicion(desde: string, hacia: string): string {
-  if (hacia === "en_qa") return "entrega_qa";
-  if (desde === "en_qa" && hacia === "con_observaciones") return "devolucion_qa";
-  if (desde === "en_qa" && hacia === "resuelto") return "confirmacion_qa";
+  if (hacia === "listo_revision") return "entrega_qa";
+  if (desde === "listo_revision" && hacia === "reabierto") return "devolucion_qa";
+  if (desde === "listo_revision" && hacia === "resuelto") return "confirmacion_qa";
   if (hacia === "cerrado") return "cierre";
-  if (desde === "cerrado" || desde === "resuelto") return "reapertura";
+  if (hacia === "cancelado") return "cancelacion";
+  if (hacia === "reabierto") return "reapertura";
   return "cambio_estado";
+}
+
+// --------------------------------------------------------------- subtareas
+
+export type EstadoSubtarea = "pendiente" | "en_proceso" | "cambios_solicitados" | "finalizado";
+
+export const ESTADOS_SUBTAREA: { codigo: EstadoSubtarea; nombre: string; color: string }[] = [
+  { codigo: "pendiente", nombre: "Pendiente", color: "#94a3b8" },
+  { codigo: "en_proceso", nombre: "En proceso", color: "#0ea5e9" },
+  { codigo: "cambios_solicitados", nombre: "Cambios solicitados", color: "#f97316" },
+  { codigo: "finalizado", nombre: "Finalizado", color: "#10b981" },
+];
+
+/**
+ * Una subtarea de revisión se mueve hacia adelante: la revisión termina
+ * finalizada o pidiendo cambios. Si pide cambios, el ticket vuelve a
+ * Desarrollo y la próxima entrega abre una revisión nueva.
+ */
+export const TRANSICIONES_SUBTAREA: Record<EstadoSubtarea, EstadoSubtarea[]> = {
+  pendiente: ["en_proceso", "cambios_solicitados", "finalizado"],
+  en_proceso: ["cambios_solicitados", "finalizado"],
+  cambios_solicitados: [],
+  finalizado: [],
+};
+
+/** Pendiente o en proceso: la revisión todavía no terminó. */
+export function subtareaAbierta(estado: string): boolean {
+  return estado === "pendiente" || estado === "en_proceso";
+}
+
+export function nombreEstadoSubtarea(codigo: string): string {
+  return ESTADOS_SUBTAREA.find((e) => e.codigo === codigo)?.nombre ?? codigo;
 }
 
 /** Un estado abierto que no es el inicial necesita a alguien con la próxima acción. */
@@ -277,14 +320,15 @@ export function etiquetaTipo(
   return cat.tipos.find((x) => x.codigo === tipoCodigo)?.nombre ?? tipoCodigo;
 }
 
-/** Pestañas del listado, en el orden de la referencia. */
+/** Pestañas del listado. */
 export const PESTANAS_TICKETS = [
   { id: "todos", etiqueta: "Todos", estados: null as string[] | null },
-  { id: "abiertos", etiqueta: "Abiertos", estados: ["registrado", "clasificado", "en_desarrollo"] },
-  { id: "qa", etiqueta: "En QA", estados: ["en_qa"] },
-  { id: "observaciones", etiqueta: "Observaciones", estados: ["con_observaciones"] },
+  { id: "pendientes", etiqueta: "Pendientes", estados: ["pendiente"] },
+  { id: "en_proceso", etiqueta: "En proceso", estados: ["en_proceso", "reabierto"] },
+  { id: "falta_informacion", etiqueta: "Falta información", estados: ["falta_informacion"] },
+  { id: "revision", etiqueta: "En revisión", estados: ["listo_revision"] },
   { id: "resueltos", etiqueta: "Resueltos", estados: ["resuelto"] },
-  { id: "cerrados", etiqueta: "Cerrados", estados: ["cerrado"] },
+  { id: "cerrados", etiqueta: "Cerrados", estados: ["cerrado", "cancelado"] },
 ] as const;
 
 export type PestanaTickets = (typeof PESTANAS_TICKETS)[number]["id"];

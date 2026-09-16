@@ -612,7 +612,7 @@ export default function TipificacionPage() {
                         </Campo>
 
 
-                        <Campo etiqueta="Responsable" ayuda="Opcional. Sin responsable entra como Registrado; con responsable, Clasificado / Asignado.">
+                        <Campo etiqueta="Responsable" ayuda="Opcional. El ticket entra como Pendiente.">
                           <SelectorBuscable
                             ariaLabel="Responsable"
                             avatares

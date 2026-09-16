@@ -45,12 +45,13 @@ export const PALETA_TIPOS = ["#4FAEB2", "#8b5cf6", "#f59e0b", "#0ea5e9", "#f43f5
 
 /** Tono de cada estado del flujo, para los que no traen color propio. */
 export const TONO_ESTADO: Record<string, Tono> = {
-  registrado: "pizarra",
-  clasificado: "azul",
-  en_desarrollo: "celeste",
-  en_qa: "violeta",
-  con_observaciones: "naranja",
+  pendiente: "pizarra",
+  en_proceso: "celeste",
+  falta_informacion: "ambar",
+  listo_revision: "violeta",
+  reabierto: "naranja",
   resuelto: "verde",
+  cancelado: "rosa",
   cerrado: "pizarra",
 };
 

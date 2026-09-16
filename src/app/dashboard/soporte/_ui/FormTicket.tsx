@@ -267,7 +267,7 @@ export default function FormTicket({
 
       <Seccion icono={UserRoundCheck} tono="turquesa" titulo="Asignación" descripcion="Quién tiene la próxima acción y para cuándo.">
         <div className="grid gap-4 md:grid-cols-2">
-          <Campo etiqueta="Responsable" ayuda={modo === "crear" ? "Con responsable, el ticket entra como Clasificado / Asignado." : undefined}>
+          <Campo etiqueta="Responsable" ayuda={modo === "crear" ? "El ticket entra como Pendiente." : undefined}>
             <SelectorBuscable ariaLabel="Responsable" avatares value={v.responsable_id} onChange={(x) => set("responsable_id", x)} opciones={responsableOpciones} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
           </Campo>
           <Campo etiqueta="Fecha objetivo">

@@ -7,6 +7,7 @@ import { useTicket } from "../../_ui/TicketContexto";
 import CambiarEstado from "../../_ui/CambiarEstado";
 import AccesosProyecto from "../../_ui/AccesosProyecto";
 import ComentariosTicket from "../../_ui/ComentariosTicket";
+import SubtareasTicket from "../../_ui/SubtareasTicket";
 import { fecha, fechaHora } from "../../_ui/api";
 import { Avatar, Boton, IconoTile, TONOS, TONO_AREA, Tarjeta, type Tono } from "../../_ui/ui";
 
@@ -51,6 +52,7 @@ export default function TicketDescripcionPage() {
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
       <Tarjeta>
         <Bloque titulo="Descripción del problema" texto={t.descripcion} vacio="Sin descripción." icono={FileText} tono="turquesa" />
+        <SubtareasTicket />
         <div id="comentarios" className="mt-5 flex scroll-mt-24 gap-3.5">
           <IconoTile icono={MessageSquare} tono="violeta" tam="sm" />
           <div className="min-w-0 flex-1">

@@ -1,5 +1,6 @@
 import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
 import {
+  ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS,
   TICKET_CAMPOS,
   eventoDeTransicion,
   requiereResponsable,
@@ -19,6 +20,7 @@ import {
   type EventoHistorial,
 } from "@/lib/soporte/servidor";
 import { enriquecerTickets } from "@/lib/soporte/tickets-servidor";
+import { abrirRevisionQa, subtareasSinFinalizar } from "@/lib/soporte/subtareas";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,7 +34,7 @@ export async function GET(request: Request, { params }: Params) {
     const [fila, cat, { count: comentarios }, { count: archivos }, { count: relaciones }] = await Promise.all([
       ticketDeEmpresa<TicketFila>(auth.sb, auth.empresaId, id, TICKET_CAMPOS),
       leerCatalogos(auth.sb, auth.empresaId),
-      auth.sb.from("soporte_ticket_comentarios").select("id", { count: "exact", head: true }).eq("empresa_id", auth.empresaId).eq("ticket_id", id),
+      auth.sb.from("soporte_ticket_comentarios").select("id", { count: "exact", head: true }).eq("empresa_id", auth.empresaId).eq("ticket_id", id).is("subtarea_id", null),
       auth.sb.from("soporte_ticket_archivos").select("id", { count: "exact", head: true }).eq("empresa_id", auth.empresaId).eq("ticket_id", id),
       auth.sb.from("soporte_ticket_relaciones").select("id", { count: "exact", head: true }).eq("empresa_id", auth.empresaId).or(`ticket_id.eq.${id},ticket_relacionado_id.eq.${id}`),
     ]);
@@ -81,10 +83,10 @@ const TEXTOS = [
  * guardado: un cambio rechazado no deja un evento que nunca ocurrió.
  *
  * Reglas del flujo:
- *   · El cambio de estado respeta las transiciones del proceso oficial.
+ *   · El cambio de estado respeta las transiciones del flujo (ver `TRANSICIONES`).
  *   · Un estado activo (salvo el inicial) no puede quedar sin responsable.
- *   · Devolver desde QA exige explicar por qué: el motivo queda como comentario
- *     marcado, que es lo que ve Desarrollo al retomar.
+ *   · No se pasa a Resuelto ni a Cerrado con subtareas sin finalizar.
+ *   · Al entrar a "Listo para revisión" se abre la subtarea de revisión de QA.
  *   · Cambiar la clasificación recalcula el SLA, y eso también queda registrado.
  */
 export async function PATCH(request: Request, { params }: Params) {
@@ -213,6 +215,12 @@ export async function PATCH(request: Request, { params }: Params) {
       if (requiereResponsable(hacia) && !responsableFinal) {
         return falla(`Para pasar a "${hacia.nombre}" el ticket necesita un responsable`);
       }
+      if (ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS.includes(hacia.codigo)) {
+        const pendientes = await subtareasSinFinalizar(auth, id);
+        if (pendientes.length > 0) {
+          return falla(`No se puede pasar a "${hacia.nombre}": hay ${pendientes.length === 1 ? "una subtarea" : `${pendientes.length} subtareas`} sin finalizar (${pendientes.map((x) => x.titulo).join(", ")})`);
+        }
+      }
       const evento = eventoDeTransicion(actual.estado_codigo, hacia.codigo);
       if (evento === "devolucion_qa") {
         motivoDevolucion = typeof body.comentario === "string" ? body.comentario.trim() : "";
@@ -225,7 +233,7 @@ export async function PATCH(request: Request, { params }: Params) {
       } else {
         patch.resuelto_at = null;
       }
-      patch.cerrado_at = hacia.codigo === "cerrado" ? ahora : null;
+      patch.cerrado_at = hacia.codigo === "cerrado" || hacia.codigo === "cancelado" ? ahora : null;
       eventos.push({ tipo_evento: evento, valor_anterior: actual.estado_codigo, valor_nuevo: hacia.codigo });
     }
 
@@ -252,6 +260,10 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     await registrarHistorial(auth.sb, { empresaId: auth.empresaId, ticketId: id, usuarioId: auth.usuarioId, eventos });
+    // Después del historial: la subtarea queda registrada tras la entrega.
+    if (patch.estado_codigo === "listo_revision") {
+      await abrirRevisionQa(auth, { id, numero: actual.numero, asunto: (patch.asunto as string | undefined) ?? actual.asunto });
+    }
     return ok({ actualizado: true, eventos: eventos.map((e) => e.tipo_evento) });
   } catch (e) {
     return errorInesperado(e);

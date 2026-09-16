@@ -141,6 +141,12 @@ export default function CambiarEstado({ alCerrar }: { alCerrar: () => void }) {
                 </div>
               ) : null}
 
+              {estado === "listo_revision" ? (
+                <Aviso tipo="info">Se abre una subtarea de revisión asignada a QA, que recibe el aviso.</Aviso>
+              ) : estado === "resuelto" || estado === "cerrado" ? (
+                <Aviso tipo="info">Sólo se puede si todas las subtareas están finalizadas.</Aviso>
+              ) : null}
+
               <div>
                 <span className={claseEtiqueta}>
                   Responsable{pideResponsable ? <span className="text-rose-500"> *</span> : null}

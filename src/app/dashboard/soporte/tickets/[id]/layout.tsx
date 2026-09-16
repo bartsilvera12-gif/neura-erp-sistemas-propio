@@ -25,7 +25,6 @@ import {
 import { duracionCorta } from "@/lib/soporte/dominio";
 import {
   catalogosEnMemoria,
-  fecha,
   fechaHora,
   obtenerCatalogos,
   obtenerTicket,
@@ -264,7 +263,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                 <Dato etiqueta="Actualizado" icono={Clock3} tono="pizarra">{fechaHora(t.updated_at)}</Dato>
                 <div
                   className={`min-w-0 rounded-lg px-2.5 py-1.5 ${sla.fondo}`}
-                  title={t.fecha_objetivo ? `Objetivo: ${fecha(t.fecha_objetivo)}` : undefined}
+                  title={t.fecha_objetivo ? `Objetivo: ${fechaHora(t.fecha_objetivo)}` : undefined}
                 >
                   <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-500">
                     <Timer className={`h-3.5 w-3.5 shrink-0 ${sla.texto}`} strokeWidth={2.2} aria-hidden />

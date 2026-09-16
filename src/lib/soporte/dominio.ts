@@ -9,7 +9,7 @@
  * proyectos ni de observaciones de QA.
  */
 
-import { msLaborables } from "@/lib/proyectos/reloj-laboral";
+import { TZ_OFFSET_MIN, msLaborables, sumarMsLaborables } from "@/lib/proyectos/reloj-laboral";
 
 // ---------------------------------------------------------------- catálogos
 
@@ -249,6 +249,51 @@ export function calcularSla(
   else if (proporcion >= SLA_UMBRAL_RIESGO) estado = "en_riesgo";
   else estado = "en_tiempo";
   return { estado, transcurridoMs, objetivoMs, proporcion };
+}
+
+// ------------------------------------------------------------ fecha objetivo
+
+/**
+ * Cuándo vence un ticket: `horas` de horario laboral contadas desde `desdeIso`.
+ * Es la fecha objetivo automática de los errores (2, 5 u 8 h según el nivel).
+ */
+export function vencimientoSla(desdeIso: string | number, horas: number | null | undefined): string | null {
+  if (horas == null || !Number.isFinite(Number(horas)) || Number(horas) <= 0) return null;
+  const desde = typeof desdeIso === "number" ? desdeIso : Date.parse(desdeIso);
+  if (!Number.isFinite(desde)) return null;
+  return new Date(sumarMsLaborables(desde, Number(horas) * HORA_MS)).toISOString();
+}
+
+const OFFSET_PY = `${TZ_OFFSET_MIN <= 0 ? "-" : "+"}${String(Math.floor(Math.abs(TZ_OFFSET_MIN) / 60)).padStart(2, "0")}:${String(Math.abs(TZ_OFFSET_MIN) % 60).padStart(2, "0")}`;
+
+/**
+ * Fecha objetivo que llega de un formulario, a ISO. Acepta la del selector
+ * (`YYYY-MM-DDTHH:mm`, hora de Paraguay), una fecha sola (vence a las 17:00) o
+ * un ISO completo. `undefined` si no se puede leer.
+ */
+export function fechaObjetivoAIso(v: string): string | undefined {
+  const t = v.trim();
+  let candidato: string;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) candidato = `${t}:00${OFFSET_PY}`;
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(t)) candidato = `${t}T17:00:00${OFFSET_PY}`;
+  else candidato = t;
+  const ms = Date.parse(candidato);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
+/** ISO → `YYYY-MM-DDTHH:mm` en hora de Paraguay, para el selector de fecha y hora. */
+export function isoAFechaHoraLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  return new Date(ms + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 16);
+}
+
+/** "18/09/2026 09:00" en hora de Paraguay, sin depender del navegador. */
+export function fechaHoraPy(iso: string | null | undefined): string {
+  const l = isoAFechaHoraLocal(iso);
+  if (!l) return "—";
+  return `${l.slice(8, 10)}/${l.slice(5, 7)}/${l.slice(0, 4)} ${l.slice(11, 16)}`;
 }
 
 /** "1h 12m" — lectura humana de una duración, sin segundos. */

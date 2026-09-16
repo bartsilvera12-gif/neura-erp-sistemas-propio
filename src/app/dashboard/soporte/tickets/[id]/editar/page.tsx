@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import FormTicket, { type ValoresTicket } from "../../../_ui/FormTicket";
 import { useTicket } from "../../../_ui/TicketContexto";
 import { apiSoporte } from "../../../_ui/api";
+import { isoAFechaHoraLocal } from "@/lib/soporte/dominio";
 
 /** Edición del ticket. Cada campo que cambia queda en el historial con su valor anterior. */
 export default function TicketEditarPage() {
@@ -21,12 +22,13 @@ export default function TicketEditarPage() {
     asunto: t.asunto,
     descripcion: t.descripcion,
     responsable_id: t.responsable_id ?? "",
-    fecha_objetivo: t.fecha_objetivo ?? "",
+    fecha_objetivo: isoAFechaHoraLocal(t.fecha_objetivo),
   };
 
   return (
     <FormTicket
       modo="editar"
+      creadoEn={t.created_at}
       inicial={inicial}
       cancelarHref={base}
       onGuardar={async (v) => {

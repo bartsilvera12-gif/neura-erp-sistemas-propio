@@ -3,11 +3,13 @@ import {
   ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS,
   TICKET_CAMPOS,
   eventoDeTransicion,
+  fechaObjetivoAIso,
   mensajeEstadoFinal,
   puedeEstarACargo,
   requiereResponsable,
   slaDe,
   transicionPermitida,
+  vencimientoSla,
   type TicketFila,
 } from "@/lib/soporte/dominio";
 import {
@@ -196,10 +198,19 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     // ---- fecha objetivo
-    if ("fecha_objetivo" in body) {
-      const v = typeof body.fecha_objetivo === "string" && body.fecha_objetivo ? body.fecha_objetivo : null;
-      if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return falla("Fecha objetivo inválida");
-      if (v !== actual.fecha_objetivo) {
+    // Si un error cambia de nivel y no se mandó fecha, vence con el SLA nuevo desde el alta.
+    const nivelCambiado = patch.clasificacion_codigo !== undefined && tipoNuevo === "error";
+    if ("fecha_objetivo" in body || nivelCambiado) {
+      let v: string | null = null;
+      if (typeof body.fecha_objetivo === "string" && body.fecha_objetivo) {
+        const iso = fechaObjetivoAIso(body.fecha_objetivo);
+        if (!iso) return falla("Fecha objetivo inválida");
+        v = iso;
+      } else if (nivelCambiado) {
+        v = vencimientoSla(actual.created_at, slaDe(cat, tipoNuevo, clasifNueva));
+      }
+      const mismo = (a: string | null, b: string | null) => (a == null || b == null ? a === b : Date.parse(a) === Date.parse(b));
+      if (!mismo(v, actual.fecha_objetivo)) {
         patch.fecha_objetivo = v;
         eventos.push({ tipo_evento: "cambio_fecha_objetivo", valor_anterior: actual.fecha_objetivo, valor_nuevo: v });
       }

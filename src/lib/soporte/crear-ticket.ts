@@ -1,5 +1,5 @@
 import "server-only";
-import { puedeEstarACargo, requiereResponsable, slaDe } from "@/lib/soporte/dominio";
+import { fechaObjetivoAIso, puedeEstarACargo, requiereResponsable, slaDe, vencimientoSla } from "@/lib/soporte/dominio";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import {
   leerCatalogos,
@@ -132,8 +132,9 @@ export async function prepararTicket(
 
   let fechaObjetivo: string | null = null;
   if (typeof body.fecha_objetivo === "string" && body.fecha_objetivo) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.fecha_objetivo)) return falla("Fecha objetivo inválida");
-    fechaObjetivo = body.fecha_objetivo;
+    const iso = fechaObjetivoAIso(body.fecha_objetivo);
+    if (!iso) return falla("Fecha objetivo inválida");
+    fechaObjetivo = iso;
   }
 
   const inicial = cat.estados.find((e) => e.es_inicial) ?? cat.estados[0];
@@ -143,6 +144,8 @@ export async function prepararTicket(
   if (requiereResponsable(estado) && !responsableId) return falla("Elegí un responsable");
 
   const slaHoras = slaDe(cat, tipo.codigo, clasificacion?.codigo ?? null);
+  // Un error sin fecha objetivo vence cuando se cumple el SLA de su nivel, en horas laborales.
+  if (!fechaObjetivo && tipo.codigo === "error") fechaObjetivo = vencimientoSla(Date.now(), slaHoras);
 
   return {
     ok: true,

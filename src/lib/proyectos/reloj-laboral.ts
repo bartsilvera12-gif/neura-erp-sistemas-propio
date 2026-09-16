@@ -160,6 +160,38 @@ export function msSinDomingos(
   return entre(desdeIso, hastaIso, HORARIO_SIN_DOMINGO, MS_SIN_DOMINGO_POR_SEMANA);
 }
 
+/**
+ * El instante en que se cumplen `ms` de horario laboral contados desde `desdeMs`.
+ * Es la inversa de `msLaborables`: un error de 2 h reportado un viernes a las
+ * 16:00 vence el sábado a las 9:00, no el viernes a las 18:00.
+ *
+ * Recorre de a un día (a lo sumo unas pocas semanas para los SLA reales).
+ */
+export function sumarMsLaborables(desdeMs: number, ms: number): number {
+  if (!Number.isFinite(desdeMs) || !Number.isFinite(ms) || ms <= 0) return desdeMs;
+  let restante = ms;
+  let local = aLocal(desdeMs);
+  for (let i = 0; i < 3660; i++) {
+    const delta = local - ANCLA_LOCAL_MS;
+    const enSemana = ((delta % SEMANA_MS) + SEMANA_MS) % SEMANA_MS;
+    const dia = Math.floor(enSemana / DIA_MS);
+    const inicioDia = local - (enSemana - dia * DIA_MS);
+    const ventana = HORARIO_LABORAL[dia];
+    if (ventana) {
+      const abre = inicioDia + ventana[0] * MIN_MS;
+      const cierra = inicioDia + ventana[1] * MIN_MS;
+      const desde = Math.max(local, abre);
+      if (desde < cierra) {
+        const disponible = cierra - desde;
+        if (restante <= disponible) return desde + restante - TZ_OFFSET_MIN * MIN_MS;
+        restante -= disponible;
+      }
+    }
+    local = inicioDia + DIA_MS;
+  }
+  return local - TZ_OFFSET_MIN * MIN_MS;
+}
+
 /** ¿El instante cae dentro del horario de trabajo? Sirve para explicar un contador congelado. */
 export function enHorarioLaboral(ms: number = Date.now()): boolean {
   const local = aLocal(ms);

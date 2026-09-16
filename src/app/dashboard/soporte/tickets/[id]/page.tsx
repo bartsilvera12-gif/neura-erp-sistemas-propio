@@ -6,7 +6,7 @@ import { useTicket } from "../../_ui/TicketContexto";
 import AccesosProyecto from "../../_ui/AccesosProyecto";
 import ComentariosTicket from "../../_ui/ComentariosTicket";
 import SubtareasTicket from "../../_ui/SubtareasTicket";
-import { fecha, fechaHora } from "../../_ui/api";
+import { fechaHora } from "../../_ui/api";
 import { IconoTile, Tarjeta, type Tono } from "../../_ui/ui";
 
 function Bloque({ titulo, texto, vacio, icono, tono }: { titulo: string; texto: string | null; vacio: string; icono: LucideIcon; tono: Tono }) {
@@ -82,7 +82,7 @@ export default function TicketDescripcionPage() {
             <Fila etiqueta="Clasificación" valor={t.clasificacion_nombre} />
             <Fila etiqueta="Creado por" valor={t.creador?.nombre} />
             <Fila etiqueta="Fecha creación" valor={fechaHora(t.created_at)} />
-            <Fila etiqueta="Fecha objetivo" valor={t.fecha_objetivo ? fecha(t.fecha_objetivo) : null} />
+            <Fila etiqueta="Fecha objetivo" valor={t.fecha_objetivo ? fechaHora(t.fecha_objetivo) : null} />
           </div>
         </Tarjeta>
 

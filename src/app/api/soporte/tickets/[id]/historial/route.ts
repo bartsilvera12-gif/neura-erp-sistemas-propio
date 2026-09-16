@@ -1,5 +1,5 @@
 import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
-import { nombreEstadoSubtarea } from "@/lib/soporte/dominio";
+import { fechaHoraPy, nombreEstadoSubtarea } from "@/lib/soporte/dominio";
 import {
   errorInesperado,
   falla,
@@ -67,6 +67,7 @@ export async function GET(request: Request, { params }: Params) {
       if (evento === "cambio_tipo") return cat.tipos.find((t) => t.codigo === v)?.nombre ?? v;
       if (evento === "cambio_responsable") return personas.get(v)?.nombre ?? "Usuario";
       if (evento === "cambio_sla") return `${v} h`;
+      if (evento === "cambio_fecha_objetivo") return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.split("-").reverse().join("/") : fechaHoraPy(v);
       if (evento === "subtarea_estado") return nombreEstadoSubtarea(v);
       return v;
     };

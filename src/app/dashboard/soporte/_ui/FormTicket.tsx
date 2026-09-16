@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Clock, ListChecks, Paperclip, Tags, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import { FechaSelect } from "@/components/ui/FechaSelect";
-import { puedeEstarACargo, slaDe } from "@/lib/soporte/dominio";
+import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraSelect";
+import { isoAFechaHoraLocal, puedeEstarACargo, slaDe, vencimientoSla } from "@/lib/soporte/dominio";
 import { apiSoporte, obtenerCatalogos, obtenerClientes, type CatalogosConEquipo } from "./api";
 import ZonaArchivos from "./ZonaArchivos";
 import { SelectorBuscable } from "./SelectorBuscable";
@@ -87,9 +87,12 @@ export default function FormTicket({
   modo,
   cancelarHref,
   onGuardar,
+  creadoEn,
 }: {
   inicial: ValoresTicket;
   modo: "crear" | "editar";
+  /** Alta del ticket (edición): desde ahí corre el SLA para la fecha objetivo automática. */
+  creadoEn?: string;
   cancelarHref: string;
   onGuardar: (v: ValoresTicket, archivos: File[]) => Promise<void>;
 }) {
@@ -99,6 +102,8 @@ export default function FormTicket({
   const [v, setV] = useState<ValoresTicket>(inicial);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [guardando, setGuardando] = useState(false);
+  // Mientras nadie la toque, la fecha objetivo de un error la pone su nivel.
+  const [fechaTocada, setFechaTocada] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -200,7 +205,7 @@ export default function FormTicket({
             <FancySelect
               ariaLabel="Tipo de solicitud"
               value={v.tipo_codigo}
-              onChange={(x) => setV((p) => ({ ...p, tipo_codigo: x, clasificacion_codigo: "" }))}
+              onChange={(x) => setV((p) => ({ ...p, tipo_codigo: x, clasificacion_codigo: "", fecha_objetivo: fechaTocada ? p.fecha_objetivo : "" }))}
               options={tipoOpciones}
             />
           </Campo>
@@ -216,6 +221,10 @@ export default function FormTicket({
                   ...p,
                   clasificacion_codigo: x,
                   prioridad_codigo: c?.prioridad_sugerida || p.prioridad_codigo || "normal",
+                  fecha_objetivo:
+                    !fechaTocada && p.tipo_codigo === "error" && c
+                      ? isoAFechaHoraLocal(vencimientoSla(creadoEn ?? Date.now(), c.sla_horas))
+                      : p.fecha_objetivo,
                 }));
               }}
               options={[
@@ -270,8 +279,22 @@ export default function FormTicket({
           <Campo etiqueta="Responsable" ayuda={modo === "crear" ? "El ticket entra como Pendiente." : undefined}>
             <SelectorBuscable ariaLabel="Responsable" avatares value={v.responsable_id} onChange={(x) => set("responsable_id", x)} opciones={responsableOpciones} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
           </Campo>
-          <Campo etiqueta="Fecha objetivo">
-            <FechaSelect value={v.fecha_objetivo} onChange={(e) => set("fecha_objetivo", e.target.value)} className={claseInput} anioDesde={2024} />
+          <Campo
+            etiqueta="Fecha objetivo"
+            ayuda={
+              v.tipo_codigo === "error" && sla != null && !fechaTocada
+                ? `Calculada por el nivel: ${sla} horas laborales desde ${modo === "crear" ? "el alta" : "que se creó"}. Podés cambiarla.`
+                : undefined
+            }
+          >
+            <FechaHoraSelect
+              ariaLabel="Fecha objetivo"
+              value={v.fecha_objetivo}
+              onChange={(x) => {
+                setFechaTocada(true);
+                set("fecha_objetivo", x);
+              }}
+            />
           </Campo>
         </div>
       </Seccion>

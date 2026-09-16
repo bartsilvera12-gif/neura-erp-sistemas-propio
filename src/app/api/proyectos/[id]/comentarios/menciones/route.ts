@@ -38,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json(errorResponse("Sin acceso a ese canal"), { status: 403 });
     }
 
-    const candidatos = await candidatosMencionDe(sb, auth.empresaId, pid, canal);
+    const candidatos = await candidatosMencionDe(sb, auth.empresaId, pid, canal, auth.usuarioCatalogId);
     // Mencionarse a uno mismo no notifica nada útil.
     return NextResponse.json(
       successResponse({ candidatos: candidatos.filter((c) => c.id !== auth.usuarioCatalogId) })

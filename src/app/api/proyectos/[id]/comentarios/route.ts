@@ -178,7 +178,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // después no puede abrir, y el body se arma a mano con dos líneas.
     let menciones: string[] = [];
     if (mencionesPedidas.length > 0) {
-      const candidatos = await candidatosMencionDe(sb, auth.empresaId, pid, canal);
+      const candidatos = await candidatosMencionDe(sb, auth.empresaId, pid, canal, auth.usuarioCatalogId);
       const validos = new Set(candidatos.map((c) => c.id));
       menciones = mencionesPedidas.filter((m) => validos.has(m) && m !== auth.usuarioCatalogId);
     }

@@ -144,46 +144,91 @@ export type CandidatoMencion = {
   etiqueta: string;
 };
 
+type UsuarioMencion = UsuarioFlags & { id: string; nombre: string | null; es_tecnico: boolean | null };
+
+type Rol = "pm" | "qa" | "dev" | "comercial";
+
 /**
- * A quién se puede mencionar en un canal de este proyecto.
+ * A quién se puede mencionar en un canal de este proyecto, según quién escribe.
  *
- * Sólo entra quien PUEDE VER ese canal: mencionar a alguien que no lo ve sería
- * avisarle de algo que después no puede abrir. Dos consultas fijas, no una por
- * persona.
+ *   Comercial:  PM → comerciales · comercial → PMs
+ *   Desarrollo: Dev → QA y PM · QA → Dev y PM · PM → Dev y QA
+ *
+ * Quien tiene varios roles suma las listas. Con un rol de otro canal (un
+ * comercial en Desarrollo) sólo a PMs. Un admin, o alguien sin rol, a todos los
+ * roles del canal.
+ *
+ * "Comercial" no tiene flag en `usuarios`: es quien tiene rol de vendedor o figura
+ * como responsable comercial de algún proyecto de la empresa (sin ser PM, QA,
+ * técnico ni admin). Además, sólo entra quien PUEDE VER el canal: mencionar a
+ * alguien que no lo ve sería avisarle de algo que después no puede abrir.
  */
 export async function candidatosMencionDe(
   sb: AppSupabaseClient,
   empresaId: string,
   proyectoId: string,
-  canal: CanalComentario
+  canal: CanalComentario,
+  actorId: string
 ): Promise<CandidatoMencion[]> {
   const catalog = createServiceRoleClient();
-  const [{ data: usuarios }, proy] = await Promise.all([
+  const [{ data: usuarios }, proy, { data: comercialesData }] = await Promise.all([
     catalog
       .from("usuarios")
-      .select("id, nombre, rol, es_qa, es_project_manager")
+      .select("id, nombre, rol, es_qa, es_project_manager, es_tecnico")
       .eq("empresa_id", empresaId)
-      .eq("estado", "activo")
+      .ilike("estado", "activo")
       .order("nombre"),
     asignacionesDe(sb, empresaId, proyectoId),
+    sb
+      .from("proyectos")
+      .select("responsable_comercial_id")
+      .eq("empresa_id", empresaId)
+      .not("responsable_comercial_id", "is", null)
+      .limit(10_000),
   ]);
 
-  const filas = (usuarios ?? []) as (UsuarioFlags & { id: string; nombre: string | null })[];
+  const comercialesAsignados = new Set(
+    ((comercialesData ?? []) as { responsable_comercial_id: string | null }[])
+      .map((r) => r.responsable_comercial_id)
+      .filter((x): x is string => Boolean(x))
+  );
+
+  const rolesDe = (u: UsuarioMencion): Set<Rol> => {
+    const roles = new Set<Rol>();
+    if (u.es_project_manager === true) roles.add("pm");
+    if (u.es_qa === true || proy?.qa_responsable_id === u.id) roles.add("qa");
+    if (u.es_tecnico === true || proy?.responsable_tecnico_id === u.id) roles.add("dev");
+    const pareceComercial =
+      isErpRolVendedor(u.rol) || comercialesAsignados.has(u.id) || proy?.responsable_comercial_id === u.id;
+    if (pareceComercial && roles.size === 0 && !esRolAdminEmpresaOGlobal(u.rol)) roles.add("comercial");
+    return roles;
+  };
+
+  const filas = (usuarios ?? []) as UsuarioMencion[];
+  const actor = filas.find((u) => u.id === actorId);
+  const rolesActor = actor ? rolesDe(actor) : new Set<Rol>();
+
+  const rolesDelCanal: Rol[] = canal === "comercial" ? ["pm", "comercial"] : ["dev", "qa", "pm"];
+  const MENCIONA: Record<CanalComentario, Partial<Record<Rol, Rol[]>>> = {
+    comercial: { pm: ["comercial"], comercial: ["pm"] },
+    desarrollo: { dev: ["qa", "pm"], qa: ["dev", "pm"], pm: ["dev", "qa"] },
+  };
+  const destino = new Set<Rol>();
+  for (const r of rolesActor) for (const d of MENCIONA[canal][r] ?? []) destino.add(d);
+  // Con rol, pero de otro canal (p. ej. un comercial en Desarrollo): sólo PMs.
+  if (destino.size === 0 && rolesActor.size > 0) destino.add("pm");
+  // Admin o sin rol: todos los roles del canal.
+  if (destino.size === 0) for (const r of rolesDelCanal) destino.add(r);
+
+  const ETIQUETA: Record<Rol, string> = { pm: "PM", qa: "QA", dev: "Dev", comercial: "Comercial" };
   const out: CandidatoMencion[] = [];
   for (const u of filas) {
-    const permiso = canalesParaUsuario(u.id, u, proy);
-    if (!permiso.canales.includes(canal)) continue;
-    const etiqueta =
-      u.es_qa === true
-        ? "QA"
-        : u.es_project_manager === true
-          ? "PM"
-          : proy?.responsable_tecnico_id === u.id
-            ? "Técnico"
-            : proy?.responsable_comercial_id === u.id
-              ? "Comercial"
-              : "";
-    out.push({ id: u.id, nombre: (u.nombre ?? "").trim() || "—", etiqueta });
+    if (u.id === actorId) continue;
+    const roles = rolesDe(u);
+    const coincide = [...roles].filter((r) => destino.has(r));
+    if (coincide.length === 0) continue;
+    if (!canalesParaUsuario(u.id, u, proy).canales.includes(canal)) continue;
+    out.push({ id: u.id, nombre: (u.nombre ?? "").trim() || "—", etiqueta: coincide.map((r) => ETIQUETA[r]).join(" · ") });
   }
   return out;
 }

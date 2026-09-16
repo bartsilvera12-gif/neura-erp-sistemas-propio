@@ -119,7 +119,7 @@ function Semana({
   titulo: string;
   insignia: string;
   activa: boolean;
-  /** Admin o integrante de esa guardia, y con principal y suplente cargados. */
+  /** Admin o PM de esa guardia, y con principal y suplente cargados. */
   puedeIntercambiar?: boolean;
   onIntercambiar?: () => Promise<void>;
 }) {
@@ -248,12 +248,12 @@ export default function GuardiasBoton() {
 
   const deLaSemana = (lunes: string) => guardias.find((g) => g.semana_inicio === lunes);
 
-  // Activar al suplente: admin o integrante de esa guardia, con los dos cargados.
+  // Activar al suplente: admin o PM de esa guardia, con principal y suplente cargados.
   const puedeIntercambiar = (g: Guardia | undefined) =>
     Boolean(
       g?.soporte_principal_id &&
         g.soporte_suplente_id &&
-        (esAdmin || (usuarioId && [g.pm_id, g.soporte_principal_id, g.soporte_suplente_id].includes(usuarioId)))
+        (esAdmin || (usuarioId && g.pm_id === usuarioId))
     );
 
   const intercambiar = async (lunes: string) => {

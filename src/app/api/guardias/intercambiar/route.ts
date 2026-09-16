@@ -12,9 +12,8 @@ type FilaSoporte = { pm_id: string | null; soporte_principal_id: string | null; 
  *
  * Body: { semana_inicio, motivo? }
  *
- * Lo pueden hacer los administradores y quienes integran esa guardia (PM,
- * principal o suplente): es una decisión operativa del momento, no una
- * reasignación de la semana. Queda registrado con fecha, motivo y quién lo hizo.
+ * Lo pueden hacer los administradores y el PM de esa guardia, que es quien
+ * coordina la cobertura. Queda registrado con fecha, motivo y quién lo hizo.
  * Los tickets nuevos de guardia van desde ese momento al nuevo principal.
  */
 export async function POST(request: Request) {
@@ -42,9 +41,9 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse("Para intercambiar hacen falta principal y suplente"), { status: 400 });
     }
 
-    const integra = [g.pm_id, g.soporte_principal_id, g.soporte_suplente_id].includes(auth.usuarioCatalogId);
-    if (!auth.esAdmin && !integra) {
-      return NextResponse.json(errorResponse("Sólo quienes integran la guardia o un administrador pueden intercambiar"), {
+    const esPmDeGuardia = g.pm_id === auth.usuarioCatalogId;
+    if (!auth.esAdmin && !esPmDeGuardia) {
+      return NextResponse.json(errorResponse("Sólo el PM de guardia o un administrador pueden intercambiar"), {
         status: 403,
       });
     }

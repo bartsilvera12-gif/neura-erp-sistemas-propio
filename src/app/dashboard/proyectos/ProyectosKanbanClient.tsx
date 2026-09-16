@@ -761,6 +761,10 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   // Adónde volver cuando el modal se abrió desde otra pantalla (hoy: el Tablero).
   // En aperturas normales del Kanban queda null y no se muestra el "Volver".
   const [modalBackHref, setModalBackHref] = useState<string | null>(null);
+  // Persiste que se llegó desde el Tablero: pinta el botón "Volver al Tablero"
+  // arriba en ESTA página y sigue visible aunque se cierre el popup (por eso no
+  // se limpia en onClose, a diferencia de `modalBackHref`).
+  const [desdeTablero, setDesdeTablero] = useState(false);
   const [nuevoModalOpen, setNuevoModalOpen] = useState(false);
 
   const router = useRouter();
@@ -782,9 +786,12 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     if (!pid) return;
     setModalInitialTab(searchParams.get("tab") ?? undefined);
     setModalInitialCanal(searchParams.get("cc") ?? undefined);
-    // `from=tablero`: al cerrar/volver, el modal ofrece regresar al Tablero en
-    // vez de dejar al usuario en el Kanban (de donde no vino).
-    setModalBackHref(searchParams.get("from") === "tablero" ? "/dashboard/tableros" : null);
+    // `from=tablero`: al cerrar/volver, ofrecer regresar al Tablero en vez de
+    // dejar al usuario en el Kanban (de donde no vino). El flag de página
+    // persiste; el del modal es sólo mientras el popup está abierto.
+    const vinoDeTablero = searchParams.get("from") === "tablero";
+    setModalBackHref(vinoDeTablero ? "/dashboard/tableros" : null);
+    if (vinoDeTablero) setDesdeTablero(true);
     setModalProjectId(pid);
     router.replace("/dashboard/proyectos", { scroll: false });
   }, [searchParams, router]);
@@ -1163,6 +1170,15 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     <div className="mx-auto max-w-[1800px] space-y-3 px-4 pb-4 pt-2 md:px-6 md:pb-6 md:pt-3">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
+          {desdeTablero ? (
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/tableros")}
+              className="mb-2 inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-medium text-[#4FAEB2] transition-colors hover:text-[#3F8E91] hover:underline"
+            >
+              ← Volver al Tablero
+            </button>
+          ) : null}
           <div className="flex items-center gap-2">
             <span
               aria-hidden="true"

@@ -2522,16 +2522,16 @@ export default function ProyectoDetalleInner({
       <div
         className={
           variant === "modal"
-            ? "flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-4 pb-5 pt-6 md:px-6 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between"
-            : "flex flex-col gap-4 border-b border-slate-200 pb-4 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between"
+            ? "flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-4 pb-5 pt-6 md:px-6"
+            : "flex flex-col gap-4 border-b border-slate-200 pb-4"
         }
       >
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="mb-2 inline-flex items-center gap-1 text-[12px] font-medium text-[#4FAEB2] transition-colors hover:text-[#3F8E91] hover:underline"
+              className="mb-2 inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-medium text-[#4FAEB2] transition-colors hover:text-[#3F8E91] hover:underline"
             >
               ← {backLabel ?? "Volver"}
             </button>

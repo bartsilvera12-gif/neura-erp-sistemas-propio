@@ -5,6 +5,7 @@ import { useParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Building2,
+  CalendarCheck,
   CalendarPlus,
   Clock3,
   FileText,
@@ -223,7 +224,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
         ) : (
           <>
             <section className="mb-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-[0_1px_3px_rgba(15,23,42,0.05)]">
-              <div className="grid grid-cols-2 items-center gap-x-5 gap-y-3 sm:grid-cols-3 xl:grid-cols-6">
+              <div className="grid grid-cols-2 items-center gap-x-5 gap-y-3 sm:grid-cols-4 xl:grid-cols-7">
                 <Dato
                   etiqueta="Cliente"
                   icono={Building2}
@@ -261,6 +262,16 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                 </Dato>
                 <Dato etiqueta="Creado" icono={CalendarPlus} tono="indigo">{fechaHora(t.created_at)}</Dato>
                 <Dato etiqueta="Actualizado" icono={Clock3} tono="pizarra">{fechaHora(t.updated_at)}</Dato>
+                <Dato etiqueta="Entrega" icono={CalendarCheck} tono="rosa">
+                  {t.fecha_objetivo ? (
+                    // Vencida y todavía abierta: en rojo, que es lo primero que hay que ver.
+                    <span className={t.estado_tipo === "abierto" && Date.parse(t.fecha_objetivo) < Date.now() ? "text-rose-600" : "text-slate-800"}>
+                      {fechaHora(t.fecha_objetivo)}
+                    </span>
+                  ) : (
+                    <span className="font-medium text-slate-400">Sin fecha</span>
+                  )}
+                </Dato>
                 <div
                   className={`min-w-0 rounded-lg px-2.5 py-1.5 ${sla.fondo}`}
                   title={t.fecha_objetivo ? `Objetivo: ${fechaHora(t.fecha_objetivo)}` : undefined}

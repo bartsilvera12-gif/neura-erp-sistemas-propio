@@ -37,13 +37,11 @@ import {
   EstadoPill,
   FiltroFecha,
   Kpi,
-  NARANJA,
   PillSelect,
   ROJO,
   TEAL,
   TONO,
   TablaWrap,
-  VERDE,
   fmtDur,
   fmtFecha,
   type Opcion,
@@ -340,15 +338,14 @@ export default function DashboardEjecutivoClient() {
   }, [desde, hasta]);
 
   /**
-   * La lista de abajo: por defecto los proyectos críticos; con una tarjeta KPI
-   * seleccionada, TODOS los proyectos de ese bucket (aunque estén sanos y no
-   * sean críticos). El número de la tarjeta y esta lista salen del mismo
-   * criterio, así que coinciden.
+   * La lista de abajo: por defecto TODOS los proyectos activos; con una tarjeta
+   * KPI/estado/demorado seleccionada, sólo los de ese recorte. El número de la
+   * tarjeta y esta lista salen del mismo criterio, así que coinciden.
    */
   const filasLista = useMemo(() => {
     if (!data) return [];
-    if (!sel) return data.criticos;
     const act = data.proyectos_activos;
+    if (!sel) return act;
     if (sel.kind === "kpi") return act.filter((p) => p.buckets.includes(sel.bucket));
     if (sel.kind === "estado") return act.filter((p) => p.estado_id === sel.id);
     // demorado
@@ -357,7 +354,7 @@ export default function DashboardEjecutivoClient() {
 
   /** Título de la lista según qué se está mirando. */
   const tituloLista = useMemo(() => {
-    if (!sel) return "Proyectos críticos";
+    if (!sel) return "Proyectos activos";
     if (sel.kind === "kpi") return KPI_LABEL[sel.bucket];
     if (sel.kind === "estado") {
       return data?.estados_activos.find((e) => e.estado_id === sel.id)?.nombre ?? "Estado";
@@ -570,38 +567,6 @@ export default function DashboardEjecutivoClient() {
               )}
             </Card>
 
-            {/* Cumplimiento + Lead time */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {/* B. Cumplimiento de fecha prometida */}
-              <Card>
-                <CardTitle>Cumplimiento de fecha prometida</CardTitle>
-                <div className="flex flex-col items-center">
-                  <Medidor valor={data.cumplimiento.pct} />
-                  <ul className="mt-2 w-full space-y-1">
-                    <FilaLeyenda color={VERDE} label="Entregados en fecha" valor={data.cumplimiento.en_fecha} />
-                    <FilaLeyenda color={ROJO} label="Con atraso" valor={data.cumplimiento.con_atraso} />
-                    <FilaLeyenda color={AMBAR} label="En curso" valor={data.cumplimiento.en_curso} />
-                  </ul>
-                </div>
-              </Card>
-
-              {/* C. Lead time */}
-              <Card>
-                <CardTitle>Lead time promedio</CardTitle>
-                <div className="flex h-[150px] flex-col items-center justify-center">
-                  <span className="text-[34px] font-bold leading-none tracking-tight text-slate-800">
-                    {data.lead_time_horas != null
-                      ? data.lead_time_horas.toString().replace(".", ",")
-                      : "—"}
-                    <span className="ml-1 text-[16px] font-semibold text-slate-500">horas</span>
-                  </span>
-                  <span className="mt-2 text-center text-[11px] text-slate-400">
-                    Del ingreso a la primera entrega, en horas laborales
-                  </span>
-                </div>
-              </Card>
-            </div>
-
             {/* G · H */}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               <Card className="lg:col-span-2">
@@ -613,32 +578,28 @@ export default function DashboardEjecutivoClient() {
                         onClick={() => setSel(null)}
                         className="whitespace-nowrap text-[11px] font-medium text-[#4FAEB2] hover:underline"
                       >
-                        ← Ver críticos
+                        ← Ver todos
                       </button>
                     ) : (
                       <Link
                         href="/dashboard/proyectos"
                         className="whitespace-nowrap text-[11px] font-medium text-[#4FAEB2] hover:underline"
                       >
-                        Ver todos →
+                        Abrir en Proyectos →
                       </Link>
                     )
                   }
                 >
-                  {sel ? (
-                    <span className="flex items-center gap-1.5">
-                      {tituloLista}
-                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                        {filasLista.length}
-                      </span>
+                  <span className="flex items-center gap-1.5">
+                    {tituloLista}
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                      {filasLista.length}
                     </span>
-                  ) : (
-                    "Proyectos críticos"
-                  )}
+                  </span>
                 </CardTitle>
                 {filasLista.length === 0 ? (
                   <p className="text-sm text-slate-400">
-                    {sel ? "Sin proyectos en esta selección." : "Nada crítico. Buen día."}
+                    {sel ? "Sin proyectos en esta selección." : "No hay proyectos activos."}
                   </p>
                 ) : (
                   <TablaWrap>
@@ -810,54 +771,6 @@ export default function DashboardEjecutivoClient() {
           </>
         ) : null}
       </Estado>
-    </div>
-  );
-}
-
-function FilaLeyenda({ color, label, valor }: { color: string; label: string; valor: number }) {
-  return (
-    <li className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-600">
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="shrink-0 font-semibold tabular-nums text-slate-700">{valor}</span>
-    </li>
-  );
-}
-
-/**
- * Medidor semicircular del cumplimiento. Es un SVG a mano y no un gráfico: son
- * dos arcos: una librería entera para esto sería más código, no menos.
- */
-function Medidor({ valor }: { valor: number | null }) {
-  const pct = valor ?? 0;
-  const R = 58;
-  const largo = Math.PI * R;
-  const color = pct >= 90 ? VERDE : pct >= 70 ? AMBAR : pct > 0 ? NARANJA : "#e2e8f0";
-  return (
-    <div className="relative h-[92px] w-[150px]">
-      <svg viewBox="0 0 150 84" className="h-full w-full" aria-hidden>
-        <path
-          d={`M 17 75 A ${R} ${R} 0 0 1 133 75`}
-          fill="none"
-          stroke="#eef2f7"
-          strokeWidth={13}
-          strokeLinecap="round"
-        />
-        <path
-          d={`M 17 75 A ${R} ${R} 0 0 1 133 75`}
-          fill="none"
-          stroke={color}
-          strokeWidth={13}
-          strokeLinecap="round"
-          strokeDasharray={largo}
-          strokeDashoffset={largo * (1 - Math.min(100, Math.max(0, pct)) / 100)}
-        />
-      </svg>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 text-center">
-        <span className="text-[26px] font-bold leading-none text-slate-800">
-          {valor != null ? `${valor}%` : "—"}
-        </span>
-      </div>
     </div>
   );
 }

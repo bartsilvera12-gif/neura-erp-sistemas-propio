@@ -7,7 +7,9 @@ export type TipoGestion =
   | "Cambio plan"
   /** Escalan a un ticket de Soporte (ver `crearTipificacionConTicket`). */
   | "Error"
-  | "Cambio";
+  | "Cambio"
+  /** Puede agendar la sesión en Agenda (ver `agendarCapacitacion`). */
+  | "Capacitación";
 
 export type ResultadoTipificacion = "Pendiente" | "Resuelto" | "Escalar";
 
@@ -20,6 +22,7 @@ export const TIPOS_GESTION: readonly TipoGestion[] = [
   "Cambio plan",
   "Error",
   "Cambio",
+  "Capacitación",
 ];
 
 export const RESULTADOS_TIPIFICACION: readonly ResultadoTipificacion[] = ["Pendiente", "Resuelto", "Escalar"];
@@ -50,6 +53,8 @@ export interface Tipificacion {
   usuario_id?:  string | null;
   /** Ticket generado desde esta tipificación, si lo hay. */
   ticket?:      TicketDeTipificacion | null;
+  /** Capacitación agendada en Agenda desde esta tipificación, si la hay. */
+  cita?:        { id: string; inicio_at: string; fin_at: string; estado: string; responsable: string | null } | null;
 }
 
 /** `Corregida NC`: saldo liquidado por nota de crédito aprobada por SET (no es cobro registrado en `pagos`). */

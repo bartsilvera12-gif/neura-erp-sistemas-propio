@@ -14,6 +14,7 @@ const TIPOS_SUGERIDOS = [
   "servicio",
   "reunion",
   "seguimiento",
+  "capacitacion",
   "otro",
 ];
 

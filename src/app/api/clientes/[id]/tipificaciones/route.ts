@@ -5,8 +5,10 @@ import {
   type TicketDeTipificacion,
 } from "@/lib/gestion-clientes/types";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
+import { TIPO_CITA_CAPACITACION, agendarCapacitacion, leerAgendaCapacitacion } from "@/lib/agenda/capacitacion";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { requireCargaSoporteApi } from "@/lib/soporte/soporte-auth";
-import { errorInesperado, falla, leerCatalogos, ok, personasPorId } from "@/lib/soporte/servidor";
+import { errorInesperado, falla, leerCatalogos, ok, personasDeEmpresa, personasPorId } from "@/lib/soporte/servidor";
 import { TIPO_TICKET_DE_GESTION, crearTipificacionConTicket } from "@/lib/soporte/tipificacion-ticket";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -25,16 +27,17 @@ async function contexto(request: Request, params: Promise<{ id: string }>) {
   const sb = await getChatServiceClientForEmpresa(auth.empresa_id);
   const { data: cliente } = await sb
     .from("clientes")
-    .select("id")
+    .select("id, empresa, nombre, nombre_contacto, razon_social, tipo_cliente")
     .eq("empresa_id", auth.empresa_id)
     .eq("id", clienteId)
     .maybeSingle();
   if (!cliente) return { ok: false as const, respuesta: falla("Cliente no encontrado", 404) };
+  const clienteNombre = nombreClienteDisplay(cliente as never);
 
   const usuarioId = auth.usuarioCatalogId ?? null;
   const persona = usuarioId ? (await personasPorId([usuarioId])).get(usuarioId) : undefined;
   const nombre = persona?.nombre?.trim() || auth.user.email || "Usuario";
-  return { ok: true as const, auth, sb, clienteId, usuario: { id: usuarioId, nombre } };
+  return { ok: true as const, auth, sb, clienteId, clienteNombre, usuario: { id: usuarioId, nombre } };
 }
 
 /**
@@ -102,8 +105,33 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
+    // Capacitaciones agendadas desde una tipificación (si la empresa tiene Agenda).
+    const citas = new Map<string, { id: string; inicio_at: string; fin_at: string; estado: string; responsable: string | null }>();
+    if (ids.length) {
+      const { data: cs } = await sb
+        .from("agenda_citas")
+        .select("id, inicio_at, fin_at, estado, responsable_id, metadata")
+        .eq("empresa_id", auth.empresa_id)
+        .eq("cliente_id", clienteId)
+        .eq("tipo", TIPO_CITA_CAPACITACION);
+      const filasCita = ((cs ?? []) as { id: string; inicio_at: string; fin_at: string; estado: string; responsable_id: string | null; metadata: Record<string, unknown> | null }[])
+        .filter((c) => typeof c.metadata?.tipificacion_id === "string" && ids.includes(String(c.metadata.tipificacion_id)));
+      const nombres = await personasPorId(filasCita.map((c) => c.responsable_id));
+      for (const c of filasCita) {
+        citas.set(String(c.metadata?.tipificacion_id), {
+          id: c.id,
+          inicio_at: c.inicio_at,
+          fin_at: c.fin_at,
+          estado: c.estado,
+          responsable: c.responsable_id ? nombres.get(c.responsable_id)?.nombre ?? null : null,
+        });
+      }
+    }
+    const equipo = (await personasDeEmpresa(auth.empresa_id)).map((p) => ({ id: p.id, nombre: p.nombre, area: p.area }));
+
     return ok({
       usuario_actual: usuario,
+      equipo,
       puede_soporte: soporte.ok,
       tipificaciones: lista.map((f) => ({
         id: String(f.id),
@@ -115,6 +143,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         resultado: f.resultado,
         observacion: String(f.observacion ?? ""),
         ticket: tickets.get(String(f.id)) ?? null,
+        cita: citas.get(String(f.id)) ?? null,
       })),
     });
   } catch (e) {
@@ -128,6 +157,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
  * Body: { tipo_gestion, resultado, observacion, ticket? }
  *
  * · Tipos normales: se guarda la tipificación con el usuario real. Igual que antes.
+ * · Capacitación con `agenda` { inicio, duracion_min, responsable_id, ubicacion? }:
+ *   además se agenda la sesión en Agenda, vinculada al cliente.
  * · Error y Cambio: crean su ticket de Soporte (ver `crearTipificacionConTicket`).
  *   Pueden los PM y quien usa Soporte. La tipificación y el ticket se crean en UNA
  *   transacción SQL: o quedan los dos, o ninguno. El resultado se fija en "Escalar".
@@ -139,7 +170,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const ctx = await contexto(request, params);
     if (!ctx.ok) return ctx.respuesta;
-    const { auth, sb, clienteId, usuario } = ctx;
+    const { auth, sb, clienteId, clienteNombre, usuario } = ctx;
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return falla("Datos inválidos");
@@ -153,6 +184,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!TIPO_TICKET_DE_GESTION[tipo]) {
       const resultado = RESULTADOS_TIPIFICACION.find((r) => r === body.resultado);
       if (!resultado) return falla("Resultado inválido");
+
+      // Capacitación con agenda: la cita se crea ANTES (valida horario y choque);
+      // si después la tipificación no se guarda, la cita se borra.
+      let citaId: string | null = null;
+      if (tipo === "Capacitación" && body.agenda) {
+        const equipo = await personasDeEmpresa(auth.empresa_id);
+        const leida = leerAgendaCapacitacion(body.agenda, equipo);
+        if (!leida.ok) return falla(leida.mensaje);
+        const cita = await agendarCapacitacion(sb, {
+          empresaId: auth.empresa_id,
+          clienteId,
+          clienteNombre,
+          agenda: leida.agenda,
+          observaciones: observacion,
+          creadoPor: usuario.id,
+        });
+        if (!cita.ok) return falla(cita.mensaje, cita.status);
+        citaId = cita.id;
+      }
+
       const { data, error } = await sb
         .from("tipificaciones")
         .insert({
@@ -166,8 +217,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         })
         .select("id")
         .single();
-      if (error || !data) return falla(error?.message ?? "Error al guardar la tipificación.");
-      return ok({ tipificacion_id: data.id, ticket: null });
+      if (error || !data) {
+        if (citaId) await sb.from("agenda_citas").delete().eq("empresa_id", auth.empresa_id).eq("id", citaId);
+        return falla(error?.message ?? "Error al guardar la tipificación.");
+      }
+      if (citaId) {
+        await sb
+          .from("agenda_citas")
+          .update({ metadata: { origen: "tipificacion", tipificacion_id: data.id } })
+          .eq("empresa_id", auth.empresa_id)
+          .eq("id", citaId);
+      }
+      return ok({ tipificacion_id: data.id, ticket: null, cita_id: citaId });
     }
 
     // ------------------------------------------------------ Error / Cambio

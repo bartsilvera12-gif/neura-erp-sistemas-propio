@@ -15,6 +15,7 @@ import {
   FileText,
   Flag,
   FolderKanban,
+  GraduationCap,
   HandCoins,
   Headset,
   History,
@@ -45,6 +46,7 @@ import {
 import { fechaHoraPy, vencimientoSla, type SoporteClasificacion, type SoporteTipo } from "@/lib/soporte/dominio";
 import { apiSoporte, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
+import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraSelect";
 import AccesosProyecto from "@/app/dashboard/soporte/_ui/AccesosProyecto";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
@@ -85,7 +87,11 @@ const TIPO_UI: Record<TipoGestion, { icono: LucideIcon; tono: Tono }> = {
   "Cambio plan": { icono: ArrowLeftRight, tono: "azul" },
   Error: { icono: Bug, tono: "rosa" },
   Cambio: { icono: PenTool, tono: "ambar" },
+  "Capacitación": { icono: GraduationCap, tono: "indigo" },
 };
+
+/** Duraciones rápidas de una capacitación, en minutos. */
+const DURACIONES = [30, 60, 90, 120];
 
 const RESULTADO_TONO: Record<ResultadoTipificacion, Tono> = {
   Pendiente: "ambar",
@@ -98,6 +104,7 @@ const sombra = "shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,2
 
 type Listado = {
   usuario_actual: { id: string | null; nombre: string };
+  equipo: { id: string; nombre: string; area: string }[];
   puede_soporte: boolean;
   tipificaciones: Tipificacion[];
 };
@@ -251,6 +258,9 @@ export default function TipificacionPage() {
   });
   const [ticket, setTicket] = useState<DatosTicket>(TICKET_VACIO);
   const [archivos, setArchivos] = useState<File[]>([]);
+  // Capacitación: agendar la sesión en Agenda desde acá mismo.
+  const [agendar, setAgendar] = useState(true);
+  const [agenda, setAgenda] = useState({ inicio: "", duracion_min: 60, responsable_id: "", ubicacion: "" });
 
   // Datos de Soporte: sólo se piden cuando hace falta (tipo Error).
   const [cat, setCat] = useState<DatosSoporte | null>(null);
@@ -262,6 +272,10 @@ export default function TipificacionPage() {
   const tipoTicket = TIPO_TICKET[form.tipo_gestion] ?? null;
   const esError = tipoTicket != null;
   const esCambio = tipoTicket === "cambio";
+  const esCapacitacion = form.tipo_gestion === "Capacitación";
+  // Quien da la capacitación: por defecto, quien la registra.
+  const capacitador = agenda.responsable_id || listado?.usuario_actual.id || "";
+  const capacitadorNombre = listado?.equipo.find((p) => p.id === capacitador)?.nombre ?? null;
 
   const cargarListado = useCallback(async () => {
     const res = await fetchWithSupabaseSession(`/api/clientes/${id}/tipificaciones`, { cache: "no-store" });
@@ -353,6 +367,8 @@ export default function TipificacionPage() {
     // Se conserva el proyecto si es el único del cliente.
     setTicket({ ...TICKET_VACIO, proyecto_id: proyectos?.length === 1 ? proyectos[0].id : "" });
     setArchivos([]);
+    setAgendar(true);
+    setAgenda({ inicio: "", duracion_min: 60, responsable_id: "", ubicacion: "" });
   }
 
   async function handleGuardar(e?: React.FormEvent) {
@@ -361,6 +377,8 @@ export default function TipificacionPage() {
     setExito(null);
 
     if (!form.observacion.trim()) return setError("La observación es obligatoria.");
+
+    if (esCapacitacion && agendar && !agenda.inicio) return setError("Elegí fecha y hora de la capacitación, o desmarcá “Agendar”.");
 
     if (esError) {
       if (!listado?.puede_soporte) return setError("Tu usuario no puede cargar tickets de Soporte.");
@@ -382,10 +400,11 @@ export default function TipificacionPage() {
           resultado: form.resultado,
           observacion: form.observacion.trim(),
           ...(esError ? { ticket } : {}),
+          ...(esCapacitacion && agendar ? { agenda: { ...agenda, responsable_id: capacitador } } : {}),
         }),
       });
       const j = (await res.json().catch(() => null)) as
-        | { success?: boolean; error?: string; data?: { tipificacion_id: string; ticket: { id: string; numero: number } | null } }
+        | { success?: boolean; error?: string; data?: { tipificacion_id: string; ticket: { id: string; numero: number } | null; cita_id?: string | null } }
         | null;
       if (!res.ok || !j?.success || !j.data) {
         setError(j?.error ?? (esError ? "No se pudo crear el ticket. No se guardó la tipificación." : "Error al guardar la tipificación."));
@@ -403,7 +422,11 @@ export default function TipificacionPage() {
         setCreado({ ...j.data.ticket, aviso });
         window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
-        setExito("Tipificación registrada correctamente.");
+        setExito(
+          j.data.cita_id && agenda.inicio
+            ? `Tipificación registrada y capacitación agendada para el ${agenda.inicio.slice(8, 10)}/${agenda.inicio.slice(5, 7)} a las ${agenda.inicio.slice(11, 16)}.`
+            : "Tipificación registrada correctamente."
+        );
         setTimeout(() => setExito(null), 3500);
       }
       reiniciar();
@@ -536,6 +559,50 @@ export default function TipificacionPage() {
               </Campo>
             </Seccion>
 
+            {/* ── Capacitación: agenda directa ─────────────────────────── */}
+            {esCapacitacion ? (
+              <Seccion titulo="Agendar capacitación" detalle="Queda en Agenda, vinculada al cliente, con sus recordatorios" icono={GraduationCap} tono="indigo">
+                <label className="flex w-fit cursor-pointer items-center gap-2.5 text-[13.5px] font-semibold text-slate-700">
+                  <input type="checkbox" checked={agendar} onChange={(e) => setAgendar(e.target.checked)} className="h-4 w-4 accent-[#4FAEB2]" />
+                  Agendar la capacitación ahora
+                </label>
+                {agendar ? (
+                  <>
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <Campo etiqueta="Fecha y hora" requerido>
+                        <FechaHoraSelect ariaLabel="Fecha y hora de la capacitación" value={agenda.inicio} onChange={(v) => { setError(null); setAgenda((a) => ({ ...a, inicio: v })); }} />
+                      </Campo>
+                      <Campo etiqueta="Duración" requerido>
+                        <div role="radiogroup" aria-label="Duración" className="flex flex-wrap gap-2">
+                          {DURACIONES.map((m) => (
+                            <Pildora key={m} activa={agenda.duracion_min === m} tono="indigo" onClick={() => setAgenda((a) => ({ ...a, duracion_min: m }))}>
+                              {m < 60 ? `${m} min` : `${m / 60} h`.replace(".5 h", " h 30")}
+                            </Pildora>
+                          ))}
+                        </div>
+                      </Campo>
+                    </div>
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <Campo etiqueta="Quién la da" requerido>
+                        <SelectorBuscable
+                          ariaLabel="Quién da la capacitación"
+                          avatares
+                          value={capacitador}
+                          onChange={(v) => setAgenda((a) => ({ ...a, responsable_id: v }))}
+                          opciones={(listado?.equipo ?? []).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area }))}
+                          buscarPlaceholder="Buscar persona…"
+                          vacio="Nadie coincide"
+                        />
+                      </Campo>
+                      <Campo etiqueta="Lugar o enlace">
+                        <input className={claseInput} value={agenda.ubicacion} maxLength={500} onChange={(e) => setAgenda((a) => ({ ...a, ubicacion: e.target.value }))} placeholder="Ej.: Google Meet, oficina del cliente…" />
+                      </Campo>
+                    </div>
+                  </>
+                ) : null}
+              </Seccion>
+            ) : null}
+
             {/* ── Ticket de soporte (Error o Cambio) ───────────────────── */}
             <AnimatePresence initial={false}>
               {esError ? (
@@ -664,6 +731,15 @@ export default function TipificacionPage() {
                 <FilaResumen etiqueta="Resultado">
                   <span className={`rounded-full px-2 py-0.5 text-[12px] ${TONOS[RESULTADO_TONO[form.resultado]].suave} ${TONOS[RESULTADO_TONO[form.resultado]].texto}`}>{form.resultado}</span>
                 </FilaResumen>
+                {esCapacitacion && agendar ? (
+                  <>
+                    <FilaResumen etiqueta="Capacitación">
+                      {agenda.inicio ? `${agenda.inicio.slice(8, 10)}/${agenda.inicio.slice(5, 7)} ${agenda.inicio.slice(11, 16)}` : <span className="font-normal text-slate-400">Sin fecha</span>}
+                    </FilaResumen>
+                    <FilaResumen etiqueta="Duración">{agenda.duracion_min} min</FilaResumen>
+                    <FilaResumen etiqueta="La da">{capacitadorNombre ?? <span className="font-normal text-slate-400">Sin elegir</span>}</FilaResumen>
+                  </>
+                ) : null}
                 {esError ? (
                   <>
                     <FilaResumen etiqueta="Proyecto">{proyectoElegido?.titulo ?? <span className="font-normal text-slate-400">Sin elegir</span>}</FilaResumen>
@@ -768,6 +844,19 @@ export default function TipificacionPage() {
                         <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-bold ${rt.suave} ${rt.texto}`}>{t.resultado}</span>
                       </div>
                       <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-relaxed text-slate-700">{t.observacion}</p>
+
+                      {t.cita ? (
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-3">
+                          <p className="inline-flex items-center gap-2 text-[13px] font-semibold text-indigo-800">
+                            <GraduationCap className="h-4 w-4" aria-hidden />
+                            Capacitación agendada · {formatFechaHora(t.cita.inicio_at)}
+                            {t.cita.responsable ? <span className="font-medium text-indigo-600">· {t.cita.responsable}</span> : null}
+                          </p>
+                          <Link href="/dashboard/agenda" className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-semibold text-indigo-700 no-underline shadow-sm ring-1 ring-indigo-200 hover:bg-indigo-50">
+                            Ver en Agenda <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                      ) : null}
 
                       {t.ticket ? (
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#4FAEB2]/25 bg-gradient-to-r from-[#4FAEB2]/[0.07] to-transparent px-4 py-3">

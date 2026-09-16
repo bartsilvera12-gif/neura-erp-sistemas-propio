@@ -41,15 +41,15 @@ const FIN_GUARDIA_MIN = 20 * 60;
  * ¿Está activa la guardia? (Proceso de Gestión de Soporte v1.4, §11.1)
  *
  * Se activa cuando termina la jornada y cubre hasta las 20:00: lunes a viernes
- * de 17 a 20 y sábados de 12 a 20. Antes de que empiece la jornada, después de
- * las 20 y el domingo no hay guardia: rige el proceso ordinario.
+ * de 17 a 20, sábados de 12 a 20 y domingos de 8 a 20. Antes de las 8 y después
+ * de las 20 no hay guardia: rige el proceso ordinario.
  */
 export function enFranjaDeGuardia(ahora: number = Date.now()): boolean {
   const local = new Date(ahora + TZ_OFFSET_MIN * 60_000);
   const dia = local.getUTCDay(); // 0 = domingo
   const minuto = local.getUTCHours() * 60 + local.getUTCMinutes();
-  if (dia === 0) return false;
-  const finJornada = dia === 6 ? 12 * 60 : 17 * 60;
+  // Domingo no hay jornada: la guardia cubre de 8 a 20.
+  const finJornada = dia === 0 ? 8 * 60 : dia === 6 ? 12 * 60 : 17 * 60;
   return minuto >= finJornada && minuto < FIN_GUARDIA_MIN;
 }
 

@@ -88,6 +88,8 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
   const [catalogos, setCatalogos] = useState<CatalogosConEquipo | null>(() => catalogosEnMemoria() ?? null);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
+  // Momento de la carga, para marcar la entrega vencida sin leer el reloj en cada render.
+  const [ahora] = useState(() => Date.now());
   const menuRef = useRef<HTMLDivElement>(null);
 
   const recargar = useCallback(async () => {
@@ -265,7 +267,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                 <Dato etiqueta="Entrega" icono={CalendarCheck} tono="rosa">
                   {t.fecha_objetivo ? (
                     // Vencida y todavía abierta: en rojo, que es lo primero que hay que ver.
-                    <span className={t.estado_tipo === "abierto" && Date.parse(t.fecha_objetivo) < Date.now() ? "text-rose-600" : "text-slate-800"}>
+                    <span className={t.estado_tipo === "abierto" && Date.parse(t.fecha_objetivo) < ahora ? "text-rose-600" : "text-slate-800"}>
                       {fechaHora(t.fecha_objetivo)}
                     </span>
                   ) : (

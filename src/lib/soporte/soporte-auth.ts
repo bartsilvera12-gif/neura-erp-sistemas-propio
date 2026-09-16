@@ -9,7 +9,7 @@ import {
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
-import { SOPORTE_SLUG, puedeConfigurarSoporte, puedeUsarSoporte } from "@/lib/soporte/permisos";
+import { SOPORTE_SLUG, puedeConfigurarSoporte, puedeUsarSoporte, puedeVerDashboardSoporte } from "@/lib/soporte/permisos";
 import { memoriaSesion, type SesionSoporte } from "@/lib/soporte/cache";
 
 export type SoporteContexto = {
@@ -18,6 +18,8 @@ export type SoporteContexto = {
   usuarioId: string;
   rol: string | null;
   puedeConfigurar: boolean;
+  /** Ve el Dashboard de Soporte (el equipo operativo PM/QA/Dev, no). */
+  veDashboard: boolean;
   /** Cliente del schema de datos de la empresa (service role). */
   sb: AppSupabaseClient;
 };
@@ -40,10 +42,14 @@ async function tieneModuloConcedido(svc: ReturnType<typeof createServiceRoleClie
   return !error && (data?.length ?? 0) > 0;
 }
 
-/** Tilde de Project Manager del catálogo de usuarios. Ante un error, no. */
-async function esProjectManager(svc: ReturnType<typeof createServiceRoleClient>, usuarioId: string): Promise<boolean> {
-  const { data, error } = await svc.from("usuarios").select("es_project_manager").eq("id", usuarioId).maybeSingle();
-  return !error && (data as { es_project_manager?: boolean | null } | null)?.es_project_manager === true;
+/** Tildes de PM, QA y Desarrollo del catálogo de usuarios. Ante un error, ninguno. */
+async function rolesOperativos(
+  svc: ReturnType<typeof createServiceRoleClient>,
+  usuarioId: string
+): Promise<{ pm: boolean; qa: boolean; dev: boolean }> {
+  const { data, error } = await svc.from("usuarios").select("es_project_manager, es_qa, es_tecnico").eq("id", usuarioId).maybeSingle();
+  const u = (error ? null : data) as { es_project_manager?: boolean | null; es_qa?: boolean | null; es_tecnico?: boolean | null } | null;
+  return { pm: u?.es_project_manager === true, qa: u?.es_qa === true, dev: u?.es_tecnico === true };
 }
 
 async function sesionDe(
@@ -65,7 +71,7 @@ async function sesionDe(
     rol: usuario.rol,
     email: user.email ?? null,
     concedido: await tieneModuloConcedido(svc, usuario.id),
-    pm: await esProjectManager(svc, usuario.id),
+    ...(await rolesOperativos(svc, usuario.id)),
   };
   // Sólo lo que salió bien: si a alguien le acaban de arreglar el acceso, tiene
   // que entrar en el próximo intento y no dentro de 30 segundos.
@@ -79,7 +85,14 @@ async function sesionDe(
  */
 async function contexto(sesion: SesionSoporte | null): Promise<SoporteAuth> {
   if (!sesion) return { ok: false, status: 401, message: "No autenticado" };
-  const sujeto = { rol: sesion.rol, email: sesion.email, concedido: sesion.concedido };
+  const sujeto = {
+    rol: sesion.rol,
+    email: sesion.email,
+    concedido: sesion.concedido,
+    es_project_manager: sesion.pm,
+    es_qa: sesion.qa,
+    es_tecnico: sesion.dev,
+  };
   if (!puedeUsarSoporte(sujeto)) return { ok: false, status: 403, message: "Sin acceso al módulo Soporte" };
   return {
     ok: true,
@@ -87,6 +100,7 @@ async function contexto(sesion: SesionSoporte | null): Promise<SoporteAuth> {
     usuarioId: sesion.usuarioId,
     rol: sesion.rol,
     puedeConfigurar: puedeConfigurarSoporte(sujeto),
+    veDashboard: puedeVerDashboardSoporte(sujeto),
     sb: await getChatServiceClientForEmpresa(sesion.empresaId),
   };
 }
@@ -106,6 +120,7 @@ export async function requireCargaSoporteApi(request: Request): Promise<SoporteA
       usuarioId: sesion.usuarioId,
       rol: sesion.rol,
       puedeConfigurar: false,
+      veDashboard: false,
       sb: await getChatServiceClientForEmpresa(sesion.empresaId),
     };
   }

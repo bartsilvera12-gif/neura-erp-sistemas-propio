@@ -35,11 +35,27 @@ export function puedeUsarSoporte(u: SujetoSoporte | null | undefined): boolean {
   return esRolAdminEmpresaOGlobal(u.rol) || u.concedido === true;
 }
 
-/** La configuración (estados, SLA, catálogos): administradores y quien tenga el módulo concedido. */
+/**
+ * Equipo operativo de Soporte: PM, QA y Desarrollo que no son administradores.
+ * Trabajan los tickets, pero no ven el Dashboard ni la Configuración.
+ */
+export function esEquipoOperativoSoporte(u: SujetoSoporte | null | undefined): boolean {
+  if (!u) return false;
+  if (isBootstrapSuperAdminEmail(u.email ?? null) || esRolAdminEmpresaOGlobal(u.rol)) return false;
+  return u.es_project_manager === true || u.es_qa === true || u.es_tecnico === true;
+}
+
+/** El Dashboard de Soporte: todos los que usan el módulo menos el equipo operativo. */
+export function puedeVerDashboardSoporte(u: SujetoSoporte | null | undefined): boolean {
+  return puedeUsarSoporte(u) && !esEquipoOperativoSoporte(u);
+}
+
+/** La configuración (estados, SLA, catálogos): administradores y quien tenga el módulo concedido, salvo el equipo operativo. */
 export function puedeConfigurarSoporte(u: SujetoSoporte | null | undefined): boolean {
   if (!u) return false;
   if (isBootstrapSuperAdminEmail(u.email ?? null)) return true;
-  return esRolAdminEmpresaOGlobal(u.rol) || u.concedido === true;
+  if (esRolAdminEmpresaOGlobal(u.rol)) return true;
+  return u.concedido === true && !esEquipoOperativoSoporte(u);
 }
 
 export const SOPORTE_SLUG = "soporte";

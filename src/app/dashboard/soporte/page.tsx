@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   AlarmClock,
@@ -92,6 +93,20 @@ export default function SoporteDashboardPage() {
   const [dias, setDias] = useState("30");
   const [datos, setDatos] = useState<Dashboard | null>(() => recordado.get("30") ?? null);
   const [error, setError] = useState<string | null>(null);
+
+  // PM, QA y Desarrollo no ven el Dashboard: van directo a los tickets.
+  const router = useRouter();
+  useEffect(() => {
+    let vivo = true;
+    apiSoporte<{ dashboard: boolean }>("/api/soporte/acceso")
+      .then((a) => {
+        if (vivo && !a.dashboard) router.replace("/dashboard/soporte/mis-tickets");
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [router]);
 
   useEffect(() => {
     let vivo = true;

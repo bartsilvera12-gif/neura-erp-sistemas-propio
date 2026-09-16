@@ -88,6 +88,8 @@ export type SesionSoporte = {
   concedido: boolean;
   /** Es Project Manager: puede cargar tickets desde Conversaciones sin tener el módulo. */
   pm?: boolean;
+  qa?: boolean;
+  dev?: boolean;
 };
 
 export const memoriaSesion = new MemoriaTTL<SesionSoporte>(30_000, 1000);

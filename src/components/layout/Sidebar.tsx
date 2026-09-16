@@ -164,7 +164,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     key: "soporte",
     slug: "soporte",
     label: "Soporte",
-    href: "/dashboard/soporte",
+    href: "/dashboard/soporte/tickets",
     icon: Headphones,
     children: [
       { label: "Dashboard", href: "/dashboard/soporte", exactMatch: true },
@@ -269,6 +269,34 @@ const MENU_STRUCTURE: MenuItem[] = [
  * de ítems que YA existen en esta instancia. Cualquier ítem accesible no listado
  * acá cae automáticamente en la familia "Otros" (red de seguridad: nada se oculta).
  */
+/**
+ * Soporte: PM, QA y Desarrollo no ven Dashboard ni Configuración. Se consulta
+ * una vez por sesión de la pestaña; el permiso real lo vuelve a decidir cada API.
+ */
+let accesoSoporte: Promise<{ dashboard: boolean; configuracion: boolean } | null> | null = null;
+function useOcultosSoporte(activo: boolean): Set<string> {
+  const [ocultos, setOcultos] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!activo) return;
+    let vivo = true;
+    accesoSoporte ??= fetchWithSupabaseSession("/api/soporte/acceso", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { success?: boolean; data?: { dashboard: boolean; configuracion: boolean } }) => (j?.success && j.data ? j.data : null))
+      .catch(() => null);
+    void accesoSoporte.then((a) => {
+      if (!vivo || !a) return;
+      const s = new Set<string>();
+      if (!a.dashboard) s.add("/dashboard/soporte");
+      if (!a.configuracion) s.add("/dashboard/soporte/configuracion");
+      setOcultos(s);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [activo]);
+  return ocultos;
+}
+
 const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   { id: "inicio", title: "Inicio", itemKeys: ["dashboard", "tableros", "chat_interno", "gerencia"] },
   {
@@ -334,10 +362,12 @@ function NavItem({
 }) {
   const Icon = item.icon;
   const p = usePathname() ?? "";
+  const ocultosSoporte = useOcultosSoporte(item.key === "soporte" && hasAccess);
 
   if (!hasAccess) return null;
 
-  const childActive = item.children?.some((c) => menuChildPathActive(p, c.href, c.exactMatch));
+  const hijos = item.children?.filter((c) => !ocultosSoporte.has(c.href));
+  const childActive = hijos?.some((c) => menuChildPathActive(p, c.href, c.exactMatch));
 
   if (item.children) {
     const active = isActive || !!childActive;
@@ -404,7 +434,7 @@ function NavItem({
               className="overflow-hidden"
             >
               <div className="relative ml-6 mt-1 space-y-0.5 border-l border-white/[0.08] pl-3">
-                {item.children.map((c) => {
+                {(hijos ?? []).map((c) => {
                   const childActive2 = menuChildPathActive(p, c.href, c.exactMatch);
                   return (
                     <Link

@@ -15,6 +15,7 @@ const DIA_MS = 86_400_000;
 export async function GET(request: Request) {
   const auth = await requireSoporteApi(request);
   if (!auth.ok) return sinPermiso(auth);
+  if (!auth.veDashboard) return sinPermiso({ ok: false, status: 403, message: "El Dashboard de Soporte no está habilitado para tu usuario" });
   try {
     const dias = Math.max(0, Math.min(365, Number(new URL(request.url).searchParams.get("dias") ?? "30") || 0));
     const cat = await leerCatalogos(auth.sb, auth.empresaId);

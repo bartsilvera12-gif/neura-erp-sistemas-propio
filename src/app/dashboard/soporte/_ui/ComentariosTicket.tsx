@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Paperclip, Send, XCircle } from "lucide-react";
 import { useTicket } from "./TicketContexto";
-import { apiSoporte, fechaHora, subirArchivos, type Persona } from "./api";
+import { apiSoporte, comentariosEnMemoria, fechaHora, obtenerComentarios, subirArchivos, type Persona } from "./api";
 import ZonaArchivos from "./ZonaArchivos";
 import { Aviso, Avatar, Boton, Cargando, TONOS, TONO_AREA, Tarjeta, Vacio, claseInput } from "./ui";
 
@@ -27,7 +27,8 @@ type Comentario = {
  */
 export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: boolean }) {
   const { ticket, recargar } = useTicket();
-  const [lista, setLista] = useState<Comentario[] | null>(null);
+  // Lo precargado al pasar el mouse por la fila se pinta al instante.
+  const [lista, setLista] = useState<Comentario[] | null>(() => comentariosEnMemoria<Comentario[]>(ticket.id) ?? null);
   const [texto, setTexto] = useState("");
   const [archivos, setArchivos] = useState<File[]>([]);
   const [adjuntando, setAdjuntando] = useState(false);
@@ -35,9 +36,9 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
   const [error, setError] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (forzar = false) => {
     try {
-      setLista(await apiSoporte<Comentario[]>(`/api/soporte/tickets/${ticket.id}/comentarios`));
+      setLista(await obtenerComentarios<Comentario[]>(ticket.id, forzar));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar los comentarios");
     }
@@ -64,7 +65,7 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
       setTexto("");
       setArchivos([]);
       setAdjuntando(false);
-      await Promise.all([cargar(), recargar()]);
+      await Promise.all([cargar(true), recargar()]);
       requestAnimationFrame(() => finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo comentar");

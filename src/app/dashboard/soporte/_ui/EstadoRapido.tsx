@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Loader2, Lock, UserRound } from "lucide-react";
+import { ArrowRight, Hand, Loader2, Lock, UserRound } from "lucide-react";
 import { mensajeEstadoFinal, puedeEstarACargo, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte } from "./api";
@@ -43,6 +43,9 @@ export default function EstadoRapido() {
       setGuardando(null);
     }
   };
+
+  const yo = catalogos.personas.find((p) => p.id === catalogos.usuario_id);
+  const puedoTomar = Boolean(yo && puedeEstarACargo(yo) && t.responsable_id !== yo.id && !final);
 
   const opcionesPersona = [
     { value: "", label: "Sin asignar" },
@@ -92,10 +95,21 @@ export default function EstadoRapido() {
           )}
         </div>
 
-        <div className="flex w-full items-center gap-2 sm:w-72">
+        <div className="flex w-full items-center gap-2 sm:w-[21rem]">
           <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
             <UserRound className="h-3.5 w-3.5" aria-hidden /> A cargo
           </span>
+          {puedoTomar ? (
+            <button
+              type="button"
+              disabled={guardando != null}
+              onClick={() => void guardar("responsable", { responsable_id: yo?.id })}
+              title="Asignarme este ticket"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#4FAEB2] px-2.5 py-1.5 text-[11.5px] font-bold text-white shadow-sm hover:bg-[#3F8E91] disabled:opacity-60"
+            >
+              <Hand className="h-3.5 w-3.5" aria-hidden /> Tomar
+            </button>
+          ) : null}
           <div className="min-w-0 flex-1">
             <SelectorBuscable
               ariaLabel="A cargo"

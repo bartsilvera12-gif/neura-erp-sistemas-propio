@@ -117,6 +117,25 @@ export default function TablaTickets({
   const [error, setError] = useState<string | null>(null);
   const [texto, setTexto] = useState(filtros.q);
 
+  // Autoasignarse: Desarrollo y QA toman un ticket desde la fila, sin abrirlo.
+  const yo = cat?.personas.find((p) => p.id === cat.usuario_id);
+  const puedoTomar = Boolean(yo && (yo.es_tecnico || yo.es_qa));
+  const [tomando, setTomando] = useState<string | null>(null);
+  const tomar = async (ticketId: string) => {
+    if (!yo) return;
+    setTomando(ticketId);
+    setError(null);
+    try {
+      await apiSoporte(`/api/soporte/tickets/${ticketId}`, { method: "PATCH", json: { responsable_id: yo.id } });
+      setDatos((d) => (d ? { ...d, tickets: d.tickets.map((x) => (x.id === ticketId ? { ...x, responsable: yo } : x)) } : d));
+      recordado.clear();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo asignar el ticket");
+    } finally {
+      setTomando(null);
+    }
+  };
+
   useEffect(() => {
     void obtenerCatalogos().then(setCat).catch((e: Error) => setError(e.message));
     void obtenerClientes().then(setClientes).catch(() => {});
@@ -277,7 +296,10 @@ export default function TablaTickets({
                   {datos.tickets.map((t) => (
                     <tr
                       key={t.id}
-                      onMouseEnter={() => precargarTicket(t.id)}
+                      onMouseEnter={() => {
+                        precargarTicket(t.id);
+                        router.prefetch(`/dashboard/soporte/tickets/${t.id}`);
+                      }}
                       onClick={() => router.push(`/dashboard/soporte/tickets/${t.id}`)}
                       className="group relative cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-[#4FAEB2]/[0.04]"
                     >
@@ -314,14 +336,30 @@ export default function TablaTickets({
                       </td>
                       {ocultarResponsable ? null : (
                         <td className="px-3 py-3.5">
-                          {t.responsable ? (
-                            <span className="inline-flex items-center gap-2 font-medium text-slate-700">
-                              <Avatar nombre={t.responsable.nombre} tam={24} />
-                              {t.responsable.nombre}
-                            </span>
-                          ) : (
-                            <span className="text-[12px] italic text-slate-400">Sin asignar</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {t.responsable ? (
+                              <span className="inline-flex items-center gap-2 font-medium text-slate-700">
+                                <Avatar nombre={t.responsable.nombre} tam={24} />
+                                {t.responsable.nombre}
+                              </span>
+                            ) : (
+                              <span className="text-[12px] italic text-slate-400">Sin asignar</span>
+                            )}
+                            {puedoTomar && t.responsable?.id !== cat?.usuario_id && t.estado_codigo !== "cerrado" && t.estado_codigo !== "cancelado" ? (
+                              <button
+                                type="button"
+                                disabled={tomando === t.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void tomar(t.id);
+                                }}
+                                title="Asignarme este ticket"
+                                className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#4FAEB2]/40 bg-white px-2 py-1 text-[11px] font-bold text-[#2F6E71] opacity-0 transition hover:bg-[#4FAEB2]/10 focus:opacity-100 group-hover:opacity-100 disabled:opacity-60"
+                              >
+                                {tomando === t.id ? "…" : "Tomar"}
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       )}
                       <td className="whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-500">{fechaHora(t.updated_at)}</td>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, ListChecks, Play, RotateCcw, Send, XCircle } from "lucide-react";
 import { ESTADOS_SUBTAREA, TRANSICIONES_SUBTAREA, subtareaAbierta, type EstadoSubtarea } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
-import { apiSoporte, fechaHora, type Persona } from "./api";
+import { apiSoporte, fechaHora, obtenerSubtareas, subtareasEnMemoria, type Persona } from "./api";
 import { Aviso, Avatar, Boton, Insignia, TONOS, TONO_AREA, claseInput } from "./ui";
 
 type Comentario = { id: string; contenido: string; es_rechazo_qa: boolean; created_at: string; autor: Persona | null };
@@ -29,12 +29,12 @@ type Subtarea = {
  */
 export default function SubtareasTicket() {
   const { ticket, recargar } = useTicket();
-  const [lista, setLista] = useState<Subtarea[] | null>(null);
+  const [lista, setLista] = useState<Subtarea[] | null>(() => subtareasEnMemoria<Subtarea[]>(ticket.id) ?? null);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (forzar = false) => {
     try {
-      setLista(await apiSoporte<Subtarea[]>(`/api/soporte/tickets/${ticket.id}/subtareas`));
+      setLista(await obtenerSubtareas<Subtarea[]>(ticket.id, forzar));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar las subtareas");
@@ -42,8 +42,11 @@ export default function SubtareasTicket() {
   }, [ticket.id]);
 
   // Cada cambio del ticket (p. ej. pasar a "Listo para revisión") puede abrir una subtarea.
+  // La primera vez sirve lo precargado; cada cambio posterior del ticket va a la base.
+  const primeraCarga = useRef(true);
   useEffect(() => {
-    void cargar();
+    void cargar(!primeraCarga.current);
+    primeraCarga.current = false;
   }, [cargar, ticket.updated_at, ticket.estado_codigo]);
 
   if (lista == null) return error ? <Aviso>{error}</Aviso> : null;
@@ -70,7 +73,7 @@ export default function SubtareasTicket() {
               ticketId={ticket.id}
               sub={s}
               // Cambiar el estado toca el ticket: al recargarlo, el efecto de arriba trae las subtareas.
-              alCambiar={(ticketCambio) => (ticketCambio ? recargar() : cargar())}
+              alCambiar={(ticketCambio) => (ticketCambio ? recargar() : cargar(true))}
             />
           ))}
         </div>

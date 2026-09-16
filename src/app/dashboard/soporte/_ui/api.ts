@@ -106,9 +106,33 @@ export function clientesEnMemoria() {
  * tarda la consulta, así que el detalle abre prácticamente armado.
  */
 const memTicket = memoria<unknown>(20_000);
+const memComentarios = memoria<unknown>(20_000);
+const memSubtareas = memoria<unknown>(20_000);
 
+/**
+ * Precarga TODO lo que pinta el detalle (ticket, comentarios y subtareas) en
+ * paralelo: al hacer clic ya está en memoria y abre sin esperas.
+ */
 export function precargarTicket(id: string): void {
   void memTicket.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}`)).catch(() => {});
+  void memComentarios.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/comentarios`)).catch(() => {});
+  void memSubtareas.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/subtareas`)).catch(() => {});
+}
+
+export function obtenerComentarios<T>(id: string, forzar = false): Promise<T> {
+  return memComentarios.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/comentarios`), forzar) as Promise<T>;
+}
+
+export function comentariosEnMemoria<T>(id: string): T | undefined {
+  return memComentarios.ya(id) as T | undefined;
+}
+
+export function obtenerSubtareas<T>(id: string, forzar = false): Promise<T> {
+  return memSubtareas.obtener(id, () => apiSoporte(`/api/soporte/tickets/${id}/subtareas`), forzar) as Promise<T>;
+}
+
+export function subtareasEnMemoria<T>(id: string): T | undefined {
+  return memSubtareas.ya(id) as T | undefined;
 }
 
 export function obtenerTicket<T>(id: string, forzar = false): Promise<T> {

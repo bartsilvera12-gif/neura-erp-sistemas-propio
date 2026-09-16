@@ -325,7 +325,9 @@ export default function NotificacionesBell() {
                   ? "/dashboard/chat-interno"
                   : n.tipo === "conversacion_asignada" || n.tipo === "conversacion_mensaje"
                     ? "/dashboard/conversaciones"
-                    : null,
+                    : n.tipo === "soporte_revision" && n.metadata?.ticket_id
+                      ? `/dashboard/soporte/tickets/${n.metadata.ticket_id}`
+                      : null,
             });
             if (mostrado) avisadosFueraRef.current.add(n.id);
           }

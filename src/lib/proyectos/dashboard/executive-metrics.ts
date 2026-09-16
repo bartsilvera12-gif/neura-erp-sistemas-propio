@@ -174,6 +174,20 @@ export function construirDashboardEjecutivo(ds: Dataset) {
   const total_activos = activos.length;
   const demorados_total = activos.filter((p) => p.estancado).length;
 
+  // ---- Resumen por programador ---------------------------------------------
+  // Cuántos proyectos tiene cada técnico en el período: activos + entregados,
+  // sin los cancelados (un cancelado no es carga de nadie). Es la base de las
+  // tarjetas "Por programador"; por ahora sólo el total, después se enriquece.
+  const porTecnico = new Map<string, number>();
+  for (const p of proyectos) {
+    if (p.cancelado || !p.responsable_tecnico_id) continue;
+    porTecnico.set(p.responsable_tecnico_id, (porTecnico.get(p.responsable_tecnico_id) ?? 0) + 1);
+  }
+  const tecnicos_resumen = [...porTecnico.entries()]
+    .map(([usuario_id, total]) => ({ usuario_id, nombre: ds.nombreUsuario(usuario_id), total }))
+    .filter((t) => t.nombre !== "—")
+    .sort((a, b) => b.total - a.total);
+
   // ---- H. Bloqueos por tipo -------------------------------------------------
   const bloqueados = activos.filter((p) => p.bloqueado);
   const porTipo = new Map<string, number>();
@@ -224,6 +238,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     estados_activos,
     total_activos,
     demorados_total,
+    tecnicos_resumen,
     bloqueos_por_tipo,
     bloqueos_detalle,
     bloqueados_total: bloqueados.length,

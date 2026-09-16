@@ -17,9 +17,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  CheckCircle2,
-  Clock,
-  Quote,
   Hourglass,
   Layers,
   PauseCircle,
@@ -30,7 +27,6 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import type { KpiBucket } from "@/lib/proyectos/dashboard/shared";
 import { nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 import {
-  AMBAR,
   Card,
   CardTitle,
   Estado,
@@ -38,8 +34,6 @@ import {
   FiltroFecha,
   Kpi,
   PillSelect,
-  ROJO,
-  TEAL,
   TONO,
   TablaWrap,
   fmtDur,
@@ -104,6 +98,7 @@ type Data = {
   }[];
   total_activos: number;
   demorados_total: number;
+  tecnicos_resumen: { usuario_id: string; nombre: string; total: number }[];
   bloqueos_por_tipo: { tipo: string; label: string; cantidad: number }[];
   bloqueos_detalle: {
     id: string;
@@ -120,43 +115,6 @@ type Data = {
   opciones: { tipos: Opcion[]; estados: Opcion[]; tecnicos: Opcion[] };
   atribucion_parcial: boolean;
 };
-
-const COLOR_BLOQUEO: Record<string, string> = {
-  cliente: AMBAR,
-  tercero: "#8b5cf6",
-  interno: ROJO,
-  // Pausado tiene su propia categoría: un proyecto en pausa está detenido, pero
-  // no es un bloqueo interno, y meterlo ahí lo escondía.
-  pausa: "#64748b",
-};
-
-/**
- * Cuánto pesa una detención, por el tiempo que lleva. Una pausa de tres horas y
- * una de dos semanas no son el mismo problema, y en una lista corta el color es
- * lo único que lo dice de un vistazo: la fila entera se tiñe, no sólo el número.
- */
-function severidadDetencion(ms: number | null): { fila: string; badge: string; barra: string } {
-  const horas = ms == null ? 0 : ms / 3600_000;
-  if (horas >= 90) {
-    return {
-      fila: "border-rose-200 bg-gradient-to-r from-rose-50 to-white",
-      badge: "bg-rose-500 text-white shadow-sm shadow-rose-500/30",
-      barra: "bg-rose-500",
-    };
-  }
-  if (horas >= 36) {
-    return {
-      fila: "border-orange-200 bg-gradient-to-r from-orange-50 to-white",
-      badge: "bg-orange-500 text-white shadow-sm shadow-orange-500/30",
-      barra: "bg-orange-500",
-    };
-  }
-  return {
-    fila: "border-slate-200 bg-white",
-    badge: "bg-slate-200 text-slate-600",
-    barra: "bg-slate-300",
-  };
-}
 
 /** Nombre de cada tarjeta KPI, para el título de la lista al filtrar por click. */
 const KPI_LABEL: Record<KpiBucket, string> = {
@@ -567,9 +525,9 @@ export default function DashboardEjecutivoClient() {
               )}
             </Card>
 
-            {/* G · H */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-              <Card className="lg:col-span-2">
+            {/* Tabla de proyectos activos (a todo el ancho) */}
+            <div className="space-y-3">
+              <Card>
                 <CardTitle
                   right={
                     sel ? (
@@ -648,114 +606,30 @@ export default function DashboardEjecutivoClient() {
                   </TablaWrap>
                 )}
               </Card>
-
-              <Card>
-                <CardTitle
-                  right={
-                    <span className="whitespace-nowrap text-[10px] text-slate-400">
-                      {data.bloqueados_total} detenidos
-                    </span>
-                  }
-                >
-                  Bloqueos y pausas
-                </CardTitle>
-                {data.bloqueos_detalle.length === 0 ? (
-                  <div className="flex h-[150px] flex-col items-center justify-center gap-1.5 text-center">
-                    <CheckCircle2 className="h-6 w-6 text-emerald-400" />
-                    <p className="text-[12px] font-medium text-slate-500">Nada detenido</p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Desglose por tipo en una línea: con pocos proyectos un
-                        anillo de un solo color no dice nada que esto no diga. */}
-                    <div className="mb-2.5 flex flex-wrap gap-1.5">
-                      {data.bloqueos_por_tipo.map((b) => (
-                        <span
-                          key={b.tipo}
-                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                          style={{
-                            background: `${COLOR_BLOQUEO[b.tipo] ?? TEAL}18`,
-                            color: COLOR_BLOQUEO[b.tipo] ?? TEAL,
-                          }}
-                        >
-                          <span
-                            className="h-1.5 w-1.5 rounded-full"
-                            style={{ background: COLOR_BLOQUEO[b.tipo] ?? TEAL }}
-                          />
-                          {b.label}
-                          <span className="tabular-nums opacity-70">{b.cantidad}</span>
-                        </span>
-                      ))}
-                    </div>
-                    <ul className="space-y-2">
-                      {data.bloqueos_detalle.map((b) => {
-                        const color = COLOR_BLOQUEO[b.tipo] ?? TEAL;
-                        const sev = severidadDetencion(b.tiempo_ms);
-                        return (
-                          <li
-                            key={b.id}
-                            className={`group relative overflow-hidden rounded-xl border shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-px hover:shadow-md ${sev.fila}`}
-                          >
-                            {/* Franja del color del tipo: identifica la causa sin
-                                gastar una columna de texto. */}
-                            <span
-                              aria-hidden
-                              className="absolute inset-y-0 left-0 w-1"
-                              style={{ background: color }}
-                            />
-                            <div className="py-2 pl-3.5 pr-2.5">
-                              <div className="flex items-start justify-between gap-2">
-                                <Link
-                                  href={`/dashboard/proyectos?proyecto=${b.id}&from=tablero`}
-                                  className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800 hover:text-[#2F6E71] hover:underline"
-                                  title={b.titulo}
-                                >
-                                  {b.titulo}
-                                </Link>
-                                <span
-                                  className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-bold tabular-nums ${sev.badge}`}
-                                >
-                                  <Clock className="h-2.5 w-2.5" />
-                                  {fmtDur(b.tiempo_ms)}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className="shrink-0 rounded px-1 text-[9px] font-bold uppercase tracking-wide"
-                                  style={{ background: `${color}1F`, color }}
-                                >
-                                  {b.tipo_label}
-                                </span>
-                                <span
-                                  className="min-w-0 truncate text-[10.5px] text-slate-400"
-                                  title={b.cliente}
-                                >
-                                  {b.cliente}
-                                </span>
-                              </div>
-                              <div className="mt-1 flex items-start gap-1.5">
-                                <Quote className="mt-0.5 h-3 w-3 shrink-0 text-slate-300" />
-                                {/* Sin motivo cargado se dice que falta, en vez de
-                                    repetir el estado y aparentar que hay una razón. */}
-                                {b.motivo ? (
-                                  <span className="text-[11px] font-medium leading-snug text-slate-700">
-                                    {b.motivo}
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] italic leading-snug text-slate-300">
-                                    Sin motivo cargado
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </>
-                )}
-              </Card>
             </div>
+
+            {/* Por programador — nombre + total de proyectos del período
+                (activos + entregados, sin cancelados). Por ahora sólo el total:
+                después le damos vida (click para filtrar, más métricas). */}
+            <Card>
+              <CardTitle>Por programador</CardTitle>
+              {data.tecnicos_resumen.length === 0 ? (
+                <p className="text-sm text-slate-400">Sin programadores con proyectos.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {data.tecnicos_resumen.map((t) => (
+                    <Kpi
+                      key={t.usuario_id}
+                      icon={UsersRound}
+                      tono={TONO.teal}
+                      label={nombreCapitular(t.nombre)}
+                      numero={t.total}
+                      pie="proyectos"
+                    />
+                  ))}
+                </div>
+              )}
+            </Card>
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-400">
               <span>

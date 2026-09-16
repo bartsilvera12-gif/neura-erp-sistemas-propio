@@ -16,18 +16,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
-  LabelList,
   Pie,
   PieChart,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 import {
   AlertCircle,
@@ -124,12 +117,6 @@ type Data = {
   bloqueados_total: number;
   opciones: { tipos: Opcion[]; estados: Opcion[]; tecnicos: Opcion[] };
   atribucion_parcial: boolean;
-};
-
-const COLOR_WIP: Record<Wip["nivel"], string> = {
-  sobre_limite: ROJO,
-  al_limite: AMBAR,
-  en_rango: VERDE,
 };
 
 const COLOR_BLOQUEO: Record<string, string> = {
@@ -262,11 +249,6 @@ export default function DashboardEjecutivoClient() {
   const tecnicos = useMemo(
     () => (data?.opciones.tecnicos ?? []).map((t) => ({ ...t, nombre: nombreCapitular(t.nombre) })),
     [data?.opciones.tecnicos]
-  );
-
-  const wipChart = useMemo(
-    () => (data?.wip ?? []).slice(0, 8).map((w) => ({ ...w, corto: nombreCorto(w.nombre) })),
-    [data?.wip]
   );
 
   /**
@@ -521,147 +503,6 @@ export default function DashboardEjecutivoClient() {
               </Card>
             </div>
 
-            {/* D · E · F */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-              {/* D. Carga del equipo */}
-              <Card>
-                <CardTitle>Carga del equipo (WIP)</CardTitle>
-                {wipChart.length === 0 ? (
-                  <p className="text-sm text-slate-400">Sin datos</p>
-                ) : (
-                  <>
-                    <ResponsiveContainer width="100%" height={168}>
-                      <BarChart data={wipChart} margin={{ top: 20, right: 6, left: -24, bottom: 0 }}>
-                        <defs>
-                          {Object.entries(COLOR_WIP).map(([nivel, c]) => (
-                            <linearGradient key={nivel} id={`wip-${nivel}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor={c} stopOpacity={1} />
-                              <stop offset="100%" stopColor={c} stopOpacity={0.45} />
-                            </linearGradient>
-                          ))}
-                        </defs>
-                        <CartesianGrid vertical={false} stroke="#f1f5f9" />
-                        <XAxis
-                          dataKey="corto"
-                          tick={{ fontSize: 9, fill: "#64748b" }}
-                          axisLine={false}
-                          tickLine={false}
-                          interval={0}
-                        />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: "#cbd5e1" }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          cursor={{ fill: "rgba(79,174,178,0.06)" }}
-                          formatter={(v: number) => [`${v}`, "Proyectos"]}
-                        />
-                        {/* La línea del límite convierte cada barra en un juicio:
-                            debajo está bien, encima hay que repartir trabajo. */}
-                        <ReferenceLine
-                          y={data.wip_limite}
-                          stroke={ROJO}
-                          strokeDasharray="4 3"
-                          strokeOpacity={0.7}
-                        />
-                        <Bar dataKey="wip" radius={[5, 5, 0, 0]} barSize={26}>
-                          <LabelList
-                            dataKey="wip"
-                            position="top"
-                            style={{ fontSize: 11, fill: "#334155", fontWeight: 700 }}
-                          />
-                          {wipChart.map((w) => (
-                            <Cell key={w.usuario_id} fill={`url(#wip-${w.nivel})`} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div className="mt-1 flex flex-wrap justify-center gap-x-2.5 gap-y-1 text-[9px]">
-                      <Leyenda color={ROJO} label="Sobre el límite" />
-                      <Leyenda color={AMBAR} label="Al límite" />
-                      <Leyenda color={VERDE} label="En rango" />
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <span className="inline-block h-px w-4 border-t border-dashed border-rose-400" />
-                        Límite {data.wip_limite}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </Card>
-
-              {/* E. Tiempo promedio en cada estado */}
-              <Card>
-                <CardTitle>Tiempo promedio en cada estado</CardTitle>
-                {data.tiempo_por_estado.length === 0 ? (
-                  <p className="text-sm text-slate-400">Sin datos</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={168}>
-                    <BarChart
-                      layout="vertical"
-                      data={data.tiempo_por_estado}
-                      margin={{ top: 4, right: 42, left: 4, bottom: 0 }}
-                    >
-                      <XAxis type="number" hide />
-                      <YAxis
-                        type="category"
-                        dataKey="nombre"
-                        width={96}
-                        tick={{ fontSize: 10, fill: "#64748b" }}
-                        axisLine={false}
-                        tickLine={false}
-                        interval={0}
-                      />
-                      <defs>
-                        {data.tiempo_por_estado.map((e) => (
-                          <linearGradient key={e.estado_id} id={`est-${e.estado_id}`} x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0%" stopColor={e.color} stopOpacity={0.55} />
-                            <stop offset="100%" stopColor={e.color} stopOpacity={1} />
-                          </linearGradient>
-                        ))}
-                      </defs>
-                      <Tooltip
-                        cursor={{ fill: "rgba(79,174,178,0.06)" }}
-                        formatter={(v: number) => [`${v} h`, "Promedio"]}
-                      />
-                      <Bar dataKey="horas" radius={[0, 5, 5, 0]} barSize={14}>
-                        <LabelList
-                          dataKey="horas"
-                          position="right"
-                          formatter={(v: number) => `${String(v).replace(".", ",")} h`}
-                          style={{ fontSize: 10.5, fill: "#334155", fontWeight: 700 }}
-                        />
-                        {data.tiempo_por_estado.map((e) => (
-                          <Cell key={e.estado_id} fill={`url(#est-${e.estado_id})`} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </Card>
-
-              {/* F. Calidad del desarrollo */}
-              <Card>
-                <CardTitle>Calidad del desarrollo</CardTitle>
-                <div className="flex h-[168px] flex-col justify-center gap-3.5">
-                  <BarraCalidad
-                    valor={data.calidad.first_pass_pct}
-                    label="Aprobado en primera revisión"
-                    color={VERDE}
-                  />
-                  <BarraCalidad
-                    valor={data.calidad.con_reingreso_pct}
-                    label="Con reingresos desde QA"
-                    color={ROJO}
-                  />
-                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
-                    <span className="text-[11px] text-slate-500">Promedio de rondas de QA</span>
-                    <span className="text-[19px] font-bold leading-none text-slate-800">
-                      {data.calidad.promedio_rondas != null
-                        ? data.calidad.promedio_rondas.toString().replace(".", ",")
-                        : "—"}
-                    </span>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
             {/* G · H */}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               <Card className="lg:col-span-2">
@@ -850,48 +691,6 @@ export default function DashboardEjecutivoClient() {
         ) : null}
       </Estado>
     </div>
-  );
-}
-
-/**
- * Número grande con su barra de progreso.
- *
- * El porcentaje solo no dice cuánto falta para el ideal; la barra lo muestra
- * sin que haya que pensarlo.
- */
-function BarraCalidad({
-  valor,
-  label,
-  color,
-}: {
-  valor: number | null;
-  label: string;
-  color: string;
-}) {
-  return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[30px] font-bold leading-none" style={{ color }}>
-          {valor != null ? `${valor}%` : "—"}
-        </span>
-      </div>
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${Math.min(100, Math.max(0, valor ?? 0))}%`, background: color }}
-        />
-      </div>
-      <div className="mt-1 text-[11px] text-slate-500">{label}</div>
-    </div>
-  );
-}
-
-function Leyenda({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1">
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-      {label}
-    </span>
   );
 }
 

@@ -176,9 +176,13 @@ function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: 
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void comentar();
+              // Enter envía; Shift+Enter baja de renglón. Mientras se compone un acento no se envía.
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void comentar();
+              }
             }}
-            placeholder="Comentario de la revisión…"
+            placeholder="Comentario de la revisión… (Shift+Enter para otro renglón)"
             disabled={ocupado != null}
           />
           {error ? <Aviso>{error}</Aviso> : null}

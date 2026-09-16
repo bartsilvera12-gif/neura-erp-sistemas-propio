@@ -127,9 +127,13 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void comentar();
+            // Enter envía; Shift+Enter baja de renglón. Mientras se compone un acento no se envía.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void comentar();
+            }
           }}
-          placeholder="Escribí un comentario…"
+          placeholder="Escribí un comentario… (Shift+Enter para otro renglón)"
           disabled={enviando}
         />
         {adjuntando ? <ZonaArchivos archivos={archivos} onCambio={setArchivos} compacta deshabilitada={enviando} /> : null}

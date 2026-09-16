@@ -13,12 +13,16 @@ export type TipoGestion =
 
 export type ResultadoTipificacion = "Pendiente" | "Resuelto" | "Escalar";
 
+/**
+ * Tipos que se pueden elegir al tipificar. "Soporte técnico" ya no se ofrece
+ * (lo técnico va como Error o Cambio, con su ticket); queda en `TipoGestion`
+ * sólo para mostrar tipificaciones anteriores.
+ */
 export const TIPOS_GESTION: readonly TipoGestion[] = [
   "Consulta",
   "Reclamo",
   "Seguimiento",
   "Promesa de pago",
-  "Soporte técnico",
   "Cambio plan",
   "Error",
   "Cambio",

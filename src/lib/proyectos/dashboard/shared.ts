@@ -360,6 +360,12 @@ export async function cargarDataset(
     id: u.id,
     nombre: u.nombre ?? "—",
   }));
+  // Los PM no siempre son técnicos/comerciales, así que sus nombres pueden no
+  // estar en `nombres`. Se agregan para que `nombreUsuario(project_manager_id)`
+  // resuelva el nombre del PM del proyecto (columna PM del tablero).
+  for (const pm of pmsOpciones) {
+    if (!nombres.has(pm.id)) nombres.set(pm.id, pm.nombre);
+  }
 
   const clientes = new Map(
     ((clientesR.data ?? []) as Record<string, unknown>[]).map((c) => [

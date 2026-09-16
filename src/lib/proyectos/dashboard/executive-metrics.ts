@@ -123,7 +123,11 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     .filter((p) => p.motivos.length > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 25)
-    .map(filaCritica);
+    .map((p) => ({
+      ...filaCritica(p),
+      pm: ds.nombreUsuario(p.project_manager_id ?? ""),
+      tiempo_en_estado_ms: p.tiempo_en_estado_ms,
+    }));
 
   // Toda la cartera activa, con la MISMA fila que la tabla de críticos más la
   // etiqueta de a qué tarjetas pertenece. Alimenta el filtro por click: apretar
@@ -134,6 +138,8 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     .sort((a, b) => b.score - a.score)
     .map((p) => ({
       ...filaCritica(p),
+      pm: ds.nombreUsuario(p.project_manager_id ?? ""),
+      tiempo_en_estado_ms: p.tiempo_en_estado_ms,
       estado_id: p.estado_id,
       // "Demorado": lleva más tiempo del objetivo en su estado actual. Es el
       // `estancado` del motor, el mismo que define el umbral configurable.

@@ -38,14 +38,12 @@ import {
   FiltroFecha,
   Kpi,
   NARANJA,
-  Pill,
   PillSelect,
   ROJO,
   TEAL,
   TONO,
   TablaWrap,
   VERDE,
-  fmtDias,
   fmtDur,
   fmtFecha,
   type Opcion,
@@ -84,8 +82,12 @@ type Data = {
     estado_nombre: string;
     estado_color: string;
     tecnico: string;
+    /** Nombre del Project Manager del proyecto (columna PM). */
+    pm: string;
     fecha_prometida: string | null;
     dias_restantes: number | null;
+    /** Tiempo laboral acumulado en el estado actual (columna "En estado"). */
+    tiempo_en_estado_ms: number | null;
     motivo: string;
     semaforo: "vencido" | "critico" | "en_riesgo";
   }[];
@@ -157,12 +159,6 @@ function severidadDetencion(ms: number | null): { fila: string; badge: string; b
     barra: "bg-slate-300",
   };
 }
-
-const SEMAFORO_PILL: Record<Data["criticos"][number]["semaforo"], string> = {
-  vencido: "bg-rose-50 text-rose-700",
-  critico: "bg-orange-50 text-orange-700",
-  en_riesgo: "bg-amber-50 text-amber-700",
-};
 
 /** Nombre de cada tarjeta KPI, para el título de la lista al filtrar por click. */
 const KPI_LABEL: Record<KpiBucket, string> = {
@@ -572,8 +568,8 @@ export default function DashboardEjecutivoClient() {
                           <th className="pb-1.5 pr-2 font-medium">Estado</th>
                           <th className="pb-1.5 pr-2 font-medium">Técnico</th>
                           <th className="pb-1.5 pr-2 font-medium">Prometida</th>
-                          <th className="pb-1.5 pr-2 font-medium">Días</th>
-                          <th className="pb-1.5 font-medium">Motivo</th>
+                          <th className="pb-1.5 pr-2 font-medium">PM</th>
+                          <th className="pb-1.5 font-medium">En estado</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -596,15 +592,11 @@ export default function DashboardEjecutivoClient() {
                             <td className="whitespace-nowrap py-1.5 pr-2 tabular-nums text-slate-500">
                               {fmtFecha(c.fecha_prometida)}
                             </td>
-                            <td className="whitespace-nowrap py-1.5 pr-2 tabular-nums font-semibold text-slate-600">
-                              {fmtDias(c.dias_restantes)}
+                            <td className="max-w-[120px] truncate py-1.5 pr-2 text-slate-500" title={c.pm}>
+                              {c.pm && c.pm !== "—" ? nombreCorto(c.pm) : <span className="text-slate-300">—</span>}
                             </td>
-                            <td className="py-1.5">
-                              {c.motivo && c.motivo !== "—" ? (
-                                <Pill className={SEMAFORO_PILL[c.semaforo]}>{c.motivo}</Pill>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
+                            <td className="whitespace-nowrap py-1.5 tabular-nums font-semibold text-slate-600">
+                              {fmtDur(c.tiempo_en_estado_ms)}
                             </td>
                           </tr>
                         ))}

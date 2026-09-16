@@ -30,16 +30,17 @@ const normalizarNombre = (v: unknown) =>
     .toLowerCase();
 
 /**
- * El cliente del contacto del chat: primero por teléfono (principal o
- * secundario), después por nombre exacto (empresa, nombre o contacto). Si el
- * nombre coincide con más de un cliente no se adivina.
+ * El cliente del contacto del chat: primero por teléfono del cliente (principal
+ * o secundario), después por teléfono de sus contactos secundarios y por último
+ * por nombre exacto (empresa, nombre o contacto). Si hay más de un cliente
+ * posible no se adivina.
  */
 async function clienteDelContacto(
   sb: Awaited<ReturnType<typeof requireCargaSoporteApi>> extends infer A ? (A extends { ok: true; sb: infer S } ? S : never) : never,
   empresaId: string,
   telefono: string | null,
   nombre: string | null
-): Promise<{ cliente_id: string; via: "telefono" | "nombre" } | null> {
+): Promise<{ cliente_id: string; via: "telefono" | "contacto" | "nombre"; contacto?: string } | null> {
   const filas: { id: string; telefono: string | null; telefono_secundario: string | null; nombre: string | null; empresa: string | null; nombre_contacto: string | null }[] = [];
   for (let desde = 0; desde < 20_000; desde += 1000) {
     const { data, error } = await sb
@@ -53,10 +54,24 @@ async function clienteDelContacto(
     if (lote.length < 1000) break;
   }
 
+  // Contactos secundarios cargados en Gestión de clientes (si la tabla existe).
+  const { data: contactosData } = await sb
+    .from("cliente_contactos")
+    .select("cliente_id, nombre, telefono")
+    .eq("empresa_id", empresaId)
+    .limit(20_000);
+  const contactos = (contactosData ?? []) as { cliente_id: string; nombre: string; telefono: string | null }[];
+
   const clave = claveTelefono(telefono);
   if (clave) {
     const porTelefono = filas.filter((c) => claveTelefono(c.telefono) === clave || claveTelefono(c.telefono_secundario) === clave);
     if (porTelefono.length === 1) return { cliente_id: porTelefono[0].id, via: "telefono" };
+    // El número es de un contacto secundario: si todos apuntan al mismo cliente, es ese.
+    const porContacto = contactos.filter((c) => claveTelefono(c.telefono) === clave);
+    const clientesContacto = [...new Set(porContacto.map((c) => c.cliente_id))];
+    if (porTelefono.length === 0 && clientesContacto.length === 1) {
+      return { cliente_id: clientesContacto[0], via: "contacto", contacto: porContacto[0].nombre };
+    }
   }
   const n = normalizarNombre(nombre);
   if (n.length >= 3) {

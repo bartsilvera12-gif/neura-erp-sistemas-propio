@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ModalCambioPlanGestion } from "@/components/gestion-clientes/ModalCambioPlanGestion";
 import { ModalHistorialClienteGestion } from "@/components/gestion-clientes/ModalHistorialClienteGestion";
+import { ModalContactosCliente } from "@/components/gestion-clientes/ModalContactosCliente";
 import { ProyectosClienteGestion } from "@/components/gestion-clientes/ProyectosClienteGestion";
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import FacturarVentaModal from "@/components/facturacion/FacturarVentaModal";
@@ -701,6 +702,7 @@ function GestionClientesPageInner() {
   const [modalCambioPlan, setModalCambioPlan] = useState(false);
   const [modalFacturarVenta, setModalFacturarVenta] = useState(false);
   const [modalHistorialCliente, setModalHistorialCliente] = useState(false);
+  const [modalContactos, setModalContactos] = useState(false);
   const [facturaCobroModal, setFacturaCobroModal] = useState<Factura | null>(null);
   const [facturasDetalleAbierto, setFacturasDetalleAbierto] = useState(true);
   const [panelFiltrosFacturas, setPanelFiltrosFacturas] = useState(false);
@@ -1095,6 +1097,7 @@ function GestionClientesPageInner() {
 
                 <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
                   <BotonOperativo label="Tipificación" icon="📋" activo href={`/clientes/${selected.id}/tipificacion`} />
+                  <BotonOperativo label="Contactos" icon="👥" activo onClick={() => setModalContactos(true)} />
                   <BotonOperativo
                     label="Facturación"
                     icon="📄"
@@ -1357,6 +1360,13 @@ function GestionClientesPageInner() {
               getClientes().then(setClientes);
             }
           }}
+        />
+      )}
+      {modalContactos && selected && (
+        <ModalContactosCliente
+          clienteId={selected.id}
+          clienteNombre={clienteNombre(selected)}
+          onClose={() => setModalContactos(false)}
         />
       )}
       {modalHistorialCliente && selected && (

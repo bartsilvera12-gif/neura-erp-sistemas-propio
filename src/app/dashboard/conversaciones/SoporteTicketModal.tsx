@@ -61,7 +61,8 @@ export default function SoporteTicketModal({
   const [datos, setDatos] = useState<Datos | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cliente, setCliente] = useState(clienteId ?? "");
-  const [asociadoPor, setAsociadoPor] = useState<"contacto" | "telefono" | "nombre" | null>(clienteId ? "contacto" : null);
+  const [asociadoPor, setAsociadoPor] = useState<"vinculado" | "telefono" | "contacto" | "nombre" | null>(clienteId ? "vinculado" : null);
+  const [contactoSecundario, setContactoSecundario] = useState<string | null>(null);
   const [proyectos, setProyectos] = useState<{ id: string; titulo: string }[]>([]);
   const [proyecto, setProyecto] = useState("");
   const [tipo, setTipo] = useState("error");
@@ -85,11 +86,12 @@ export default function SoporteTicketModal({
     if (clienteId) return;
     let vivo = true;
     const q = new URLSearchParams({ contacto_telefono: telefono ?? "", contacto_nombre: contacto });
-    api<{ asociado: { cliente_id: string; via: "telefono" | "nombre" } | null }>(`/api/soporte/carga-rapida?${q.toString()}`)
+    api<{ asociado: { cliente_id: string; via: "telefono" | "contacto" | "nombre"; contacto?: string } | null }>(`/api/soporte/carga-rapida?${q.toString()}`)
       .then((r) => {
         if (!vivo || !r.asociado) return;
         setCliente((actual) => actual || r.asociado!.cliente_id);
         setAsociadoPor(r.asociado.via);
+        setContactoSecundario(r.asociado.contacto ?? null);
       })
       .catch(() => {});
     return () => {
@@ -226,7 +228,13 @@ export default function SoporteTicketModal({
                   />
                   {asociadoPor && cliente ? (
                     <p className="mt-1 text-[11.5px] font-medium text-emerald-600">
-                      {asociadoPor === "contacto" ? "Cliente vinculado al contacto" : asociadoPor === "telefono" ? "Encontrado por el teléfono del contacto" : "Encontrado por el nombre del contacto"}
+                      {asociadoPor === "vinculado"
+                        ? "Cliente vinculado al contacto"
+                        : asociadoPor === "telefono"
+                          ? "Encontrado por el teléfono del contacto"
+                          : asociadoPor === "contacto"
+                            ? `Número de un contacto del cliente${contactoSecundario ? ` (${contactoSecundario})` : ""}`
+                            : "Encontrado por el nombre del contacto"}
                     </p>
                   ) : null}
                 </div>

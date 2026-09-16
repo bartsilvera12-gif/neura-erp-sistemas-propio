@@ -15,6 +15,57 @@ import {
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
+/** Últimos 9 dígitos: "595985950519", "0985950519" y "+595 985 950 519" son el mismo número. */
+function claveTelefono(v: unknown): string {
+  const d = String(v ?? "").replace(/\D/g, "");
+  return d.length >= 8 ? d.slice(-9) : "";
+}
+
+const normalizarNombre = (v: unknown) =>
+  String(v ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+/**
+ * El cliente del contacto del chat: primero por teléfono (principal o
+ * secundario), después por nombre exacto (empresa, nombre o contacto). Si el
+ * nombre coincide con más de un cliente no se adivina.
+ */
+async function clienteDelContacto(
+  sb: Awaited<ReturnType<typeof requireCargaSoporteApi>> extends infer A ? (A extends { ok: true; sb: infer S } ? S : never) : never,
+  empresaId: string,
+  telefono: string | null,
+  nombre: string | null
+): Promise<{ cliente_id: string; via: "telefono" | "nombre" } | null> {
+  const filas: { id: string; telefono: string | null; telefono_secundario: string | null; nombre: string | null; empresa: string | null; nombre_contacto: string | null }[] = [];
+  for (let desde = 0; desde < 20_000; desde += 1000) {
+    const { data, error } = await sb
+      .from("clientes")
+      .select("id, telefono, telefono_secundario, nombre, empresa, nombre_contacto")
+      .eq("empresa_id", empresaId)
+      .range(desde, desde + 999);
+    if (error) return null;
+    const lote = (data ?? []) as typeof filas;
+    filas.push(...lote);
+    if (lote.length < 1000) break;
+  }
+
+  const clave = claveTelefono(telefono);
+  if (clave) {
+    const porTelefono = filas.filter((c) => claveTelefono(c.telefono) === clave || claveTelefono(c.telefono_secundario) === clave);
+    if (porTelefono.length === 1) return { cliente_id: porTelefono[0].id, via: "telefono" };
+  }
+  const n = normalizarNombre(nombre);
+  if (n.length >= 3) {
+    const porNombre = filas.filter((c) => [c.empresa, c.nombre, c.nombre_contacto].some((x) => normalizarNombre(x) === n));
+    if (porNombre.length === 1) return { cliente_id: porNombre[0].id, via: "nombre" };
+  }
+  return null;
+}
+
 /**
  * Carga de un ticket de Soporte desde Conversaciones.
  *
@@ -37,6 +88,10 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     // Sólo saber si puede cargar (para mostrar el botón), sin traer nada más.
     if (params.get("verificar") === "1") return ok({ puede: true });
+    // Cliente del contacto del chat, por teléfono o nombre.
+    if (params.has("contacto_telefono") || params.has("contacto_nombre")) {
+      return ok({ asociado: await clienteDelContacto(auth.sb, auth.empresaId, params.get("contacto_telefono"), params.get("contacto_nombre")) });
+    }
     const clienteId = params.get("cliente_id");
     if (clienteId) {
       if (!UUID.test(clienteId)) return falla("cliente_id inválido");
@@ -126,6 +181,26 @@ export async function POST(request: Request) {
       conversationId,
     });
     if (!r.ok) return falla(r.mensaje, r.status);
+
+    // El contacto del chat queda asociado a ese cliente si todavía no lo estaba:
+    // la próxima vez se reconoce solo y aparece "Cliente →" en la conversación.
+    if (conversationId) {
+      const { data: conv } = await auth.sb
+        .from("chat_conversations")
+        .select("contact_id")
+        .eq("empresa_id", auth.empresaId)
+        .eq("id", conversationId)
+        .maybeSingle();
+      const contactId = (conv as { contact_id?: string | null } | null)?.contact_id;
+      if (contactId) {
+        await auth.sb
+          .from("chat_contacts")
+          .update({ cliente_id: clienteId })
+          .eq("empresa_id", auth.empresaId)
+          .eq("id", contactId)
+          .is("cliente_id", null);
+      }
+    }
 
     return ok({ id: r.ticket_id, numero: r.numero, tipificacion_id: r.tipificacion_id });
   } catch (e) {

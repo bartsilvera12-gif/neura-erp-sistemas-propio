@@ -3954,6 +3954,7 @@ export function ConversacionesClient({
                                 conversationId={selected.id}
                                 clienteId={selected.contact.cliente_id ?? null}
                                 contacto={contactDisplayName}
+                                telefono={selected.contact.phone_number ?? null}
                                 alCerrar={() => setSoporteModalOpen(false)}
                               />
                             ) : null}

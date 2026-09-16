@@ -48,16 +48,20 @@ export default function SoporteTicketModal({
   conversationId,
   clienteId,
   contacto,
+  telefono,
   alCerrar,
 }: {
   conversationId: string;
   clienteId: string | null;
   contacto: string;
+  /** Teléfono del contacto: con él (o el nombre) se busca su cliente si no está vinculado. */
+  telefono: string | null;
   alCerrar: () => void;
 }) {
   const [datos, setDatos] = useState<Datos | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cliente, setCliente] = useState(clienteId ?? "");
+  const [asociadoPor, setAsociadoPor] = useState<"contacto" | "telefono" | "nombre" | null>(clienteId ? "contacto" : null);
   const [proyectos, setProyectos] = useState<{ id: string; titulo: string }[]>([]);
   const [proyecto, setProyecto] = useState("");
   const [tipo, setTipo] = useState("error");
@@ -75,6 +79,23 @@ export default function SoporteTicketModal({
       vivo = false;
     };
   }, []);
+
+  // Sin cliente vinculado: se busca por el teléfono o el nombre del contacto.
+  useEffect(() => {
+    if (clienteId) return;
+    let vivo = true;
+    const q = new URLSearchParams({ contacto_telefono: telefono ?? "", contacto_nombre: contacto });
+    api<{ asociado: { cliente_id: string; via: "telefono" | "nombre" } | null }>(`/api/soporte/carga-rapida?${q.toString()}`)
+      .then((r) => {
+        if (!vivo || !r.asociado) return;
+        setCliente((actual) => actual || r.asociado!.cliente_id);
+        setAsociadoPor(r.asociado.via);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [clienteId, telefono, contacto]);
 
   useEffect(() => {
     let vivo = true;
@@ -194,12 +215,20 @@ export default function SoporteTicketModal({
                   <SelectorBuscable
                     ariaLabel="Cliente"
                     value={cliente}
-                    onChange={setCliente}
+                    onChange={(v) => {
+                      setCliente(v);
+                      setAsociadoPor(null);
+                    }}
                     opciones={datos.clientes.map((c) => ({ value: c.id, label: c.nombre }))}
                     placeholder="Elegí el cliente"
                     buscarPlaceholder="Buscar cliente…"
                     vacio="Ningún cliente coincide"
                   />
+                  {asociadoPor && cliente ? (
+                    <p className="mt-1 text-[11.5px] font-medium text-emerald-600">
+                      {asociadoPor === "contacto" ? "Cliente vinculado al contacto" : asociadoPor === "telefono" ? "Encontrado por el teléfono del contacto" : "Encontrado por el nombre del contacto"}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <span className={claseEtiqueta}>Proyecto *</span>

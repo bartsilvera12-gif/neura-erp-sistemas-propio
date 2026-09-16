@@ -48,7 +48,7 @@ export default function TicketDescripcionPage() {
   const ta = TONOS[tonoArea];
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_330px]">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
       <Tarjeta>
         <Bloque titulo="Descripción del problema" texto={t.descripcion} vacio="Sin descripción." icono={FileText} tono="turquesa" />
         <div id="comentarios" className="mt-5 flex scroll-mt-24 gap-3.5">
@@ -62,7 +62,7 @@ export default function TicketDescripcionPage() {
         </div>
       </Tarjeta>
 
-      <aside className="space-y-5">
+      <aside className="min-w-0 space-y-5">
         {/* Quién lo tiene: la tarjeta más importante del ticket, en el color del área a cargo. */}
         <section className={`relative overflow-hidden rounded-2xl border bg-white p-5 shadow-[0_8px_28px_-14px_rgba(15,23,42,0.25)] ${ta.borde}`}>
           <span className={`absolute inset-x-0 top-0 h-1 ${ta.solido}`} aria-hidden />

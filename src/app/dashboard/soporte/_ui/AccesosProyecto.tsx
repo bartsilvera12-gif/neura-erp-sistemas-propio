@@ -10,6 +10,54 @@ import {
   CopyButton,
 } from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
 
+/**
+ * Fila etiqueta / valor. En la columna angosta del ticket la etiqueta va arriba
+ * y el valor ocupa todo el ancho; la fila en línea de Proyectos no entra ahí.
+ */
+function Fila({
+  compacto,
+  label,
+  value,
+  mono,
+  href,
+  onCopied,
+  acciones,
+  children,
+}: {
+  compacto: boolean;
+  label: string;
+  value: string | null | undefined;
+  mono?: boolean;
+  href?: string | null;
+  onCopied: (ok: boolean) => void;
+  acciones?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  if (!compacto && !children) return <CampoFila label={label} value={value} mono={mono} href={href} onCopied={onCopied} />;
+  const texto = (value ?? "").trim();
+  const valor = children ?? (
+    texto ? (
+      href ? (
+        <a href={href} target="_blank" rel="noreferrer noopener" title={texto} className="block truncate text-[13px] text-[#2F6E71] hover:underline">{texto}</a>
+      ) : (
+        <span title={texto} className={`block truncate text-[13px] text-slate-900 ${mono ? "font-mono text-[12.5px]" : ""}`}>{texto}</span>
+      )
+    ) : (
+      <span className="text-[13px] text-slate-400">—</span>
+    )
+  );
+  return (
+    <div className={`min-w-0 border-b border-slate-100 py-1.5 last:border-b-0 ${compacto ? "" : "flex items-center gap-3 py-2"}`}>
+      <span className={compacto ? "block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400" : "w-24 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500"}>{label}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-1">
+        <div className="min-w-0 flex-1">{valor}</div>
+        {acciones}
+        <CopyButton value={value} label={label} onCopied={onCopied} />
+      </div>
+    </div>
+  );
+}
+
 type Estado =
   | { tipo: "cargando" }
   | { tipo: "error"; mensaje: string }
@@ -102,47 +150,50 @@ export default function AccesosProyecto({ proyectoId, compacto = false }: { proy
   else if (estado.items.length === 0) cuerpo = vacio("No hay credenciales registradas para este proyecto.");
   else
     cuerpo = (
-      <div className={`grid gap-3 ${compacto ? "" : "md:grid-cols-2"}`}>
+      <div className={`grid min-w-0 gap-3 ${compacto ? "grid-cols-1" : "md:grid-cols-2"}`}>
         {estado.items.map((c) => {
           const pass = c.password ?? "";
           const ver = visibles.has(c.id);
           return (
-            <div key={c.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div key={c.id} className={`min-w-0 rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${compacto ? "px-3 py-2" : "px-4 py-3"}`}>
               <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-slate-800">{c.nombre}</p>
+                <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{c.nombre}</p>
                 <CopiarTodoButton credencial={c} onCopied={onCopied} />
               </div>
               <div className="mt-1">
-                <CampoFila label="URL" value={c.url} href={credencialHref(c.url)} onCopied={onCopied} />
-                <CampoFila label="Usuario" value={c.usuario} mono onCopied={onCopied} />
-                <div className="flex items-center gap-3 border-b border-slate-100 py-2 last:border-b-0">
-                  <span className="w-24 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500">Contraseña</span>
-                  <div className="min-w-0 flex-1">
-                    {pass ? (
-                      <span className="block truncate font-mono text-sm text-slate-900">{ver ? pass : "•".repeat(Math.min(pass.length, 12))}</span>
-                    ) : (
-                      <span className="text-sm text-slate-400">—</span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setVisibles((prev) => {
-                        const n = new Set(prev);
-                        if (n.has(c.id)) n.delete(c.id);
-                        else n.add(c.id);
-                        return n;
-                      })
-                    }
-                    disabled={!pass}
-                    aria-label={ver ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    title={ver ? "Ocultar" : "Mostrar"}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
-                  >
-                    {ver ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                  <CopyButton value={pass} label="Contraseña" onCopied={onCopied} />
-                </div>
+                <Fila compacto={compacto} label="URL" value={c.url} href={credencialHref(c.url)} onCopied={onCopied} />
+                <Fila compacto={compacto} label="Usuario" value={c.usuario} mono onCopied={onCopied} />
+                <Fila
+                  compacto={compacto}
+                  label="Contraseña"
+                  value={pass}
+                  onCopied={onCopied}
+                  acciones={
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibles((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(c.id)) n.delete(c.id);
+                          else n.add(c.id);
+                          return n;
+                        })
+                      }
+                      disabled={!pass}
+                      aria-label={ver ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      title={ver ? "Ocultar" : "Mostrar"}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
+                    >
+                      {ver ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  }
+                >
+                  {pass ? (
+                    <span className="block truncate font-mono text-[13px] text-slate-900">{ver ? pass : "•".repeat(Math.min(pass.length, 12))}</span>
+                  ) : (
+                    <span className="text-[13px] text-slate-400">—</span>
+                  )}
+                </Fila>
               </div>
               {c.notas ? <p className="mt-2 whitespace-pre-line break-words text-xs leading-relaxed text-slate-500">{c.notas}</p> : null}
             </div>
@@ -152,7 +203,7 @@ export default function AccesosProyecto({ proyectoId, compacto = false }: { proy
     );
 
   return (
-    <div>
+    <div className="min-w-0">
       {cabecera}
       {cuerpo}
     </div>

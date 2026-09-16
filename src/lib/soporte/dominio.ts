@@ -194,6 +194,11 @@ export function nombreEstadoSubtarea(codigo: string): string {
   return ESTADOS_SUBTAREA.find((e) => e.codigo === codigo)?.nombre ?? codigo;
 }
 
+/** Quién puede quedar a cargo de un ticket: por ahora, Desarrollo y QA. */
+export function puedeEstarACargo(p: { es_tecnico?: boolean | null; es_qa?: boolean | null }): boolean {
+  return p.es_tecnico === true || p.es_qa === true;
+}
+
 /** Un estado abierto que no es el inicial necesita a alguien con la próxima acción. */
 export function requiereResponsable(estado: SoporteEstado | undefined): boolean {
   if (!estado) return false;

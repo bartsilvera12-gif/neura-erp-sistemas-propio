@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight, Loader2, Lock, UserRound } from "lucide-react";
-import { mensajeEstadoFinal, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
+import { mensajeEstadoFinal, puedeEstarACargo, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte } from "./api";
 import { Aviso, TONO_AREA } from "./ui";
@@ -46,7 +46,8 @@ export default function EstadoRapido() {
 
   const opcionesPersona = [
     { value: "", label: "Sin asignar" },
-    ...catalogos.personas.map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
+    // Desarrollo y QA; y quien ya estaba a cargo de antes, para que no desaparezca del selector.
+    ...catalogos.personas.filter((p) => puedeEstarACargo(p) || p.id === t.responsable_id).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
   ];
 
   return (

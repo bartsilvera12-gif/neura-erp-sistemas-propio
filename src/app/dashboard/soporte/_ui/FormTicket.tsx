@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock, ListChecks, Paperclip, Tags, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { FechaSelect } from "@/components/ui/FechaSelect";
-import { slaDe } from "@/lib/soporte/dominio";
+import { puedeEstarACargo, slaDe } from "@/lib/soporte/dominio";
 import { apiSoporte, obtenerCatalogos, obtenerClientes, type CatalogosConEquipo } from "./api";
 import ZonaArchivos from "./ZonaArchivos";
 import { SelectorBuscable } from "./SelectorBuscable";
@@ -135,7 +135,7 @@ export default function FormTicket({
   const tipoOpciones = [{ value: "", label: "Seleccionar…" }, ...cat.tipos.filter((t) => t.activo).map((t) => ({ value: t.codigo, label: t.nombre }))];
   const responsableOpciones = [
     { value: "", label: "Sin asignar" },
-    ...cat.personas.map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] })),
+    ...cat.personas.filter(puedeEstarACargo).map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] })),
   ];
 
   const faltantes: string[] = [];

@@ -40,7 +40,7 @@ import {
   type Tipificacion,
   type TipoGestion,
 } from "@/lib/gestion-clientes/types";
-import { slaDe } from "@/lib/soporte/dominio";
+import { puedeEstarACargo, slaDe } from "@/lib/soporte/dominio";
 import { apiSoporte, obtenerCatalogos, subirArchivos, type CatalogosConEquipo } from "@/app/dashboard/soporte/_ui/api";
 import AccesosProyecto from "@/app/dashboard/soporte/_ui/AccesosProyecto";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
@@ -410,7 +410,7 @@ export default function TipificacionPage() {
   const tipificaciones = listado?.tipificaciones ?? [];
   const personaOpciones = [
     { value: "", label: "Sin asignar" },
-    ...(cat?.personas ?? []).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
+    ...(cat?.personas ?? []).filter(puedeEstarACargo).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
   ];
   const puedeEnviar = !guardando && !!listado && (!esError || (listado.puede_soporte && !!cat && !!proyectos?.length));
   const tipoUi = TIPO_UI[form.tipo_gestion];

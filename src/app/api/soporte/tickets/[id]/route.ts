@@ -4,6 +4,7 @@ import {
   TICKET_CAMPOS,
   eventoDeTransicion,
   mensajeEstadoFinal,
+  puedeEstarACargo,
   requiereResponsable,
   slaDe,
   transicionPermitida,
@@ -177,7 +178,7 @@ export async function PATCH(request: Request, { params }: Params) {
       if (nuevo !== actual.responsable_id) {
         if (nuevo) {
           const equipo = await personasDeEmpresa(auth.empresaId);
-          if (!equipo.some((u) => u.id === nuevo)) return falla("Responsable inválido");
+          if (!equipo.some((u) => u.id === nuevo && puedeEstarACargo(u))) return falla("A cargo sólo pueden quedar Desarrollo o QA");
         }
         patch.responsable_id = nuevo;
         responsableFinal = nuevo;

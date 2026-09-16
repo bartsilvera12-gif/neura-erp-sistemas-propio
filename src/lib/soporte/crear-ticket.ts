@@ -1,5 +1,5 @@
 import "server-only";
-import { requiereResponsable, slaDe } from "@/lib/soporte/dominio";
+import { puedeEstarACargo, requiereResponsable, slaDe } from "@/lib/soporte/dominio";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import {
   leerCatalogos,
@@ -126,7 +126,7 @@ export async function prepararTicket(
   let responsableId: string | null = null;
   if (typeof body.responsable_id === "string" && body.responsable_id) {
     const equipo = await personasDeEmpresa(auth.empresaId);
-    if (!equipo.some((u) => u.id === body.responsable_id)) return falla("Responsable inválido");
+    if (!equipo.some((u) => u.id === body.responsable_id && puedeEstarACargo(u))) return falla("A cargo sólo pueden quedar Desarrollo o QA");
     responsableId = body.responsable_id;
   }
 

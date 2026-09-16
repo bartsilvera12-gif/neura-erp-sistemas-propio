@@ -27,7 +27,6 @@ export default function CambiarEstado({ alCerrar }: { alCerrar: () => void }) {
 
   const [estado, setEstado] = useState(destinos[0]?.codigo ?? "");
   const [responsable, setResponsable] = useState(ticket.responsable_id ?? "");
-  const [proxima, setProxima] = useState(ticket.proxima_accion ?? "");
   const [comentario, setComentario] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +76,6 @@ export default function CambiarEstado({ alCerrar }: { alCerrar: () => void }) {
         json: {
           estado_codigo: estado,
           responsable_id: responsable || null,
-          proxima_accion: proxima,
           ...(esDevolucion ? { comentario } : {}),
         },
       });
@@ -145,21 +143,11 @@ export default function CambiarEstado({ alCerrar }: { alCerrar: () => void }) {
 
               <div>
                 <span className={claseEtiqueta}>
-                  Responsable de la próxima acción{pideResponsable ? <span className="text-rose-500"> *</span> : null}
+                  Responsable{pideResponsable ? <span className="text-rose-500"> *</span> : null}
                 </span>
                 <SelectorBuscable ariaLabel="Responsable" avatares value={responsable} onChange={setResponsable} opciones={opcionesPersona} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
               </div>
 
-              <div>
-                <span className={claseEtiqueta}>Próxima acción</span>
-                <input
-                  className={claseInput}
-                  value={proxima}
-                  onChange={(e) => setProxima(e.target.value)}
-                  placeholder="Qué tiene que hacer quien queda a cargo"
-                  maxLength={500}
-                />
-              </div>
             </>
           )}
 

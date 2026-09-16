@@ -21,11 +21,7 @@ export default function TicketEditarPage() {
     asunto: t.asunto,
     descripcion: t.descripcion,
     responsable_id: t.responsable_id ?? "",
-    proxima_accion: t.proxima_accion ?? "",
     fecha_objetivo: t.fecha_objetivo ?? "",
-    version: t.version ?? "",
-    entorno: t.entorno ?? "",
-    navegador: t.navegador ?? "",
   };
 
   return (

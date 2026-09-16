@@ -63,11 +63,11 @@ export default function TicketDescripcionPage() {
       </Tarjeta>
 
       <aside className="space-y-5">
-        {/* Próxima acción: la tarjeta más importante del ticket, en el color del área a cargo. */}
+        {/* Quién lo tiene: la tarjeta más importante del ticket, en el color del área a cargo. */}
         <section className={`relative overflow-hidden rounded-2xl border bg-white p-5 shadow-[0_8px_28px_-14px_rgba(15,23,42,0.25)] ${ta.borde}`}>
           <span className={`absolute inset-x-0 top-0 h-1 ${ta.solido}`} aria-hidden />
           <p className={`flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider ${ta.texto}`}>
-            <ArrowRightCircle className="h-4 w-4" aria-hidden /> Próxima acción
+            <ArrowRightCircle className="h-4 w-4" aria-hidden /> A cargo
           </p>
           {t.responsable ? (
             <div className="mt-3 flex items-center gap-3">
@@ -78,11 +78,8 @@ export default function TicketDescripcionPage() {
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-[13px] text-slate-500">{activo ? "Nadie tiene la próxima acción todavía." : "El ticket está cerrado."}</p>
+            <p className="mt-3 text-[13px] text-slate-500">{activo ? "Todavía no tiene responsable." : "El ticket está cerrado."}</p>
           )}
-          <p className={`mt-3 rounded-xl px-3 py-2.5 text-[13.5px] leading-relaxed ${t.proxima_accion ? `${ta.suave} font-medium text-slate-800` : "bg-slate-50 italic text-slate-400"}`}>
-            {t.proxima_accion ?? "Sin acción definida."}
-          </p>
           <Boton className="mt-4 w-full" onClick={() => setCambiando(true)}>Cambiar estado</Boton>
         </section>
 
@@ -108,9 +105,6 @@ export default function TicketDescripcionPage() {
               }
             />
             <Fila etiqueta="Clasificación" valor={t.clasificacion_nombre} />
-            <Fila etiqueta="Versión" valor={t.version} />
-            <Fila etiqueta="Entorno" valor={t.entorno} />
-            <Fila etiqueta="Navegador" valor={t.navegador} />
             <Fila etiqueta="Creado por" valor={t.creador?.nombre} />
             <Fila etiqueta="Fecha creación" valor={fechaHora(t.created_at)} />
             <Fila etiqueta="Fecha objetivo" valor={t.fecha_objetivo ? fecha(t.fecha_objetivo) : null} />

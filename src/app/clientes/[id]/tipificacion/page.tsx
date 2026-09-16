@@ -105,7 +105,7 @@ const TICKET_VACIO: DatosTicket = {
   asunto: "",
   descripcion: "",
   clasificacion_codigo: "",
-  prioridad_codigo: "",
+  prioridad_codigo: "normal",
   responsable_id: "",
 };
 
@@ -238,7 +238,6 @@ export default function TipificacionPage() {
   });
   const [ticket, setTicket] = useState<DatosTicket>(TICKET_VACIO);
   const [archivos, setArchivos] = useState<File[]>([]);
-  const [prioridadTocada, setPrioridadTocada] = useState(false);
 
   // Datos de Soporte: sólo se piden cuando hace falta (tipo Error).
   const [cat, setCat] = useState<CatalogosConEquipo | null>(null);
@@ -324,8 +323,8 @@ export default function TipificacionPage() {
     setTicket((p) => ({
       ...p,
       clasificacion_codigo: codigo,
-      // Sugerencia del catálogo, sólo si nadie tocó la prioridad.
-      prioridad_codigo: !prioridadTocada && c?.prioridad_sugerida ? c.prioridad_sugerida : p.prioridad_codigo,
+      // La prioridad la pone el nivel (sugerida del catálogo); no se elige a mano.
+      prioridad_codigo: c?.prioridad_sugerida || "normal",
     }));
   }
 
@@ -333,7 +332,6 @@ export default function TipificacionPage() {
     setForm({ tipo_gestion: "Consulta", resultado: "Pendiente", observacion: "" });
     setTicket(TICKET_VACIO);
     setArchivos([]);
-    setPrioridadTocada(false);
   }
 
   async function handleGuardar(e?: React.FormEvent) {
@@ -350,7 +348,6 @@ export default function TipificacionPage() {
       if (!ticket.asunto.trim()) faltan.push("asunto");
       if (!ticket.descripcion.trim()) faltan.push("descripción del error");
       if (clasificaciones.length && !ticket.clasificacion_codigo) faltan.push("nivel");
-      if (!ticket.prioridad_codigo) faltan.push("prioridad");
       if (faltan.length) return setError(`Completá: ${faltan.join(", ")}.`);
     }
 
@@ -586,7 +583,7 @@ export default function TipificacionPage() {
                         </Campo>
                       </Seccion>
 
-                      <Seccion titulo="Nivel, prioridad y responsable" detalle="El nivel define el service level del proceso de Soporte" icono={Flag} tono="ambar">
+                      <Seccion titulo="Nivel y responsable" detalle="El nivel define el service level del proceso de Soporte" icono={Flag} tono="ambar">
                         <Campo etiqueta="Nivel" requerido>
                           <div role="radiogroup" aria-label="Nivel" className="grid gap-3 sm:grid-cols-3">
                             {clasificaciones.map((c) => {
@@ -614,29 +611,6 @@ export default function TipificacionPage() {
                           </div>
                         </Campo>
 
-                        <Campo etiqueta="Prioridad" requerido ayuda={!prioridadTocada && clasificacionElegida?.prioridad_sugerida ? "Sugerida por el nivel. Podés cambiarla." : undefined}>
-                          <div role="radiogroup" aria-label="Prioridad" className="flex flex-wrap gap-2">
-                            {prioridades.map((p) => {
-                              const activa = ticket.prioridad_codigo === p.codigo;
-                              return (
-                                <button
-                                  key={p.codigo}
-                                  type="button"
-                                  role="radio"
-                                  aria-checked={activa}
-                                  onClick={() => { setPrioridadTocada(true); setCampoTicket("prioridad_codigo", p.codigo); }}
-                                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition ${
-                                    activa ? "border-transparent text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                  }`}
-                                  style={activa ? { backgroundColor: p.color } : undefined}
-                                >
-                                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: activa ? "#fff" : p.color }} aria-hidden />
-                                  {p.nombre}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </Campo>
 
                         <Campo etiqueta="Responsable" ayuda="Opcional. Sin responsable entra como Registrado; con responsable, Clasificado / Asignado.">
                           <SelectorBuscable

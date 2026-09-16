@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Clock, Info, ListChecks, Paperclip, Tags, UserRoundCheck, type LucideIcon } from "lucide-react";
+import { Clock, ListChecks, Paperclip, Tags, UserRoundCheck, type LucideIcon } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { slaDe } from "@/lib/soporte/dominio";
@@ -21,11 +21,7 @@ export type ValoresTicket = {
   asunto: string;
   descripcion: string;
   responsable_id: string;
-  proxima_accion: string;
   fecha_objetivo: string;
-  version: string;
-  entorno: string;
-  navegador: string;
 };
 
 export const VALORES_VACIOS: ValoresTicket = {
@@ -38,11 +34,7 @@ export const VALORES_VACIOS: ValoresTicket = {
   asunto: "",
   descripcion: "",
   responsable_id: "",
-  proxima_accion: "",
   fecha_objetivo: "",
-  version: "",
-  entorno: "Producción",
-  navegador: "",
 };
 
 function Campo({ etiqueta, requerido, children, ayuda, className = "" }: { etiqueta: string; requerido?: boolean; children: React.ReactNode; ayuda?: React.ReactNode; className?: string }) {
@@ -86,9 +78,9 @@ function Seccion({
 /**
  * Formulario de ticket, para alta y edición.
  *
- * En el alta el SLA se muestra en vivo según la clasificación elegida, y la
- * prioridad se sugiere desde la clasificación (un error alto propone
- * "Urgente") sin pisar lo que la persona ya cambió a mano.
+ * El SLA se muestra en vivo según la clasificación elegida. La prioridad no se
+ * elige: la pone la clasificación (la sugerida del catálogo) y, si no trae,
+ * queda la que ya tenía el ticket ("Normal" en el alta).
  */
 export default function FormTicket({
   inicial,
@@ -106,7 +98,6 @@ export default function FormTicket({
   const [proyectos, setProyectos] = useState<{ id: string; titulo: string }[]>([]);
   const [v, setV] = useState<ValoresTicket>(inicial);
   const [archivos, setArchivos] = useState<File[]>([]);
-  const [prioridadTocada, setPrioridadTocada] = useState(modo === "editar");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,7 +133,6 @@ export default function FormTicket({
   if (!cat) return error ? <Aviso>{error}</Aviso> : <Cargando />;
 
   const tipoOpciones = [{ value: "", label: "Seleccionar…" }, ...cat.tipos.filter((t) => t.activo).map((t) => ({ value: t.codigo, label: t.nombre }))];
-  const prioridadOpciones = cat.prioridades.filter((p) => p.activo).map((p) => ({ value: p.codigo, label: p.nombre }));
   const responsableOpciones = [
     { value: "", label: "Sin asignar" },
     ...cat.personas.map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] })),
@@ -152,7 +142,6 @@ export default function FormTicket({
   if (!v.cliente_id) faltantes.push("cliente");
   if (!v.tipo_codigo) faltantes.push("tipo de solicitud");
   if (clasificaciones.length > 0 && !v.clasificacion_codigo) faltantes.push("clasificación");
-  if (!v.prioridad_codigo) faltantes.push("prioridad");
   if (!v.asunto.trim()) faltantes.push("asunto");
   if (!v.descripcion.trim()) faltantes.push("descripción");
 
@@ -206,7 +195,7 @@ export default function FormTicket({
           </Campo>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <Campo etiqueta="Tipo de solicitud" requerido>
             <FancySelect
               ariaLabel="Tipo de solicitud"
@@ -226,25 +215,13 @@ export default function FormTicket({
                 setV((p) => ({
                   ...p,
                   clasificacion_codigo: x,
-                  // Sugerencia, no imposición: sólo si nadie tocó la prioridad.
-                  prioridad_codigo: !prioridadTocada && c?.prioridad_sugerida ? c.prioridad_sugerida : p.prioridad_codigo,
+                  prioridad_codigo: c?.prioridad_sugerida || p.prioridad_codigo || "normal",
                 }));
               }}
               options={[
                 { value: "", label: "Seleccionar…" },
                 ...clasificaciones.map((c) => ({ value: c.codigo, label: c.nombre, description: `SLA ${c.sla_horas} h` })),
               ]}
-            />
-          </Campo>
-          <Campo etiqueta="Prioridad" requerido>
-            <FancySelect
-              ariaLabel="Prioridad"
-              value={v.prioridad_codigo}
-              onChange={(x) => {
-                setPrioridadTocada(true);
-                set("prioridad_codigo", x);
-              }}
-              options={prioridadOpciones}
             />
           </Campo>
         </div>
@@ -295,34 +272,6 @@ export default function FormTicket({
           </Campo>
           <Campo etiqueta="Fecha objetivo">
             <FechaSelect value={v.fecha_objetivo} onChange={(e) => set("fecha_objetivo", e.target.value)} className={claseInput} anioDesde={2024} />
-          </Campo>
-        </div>
-        <Campo etiqueta="Próxima acción">
-          <input
-            className={claseInput}
-            value={v.proxima_accion}
-            onChange={(e) => set("proxima_accion", e.target.value)}
-            placeholder="Ej.: Corregir validación del timbrado"
-            maxLength={500}
-          />
-        </Campo>
-      </Seccion>
-
-      <Seccion icono={Info} tono="indigo" titulo="Información adicional" descripcion="Contexto técnico del reporte.">
-        <div className="grid gap-4 md:grid-cols-3">
-          <Campo etiqueta="Versión">
-            <input className={claseInput} value={v.version} onChange={(e) => set("version", e.target.value)} placeholder="v1.2.3" maxLength={60} />
-          </Campo>
-          <Campo etiqueta="Entorno">
-            <FancySelect
-              ariaLabel="Entorno"
-              value={v.entorno}
-              onChange={(x) => set("entorno", x)}
-              options={["Producción", "Pruebas", "Desarrollo"].map((x) => ({ value: x, label: x }))}
-            />
-          </Campo>
-          <Campo etiqueta="Navegador">
-            <input className={claseInput} value={v.navegador} onChange={(e) => set("navegador", e.target.value)} placeholder="Chrome 128" maxLength={120} />
           </Campo>
         </div>
       </Seccion>

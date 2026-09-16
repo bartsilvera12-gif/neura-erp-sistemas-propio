@@ -3,7 +3,11 @@ import { registrarHistorialCliente } from "@/lib/clientes/historial";
 import type { TipoGestion } from "@/lib/gestion-clientes/types";
 import { prepararTicket, registrarAltaTicket } from "@/lib/soporte/crear-ticket";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
-import { leerCatalogos } from "@/lib/soporte/servidor";
+import { leerCatalogos, personasDeEmpresa } from "@/lib/soporte/servidor";
+import { puedeEstarACargo } from "@/lib/soporte/dominio";
+import { enHorarioLaboral, TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
+import { lunesDe } from "@/lib/guardias/semana";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 /**
  * Tipos de gestión que crean un ticket de Soporte, y el tipo de ticket de cada uno.
@@ -16,16 +20,52 @@ export const TIPO_TICKET_DE_GESTION: Partial<Record<TipoGestion, string>> = {
 };
 
 /**
- * Quién queda a cargo de todo ticket nuevo, por empresa. Quien carga el ticket
- * no elige: hoy lo recibe la desarrolladora de Soporte (Milagros Gómez).
- * Para cambiarlo alcanza con este mapa.
+ * Desarrollo de Soporte en horario laboral, por empresa: hoy Milagros Luján
+ * Gómez Flores. Para cambiarlo alcanza con este mapa.
  */
-const RESPONSABLE_POR_DEFECTO: Record<string, string> = {
+const RESPONSABLE_HORARIO_LABORAL: Record<string, string> = {
   "9fd29108-4b0f-4faf-9eee-c509f6227d47": "5566a978-05b6-4300-8df1-b35e6b7d74dc",
 };
 
-export function responsablePorDefecto(empresaId: string): string | null {
-  return RESPONSABLE_POR_DEFECTO[empresaId] ?? null;
+export type AsignacionAutomatica = {
+  responsableId: string | null;
+  motivo: "horario_laboral" | "guardia_principal" | "guardia_suplente" | "sin_guardia";
+};
+
+/**
+ * Quién recibe un ticket nuevo. Quien lo carga no elige.
+ *
+ *   · En horario laboral (lun–vie 8–17, sáb 8–12): Desarrollo de Soporte.
+ *   · Fuera de horario: el soporte principal de la guardia de esa semana
+ *     (módulo Guardias, semana de lunes a domingo); si no hay, el suplente; y si
+ *     tampoco, Desarrollo de Soporte.
+ *
+ * Sólo se asigna a alguien que puede quedar a cargo (Desarrollo o QA).
+ */
+export async function responsableAutomatico(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  ahora: number = Date.now()
+): Promise<AsignacionAutomatica> {
+  const fijo = RESPONSABLE_HORARIO_LABORAL[empresaId] ?? null;
+  if (enHorarioLaboral(ahora)) return { responsableId: fijo, motivo: "horario_laboral" };
+
+  // El día en Paraguay, para saber a qué semana de guardia pertenece.
+  const diaPy = new Date(ahora + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
+  const [{ data }, equipo] = await Promise.all([
+    sb
+      .from("guardias_semana")
+      .select("soporte_principal_id, soporte_suplente_id")
+      .eq("empresa_id", empresaId)
+      .eq("semana_inicio", lunesDe(diaPy))
+      .maybeSingle(),
+    personasDeEmpresa(empresaId),
+  ]);
+  const g = data as { soporte_principal_id?: string | null; soporte_suplente_id?: string | null } | null;
+  const valido = (id: string | null | undefined) => !!id && equipo.some((p) => p.id === id && puedeEstarACargo(p));
+  if (valido(g?.soporte_principal_id)) return { responsableId: g!.soporte_principal_id!, motivo: "guardia_principal" };
+  if (valido(g?.soporte_suplente_id)) return { responsableId: g!.soporte_suplente_id!, motivo: "guardia_suplente" };
+  return { responsableId: fijo, motivo: "sin_guardia" };
 }
 
 export function gestionDeTipoTicket(tipoCodigo: unknown): TipoGestion | null {
@@ -75,6 +115,7 @@ export async function crearTipificacionConTicket(
   const tipoCodigo = TIPO_TICKET_DE_GESTION[args.tipoGestion];
   if (!tipoCodigo) return { ok: false, mensaje: "Ese tipo de gestión no crea tickets", status: 400 };
 
+  const asignacion = await responsableAutomatico(soporte.sb, soporte.empresaId);
   const prep = await prepararTicket(
     soporte,
     {
@@ -83,7 +124,7 @@ export async function crearTipificacionConTicket(
       cliente_id: args.clienteId,
       tipo_codigo: tipoCodigo,
       prioridad_codigo: args.datosTicket.prioridad_codigo ?? "normal",
-      responsable_id: responsablePorDefecto(soporte.empresaId),
+      responsable_id: asignacion.responsableId,
     },
     { exigirProyecto: args.exigirProyecto }
   );
@@ -117,7 +158,12 @@ export async function crearTipificacionConTicket(
       ticketId: r.ticket_id,
       numero: r.numero,
       ticket: prep.ticket,
-      metadataExtra: { origen: args.origen, tipificacion_id: r.tipificacion_id, conversation_id: args.conversationId ?? null },
+      metadataExtra: {
+        origen: args.origen,
+        tipificacion_id: r.tipificacion_id,
+        conversation_id: args.conversationId ?? null,
+        asignacion: asignacion.motivo,
+      },
     }),
     registrarHistorialCliente(soporte.sb, {
       empresaId: soporte.empresaId,

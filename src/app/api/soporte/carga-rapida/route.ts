@@ -1,6 +1,6 @@
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { puedeEstarACargo } from "@/lib/soporte/dominio";
-import { crearTipificacionConTicket, gestionDeTipoTicket, responsablePorDefecto } from "@/lib/soporte/tipificacion-ticket";
+import { crearTipificacionConTicket, gestionDeTipoTicket, responsableAutomatico } from "@/lib/soporte/tipificacion-ticket";
 import { requireCargaSoporteApi } from "@/lib/soporte/soporte-auth";
 import {
   clientesDeEmpresa,
@@ -121,7 +121,8 @@ export async function GET(request: Request) {
       return ok({ proyectos: data ?? [] });
     }
 
-    const defecto = responsablePorDefecto(auth.empresaId);
+    const asignacion = await responsableAutomatico(auth.sb, auth.empresaId);
+    const defecto = asignacion.responsableId;
     const [cat, personas, clientes] = await Promise.all([
       leerCatalogos(auth.sb, auth.empresaId),
       personasDeEmpresa(auth.empresaId),
@@ -134,6 +135,7 @@ export async function GET(request: Request) {
       a_cargo: personas.filter(puedeEstarACargo),
       // Quién recibe el ticket: se asigna solo, quien carga no elige.
       responsable: personas.find((p) => p.id === defecto) ?? null,
+      responsable_motivo: asignacion.motivo,
       clientes,
     });
   } catch (e) {

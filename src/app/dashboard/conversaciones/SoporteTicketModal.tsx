@@ -15,6 +15,7 @@ type Datos = {
   tipos: SoporteTipo[];
   clasificaciones: SoporteClasificacion[];
   responsable: Persona | null;
+  responsable_motivo?: "horario_laboral" | "guardia_principal" | "guardia_suplente" | "sin_guardia";
   clientes: { id: string; nombre: string }[];
 };
 
@@ -330,7 +331,8 @@ export default function SoporteTicketModal({
               </div>
               {datos.responsable ? (
                 <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">
-                  Se asigna a <strong className="text-slate-800">{datos.responsable.nombre}</strong> (Desarrollo de Soporte).
+                  Se asigna a <strong className="text-slate-800">{datos.responsable.nombre}</strong> (
+                  {({ horario_laboral: "Desarrollo de Soporte", guardia_principal: "guardia", guardia_suplente: "suplente de guardia", sin_guardia: "sin guardia cargada" })[datos.responsable_motivo ?? "horario_laboral"]}).
                 </p>
               ) : null}
               {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p> : null}

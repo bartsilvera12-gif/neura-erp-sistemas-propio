@@ -77,6 +77,7 @@ type DatosSoporte = {
   clasificaciones: SoporteClasificacion[];
   a_cargo: { id: string; nombre: string; area: string }[];
   responsable: { id: string; nombre: string; area: string } | null;
+  responsable_motivo?: "horario_laboral" | "guardia_principal" | "guardia_suplente" | "sin_guardia";
 };
 
 const TIPO_UI: Record<TipoGestion, { icono: LucideIcon; tono: Tono }> = {
@@ -720,7 +721,10 @@ export default function TipificacionPage() {
                         <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600">
                           <UserRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
                           {cat?.responsable ? (
-                            <span>Se asigna a <strong className="text-slate-800">{cat.responsable.nombre}</strong> (Desarrollo de Soporte). Entra como Pendiente.</span>
+                            <span>
+                              Se asigna a <strong className="text-slate-800">{cat.responsable.nombre}</strong> (
+                              {({ horario_laboral: "Desarrollo de Soporte", guardia_principal: "guardia", guardia_suplente: "suplente de guardia", sin_guardia: "sin guardia cargada" })[cat.responsable_motivo ?? "horario_laboral"]}). Entra como Pendiente.
+                            </span>
                           ) : (
                             <span>Entra como Pendiente, sin responsable.</span>
                           )}

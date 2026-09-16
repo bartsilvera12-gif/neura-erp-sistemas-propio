@@ -938,10 +938,10 @@ function GestionClientesPageInner() {
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15"
-        // Alto fijo al de la pantalla: así la zona del cliente (datos, proyectos,
-        // facturas) tiene su propio scroll. Con sólo un mínimo, la tarjeta crecía
-        // con el contenido y la rueda del mouse quedaba atrapada sin desplazar.
+        className="flex shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-[#4FAEB2]/15"
+        // Alto fijo al de la pantalla (sin flex-1: con flex-basis 0 el alto se
+        // ignoraba y la tarjeta quedaba del tamaño del contenido, cortando el
+        // desplegable del buscador). Así la zona del cliente tiene su propio scroll.
         style={{ height: "max(560px, calc(100dvh - 10.5rem))" }}
       >
         {selected === null ? (

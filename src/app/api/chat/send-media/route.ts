@@ -158,6 +158,18 @@ export async function POST(request: NextRequest) {
     }
 
     const form = await request.formData().catch(() => null);
+    // Distinguir "no se pudo leer la subida" de "faltó un campo". Antes las dos daban el
+    // mismo mensaje, y un archivo cortado en el camino parecía un error del cliente.
+    if (!form) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "No se pudo leer el archivo. Si es muy pesado, probá con uno más chico o comprimilo.",
+        },
+        { status: 413 }
+      );
+    }
     const convRaw = form?.get("conversation_id");
     const conversationId = typeof convRaw === "string" ? convRaw.trim() : "";
     const capRaw = form?.get("caption");

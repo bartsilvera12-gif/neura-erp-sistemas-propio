@@ -16,27 +16,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
-import {
   AlertCircle,
-  AlertTriangle,
-  CalendarRange,
   CheckCircle2,
   Clock,
-  Code2,
-  Download,
-  LineChart,
   Quote,
-  Flag,
   Hourglass,
-  RefreshCw,
+  Layers,
+  PauseCircle,
   Timer,
-  Users,
   UsersRound,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -46,7 +33,6 @@ import {
   AMBAR,
   Card,
   CardTitle,
-  DashboardHeader,
   Estado,
   EstadoPill,
   FiltroFecha,
@@ -103,7 +89,21 @@ type Data = {
     motivo: string;
     semaforo: "vencido" | "critico" | "en_riesgo";
   }[];
-  proyectos_activos: (Data["criticos"][number] & { buckets: KpiBucket[] })[];
+  proyectos_activos: (Data["criticos"][number] & {
+    estado_id: string | null;
+    demorado: boolean;
+    buckets: KpiBucket[];
+  })[];
+  estados_activos: {
+    estado_id: string;
+    nombre: string;
+    color: string;
+    cantidad: number;
+    demorados: number;
+    umbral_horas: number | null;
+  }[];
+  total_activos: number;
+  demorados_total: number;
   bloqueos_por_tipo: { tipo: string; label: string; cantidad: number }[];
   bloqueos_detalle: {
     id: string;
@@ -168,12 +168,32 @@ const SEMAFORO_PILL: Record<Data["criticos"][number]["semaforo"], string> = {
 const KPI_LABEL: Record<KpiBucket, string> = {
   vencen_pronto: "Vencen pronto",
   vencidos: "Vencidos",
-  bloqueados: "Estancados",
+  bloqueados: "Detenidos",
   en_desarrollo: "En desarrollo",
   esperando_cliente: "Esperando cliente",
   esperando_qa: "Esperando QA",
   listos_entregar: "Listos para entregar",
 };
+
+/**
+ * Las tres formas de desmenuzar la cartera, unificadas: una tarjeta de riesgo,
+ * un estado, o los demorados (todos o de un estado puntual).
+ */
+type Sel =
+  | { kind: "kpi"; bucket: KpiBucket }
+  | { kind: "estado"; id: string }
+  | { kind: "demorado"; estadoId?: string }
+  | null;
+
+/** ¿Dos selecciones son la misma? Para que apretar lo ya activo lo apague. */
+function mismaSel(a: Sel, b: Sel): boolean {
+  if (a == null || b == null) return a === b;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "kpi" && b.kind === "kpi") return a.bucket === b.bucket;
+  if (a.kind === "estado" && b.kind === "estado") return a.id === b.id;
+  if (a.kind === "demorado" && b.kind === "demorado") return a.estadoId === b.estadoId;
+  return false;
+}
 
 /**
  * Lee la respuesta con cuidado.
@@ -225,11 +245,17 @@ export default function DashboardEjecutivoClient() {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [actualizado, setActualizado] = useState<string | null>(null);
-  /** Tarjeta KPI seleccionada: filtra la lista de abajo por ese bucket. */
-  const [kpiSel, setKpiSel] = useState<KpiBucket | null>(null);
-  /** Apretar la tarjeta activa la apaga (vuelve a la lista de críticos). */
-  const toggleKpi = useCallback((b: KpiBucket) => setKpiSel((prev) => (prev === b ? null : b)), []);
+  /**
+   * Qué recorte se muestra en la lista de abajo. Un solo lugar para las tres
+   * formas de desmenuzar: una tarjeta de riesgo (bucket), un estado, o los
+   * demorados (todos o de un estado). `null` = la lista de críticos por defecto.
+   */
+  const [sel, setSel] = useState<Sel>(null);
+  /** Apretar de nuevo lo mismo lo apaga (vuelve a críticos). */
+  const toggleSel = useCallback(
+    (s: Sel) => setSel((prev) => (mismaSel(prev, s) ? null : s)),
+    []
+  );
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -245,7 +271,6 @@ export default function DashboardEjecutivoClient() {
         cache: "no-store",
       });
       setData(await leerRespuesta<Data>(r));
-      setActualizado(new Date().toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "No se pudo cargar");
     } finally {
@@ -256,11 +281,6 @@ export default function DashboardEjecutivoClient() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
-
-  const donut = useMemo(
-    () => (data?.por_estado ?? []).map((e) => ({ ...e, value: e.cantidad })),
-    [data?.por_estado]
-  );
 
   /** Los nombres del catálogo vienen en MAYÚSCULAS; en una lista gritan. */
   const tecnicos = useMemo(
@@ -288,106 +308,30 @@ export default function DashboardEjecutivoClient() {
    */
   const filasLista = useMemo(() => {
     if (!data) return [];
-    return kpiSel ? data.proyectos_activos.filter((p) => p.buckets.includes(kpiSel)) : data.criticos;
-  }, [data, kpiSel]);
+    if (!sel) return data.criticos;
+    const act = data.proyectos_activos;
+    if (sel.kind === "kpi") return act.filter((p) => p.buckets.includes(sel.bucket));
+    if (sel.kind === "estado") return act.filter((p) => p.estado_id === sel.id);
+    // demorado
+    return act.filter((p) => p.demorado && (sel.estadoId ? p.estado_id === sel.estadoId : true));
+  }, [data, sel]);
 
-  /**
-   * Descarga del resumen en CSV. Es el formato que abre Excel sin pedir nada y
-   * que además entra en cualquier planilla: para un resumen de Directorio no
-   * hace falta arrastrar una librería de xlsx a esta pantalla.
-   */
-  const exportar = useCallback(() => {
-    if (!data) return;
-    const filas: (string | number)[][] = [
-      ["Dashboard Ejecutivo — Proyectos"],
-      ["Período", `${desde} a ${hasta}`],
-      [],
-      ["Indicador", "Valor"],
-      ["Vencen pronto", data.kpis.vencen_pronto],
-      ["Vencidos", data.kpis.vencidos],
-      ["Estancados", data.kpis.bloqueados],
-      ["En desarrollo", data.kpis.en_desarrollo],
-      ["Esperando cliente", data.kpis.esperando_cliente],
-      ["Esperando QA", data.kpis.esperando_qa],
-      ["Listos para entregar", data.kpis.listos_entregar],
-      ["Técnicos con WIP alto", data.kpis.tecnicos_wip_alto],
-      ["Cumplimiento de fecha prometida (%)", data.cumplimiento.pct ?? ""],
-      ["Entregados en fecha", data.cumplimiento.en_fecha],
-      ["Entregados con atraso", data.cumplimiento.con_atraso],
-      ["En curso", data.cumplimiento.en_curso],
-      ["Lead time promedio (horas)", data.lead_time_horas ?? ""],
-      ["First pass QA (%)", data.calidad.first_pass_pct ?? ""],
-      ["Con reingresos de QA (%)", data.calidad.con_reingreso_pct ?? ""],
-      ["Promedio de rondas de QA", data.calidad.promedio_rondas ?? ""],
-      [],
-      ["Proyectos por estado", "Cantidad"],
-      ...data.por_estado.map((e) => [e.nombre, e.cantidad]),
-      [],
-      ["Técnico", "WIP"],
-      ...data.wip.map((w) => [w.nombre, w.wip]),
-      [],
-      ["Proyecto", "Cliente", "Estado", "Técnico", "Fecha prometida", "Días", "Motivo"],
-      ...data.criticos.map((c) => [
-        c.titulo,
-        c.cliente,
-        c.estado_nombre,
-        c.tecnico,
-        fmtFecha(c.fecha_prometida),
-        fmtDias(c.dias_restantes),
-        c.motivo,
-      ]),
-    ];
-    const csv = filas
-      .map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";"))
-      .join("\r\n");
-    // BOM para que Excel reconozca los acentos.
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `Dashboard-Ejecutivo-${hasta}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }, [data, desde, hasta]);
+  /** Título de la lista según qué se está mirando. */
+  const tituloLista = useMemo(() => {
+    if (!sel) return "Proyectos críticos";
+    if (sel.kind === "kpi") return KPI_LABEL[sel.bucket];
+    if (sel.kind === "estado") {
+      return data?.estados_activos.find((e) => e.estado_id === sel.id)?.nombre ?? "Estado";
+    }
+    if (sel.estadoId) {
+      const n = data?.estados_activos.find((e) => e.estado_id === sel.estadoId)?.nombre;
+      return `Demorados · ${n ?? "estado"}`;
+    }
+    return "Demorados";
+  }, [sel, data]);
 
   return (
     <div className="space-y-3">
-      <DashboardHeader
-        icon={LineChart}
-        titulo="Dashboard Ejecutivo"
-        subtitulo="Proyectos · visión para Directorio"
-        chips={[
-          <>
-            <CalendarRange className="h-3 w-3" />
-            {alcance}
-          </>,
-          <>
-            <RefreshCw className="h-3 w-3" />
-            {actualizado ?? "—"}
-          </>,
-        ]}
-        acciones={
-          <>
-            <button
-              type="button"
-              onClick={() => void cargar()}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-              Actualizar
-            </button>
-            <button
-              type="button"
-              onClick={exportar}
-              disabled={!data}
-              className="flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-3 py-2 text-[12px] font-semibold text-white shadow-sm shadow-[#4FAEB2]/30 transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Descargar
-            </button>
-          </>
-        }
-      />
-
       {/* Filtros */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <FiltroFecha label="Desde" value={desde} max={hasta || undefined} onChange={setDesde} />
@@ -412,134 +356,144 @@ export default function DashboardEjecutivoClient() {
       <Estado loading={loading && !data} error={err} vacio={!!data && data.total_proyectos === 0}>
         {data ? (
           <>
-            {/* KPIs — dos filas de cuatro, como el diseño */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {/* Contexto: qué población suman estos números. */}
+            <p className="text-[11px] text-slate-400">{alcance}</p>
+
+            {/* Panorama — el total y las señales que cruzan todos los estados.
+                "¿Cómo estoy hoy?" de un vistazo. Cada señal se puede apretar
+                para ver sus proyectos abajo. */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <Kpi
-                icon={Timer}
-                tono={TONO.ambar}
-                label="Vencen pronto"
-                sublabel="≤ 3 días"
-                numero={data.kpis.vencen_pronto}
-                onClick={() => toggleKpi("vencen_pronto")}
-                seleccionado={kpiSel === "vencen_pronto"}
+                icon={Layers}
+                tono={TONO.teal}
+                label="Proyectos activos"
+                numero={data.total_activos}
+                pie={`${data.total_proyectos} en total`}
               />
               <Kpi
                 icon={AlertCircle}
                 tono={TONO.rojo}
                 label="Vencidos"
                 numero={data.kpis.vencidos}
-                onClick={() => toggleKpi("vencidos")}
-                seleccionado={kpiSel === "vencidos"}
+                onClick={() => toggleSel({ kind: "kpi", bucket: "vencidos" })}
+                seleccionado={sel?.kind === "kpi" && sel.bucket === "vencidos"}
+              />
+              <Kpi
+                icon={Timer}
+                tono={TONO.ambar}
+                label="Vencen pronto"
+                sublabel="≤ 3 días"
+                numero={data.kpis.vencen_pronto}
+                onClick={() => toggleSel({ kind: "kpi", bucket: "vencen_pronto" })}
+                seleccionado={sel?.kind === "kpi" && sel.bucket === "vencen_pronto"}
               />
               <Kpi
                 icon={Hourglass}
+                tono={TONO.violeta}
+                label="Demorados"
+                sublabel="pasaron su tiempo objetivo"
+                numero={data.demorados_total}
+                onClick={() => toggleSel({ kind: "demorado" })}
+                seleccionado={sel?.kind === "demorado" && !sel.estadoId}
+              />
+              <Kpi
+                icon={PauseCircle}
                 tono={TONO.gris}
-                label="Estancados"
+                label="Detenidos"
+                sublabel="pausados o bloqueados"
                 numero={data.kpis.bloqueados}
-                onClick={() => toggleKpi("bloqueados")}
-                seleccionado={kpiSel === "bloqueados"}
-              />
-              <Kpi
-                icon={Code2}
-                tono={TONO.violeta}
-                label="En desarrollo"
-                numero={data.kpis.en_desarrollo}
-                onClick={() => toggleKpi("en_desarrollo")}
-                seleccionado={kpiSel === "en_desarrollo"}
-              />
-              <Kpi
-                icon={Users}
-                tono={TONO.violeta}
-                label="Esperando cliente"
-                numero={data.kpis.esperando_cliente}
-                onClick={() => toggleKpi("esperando_cliente")}
-                seleccionado={kpiSel === "esperando_cliente"}
-              />
-              <Kpi
-                icon={AlertTriangle}
-                tono={TONO.azul}
-                label="Esperando QA"
-                numero={data.kpis.esperando_qa}
-                onClick={() => toggleKpi("esperando_qa")}
-                seleccionado={kpiSel === "esperando_qa"}
-              />
-              <Kpi
-                icon={Flag}
-                tono={TONO.verde}
-                label="Listos para entregar"
-                numero={data.kpis.listos_entregar}
-                onClick={() => toggleKpi("listos_entregar")}
-                seleccionado={kpiSel === "listos_entregar"}
+                onClick={() => toggleSel({ kind: "kpi", bucket: "bloqueados" })}
+                seleccionado={sel?.kind === "kpi" && sel.bucket === "bloqueados"}
               />
               <Kpi
                 icon={UsersRound}
-                tono={TONO.rojo}
+                tono={TONO.naranja}
                 label="Técnicos con WIP alto"
                 numero={data.kpis.tecnicos_wip_alto}
                 pie={`de ${data.total_tecnicos} técnicos`}
               />
             </div>
 
-            {/* A · B · C */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-              {/* A. Proyectos por estado */}
-              <Card>
-                <CardTitle
-                  right={
-                    <span className="whitespace-nowrap text-[10px] text-slate-400">{alcance}</span>
-                  }
-                >
-                  Proyectos por estado
-                </CardTitle>
-                {donut.length === 0 ? (
-                  <p className="text-sm text-slate-400">Sin datos</p>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="relative h-[150px] w-[150px] shrink-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={donut}
-                            dataKey="value"
-                            nameKey="nombre"
-                            innerRadius={46}
-                            outerRadius={72}
-                            paddingAngle={1}
-                            strokeWidth={0}
-                            labelLine={false}
+            {/* Proyectos por estado — el centro del tablero: cuántos hay en cada
+                estado y cuántos ya llevan demasiado tiempo. Apretá un estado
+                para ver esos proyectos abajo; apretá "N demorados" para ver sólo
+                los pasados de tiempo. El tiempo objetivo de cada estado se
+                define en Configuración → Proyectos ("Definir tiempos"). */}
+            <Card>
+              <CardTitle
+                right={
+                  <Link
+                    href="/configuracion/proyectos"
+                    className="whitespace-nowrap text-[11px] font-medium text-[#4FAEB2] hover:underline"
+                  >
+                    Definir tiempos →
+                  </Link>
+                }
+              >
+                Proyectos por estado
+              </CardTitle>
+              {data.estados_activos.length === 0 ? (
+                <p className="text-sm text-slate-400">Sin proyectos activos</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {data.estados_activos.map((e) => {
+                    const activo = sel?.kind === "estado" && sel.id === e.estado_id;
+                    const demActivo = sel?.kind === "demorado" && sel.estadoId === e.estado_id;
+                    const irAlEstado = () => toggleSel({ kind: "estado", id: e.estado_id });
+                    return (
+                      <div
+                        key={e.estado_id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={irAlEstado}
+                        onKeyDown={(ev) => ev.key === "Enter" && irAlEstado()}
+                        className={`cursor-pointer rounded-xl border bg-white p-3 transition-shadow hover:shadow-md ${
+                          activo ? "border-transparent ring-2 ring-[#4FAEB2] ring-offset-1" : "border-slate-200"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: e.color }} />
+                          <span
+                            className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-600"
+                            title={e.nombre}
                           >
-                            {donut.map((e) => (
-                              <Cell key={e.estado_id} fill={e.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(v: number, n: string) => [`${v}`, n]} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-[20px] font-bold leading-none text-slate-800">
-                          {data.total_proyectos}
-                        </span>
-                        <span className="text-[10px] text-slate-400">proyectos</span>
-                      </div>
-                    </div>
-                    <ul className="min-w-0 flex-1 space-y-1">
-                      {donut.map((e) => (
-                        <li
-                          key={e.estado_id}
-                          className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-600"
-                        >
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: e.color }} />
-                          <span className="min-w-0 flex-1 truncate" title={e.nombre}>
                             {e.nombre}
                           </span>
-                          <span className="shrink-0 font-semibold tabular-nums text-slate-700">{e.cantidad}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </Card>
+                        </div>
+                        <div className="mt-1 text-[24px] font-bold leading-none text-slate-800">{e.cantidad}</div>
+                        {e.demorados > 0 ? (
+                          <button
+                            type="button"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              toggleSel({ kind: "demorado", estadoId: e.estado_id });
+                            }}
+                            title={
+                              e.umbral_horas != null
+                                ? `Más de ${e.umbral_horas} h en este estado`
+                                : "Sin tiempo objetivo definido para este estado"
+                            }
+                            className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                              demActivo ? "bg-rose-600 text-white" : "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                            }`}
+                          >
+                            <Hourglass className="h-2.5 w-2.5" />
+                            {e.demorados} demorado{e.demorados === 1 ? "" : "s"}
+                          </button>
+                        ) : e.umbral_horas == null ? (
+                          <span className="mt-1.5 inline-block text-[9px] text-slate-300">sin tiempo objetivo</span>
+                        ) : (
+                          <span className="mt-1.5 inline-block text-[9px] text-emerald-500">al día</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
 
+            {/* Cumplimiento + Lead time */}
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {/* B. Cumplimiento de fecha prometida */}
               <Card>
                 <CardTitle>Cumplimiento de fecha prometida</CardTitle>
@@ -575,10 +529,10 @@ export default function DashboardEjecutivoClient() {
               <Card className="lg:col-span-2">
                 <CardTitle
                   right={
-                    kpiSel ? (
+                    sel ? (
                       <button
                         type="button"
-                        onClick={() => setKpiSel(null)}
+                        onClick={() => setSel(null)}
                         className="whitespace-nowrap text-[11px] font-medium text-[#4FAEB2] hover:underline"
                       >
                         ← Ver críticos
@@ -593,9 +547,9 @@ export default function DashboardEjecutivoClient() {
                     )
                   }
                 >
-                  {kpiSel ? (
+                  {sel ? (
                     <span className="flex items-center gap-1.5">
-                      {KPI_LABEL[kpiSel]}
+                      {tituloLista}
                       <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
                         {filasLista.length}
                       </span>
@@ -606,7 +560,7 @@ export default function DashboardEjecutivoClient() {
                 </CardTitle>
                 {filasLista.length === 0 ? (
                   <p className="text-sm text-slate-400">
-                    {kpiSel ? "Sin proyectos en esta tarjeta." : "Nada crítico. Buen día."}
+                    {sel ? "Sin proyectos en esta selección." : "Nada crítico. Buen día."}
                   </p>
                 ) : (
                   <TablaWrap>

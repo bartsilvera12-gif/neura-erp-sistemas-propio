@@ -498,7 +498,7 @@ export default function ConfiguracionProyectosPage() {
                       </select>
                     </label>
                     <label>
-                      <span className={F_LABEL}>Horas objetivo SLA</span>
+                      <span className={F_LABEL}>Tiempo máximo en este estado (horas)</span>
                       <input
                         type="number"
                         min={0}
@@ -513,6 +513,10 @@ export default function ConfiguracionProyectosPage() {
                           )
                         }
                       />
+                      <span className="mt-1 block text-[11px] text-slate-400">
+                        En horas laborales. Si un proyecto lo supera, el tablero lo marca
+                        <span className="font-medium text-rose-500"> demorado</span>. Vacío = sin límite.
+                      </span>
                     </label>
                     <EstadoVisibilitySwitch
                       checked={draft.activo}

@@ -132,7 +132,41 @@ export function construirDashboardEjecutivo(ds: Dataset) {
   // quede arriba.
   const proyectos_activos = [...activos]
     .sort((a, b) => b.score - a.score)
-    .map((p) => ({ ...filaCritica(p), buckets: bucketsDeProyecto(p) }));
+    .map((p) => ({
+      ...filaCritica(p),
+      estado_id: p.estado_id,
+      // "Demorado": lleva más tiempo del objetivo en su estado actual. Es el
+      // `estancado` del motor, el mismo que define el umbral configurable.
+      demorado: p.estancado,
+      buckets: bucketsDeProyecto(p),
+    }));
+
+  // ---- Cartera por estado (sólo activos), con cuántos van demorados ----------
+  // Responde "¿cuántos proyectos tengo en cada estado, y cuántos ya llevan
+  // demasiado tiempo?". Los estados finales (entregado/cancelado) quedan afuera
+  // porque `activos` ya los excluye. `umbral_horas` es el tiempo máximo que ese
+  // estado tolera antes de marcar demorado: el número que el Director define.
+  const distrib = new Map<string, { cantidad: number; demorados: number }>();
+  for (const p of activos) {
+    if (!p.estado_id) continue;
+    const cur = distrib.get(p.estado_id) ?? { cantidad: 0, demorados: 0 };
+    cur.cantidad += 1;
+    if (p.estancado) cur.demorados += 1;
+    distrib.set(p.estado_id, cur);
+  }
+  const estados_activos = estados
+    .map((e) => ({
+      estado_id: e.id,
+      nombre: e.nombre ?? "—",
+      color: e.color ?? "#94a3b8",
+      cantidad: distrib.get(e.id)?.cantidad ?? 0,
+      demorados: distrib.get(e.id)?.demorados ?? 0,
+      umbral_horas: e.sla_horas_objetivo ?? null,
+    }))
+    .filter((e) => e.cantidad > 0);
+
+  const total_activos = activos.length;
+  const demorados_total = activos.filter((p) => p.estancado).length;
 
   // ---- H. Bloqueos por tipo -------------------------------------------------
   const bloqueados = activos.filter((p) => p.bloqueado);
@@ -181,6 +215,9 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     calidad,
     criticos,
     proyectos_activos,
+    estados_activos,
+    total_activos,
+    demorados_total,
     bloqueos_por_tipo,
     bloqueos_detalle,
     bloqueados_total: bloqueados.length,

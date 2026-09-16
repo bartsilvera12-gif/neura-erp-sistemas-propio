@@ -792,28 +792,7 @@ async function loadMonitoringDashboardForContext(
     usuario_id,
     pendingConvIds
   );
-  // Excluir chats que YA tienen una respuesta humana real (mensaje saliente humano). El flag
-  // first_human_response_at se RESETEA al derivar/reasignar, así que un chat ya atendido y luego
-  // derivado reaparecía acá como "sin respuesta". Miramos los mensajes reales, no el flag reseteable.
-  const pendingConvAnswered = new Set<string>();
-  for (let i = 0; i < pendingConvIds.length; i += 50) {
-    const slice = pendingConvIds.slice(i, i + 50);
-    const { data: humanMsgs } = await supabase
-      .from("chat_messages")
-      .select("conversation_id")
-      .eq("empresa_id", empresa_id)
-      .in("conversation_id", slice)
-      .eq("from_me", true)
-      .eq("sender_type", "human");
-    for (const m of (humanMsgs ?? []) as Array<{ conversation_id?: string | null }>) {
-      const cid = String(m?.conversation_id ?? "").trim();
-      if (cid) pendingConvAnswered.add(cid);
-    }
-  }
-  const pendingFiltered = pendingRows.filter((r) => {
-    const cid = String(r.id ?? "").trim();
-    return pendingVisible.has(cid) && !pendingConvAnswered.has(cid);
-  });
+  const pendingFiltered = pendingRows.filter((r) => pendingVisible.has(String(r.id ?? "").trim()));
 
   const pendChannelIds = [
     ...new Set(
@@ -965,9 +944,7 @@ async function loadMonitoringDashboardForContext(
     unassigned_chats: unassignedRes.count ?? 0,
     pending_chats: pendingRes.count ?? 0,
     active_channels: channelsRes.count ?? 0,
-    // Deriva del detalle YA filtrado (excluye chats con respuesta humana real) para que el número
-    // de arriba coincida con la suma por agente. awaitingFirstRes se conserva solo por compatibilidad.
-    awaiting_first_response: pendingFiltered.length,
+    awaiting_first_response: awaitingFirstRes.count ?? 0,
     pending_human_reply_groups,
     unassigned_recent,
   };

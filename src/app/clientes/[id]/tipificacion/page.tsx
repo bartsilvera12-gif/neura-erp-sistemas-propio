@@ -55,7 +55,6 @@ import {
   IconoTile,
   Pagina,
   TONOS,
-  TarjetaViva,
   claseEtiqueta,
   claseInput,
   type Tono,
@@ -448,26 +447,17 @@ export default function TipificacionPage() {
           ]}
         />
 
-        {/* ── Cliente ─────────────────────────────────────────────────── */}
-        <TarjetaViva tono="turquesa" className="mb-6 px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-4">
-              <Avatar nombre={clienteNombre(cliente)} tam={52} />
-              <div className="min-w-0">
-                <p className="truncate text-lg font-bold text-slate-900">{clienteNombre(cliente)}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-slate-500">
-                  {cliente.codigo_cliente ? <span className="font-mono">{cliente.codigo_cliente}</span> : null}
-                  {cliente.ruc ? <span>RUC {cliente.ruc}</span> : null}
-                  {cliente.telefono ? <span className="inline-flex items-center gap-1"><Phone className="h-3.5 w-3.5" aria-hidden />{cliente.telefono}</span> : null}
-                  {cliente.email ? <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" aria-hidden />{cliente.email}</span> : null}
-                </div>
-              </div>
-            </div>
-            <span className={`rounded-full px-3 py-1 text-xs font-bold ${cliente.estado === "activo" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-              ● {cliente.estado === "activo" ? "Activo" : "Inactivo"}
-            </span>
-          </div>
-        </TarjetaViva>
+        {/* ── Cliente: una línea chica, el formulario es lo importante ─── */}
+        <div className="-mt-2 mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-slate-500">
+          <span className="font-semibold text-slate-800">{clienteNombre(cliente)}</span>
+          {cliente.codigo_cliente ? <span className="font-mono text-[11.5px]">{cliente.codigo_cliente}</span> : null}
+          {cliente.ruc ? <span>RUC {cliente.ruc}</span> : null}
+          {cliente.telefono ? <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" aria-hidden />{cliente.telefono}</span> : null}
+          {cliente.email ? <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" aria-hidden />{cliente.email}</span> : null}
+          <span className={`rounded-full px-2 py-px text-[11px] font-bold ${cliente.estado === "activo" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+            {cliente.estado === "activo" ? "Activo" : "Inactivo"}
+          </span>
+        </div>
 
         {/* ── Ticket creado ───────────────────────────────────────────── */}
         <AnimatePresence>

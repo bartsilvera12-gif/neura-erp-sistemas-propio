@@ -169,7 +169,6 @@ const MENU_STRUCTURE: MenuItem[] = [
     children: [
       { label: "Dashboard", href: "/dashboard/soporte", exactMatch: true },
       { label: "Tickets", href: "/dashboard/soporte/tickets", exactMatch: true },
-      { label: "Nuevo ticket", href: "/dashboard/soporte/tickets/nuevo", exactMatch: true },
       { label: "Mis tickets", href: "/dashboard/soporte/mis-tickets" },
       { label: "Clientes", href: "/dashboard/soporte/clientes" },
       { label: "Reportes", href: "/dashboard/soporte/reportes" },

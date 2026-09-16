@@ -7,10 +7,14 @@ import { CalendarCheck, CheckCircle2, Headset, Loader2, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { fechaHoraPy, vencimientoSla, type SoporteClasificacion, type SoporteTipo } from "@/lib/soporte/dominio";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
-import { TONO_AREA } from "@/app/dashboard/soporte/_ui/ui";
 
 type Persona = { id: string; nombre: string; area: string };
-type Datos = { tipos: SoporteTipo[]; clasificaciones: SoporteClasificacion[]; a_cargo: Persona[]; clientes: { id: string; nombre: string }[] };
+type Datos = {
+  tipos: SoporteTipo[];
+  clasificaciones: SoporteClasificacion[];
+  responsable: Persona | null;
+  clientes: { id: string; nombre: string }[];
+};
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetchWithSupabaseSession(url, { cache: "no-store", ...init });
@@ -60,7 +64,6 @@ export default function SoporteTicketModal({
   const [nivel, setNivel] = useState("");
   const [asunto, setAsunto] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [aCargo, setACargo] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [creado, setCreado] = useState<{ id: string; numero: number } | null>(null);
 
@@ -103,6 +106,7 @@ export default function SoporteTicketModal({
 
   const faltan: string[] = [];
   if (!cliente) faltan.push("cliente");
+  if (!proyecto) faltan.push("proyecto");
   if (!tipo) faltan.push("tipo");
   if (niveles.length > 0 && !nivel) faltan.push("clasificación");
   if (!asunto.trim()) faltan.push("asunto");
@@ -127,7 +131,6 @@ export default function SoporteTicketModal({
           clasificacion_codigo: nivel || null,
           asunto,
           descripcion,
-          responsable_id: aCargo || null,
         }),
       });
       setCreado(r);
@@ -202,14 +205,14 @@ export default function SoporteTicketModal({
                   />
                 </div>
                 <div>
-                  <span className={claseEtiqueta}>Proyecto</span>
+                  <span className={claseEtiqueta}>Proyecto *</span>
                   <SelectorBuscable
                     ariaLabel="Proyecto"
                     value={proyecto}
                     onChange={setProyecto}
                     disabled={!cliente || proyectos.length === 0}
-                    opciones={[{ value: "", label: "Sin proyecto" }, ...proyectos.map((p) => ({ value: p.id, label: p.titulo }))]}
-                    placeholder={!cliente ? "Elegí el cliente" : proyectos.length ? "Elegí el proyecto" : "Sin proyectos"}
+                    opciones={proyectos.map((p) => ({ value: p.id, label: p.titulo }))}
+                    placeholder={!cliente ? "Elegí el cliente" : proyectos.length ? "Elegí el proyecto" : "El cliente no tiene proyectos"}
                     buscarPlaceholder="Buscar proyecto…"
                     vacio="Ningún proyecto coincide"
                   />
@@ -280,21 +283,11 @@ export default function SoporteTicketModal({
                   placeholder="Qué pasa, desde cuándo, qué mensaje aparece…"
                 />
               </div>
-              <div>
-                <span className={claseEtiqueta}>A cargo</span>
-                <SelectorBuscable
-                  ariaLabel="A cargo"
-                  avatares
-                  value={aCargo}
-                  onChange={setACargo}
-                  opciones={[
-                    { value: "", label: "Sin asignar" },
-                    ...datos.a_cargo.map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
-                  ]}
-                  buscarPlaceholder="Buscar persona…"
-                  vacio="Nadie coincide"
-                />
-              </div>
+              {datos.responsable ? (
+                <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">
+                  Se asigna a <strong className="text-slate-800">{datos.responsable.nombre}</strong> (Desarrollo de Soporte).
+                </p>
+              ) : null}
               {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p> : null}
             </div>
 

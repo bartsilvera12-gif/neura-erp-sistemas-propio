@@ -54,7 +54,7 @@ const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; ma
 ];
 
 const ACCESOS: { titulo: string; detalle: string; href: string; icono: LucideIcon; tono: Tono }[] = [
-  { titulo: "Nuevo ticket", detalle: "Registrar un pedido o error", href: "/dashboard/soporte/tickets/nuevo", icono: Plus, tono: "turquesa" },
+  { titulo: "Cargar ticket", detalle: "Desde la tipificación del cliente", href: "/gestion-clientes", icono: Plus, tono: "turquesa" },
   { titulo: "Mis tickets", detalle: "Donde tenés la próxima acción", href: "/dashboard/soporte/mis-tickets", icono: UserRoundCheck, tono: "violeta" },
   { titulo: "Todos los tickets", detalle: "Listado con filtros", href: "/dashboard/soporte/tickets", icono: ListChecks, tono: "celeste" },
   { titulo: "Reportes", detalle: "SLA, tiempos y devoluciones", href: "/dashboard/soporte/reportes", icono: BarChart3, tono: "ambar" },
@@ -124,8 +124,9 @@ export default function SoporteDashboardPage() {
             <div className="w-48">
               <FancySelect size="sm" ariaLabel="Período" value={dias} onChange={setDias} options={PERIODOS} />
             </div>
-            <Link href="/dashboard/soporte/tickets/nuevo" className={claseBoton("primario")}>
-              <Plus className="h-4 w-4" aria-hidden /> Nuevo ticket
+            {/* Los tickets nacen de la tipificación del cliente. */}
+            <Link href="/gestion-clientes" className={claseBoton("primario")} title="Los tickets se cargan desde la tipificación del cliente">
+              <Plus className="h-4 w-4" aria-hidden /> Cargar ticket
             </Link>
           </>
         }

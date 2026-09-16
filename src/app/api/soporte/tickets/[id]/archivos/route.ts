@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
+import { requireCargaSoporteApi, requireSoporteApi } from "@/lib/soporte/soporte-auth";
 import { ARCHIVO_MAX_BYTES, mimeAceptado } from "@/lib/soporte/dominio";
 import {
   SOPORTE_BUCKET,
@@ -83,7 +83,8 @@ export async function GET(request: Request, { params }: Params) {
  * y se deja la fila y el evento de historial.
  */
 export async function POST(request: Request, { params }: Params) {
-  const auth = await requireSoporteApi(request);
+  // Adjuntar evidencias al cargar el ticket: también los PM.
+  const auth = await requireCargaSoporteApi(request);
   if (!auth.ok) return sinPermiso(auth);
   try {
     const { id } = await params;

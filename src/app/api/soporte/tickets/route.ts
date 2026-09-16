@@ -1,6 +1,5 @@
 import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
 import { PESTANAS_TICKETS, TICKET_CAMPOS, type TicketFila } from "@/lib/soporte/dominio";
-import { prepararTicket, registrarAltaTicket } from "@/lib/soporte/crear-ticket";
 import { errorInesperado, falla, leerCatalogos, ok, sinPermiso } from "@/lib/soporte/servidor";
 import { enriquecerTickets } from "@/lib/soporte/tickets-servidor";
 import type { ConsultaFiltrable } from "@/lib/soporte/agregados-servidor";
@@ -115,35 +114,13 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST /api/soporte/tickets — crea un ticket.
+ * POST /api/soporte/tickets — cerrado.
  *
- * El SLA se congela acá, desde la clasificación. Si el ticket entra con
- * ticket entra siempre como "Pendiente", el único estado activo que puede
- * quedar sin nadie a cargo. La regla
- * vive en `prepararTicket`, la misma que usa la tipificación de cliente.
+ * Los tickets nacen de una tipificación del cliente (Gestión de clientes o el
+ * botón Soporte de Conversaciones): ver `crearTipificacionConTicket`.
  */
 export async function POST(request: Request) {
   const auth = await requireSoporteApi(request);
   if (!auth.ok) return sinPermiso(auth);
-
-  try {
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return falla("Datos inválidos");
-
-    const prep = await prepararTicket(auth, body);
-    if (!prep.ok) return falla(prep.mensaje, prep.status);
-
-    const { data: creado, error } = await auth.sb
-      .from("soporte_tickets")
-      .insert({ ...prep.ticket.fila, origen: "manual" })
-      .select("id, numero")
-      .single();
-    if (error || !creado) return falla(error?.message ?? "No se pudo crear el ticket");
-
-    await registrarAltaTicket(auth, { ticketId: creado.id as string, numero: creado.numero as number, ticket: prep.ticket });
-
-    return ok({ id: creado.id, numero: creado.numero });
-  } catch (e) {
-    return errorInesperado(e);
-  }
+  return falla("Los tickets se cargan desde la tipificación del cliente o desde Conversaciones", 405);
 }

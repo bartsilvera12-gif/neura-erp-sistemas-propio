@@ -1,26 +1,15 @@
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
-import { registrarHistorialCliente } from "@/lib/clientes/historial";
 import {
   RESULTADOS_TIPIFICACION,
   TIPOS_GESTION,
-  type ResultadoTipificacion,
   type TicketDeTipificacion,
-  type TipoGestion,
 } from "@/lib/gestion-clientes/types";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
-import { prepararTicket, registrarAltaTicket } from "@/lib/soporte/crear-ticket";
-import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
+import { requireCargaSoporteApi } from "@/lib/soporte/soporte-auth";
 import { errorInesperado, falla, leerCatalogos, ok, personasPorId } from "@/lib/soporte/servidor";
+import { TIPO_TICKET_DE_GESTION, crearTipificacionConTicket } from "@/lib/soporte/tipificacion-ticket";
 
 const UUID = /^[0-9a-f-]{36}$/i;
-
-/** Tipo de gestión que escala a un ticket de Soporte. */
-const TIPO_ERROR: TipoGestion = "Error";
-/**
- * Resultado de una tipificación que generó ticket. Se reusa el valor que el ERP
- * ya tiene para "esto lo sigue otra área": no se inventa uno nuevo.
- */
-const RESULTADO_ESCALADO: ResultadoTipificacion = "Escalar";
 
 /**
  * Contexto común: usuario autenticado (resuelto en el servidor, nunca desde el
@@ -70,7 +59,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         .eq("cliente_id", clienteId)
         .order("fecha", { ascending: false })
         .limit(500),
-      requireSoporteApi(request),
+      requireCargaSoporteApi(request),
     ]);
     if (error) return falla(error.message);
     const lista = (filas ?? []) as Record<string, unknown>[];
@@ -139,9 +128,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
  * Body: { tipo_gestion, resultado, observacion, ticket? }
  *
  * · Tipos normales: se guarda la tipificación con el usuario real. Igual que antes.
- * · Error: exige permiso de Soporte y los datos del ticket. La tipificación y el
- *   ticket se crean en UNA transacción SQL (`soporte_crear_ticket_desde_tipificacion`):
- *   o quedan los dos, o ninguno. El resultado se fija en "Escalar".
+ * · Error y Cambio: crean su ticket de Soporte (ver `crearTipificacionConTicket`).
+ *   Pueden los PM y quien usa Soporte. La tipificación y el ticket se crean en UNA
+ *   transacción SQL: o quedan los dos, o ninguno. El resultado se fija en "Escalar".
  *
  * Las credenciales del proyecto NUNCA viajan ni se guardan acá: el ticket guarda
  * `proyecto_id` y se consultan desde el proyecto con sus propios permisos.
@@ -161,7 +150,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!observacion) return falla("La observación es obligatoria.");
 
     // ---------------------------------------------------------------- normal
-    if (tipo !== TIPO_ERROR) {
+    if (!TIPO_TICKET_DE_GESTION[tipo]) {
       const resultado = RESULTADOS_TIPIFICACION.find((r) => r === body.resultado);
       if (!resultado) return falla("Resultado inválido");
       const { data, error } = await sb
@@ -181,11 +170,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return ok({ tipificacion_id: data.id, ticket: null });
     }
 
-    // ----------------------------------------------------------------- Error
-    const soporte = await requireSoporteApi(request);
+    // ------------------------------------------------------ Error / Cambio
+    const soporte = await requireCargaSoporteApi(request);
     if (!soporte.ok) {
       return falla(
-        soporte.status === 401 ? soporte.message : "Tu usuario no tiene habilitado el módulo Soporte para crear tickets.",
+        soporte.status === 401 ? soporte.message : "Tu usuario no puede cargar tickets de Soporte.",
         soporte.status
       );
     }
@@ -194,65 +183,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const datosTicket = body.ticket && typeof body.ticket === "object" ? (body.ticket as Record<string, unknown>) : null;
     if (!datosTicket) return falla("Completá los datos del ticket de soporte.");
 
-    // El cliente sale de la URL y el tipo es siempre "error": lo que venga en el
-    // body para esos campos se ignora.
-    const prep = await prepararTicket(
-      soporte,
-      { ...datosTicket, cliente_id: clienteId, tipo_codigo: "error" },
-      { exigirProyecto: true }
-    );
-    if (!prep.ok) return falla(prep.mensaje, prep.status);
-
-    const { data: creado, error } = await soporte.sb.rpc("soporte_crear_ticket_desde_tipificacion", {
-      p_tipificacion: {
-        empresa_id: auth.empresa_id,
-        cliente_id: clienteId,
-        usuario: usuario.nombre,
-        usuario_id: usuario.id,
-        tipo_gestion: TIPO_ERROR,
-        resultado: RESULTADO_ESCALADO,
-        observacion,
-      },
-      p_ticket: prep.ticket.fila,
+    const r = await crearTipificacionConTicket(soporte, {
+      clienteId,
+      tipoGestion: tipo,
+      observacion,
+      usuario,
+      authUser: { id: auth.user.id, email: auth.user.email ?? null },
+      datosTicket,
+      exigirProyecto: true,
+      origen: "tipificacion_cliente",
     });
-    if (error || !creado) {
-      const mensaje = error?.message ?? "No se pudo crear el ticket";
-      return falla(mensaje, /pertenece|mismo cliente/i.test(mensaje) ? 403 : 400);
-    }
-    const r = creado as { tipificacion_id: string; ticket_id: string; numero: number };
-
-    // Auditoría: ya existe lo importante (tipificación + ticket). Si esto falla
-    // no se deshace nada; ambos registros son no-throwing.
-    await Promise.all([
-      registrarAltaTicket(soporte, {
-        ticketId: r.ticket_id,
-        numero: r.numero,
-        ticket: prep.ticket,
-        metadataExtra: { origen: "tipificacion_cliente", tipificacion_id: r.tipificacion_id },
-      }),
-      registrarHistorialCliente(sb, {
-        empresaId: auth.empresa_id,
-        clienteId,
-        tipo: "soporte",
-        accion: "ticket_created",
-        authUserId: auth.user.id,
-        email: auth.user.email ?? null,
-        source: "tipificacion_cliente",
-        detalle: {
-          ticket_id: r.ticket_id,
-          ticket_numero: r.numero,
-          tipificacion_id: r.tipificacion_id,
-          proyecto_id: prep.ticket.fila.proyecto_id,
-          proyecto_nombre: prep.ticket.resumen.proyecto_titulo,
-          asunto: prep.ticket.fila.asunto,
-          clasificacion: prep.ticket.resumen.clasificacion_nombre,
-          prioridad: prep.ticket.resumen.prioridad_nombre,
-          estado: prep.ticket.resumen.estado_nombre,
-          sla_horas: prep.ticket.fila.sla_horas,
-          usuario: usuario.nombre,
-        },
-      }),
-    ]);
+    if (!r.ok) return falla(r.mensaje, r.status);
 
     return ok({ tipificacion_id: r.tipificacion_id, ticket: { id: r.ticket_id, numero: r.numero } });
   } catch (e) {

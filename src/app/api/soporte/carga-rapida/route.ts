@@ -1,7 +1,6 @@
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
-import { registrarHistorialCliente } from "@/lib/clientes/historial";
 import { puedeEstarACargo } from "@/lib/soporte/dominio";
-import { prepararTicket, registrarAltaTicket } from "@/lib/soporte/crear-ticket";
+import { crearTipificacionConTicket, gestionDeTipoTicket, responsablePorDefecto } from "@/lib/soporte/tipificacion-ticket";
 import { requireCargaSoporteApi } from "@/lib/soporte/soporte-auth";
 import {
   clientesDeEmpresa,
@@ -28,7 +27,8 @@ const UUID = /^[0-9a-f-]{36}$/i;
  *                      quiénes pueden quedar a cargo). 403 si no puede cargar:
  *                      la pantalla usa eso para mostrar o no el botón.
  * GET ?cliente_id=…  → proyectos de ese cliente.
- * POST               → crea el ticket y lo deja en el historial del cliente.
+ * POST               → registra la tipificación (Error o Cambio) con su ticket,
+ *                      y lo deja en el historial del cliente.
  */
 export async function GET(request: Request) {
   const auth = await requireCargaSoporteApi(request);
@@ -51,15 +51,19 @@ export async function GET(request: Request) {
       return ok({ proyectos: data ?? [] });
     }
 
+    const defecto = responsablePorDefecto(auth.empresaId);
     const [cat, personas, clientes] = await Promise.all([
       leerCatalogos(auth.sb, auth.empresaId),
       personasDeEmpresa(auth.empresaId),
       clientesDeEmpresa(auth.sb, auth.empresaId),
     ]);
     return ok({
-      tipos: cat.tipos.filter((t) => t.activo),
+      // Sólo los tipos que nacen de una tipificación (Error y Cambio).
+      tipos: cat.tipos.filter((t) => t.activo && gestionDeTipoTicket(t.codigo)),
       clasificaciones: cat.clasificaciones.filter((c) => c.activo),
       a_cargo: personas.filter(puedeEstarACargo),
+      // Quién recibe el ticket: se asigna solo, quien carga no elige.
+      responsable: personas.find((p) => p.id === defecto) ?? null,
       clientes,
     });
   } catch (e) {
@@ -85,69 +89,46 @@ export async function POST(request: Request) {
       if (!conv) return falla("La conversación no existe", 404);
     }
 
-    // Mismas reglas que el alta de Soporte: cliente y proyecto de la empresa,
-    // catálogo, a cargo sólo Desarrollo o QA, SLA y fecha de entrega.
-    const prep = await prepararTicket(auth, {
-      cliente_id: body.cliente_id,
-      proyecto_id: body.proyecto_id,
-      tipo_codigo: body.tipo_codigo,
-      clasificacion_codigo: body.clasificacion_codigo,
-      prioridad_codigo: "normal",
-      asunto: body.asunto,
-      descripcion: body.descripcion,
-      responsable_id: body.responsable_id,
-    });
-    if (!prep.ok) return falla(prep.mensaje, prep.status);
+    const clienteId = typeof body.cliente_id === "string" && UUID.test(body.cliente_id) ? body.cliente_id : "";
+    if (!clienteId) return falla("Elegí un cliente");
+    const { data: cliente } = await auth.sb
+      .from("clientes")
+      .select("id")
+      .eq("empresa_id", auth.empresaId)
+      .eq("id", clienteId)
+      .maybeSingle();
+    if (!cliente) return falla("El cliente no existe", 404);
 
-    const { data: creado, error } = await auth.sb
-      .from("soporte_tickets")
-      .insert({ ...prep.ticket.fila, origen: "manual" })
-      .select("id, numero")
-      .single();
-    if (error || !creado) return falla(error?.message ?? "No se pudo crear el ticket");
-    const ticketId = creado.id as string;
-    const numero = creado.numero as number;
+    // Los tickets nacen de una tipificación: desde el chat también se registra
+    // la gestión (Error o Cambio) en la tipificación del cliente.
+    const tipoGestion = gestionDeTipoTicket(body.tipo_codigo);
+    if (!tipoGestion) return falla("Elegí si es un error o un cambio");
+    const descripcion = typeof body.descripcion === "string" ? body.descripcion.trim() : "";
 
     const [authUser, personas] = await Promise.all([
       getAuthUserForApiRoute(request).catch(() => null),
       personasPorId([auth.usuarioId]),
     ]);
-    const cat = await leerCatalogos(auth.sb, auth.empresaId);
-    const tipo = cat.tipos.find((t) => t.codigo === prep.ticket.fila.tipo_codigo)?.nombre ?? prep.ticket.fila.tipo_codigo;
+    const r = await crearTipificacionConTicket(auth, {
+      clienteId,
+      tipoGestion,
+      observacion: `Desde Conversaciones: ${descripcion}`.slice(0, 5000),
+      usuario: { id: auth.usuarioId, nombre: personas.get(auth.usuarioId)?.nombre ?? authUser?.email ?? "Usuario" },
+      authUser: authUser ? { id: authUser.id, email: authUser.email ?? null } : null,
+      datosTicket: {
+        proyecto_id: body.proyecto_id,
+        clasificacion_codigo: body.clasificacion_codigo,
+        asunto: body.asunto,
+        descripcion: body.descripcion,
+      },
+      // Como en la tipificación: el ticket siempre va sobre un proyecto del cliente.
+      exigirProyecto: true,
+      origen: "conversacion",
+      conversationId,
+    });
+    if (!r.ok) return falla(r.mensaje, r.status);
 
-    await Promise.all([
-      registrarAltaTicket(auth, {
-        ticketId,
-        numero,
-        ticket: prep.ticket,
-        metadataExtra: { origen: "conversacion", conversation_id: conversationId },
-      }),
-      registrarHistorialCliente(auth.sb, {
-        empresaId: auth.empresaId,
-        clienteId: prep.ticket.fila.cliente_id,
-        tipo: "soporte",
-        accion: "ticket_created",
-        authUserId: authUser?.id ?? null,
-        email: authUser?.email ?? null,
-        source: "conversacion",
-        detalle: {
-          ticket_id: ticketId,
-          ticket_numero: numero,
-          conversation_id: conversationId,
-          proyecto_id: prep.ticket.fila.proyecto_id,
-          proyecto_nombre: prep.ticket.resumen.proyecto_titulo,
-          asunto: prep.ticket.fila.asunto,
-          tipo,
-          clasificacion: prep.ticket.resumen.clasificacion_nombre,
-          estado: prep.ticket.resumen.estado_nombre,
-          sla_horas: prep.ticket.fila.sla_horas,
-          fecha_objetivo: prep.ticket.fila.fecha_objetivo,
-          usuario: personas.get(auth.usuarioId)?.nombre ?? null,
-        },
-      }),
-    ]);
-
-    return ok({ id: ticketId, numero });
+    return ok({ id: r.ticket_id, numero: r.numero, tipificacion_id: r.tipificacion_id });
   } catch (e) {
     return errorInesperado(e);
   }

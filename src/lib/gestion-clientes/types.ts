@@ -5,8 +5,9 @@ export type TipoGestion =
   | "Promesa de pago"
   | "Soporte técnico"
   | "Cambio plan"
-  /** Escala a un ticket de Soporte (ver /api/clientes/[id]/tipificaciones). */
-  | "Error";
+  /** Escalan a un ticket de Soporte (ver `crearTipificacionConTicket`). */
+  | "Error"
+  | "Cambio";
 
 export type ResultadoTipificacion = "Pendiente" | "Resuelto" | "Escalar";
 
@@ -18,6 +19,7 @@ export const TIPOS_GESTION: readonly TipoGestion[] = [
   "Soporte técnico",
   "Cambio plan",
   "Error",
+  "Cambio",
 ];
 
 export const RESULTADOS_TIPIFICACION: readonly ResultadoTipificacion[] = ["Pendiente", "Resuelto", "Escalar"];

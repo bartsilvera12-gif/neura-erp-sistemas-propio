@@ -16,8 +16,8 @@ export default function SoporteTicketsPage() {
         icono={ListChecks}
         tono="celeste"
         acciones={
-          <Link href="/dashboard/soporte/tickets/nuevo" className={claseBoton("primario")}>
-            <Plus className="h-4 w-4" aria-hidden /> Nuevo ticket
+          <Link href="/gestion-clientes" className={claseBoton("primario")} title="Los tickets se cargan desde la tipificación del cliente">
+            <Plus className="h-4 w-4" aria-hidden /> Cargar ticket
           </Link>
         }
       />

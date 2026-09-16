@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeftRight,
   Bug,
+  CalendarCheck,
   CalendarClock,
   CircleCheckBig,
   ClipboardPen,
@@ -21,6 +22,7 @@ import {
   MessageCircle,
   MessageSquareWarning,
   Paperclip,
+  PenTool,
   Phone,
   Send,
   Timer,
@@ -40,8 +42,9 @@ import {
   type Tipificacion,
   type TipoGestion,
 } from "@/lib/gestion-clientes/types";
-import { puedeEstarACargo, slaDe } from "@/lib/soporte/dominio";
-import { apiSoporte, obtenerCatalogos, subirArchivos, type CatalogosConEquipo } from "@/app/dashboard/soporte/_ui/api";
+import { fechaHoraPy, vencimientoSla, type SoporteClasificacion, type SoporteTipo } from "@/lib/soporte/dominio";
+import { apiSoporte, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
+import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import AccesosProyecto from "@/app/dashboard/soporte/_ui/AccesosProyecto";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
@@ -52,7 +55,6 @@ import {
   IconoTile,
   Pagina,
   TONOS,
-  TONO_AREA,
   TarjetaViva,
   claseEtiqueta,
   claseInput,
@@ -61,8 +63,19 @@ import {
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-/** El tipo que escala a Soporte. Su resultado es siempre "Escalar" (lo fija el servidor). */
-const TIPO_ERROR: TipoGestion = "Error";
+/**
+ * Tipos que crean un ticket de Soporte, con el tipo de ticket de cada uno. Su
+ * resultado es siempre "Escalar" (lo fija el servidor).
+ */
+const TIPO_TICKET: Partial<Record<TipoGestion, "error" | "cambio">> = { Error: "error", Cambio: "cambio" };
+
+/** Lo que devuelve `/api/soporte/carga-rapida` para armar el ticket. */
+type DatosSoporte = {
+  tipos: SoporteTipo[];
+  clasificaciones: SoporteClasificacion[];
+  a_cargo: { id: string; nombre: string; area: string }[];
+  responsable: { id: string; nombre: string; area: string } | null;
+};
 
 const TIPO_UI: Record<TipoGestion, { icono: LucideIcon; tono: Tono }> = {
   Consulta: { icono: MessageCircle, tono: "celeste" },
@@ -72,6 +85,7 @@ const TIPO_UI: Record<TipoGestion, { icono: LucideIcon; tono: Tono }> = {
   "Soporte técnico": { icono: Wrench, tono: "violeta" },
   "Cambio plan": { icono: ArrowLeftRight, tono: "azul" },
   Error: { icono: Bug, tono: "rosa" },
+  Cambio: { icono: PenTool, tono: "ambar" },
 };
 
 const RESULTADO_TONO: Record<ResultadoTipificacion, Tono> = {
@@ -240,13 +254,15 @@ export default function TipificacionPage() {
   const [archivos, setArchivos] = useState<File[]>([]);
 
   // Datos de Soporte: sólo se piden cuando hace falta (tipo Error).
-  const [cat, setCat] = useState<CatalogosConEquipo | null>(null);
+  const [cat, setCat] = useState<DatosSoporte | null>(null);
   const [catError, setCatError] = useState<string | null>(null);
   const [proyectos, setProyectos] = useState<{ id: string; titulo: string }[] | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
-  const esError = form.tipo_gestion === TIPO_ERROR;
+  const tipoTicket = TIPO_TICKET[form.tipo_gestion] ?? null;
+  const esError = tipoTicket != null;
+  const esCambio = tipoTicket === "cambio";
 
   const cargarListado = useCallback(async () => {
     const res = await fetchWithSupabaseSession(`/api/clientes/${id}/tipificaciones`, { cache: "no-store" });
@@ -278,28 +294,31 @@ export default function TipificacionPage() {
     if (!esError || !listado?.puede_soporte) return;
     let vivo = true;
     if (!cat) {
-      obtenerCatalogos()
+      apiSoporte<DatosSoporte>("/api/soporte/carga-rapida")
         .then((c) => vivo && setCat(c))
         .catch((e: Error) => vivo && setCatError(e.message));
     }
     if (proyectos == null) {
-      apiSoporte<{ proyectos: { id: string; titulo: string }[] }>(`/api/soporte/opciones?cliente_id=${id}`)
-        .then((r) => vivo && setProyectos(r.proyectos))
+      apiSoporte<{ proyectos: { id: string; titulo: string }[] }>(`/api/soporte/carga-rapida?cliente_id=${id}`)
+        .then((r) => {
+          if (!vivo) return;
+          setProyectos(r.proyectos);
+          // Un solo proyecto: se elige solo, y con él se ven sus accesos.
+          if (r.proyectos.length === 1) setTicket((p) => (p.proyecto_id ? p : { ...p, proyecto_id: r.proyectos[0].id }));
+        })
         .catch((e: Error) => vivo && setCatError(e.message));
     }
     return () => { vivo = false; };
   }, [esError, listado?.puede_soporte, cat, proyectos, id]);
 
   const clasificaciones = useMemo(
-    () => (cat?.clasificaciones ?? []).filter((c) => c.activo && c.tipo_codigo === "error"),
-    [cat]
+    () => (cat?.clasificaciones ?? []).filter((c) => c.activo && c.tipo_codigo === tipoTicket),
+    [cat, tipoTicket]
   );
-  const prioridades = useMemo(() => (cat?.prioridades ?? []).filter((p) => p.activo), [cat]);
-  const slaHoras = cat && ticket.clasificacion_codigo ? slaDe(cat, "error", ticket.clasificacion_codigo) : null;
   const clasificacionElegida = clasificaciones.find((c) => c.codigo === ticket.clasificacion_codigo);
-  const prioridadElegida = prioridades.find((p) => p.codigo === ticket.prioridad_codigo);
+  const slaHoras = clasificacionElegida ? Number(clasificacionElegida.sla_horas) : null;
+  const entrega = slaHoras != null ? vencimientoSla(Date.now(), slaHoras) : null;
   const proyectoElegido = proyectos?.find((p) => p.id === ticket.proyecto_id);
-  const responsableElegido = cat?.personas.find((p) => p.id === ticket.responsable_id);
 
   function elegirTipo(tipo: TipoGestion) {
     setError(null);
@@ -307,9 +326,11 @@ export default function TipificacionPage() {
     setForm((prev) => ({
       ...prev,
       tipo_gestion: tipo,
-      // Error siempre escala; al volver a otro tipo se restablece el valor habitual.
-      resultado: tipo === TIPO_ERROR ? "Escalar" : prev.tipo_gestion === TIPO_ERROR ? "Pendiente" : prev.resultado,
+      // Error y Cambio siempre escalan; al volver a otro tipo se restablece el valor habitual.
+      resultado: TIPO_TICKET[tipo] ? "Escalar" : TIPO_TICKET[prev.tipo_gestion] ? "Pendiente" : prev.resultado,
     }));
+    // La clasificación es de cada tipo de ticket: al cambiar de tipo se vuelve a elegir.
+    if (TIPO_TICKET[tipo] !== TIPO_TICKET[form.tipo_gestion]) setTicket((p) => ({ ...p, clasificacion_codigo: "", prioridad_codigo: "normal" }));
   }
 
   function setCampoTicket<K extends keyof DatosTicket>(k: K, v: DatosTicket[K]) {
@@ -330,7 +351,8 @@ export default function TipificacionPage() {
 
   function reiniciar() {
     setForm({ tipo_gestion: "Consulta", resultado: "Pendiente", observacion: "" });
-    setTicket(TICKET_VACIO);
+    // Se conserva el proyecto si es el único del cliente.
+    setTicket({ ...TICKET_VACIO, proyecto_id: proyectos?.length === 1 ? proyectos[0].id : "" });
     setArchivos([]);
   }
 
@@ -342,12 +364,12 @@ export default function TipificacionPage() {
     if (!form.observacion.trim()) return setError("La observación es obligatoria.");
 
     if (esError) {
-      if (!listado?.puede_soporte) return setError("Tu usuario no tiene habilitado el módulo Soporte para crear tickets.");
+      if (!listado?.puede_soporte) return setError("Tu usuario no puede cargar tickets de Soporte.");
       const faltan: string[] = [];
       if (!ticket.proyecto_id) faltan.push("proyecto / servicio afectado");
       if (!ticket.asunto.trim()) faltan.push("asunto");
-      if (!ticket.descripcion.trim()) faltan.push("descripción del error");
-      if (clasificaciones.length && !ticket.clasificacion_codigo) faltan.push("nivel");
+      if (!ticket.descripcion.trim()) faltan.push(esCambio ? "descripción del cambio" : "descripción del error");
+      if (clasificaciones.length && !ticket.clasificacion_codigo) faltan.push("clasificación");
       if (faltan.length) return setError(`Completá: ${faltan.join(", ")}.`);
     }
 
@@ -408,10 +430,6 @@ export default function TipificacionPage() {
   if (!cliente) return null;
 
   const tipificaciones = listado?.tipificaciones ?? [];
-  const personaOpciones = [
-    { value: "", label: "Sin asignar" },
-    ...(cat?.personas ?? []).filter(puedeEstarACargo).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
-  ];
   const puedeEnviar = !guardando && !!listado && (!esError || (listado.puede_soporte && !!cat && !!proyectos?.length));
   const tipoUi = TIPO_UI[form.tipo_gestion];
 
@@ -420,7 +438,7 @@ export default function TipificacionPage() {
       <Pagina ancho="max-w-[1500px]">
         <Encabezado
           titulo="Tipificación"
-          subtitulo="Registrá la gestión con el cliente. Un error se escala a Soporte con su ticket."
+          subtitulo="Registrá la gestión con el cliente. Un error o un cambio se escala a Soporte con su ticket."
           icono={ClipboardPen}
           tono="turquesa"
           migas={[
@@ -487,16 +505,21 @@ export default function TipificacionPage() {
           <div className="min-w-0 space-y-6">
             <Seccion titulo="Nueva tipificación" detalle="¿Qué gestión se hizo con el cliente?" icono={ClipboardPen} tono="turquesa">
               <Campo etiqueta="Tipo de gestión" requerido>
-                <div role="radiogroup" aria-label="Tipo de gestión" className="flex flex-wrap gap-2">
-                  {TIPOS_GESTION.map((t) => (
-                    <Pildora key={t} activa={form.tipo_gestion === t} tono={TIPO_UI[t].tono} icono={TIPO_UI[t].icono} onClick={() => elegirTipo(t)}>
-                      {t}
-                    </Pildora>
-                  ))}
+                <div className="max-w-md">
+                  <FancySelect
+                    ariaLabel="Tipo de gestión"
+                    value={form.tipo_gestion}
+                    onChange={(v) => elegirTipo(v as TipoGestion)}
+                    options={TIPOS_GESTION.map((t) => ({
+                      value: t,
+                      label: t,
+                      description: TIPO_TICKET[t] ? "Crea un ticket de Soporte" : undefined,
+                    }))}
+                  />
                 </div>
               </Campo>
 
-              <Campo etiqueta="Resultado" requerido ayuda={esError ? "Un error se escala a Soporte con un ticket." : undefined}>
+              <Campo etiqueta="Resultado" requerido ayuda={esError ? `${esCambio ? "Un cambio" : "Un error"} se escala a Soporte con un ticket.` : undefined}>
                 <div role="radiogroup" aria-label="Resultado" className="flex flex-wrap gap-2">
                   {RESULTADOS_TIPIFICACION.map((r) => (
                     <Pildora
@@ -517,13 +540,13 @@ export default function TipificacionPage() {
                   value={form.observacion}
                   onChange={(e) => { setError(null); setExito(null); setForm((p) => ({ ...p, observacion: e.target.value })); }}
                   rows={3}
-                  placeholder={esError ? "Ej.: Cliente informa que no puede facturar" : "Describí la gestión realizada con el cliente…"}
+                  placeholder={esCambio ? "Ej.: Cliente pide cambiar el logo de la factura" : esError ? "Ej.: Cliente informa que no puede facturar" : "Describí la gestión realizada con el cliente…"}
                   className={claseArea}
                 />
               </Campo>
             </Seccion>
 
-            {/* ── Ticket de soporte (sólo Error) ───────────────────────── */}
+            {/* ── Ticket de soporte (Error o Cambio) ───────────────────── */}
             <AnimatePresence initial={false}>
               {esError ? (
                 <motion.div
@@ -536,7 +559,7 @@ export default function TipificacionPage() {
                 >
                   {!listado?.puede_soporte ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-                      Tu usuario no tiene habilitado el módulo Soporte, así que no puede crear el ticket. Pedíselo a un administrador.
+                      Tu usuario no puede cargar tickets de Soporte (lo pueden los PM y quienes usan Soporte). Pedíselo a un administrador.
                     </div>
                   ) : catError ? (
                     <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">{catError}</div>
@@ -569,23 +592,23 @@ export default function TipificacionPage() {
                         <AccesosProyecto proyectoId={ticket.proyecto_id || null} />
                       </Seccion>
 
-                      <Seccion titulo="Detalle del error" detalle="Qué pasa y en qué módulo" icono={FileText} tono="violeta">
+                      <Seccion titulo={esCambio ? "Detalle del cambio" : "Detalle del error"} detalle={esCambio ? "Qué hay que cambiar y en qué módulo" : "Qué pasa y en qué módulo"} icono={FileText} tono="violeta">
                         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                           <Campo etiqueta="Módulo afectado">
                             <input className={claseInput} value={ticket.modulo} maxLength={120} onChange={(e) => setCampoTicket("modulo", e.target.value)} placeholder="Ej.: Facturación electrónica" />
                           </Campo>
                           <Campo etiqueta="Asunto" requerido>
-                            <input className={claseInput} value={ticket.asunto} maxLength={200} onChange={(e) => setCampoTicket("asunto", e.target.value)} placeholder="Ej.: No permite emitir factura" />
+                            <input className={claseInput} value={ticket.asunto} maxLength={200} onChange={(e) => setCampoTicket("asunto", e.target.value)} placeholder={esCambio ? "Ej.: Cambiar el logo de la factura" : "Ej.: No permite emitir factura"} />
                           </Campo>
                         </div>
-                        <Campo etiqueta="Descripción del error" requerido>
-                          <textarea rows={4} className={claseArea} value={ticket.descripcion} onChange={(e) => setCampoTicket("descripcion", e.target.value)} placeholder="Qué pasa, desde cuándo, qué mensaje aparece…" />
+                        <Campo etiqueta={esCambio ? "Descripción del cambio" : "Descripción del error"} requerido>
+                          <textarea rows={4} className={claseArea} value={ticket.descripcion} onChange={(e) => setCampoTicket("descripcion", e.target.value)} placeholder={esCambio ? "Qué hay que cambiar, cómo debería quedar…" : "Qué pasa, desde cuándo, qué mensaje aparece…"} />
                         </Campo>
                       </Seccion>
 
-                      <Seccion titulo="Nivel y responsable" detalle="El nivel define el service level del proceso de Soporte" icono={Flag} tono="ambar">
-                        <Campo etiqueta="Nivel" requerido>
-                          <div role="radiogroup" aria-label="Nivel" className="grid gap-3 sm:grid-cols-3">
+                      <Seccion titulo="Clasificación" detalle="La clasificación define el service level y la fecha de entrega" icono={Flag} tono="ambar">
+                        <Campo etiqueta="Clasificación" requerido ayuda={entrega ? `Entrega: ${fechaHoraPy(entrega)}` : undefined}>
+                          <div role="radiogroup" aria-label="Clasificación" className="grid gap-3 sm:grid-cols-3">
                             {clasificaciones.map((c) => {
                               const t = TONOS[tonoSla(c.sla_horas)];
                               const activa = ticket.clasificacion_codigo === c.codigo;
@@ -612,17 +635,14 @@ export default function TipificacionPage() {
                         </Campo>
 
 
-                        <Campo etiqueta="Responsable" ayuda="Opcional. El ticket entra como Pendiente.">
-                          <SelectorBuscable
-                            ariaLabel="Responsable"
-                            avatares
-                            opciones={personaOpciones}
-                            value={ticket.responsable_id}
-                            onChange={(v) => setCampoTicket("responsable_id", v)}
-                            buscarPlaceholder="Buscar persona o área…"
-                            vacio="Nadie coincide"
-                          />
-                        </Campo>
+                        <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600">
+                          <UserRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                          {cat?.responsable ? (
+                            <span>Se asigna a <strong className="text-slate-800">{cat.responsable.nombre}</strong> (Desarrollo de Soporte). Entra como Pendiente.</span>
+                          ) : (
+                            <span>Entra como Pendiente, sin responsable.</span>
+                          )}
+                        </div>
                       </Seccion>
 
                       <Seccion titulo="Evidencias" detalle="Capturas, videos o documentos. Quedan en el ticket." icono={Paperclip} tono="indigo">
@@ -657,13 +677,13 @@ export default function TipificacionPage() {
                 {esError ? (
                   <>
                     <FilaResumen etiqueta="Proyecto">{proyectoElegido?.titulo ?? <span className="font-normal text-slate-400">Sin elegir</span>}</FilaResumen>
-                    <FilaResumen etiqueta="Nivel">{clasificacionElegida?.nombre ?? <span className="font-normal text-slate-400">Sin elegir</span>}</FilaResumen>
-                    <FilaResumen etiqueta="Prioridad">
-                      {prioridadElegida ? (
-                        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: prioridadElegida.color }} aria-hidden />{prioridadElegida.nombre}</span>
+                    <FilaResumen etiqueta="Clasificación">{clasificacionElegida?.nombre ?? <span className="font-normal text-slate-400">Sin elegir</span>}</FilaResumen>
+                    <FilaResumen etiqueta="Entrega">
+                      {entrega ? (
+                        <span className="inline-flex items-center gap-1.5"><CalendarCheck className="h-3.5 w-3.5 text-rose-500" aria-hidden />{fechaHoraPy(entrega)}</span>
                       ) : <span className="font-normal text-slate-400">Sin elegir</span>}
                     </FilaResumen>
-                    <FilaResumen etiqueta="Responsable">{responsableElegido?.nombre ?? <span className="font-normal text-slate-400">Sin asignar</span>}</FilaResumen>
+                    <FilaResumen etiqueta="Responsable">{cat?.responsable?.nombre ?? <span className="font-normal text-slate-400">Sin asignar</span>}</FilaResumen>
                     <FilaResumen etiqueta="Evidencias">{archivos.length || <span className="font-normal text-slate-400">Ninguna</span>}</FilaResumen>
                   </>
                 ) : null}
@@ -675,7 +695,7 @@ export default function TipificacionPage() {
                     <Timer className="h-3.5 w-3.5" aria-hidden /> Service level
                   </p>
                   {slaHoras == null ? (
-                    <p className="mt-1 text-[13px] text-slate-400">Elegí el nivel para ver el SLA.</p>
+                    <p className="mt-1 text-[13px] text-slate-400">Elegí la clasificación para ver el SLA.</p>
                   ) : (
                     <p className={`mt-0.5 text-3xl font-extrabold tabular-nums ${TONOS[tonoSla(slaHoras)].texto}`}>
                       <CountUp key={slaHoras} to={slaHoras} duration={0.5} /> <span className="text-base font-bold">{slaHoras === 1 ? "hora" : "horas"}</span>
@@ -771,7 +791,6 @@ export default function TipificacionPage() {
                                 <span className="h-2 w-2 rounded-full" style={{ background: t.ticket.estado_color ?? "#94a3b8" }} aria-hidden />
                                 {t.ticket.estado_nombre}
                               </span>
-                              <span className="inline-flex items-center gap-1"><Flag className="h-3.5 w-3.5 text-slate-400" aria-hidden />{t.ticket.prioridad_nombre}</span>
                             </div>
                           </div>
                           {listado?.puede_soporte ? (

@@ -580,7 +580,7 @@ export default function DashboardEjecutivoClient() {
                         {filasLista.map((c) => (
                           <tr key={c.id} className="border-b border-slate-50 text-[11px] last:border-0">
                             <td className="max-w-[150px] truncate py-1.5 pr-2 font-medium text-slate-700">
-                              <Link href={`/dashboard/proyectos?proyecto=${c.id}`} className="hover:underline" title={c.titulo}>
+                              <Link href={`/dashboard/proyectos?proyecto=${c.id}&from=tablero`} className="hover:underline" title={c.titulo}>
                                 {c.titulo}
                               </Link>
                             </td>
@@ -671,7 +671,7 @@ export default function DashboardEjecutivoClient() {
                             <div className="py-2 pl-3.5 pr-2.5">
                               <div className="flex items-start justify-between gap-2">
                                 <Link
-                                  href={`/dashboard/proyectos?proyecto=${b.id}`}
+                                  href={`/dashboard/proyectos?proyecto=${b.id}&from=tablero`}
                                   className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-800 hover:text-[#2F6E71] hover:underline"
                                   title={b.titulo}
                                 >

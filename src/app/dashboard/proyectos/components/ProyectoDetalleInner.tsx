@@ -708,6 +708,14 @@ export type ProyectoDetalleInnerProps = {
   projectId: string;
   variant: "page" | "modal";
   onClose?: () => void;
+  /**
+   * "Volver" al origen desde donde se abrió el modal (p. ej. el Tablero). Cuando
+   * viene, la cabecera muestra un enlace arriba a la izquierda. Distinto de
+   * `onClose`: cerrar deja al usuario en el Kanban; volver lo devuelve a donde
+   * estaba. Sólo se pasa cuando el usuario NO llegó por el Kanban.
+   */
+  onBack?: () => void;
+  backLabel?: string;
   onProjectUpdated?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   dataSchema: string;
@@ -1120,6 +1128,8 @@ export default function ProyectoDetalleInner({
   projectId,
   variant,
   onClose,
+  onBack,
+  backLabel,
   onProjectUpdated,
   onDirtyChange,
   dataSchema,
@@ -2512,11 +2522,20 @@ export default function ProyectoDetalleInner({
       <div
         className={
           variant === "modal"
-            ? "flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-4 pb-5 pt-6 md:px-6"
-            : "flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4"
+            ? "flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-4 pb-5 pt-6 md:px-6 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between"
+            : "flex flex-col gap-4 border-b border-slate-200 pb-4 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between"
         }
       >
         <div className="min-w-0 flex-1">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="mb-2 inline-flex items-center gap-1 text-[12px] font-medium text-[#4FAEB2] transition-colors hover:text-[#3F8E91] hover:underline"
+            >
+              ← {backLabel ?? "Volver"}
+            </button>
+          ) : null}
           <div className="flex items-center gap-2">
             <span
               aria-hidden="true"

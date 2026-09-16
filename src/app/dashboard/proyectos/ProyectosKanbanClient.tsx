@@ -758,6 +758,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   // de notificación (?proyecto=…&tab=…&cc=…). En aperturas normales van vacíos.
   const [modalInitialTab, setModalInitialTab] = useState<string | undefined>(undefined);
   const [modalInitialCanal, setModalInitialCanal] = useState<string | undefined>(undefined);
+  // Adónde volver cuando el modal se abrió desde otra pantalla (hoy: el Tablero).
+  // En aperturas normales del Kanban queda null y no se muestra el "Volver".
+  const [modalBackHref, setModalBackHref] = useState<string | null>(null);
   const [nuevoModalOpen, setNuevoModalOpen] = useState(false);
 
   const router = useRouter();
@@ -767,6 +770,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   const abrirDetalle = useCallback((id: string) => {
     setModalInitialTab(undefined);
     setModalInitialCanal(undefined);
+    setModalBackHref(null);
     setModalProjectId(id);
   }, []);
 
@@ -778,6 +782,9 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     if (!pid) return;
     setModalInitialTab(searchParams.get("tab") ?? undefined);
     setModalInitialCanal(searchParams.get("cc") ?? undefined);
+    // `from=tablero`: al cerrar/volver, el modal ofrece regresar al Tablero en
+    // vez de dejar al usuario en el Kanban (de donde no vino).
+    setModalBackHref(searchParams.get("from") === "tablero" ? "/dashboard/tableros" : null);
     setModalProjectId(pid);
     router.replace("/dashboard/proyectos", { scroll: false });
   }, [searchParams, router]);
@@ -1548,10 +1555,13 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           setModalProjectId(null);
           setModalInitialTab(undefined);
           setModalInitialCanal(undefined);
+          setModalBackHref(null);
           void loadProyectos();
         }}
         onUpdated={() => void loadProyectos()}
         dataSchema={dataSchema}
+        backHref={modalBackHref}
+        backLabel="Volver al Tablero"
       />
 
       <ProyectoNuevoModal

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import ProyectoDetalleInner from "./ProyectoDetalleInner";
 
 export default function ProyectoDetalleModal({
@@ -12,6 +13,8 @@ export default function ProyectoDetalleModal({
   proyectoPreview,
   initialTab,
   initialCanal,
+  backHref,
+  backLabel,
 }: {
   projectId: string | null;
   open: boolean;
@@ -23,7 +26,11 @@ export default function ProyectoDetalleModal({
   /** Solapa/canal iniciales al abrir por deep-link de notificación. */
   initialTab?: string;
   initialCanal?: string;
+  /** Adónde volver si el modal se abrió desde otra pantalla (p. ej. el Tablero). */
+  backHref?: string | null;
+  backLabel?: string;
 }) {
+  const router = useRouter();
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -36,6 +43,13 @@ export default function ProyectoDetalleModal({
     }
     onClose();
   }, [dirty, onClose]);
+
+  /** Volver al origen (Tablero): navega en vez de quedarse en el Kanban. */
+  const requestBack = useCallback(() => {
+    if (!backHref) return;
+    if (dirty && !window.confirm("Hay cambios sin guardar en Datos. ¿Salir igualmente?")) return;
+    router.push(backHref);
+  }, [backHref, dirty, router]);
 
   useEffect(() => {
     if (!open) return;
@@ -80,6 +94,8 @@ export default function ProyectoDetalleModal({
           projectId={projectId}
           variant="modal"
           onClose={requestClose}
+          onBack={backHref ? requestBack : undefined}
+          backLabel={backLabel}
           onProjectUpdated={onUpdated}
           onDirtyChange={setDirty}
           dataSchema={dataSchema}

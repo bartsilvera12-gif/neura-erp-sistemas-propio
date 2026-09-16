@@ -538,21 +538,18 @@ export default function TipificacionPage() {
                 </div>
               </Campo>
 
-              <Campo etiqueta="Resultado" requerido ayuda={esError ? `${esCambio ? "Un cambio" : "Un error"} se escala a Soporte con un ticket.` : undefined}>
-                <div role="radiogroup" aria-label="Resultado" className="flex flex-wrap gap-2">
-                  {RESULTADOS_TIPIFICACION.map((r) => (
-                    <Pildora
-                      key={r}
-                      activa={form.resultado === r}
-                      tono={RESULTADO_TONO[r]}
-                      disabled={esError && r !== "Escalar"}
-                      onClick={() => setForm((p) => ({ ...p, resultado: r }))}
-                    >
-                      {r}
-                    </Pildora>
-                  ))}
-                </div>
-              </Campo>
+              {/* Error y Cambio siempre escalan a Soporte: el resultado no se muestra (lo fija el servidor). */}
+              {esError ? null : (
+                <Campo etiqueta="Resultado" requerido>
+                  <div role="radiogroup" aria-label="Resultado" className="flex flex-wrap gap-2">
+                    {RESULTADOS_TIPIFICACION.map((r) => (
+                      <Pildora key={r} activa={form.resultado === r} tono={RESULTADO_TONO[r]} onClick={() => setForm((p) => ({ ...p, resultado: r }))}>
+                        {r}
+                      </Pildora>
+                    ))}
+                  </div>
+                </Campo>
+              )}
 
               <Campo etiqueta="Observación" requerido>
                 <textarea
@@ -742,9 +739,11 @@ export default function TipificacionPage() {
 
               <div className="divide-y divide-slate-100 px-5">
                 <FilaResumen etiqueta="Cliente">{clienteNombre(cliente)}</FilaResumen>
-                <FilaResumen etiqueta="Resultado">
-                  <span className={`rounded-full px-2 py-0.5 text-[12px] ${TONOS[RESULTADO_TONO[form.resultado]].suave} ${TONOS[RESULTADO_TONO[form.resultado]].texto}`}>{form.resultado}</span>
-                </FilaResumen>
+                {esError ? null : (
+                  <FilaResumen etiqueta="Resultado">
+                    <span className={`rounded-full px-2 py-0.5 text-[12px] ${TONOS[RESULTADO_TONO[form.resultado]].suave} ${TONOS[RESULTADO_TONO[form.resultado]].texto}`}>{form.resultado}</span>
+                  </FilaResumen>
+                )}
                 {esCapacitacion && agendar ? (
                   <>
                     <FilaResumen etiqueta="Capacitación">

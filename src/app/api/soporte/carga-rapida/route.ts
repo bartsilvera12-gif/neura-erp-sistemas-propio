@@ -121,8 +121,11 @@ export async function GET(request: Request) {
       return ok({ proyectos: data ?? [] });
     }
 
-    const asignacion = await responsableAutomatico(auth.sb, auth.empresaId);
-    const defecto = asignacion.responsableId;
+    // A quién iría cada tipo si se carga ahora: un error puede ir a guardia, un cambio nunca.
+    const [asigError, asigCambio] = await Promise.all([
+      responsableAutomatico(auth.sb, auth.empresaId, "error"),
+      responsableAutomatico(auth.sb, auth.empresaId, "cambio"),
+    ]);
     const [cat, personas, clientes] = await Promise.all([
       leerCatalogos(auth.sb, auth.empresaId),
       personasDeEmpresa(auth.empresaId),
@@ -134,8 +137,10 @@ export async function GET(request: Request) {
       clasificaciones: cat.clasificaciones.filter((c) => c.activo),
       a_cargo: personas.filter(puedeEstarACargo),
       // Quién recibe el ticket: se asigna solo, quien carga no elige.
-      responsable: personas.find((p) => p.id === defecto) ?? null,
-      responsable_motivo: asignacion.motivo,
+      asignacion: {
+        error: { responsable: personas.find((p) => p.id === asigError.responsableId) ?? null, motivo: asigError.motivo },
+        cambio: { responsable: personas.find((p) => p.id === asigCambio.responsableId) ?? null, motivo: asigCambio.motivo },
+      },
       clientes,
     });
   } catch (e) {

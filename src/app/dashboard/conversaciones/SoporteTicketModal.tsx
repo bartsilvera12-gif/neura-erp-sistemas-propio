@@ -10,12 +10,10 @@ import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
 import { subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 
-type Persona = { id: string; nombre: string; area: string };
 type Datos = {
   tipos: SoporteTipo[];
   clasificaciones: SoporteClasificacion[];
-  responsable: Persona | null;
-  responsable_motivo?: "horario_laboral" | "guardia_principal" | "guardia_suplente" | "sin_guardia";
+  asignacion: Record<"error" | "cambio", { responsable: { id: string; nombre: string; area: string } | null; motivo: "ordinario" | "guardia" | "guardia_sin_asignar" }>;
   clientes: { id: string; nombre: string }[];
 };
 
@@ -329,10 +327,10 @@ export default function SoporteTicketModal({
                 <span className={claseEtiqueta}>Evidencias</span>
                 <ZonaArchivos archivos={archivos} onCambio={setArchivos} compacta deshabilitada={guardando} />
               </div>
-              {datos.responsable ? (
+              {datos.asignacion?.[tipo === "cambio" ? "cambio" : "error"]?.responsable ? (
                 <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">
-                  Se asigna a <strong className="text-slate-800">{datos.responsable.nombre}</strong> (
-                  {({ horario_laboral: "Desarrollo de Soporte", guardia_principal: "guardia", guardia_suplente: "suplente de guardia", sin_guardia: "sin guardia cargada" })[datos.responsable_motivo ?? "horario_laboral"]}).
+                  Se asigna a <strong className="text-slate-800">{datos.asignacion[tipo === "cambio" ? "cambio" : "error"].responsable?.nombre}</strong> (
+                  {({ ordinario: "Desarrollo de Soporte", guardia: "desarrollador de guardia", guardia_sin_asignar: "no hay guardia cargada esta semana" })[datos.asignacion[tipo === "cambio" ? "cambio" : "error"].motivo]}).
                 </p>
               ) : null}
               {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p> : null}

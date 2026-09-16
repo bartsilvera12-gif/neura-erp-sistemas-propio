@@ -27,45 +27,68 @@ const RESPONSABLE_HORARIO_LABORAL: Record<string, string> = {
   "9fd29108-4b0f-4faf-9eee-c509f6227d47": "5566a978-05b6-4300-8df1-b35e6b7d74dc",
 };
 
+export type MotivoAsignacion = "ordinario" | "guardia" | "guardia_sin_asignar";
+
 export type AsignacionAutomatica = {
   responsableId: string | null;
-  motivo: "horario_laboral" | "guardia_principal" | "guardia_suplente" | "sin_guardia";
+  motivo: MotivoAsignacion;
 };
+
+/** Cierre de la franja de guardia: 20:00, hora de Paraguay. */
+const FIN_GUARDIA_MIN = 20 * 60;
+
+/**
+ * ¿Está activa la guardia? (Proceso de Gestión de Soporte v1.4, §11.1)
+ *
+ * Se activa cuando termina la jornada y cubre hasta las 20:00: lunes a viernes
+ * de 17 a 20 y sábados de 12 a 20. Antes de que empiece la jornada, después de
+ * las 20 y el domingo no hay guardia: rige el proceso ordinario.
+ */
+export function enFranjaDeGuardia(ahora: number = Date.now()): boolean {
+  const local = new Date(ahora + TZ_OFFSET_MIN * 60_000);
+  const dia = local.getUTCDay(); // 0 = domingo
+  const minuto = local.getUTCHours() * 60 + local.getUTCMinutes();
+  if (dia === 0) return false;
+  const finJornada = dia === 6 ? 12 * 60 : 17 * 60;
+  return minuto >= finJornada && minuto < FIN_GUARDIA_MIN;
+}
 
 /**
  * Quién recibe un ticket nuevo. Quien lo carga no elige.
+ * (Proceso de Gestión de Soporte v1.4, §11)
  *
- *   · En horario laboral (lun–vie 8–17, sáb 8–12): Desarrollo de Soporte.
- *   · Fuera de horario: el soporte principal de la guardia de esa semana
- *     (módulo Guardias, semana de lunes a domingo); si no hay, el suplente; y si
- *     tampoco, Desarrollo de Soporte.
+ *   · Un ERROR cargado en la franja de guardia (fin de jornada a 20:00) va al
+ *     desarrollador principal de la guardia de esa semana (módulo Guardias).
+ *   · Todo lo demás —errores en horario laboral o fuera de la franja, y todos
+ *     los cambios, que nunca entran a guardia— sigue el proceso ordinario:
+ *     Desarrollo de Soporte.
+ *   · El suplente NO se asigna solo: asume cuando el principal avisa que no
+ *     puede, y eso se registra a mano.
  *
  * Sólo se asigna a alguien que puede quedar a cargo (Desarrollo o QA).
  */
 export async function responsableAutomatico(
   sb: AppSupabaseClient,
   empresaId: string,
+  tipoCodigo: string,
   ahora: number = Date.now()
 ): Promise<AsignacionAutomatica> {
   const fijo = RESPONSABLE_HORARIO_LABORAL[empresaId] ?? null;
-  if (enHorarioLaboral(ahora)) return { responsableId: fijo, motivo: "horario_laboral" };
+  if (tipoCodigo !== "error" || enHorarioLaboral(ahora) || !enFranjaDeGuardia(ahora)) {
+    return { responsableId: fijo, motivo: "ordinario" };
+  }
 
   // El día en Paraguay, para saber a qué semana de guardia pertenece.
   const diaPy = new Date(ahora + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
   const [{ data }, equipo] = await Promise.all([
-    sb
-      .from("guardias_semana")
-      .select("soporte_principal_id, soporte_suplente_id")
-      .eq("empresa_id", empresaId)
-      .eq("semana_inicio", lunesDe(diaPy))
-      .maybeSingle(),
+    sb.from("guardias_semana").select("soporte_principal_id").eq("empresa_id", empresaId).eq("semana_inicio", lunesDe(diaPy)).maybeSingle(),
     personasDeEmpresa(empresaId),
   ]);
-  const g = data as { soporte_principal_id?: string | null; soporte_suplente_id?: string | null } | null;
-  const valido = (id: string | null | undefined) => !!id && equipo.some((p) => p.id === id && puedeEstarACargo(p));
-  if (valido(g?.soporte_principal_id)) return { responsableId: g!.soporte_principal_id!, motivo: "guardia_principal" };
-  if (valido(g?.soporte_suplente_id)) return { responsableId: g!.soporte_suplente_id!, motivo: "guardia_suplente" };
-  return { responsableId: fijo, motivo: "sin_guardia" };
+  const principal = (data as { soporte_principal_id?: string | null } | null)?.soporte_principal_id ?? null;
+  if (principal && equipo.some((p) => p.id === principal && puedeEstarACargo(p))) {
+    return { responsableId: principal, motivo: "guardia" };
+  }
+  return { responsableId: fijo, motivo: "guardia_sin_asignar" };
 }
 
 export function gestionDeTipoTicket(tipoCodigo: unknown): TipoGestion | null {
@@ -115,7 +138,7 @@ export async function crearTipificacionConTicket(
   const tipoCodigo = TIPO_TICKET_DE_GESTION[args.tipoGestion];
   if (!tipoCodigo) return { ok: false, mensaje: "Ese tipo de gestión no crea tickets", status: 400 };
 
-  const asignacion = await responsableAutomatico(soporte.sb, soporte.empresaId);
+  const asignacion = await responsableAutomatico(soporte.sb, soporte.empresaId, tipoCodigo);
   const prep = await prepararTicket(
     soporte,
     {

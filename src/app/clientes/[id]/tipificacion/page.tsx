@@ -76,8 +76,7 @@ type DatosSoporte = {
   tipos: SoporteTipo[];
   clasificaciones: SoporteClasificacion[];
   a_cargo: { id: string; nombre: string; area: string }[];
-  responsable: { id: string; nombre: string; area: string } | null;
-  responsable_motivo?: "horario_laboral" | "guardia_principal" | "guardia_suplente" | "sin_guardia";
+  asignacion: Record<"error" | "cambio", { responsable: { id: string; nombre: string; area: string } | null; motivo: "ordinario" | "guardia" | "guardia_sin_asignar" }>;
 };
 
 const TIPO_UI: Record<TipoGestion, { icono: LucideIcon; tono: Tono }> = {
@@ -275,6 +274,8 @@ export default function TipificacionPage() {
   const tipoTicket = TIPO_TICKET[form.tipo_gestion] ?? null;
   const esError = tipoTicket != null;
   const esCambio = tipoTicket === "cambio";
+  // A quién va el ticket si se carga ahora (un error puede ir a guardia; un cambio, nunca).
+  const asignacion = tipoTicket ? cat?.asignacion?.[tipoTicket] ?? null : null;
   const esCapacitacion = form.tipo_gestion === "Capacitación";
   // Quien da la capacitación: por defecto, quien la registra.
   const capacitador = agenda.responsable_id || listado?.usuario_actual.id || "";
@@ -720,10 +721,10 @@ export default function TipificacionPage() {
 
                         <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600">
                           <UserRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-                          {cat?.responsable ? (
+                          {asignacion?.responsable ? (
                             <span>
-                              Se asigna a <strong className="text-slate-800">{cat.responsable.nombre}</strong> (
-                              {({ horario_laboral: "Desarrollo de Soporte", guardia_principal: "guardia", guardia_suplente: "suplente de guardia", sin_guardia: "sin guardia cargada" })[cat.responsable_motivo ?? "horario_laboral"]}). Entra como Pendiente.
+                              Se asigna a <strong className="text-slate-800">{asignacion.responsable.nombre}</strong> (
+                              {({ ordinario: "Desarrollo de Soporte", guardia: "desarrollador de guardia", guardia_sin_asignar: "no hay guardia cargada esta semana" })[asignacion.motivo]}). Entra como Pendiente.
                             </span>
                           ) : (
                             <span>Entra como Pendiente, sin responsable.</span>
@@ -780,7 +781,7 @@ export default function TipificacionPage() {
                         <span className="inline-flex items-center gap-1.5"><CalendarCheck className="h-3.5 w-3.5 text-rose-500" aria-hidden />{fechaHoraPy(entrega)}</span>
                       ) : <span className="font-normal text-slate-400">Sin elegir</span>}
                     </FilaResumen>
-                    <FilaResumen etiqueta="Responsable">{cat?.responsable?.nombre ?? <span className="font-normal text-slate-400">Sin asignar</span>}</FilaResumen>
+                    <FilaResumen etiqueta="Responsable">{asignacion?.responsable?.nombre ?? <span className="font-normal text-slate-400">Sin asignar</span>}</FilaResumen>
                     <FilaResumen etiqueta="Evidencias">{archivos.length || <span className="font-normal text-slate-400">Ninguna</span>}</FilaResumen>
                   </>
                 ) : null}

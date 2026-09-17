@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, HelpCircle, Menu } from "lucide-react";
+import { HelpCircle, Menu } from "lucide-react";
+import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import { useUsuarioActual } from "@/shared/hooks/useUsuarioActual";
 
 /**
  * Header mobile: 48px de alto, sticky top. Contenido:
  *  - Botón menú (izquierda) — abre el sheet con el menú completo.
  *  - Marca "Zentra" (centro, lectura rápida).
- *  - Notificaciones (derecha) — placeholder por ahora.
+ *  - Notificaciones (derecha) — la misma campanita del escritorio: suena y
+ *    muestra el aviso del sistema, para que un ticket nuevo o resuelto llegue
+ *    también a quien trabaja desde el teléfono.
  *
  * Usa el hook compartido useUsuarioActual (SWR con dedupe largo) para no
  * disparar una request por cada navegación entre pantallas mobile.
@@ -39,13 +42,9 @@ export default function MobileHeader({ onOpenMenu }: { onOpenMenu: () => void })
         >
           <HelpCircle className="h-5 w-5" />
         </Link>
-        <button
-          type="button"
-          aria-label="Notificaciones"
-          className="relative flex h-11 w-11 items-center justify-center rounded-lg text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
+        <div className="flex h-11 w-11 items-center justify-center">
+          <NotificacionesBell />
+        </div>
         <div
           aria-label={usuario?.nombre ?? "Usuario"}
           className="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--zentra-sidebar)] text-[13px] font-bold text-white ring-1 ring-sky-400/35"

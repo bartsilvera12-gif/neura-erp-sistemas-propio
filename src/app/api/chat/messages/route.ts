@@ -99,16 +99,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Traemos los MÁS NUEVOS (DESC + limit) y los devolvemos en orden ascendente (más viejos arriba,
+    // como siempre). Sin esto, PostgREST corta en 1000 filas ASC: en conversaciones de +1000 mensajes
+    // se veían solo los 1000 MÁS VIEJOS y se ocultaban los recientes. Para conversaciones de menos de
+    // 1000 mensajes el resultado es idéntico al anterior (mismo orden, mismos mensajes).
     const { data, error } = await supabase
       .from("chat_messages")
       .select("id, from_me, message_type, content, raw_payload, created_at, whatsapp_delivery_status, wa_message_id")
       .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(1000);
 
     if (error) {
       return NextResponse.json(errorResponse(error.message), { status: 400 });
     }
-    return NextResponse.json(successResponse(data ?? []));
+    const ordered = (data ?? []).slice().reverse();
+    return NextResponse.json(successResponse(ordered));
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
     return NextResponse.json(errorResponse(msg), { status: 500 });

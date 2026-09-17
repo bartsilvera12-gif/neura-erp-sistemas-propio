@@ -219,12 +219,13 @@ export const TRANSICIONES_SUBTAREA: Record<EstadoSubtarea, EstadoSubtarea[]> = {
 };
 
 /**
- * Toda subtarea que no está Finalizada sigue abierta, también la que pidió
- * cambios: esa revisión vuelve a QA en la próxima entrega y bloquea pasar el
- * ticket a Resuelto o Cerrado hasta que QA la finalice.
+ * Una subtarea está abierta mientras QA la tiene en mano (Pendiente o En
+ * proceso). "Cambios solicitados" cierra esa ronda de revisión: el ticket vuelve
+ * a Re-abierto y, en la próxima entrega, se abre una revisión nueva que QA tiene
+ * que finalizar antes de pasar el ticket a Resuelto.
  */
 export function subtareaAbierta(estado: string): boolean {
-  return estado !== "finalizado";
+  return estado === "pendiente" || estado === "en_proceso";
 }
 
 export function nombreEstadoSubtarea(codigo: string): string {

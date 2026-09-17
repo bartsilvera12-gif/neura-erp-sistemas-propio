@@ -58,63 +58,35 @@ export async function avisarSoporte(
 /**
  * Al pasar a "Listo para revisión": deja lista la revisión de QA y le avisa.
  *
- *   · Si hay una revisión que pidió cambios, vuelve a Pendiente: es la misma
- *     revisión, con su conversación, esperando que QA confirme la corrección.
  *   · Si hay una pendiente o en proceso, se usa esa.
- *   · Si no hay ninguna abierta, se crea "Revisión QA #N".
+ *   · Si no, se crea "Revisión QA #N". Cada entrega es una ronda: la que pidió
+ *     cambios queda cerrada como "Cambios solicitados" y la nueva va a la misma
+ *     persona de QA que la devolvió.
  *
- * Se asigna sola a la persona de QA de la empresa (hoy hay una sola; si hubiera
- * varias, la primera por nombre).
+ * La primera revisión se asigna a la persona de QA de la empresa (hoy hay una
+ * sola; si hubiera varias, la primera por nombre).
  */
 export async function abrirRevisionQa(
   auth: SoporteContexto,
   ticket: { id: string; numero: number; asunto: string }
 ): Promise<SubtareaFila | null> {
-  const abiertas = await subtareasSinFinalizar(auth, ticket.id);
-  const enCurso = abiertas.find((s) => s.estado === "pendiente" || s.estado === "en_proceso");
-  if (enCurso) return enCurso;
-
-  const devuelta = abiertas.find((s) => s.estado === "cambios_solicitados");
-  if (devuelta) {
-    const { data: reabierta } = await auth.sb
-      .from("soporte_subtareas")
-      .update({ estado: "pendiente", updated_at: new Date().toISOString(), finalizado_at: null })
-      .eq("empresa_id", auth.empresaId)
-      .eq("id", devuelta.id)
-      .eq("estado", "cambios_solicitados")
-      .select(SUBTAREA_CAMPOS)
-      .maybeSingle();
-    const sub = (reabierta as SubtareaFila | null) ?? devuelta;
-    await registrarHistorial(auth.sb, {
-      empresaId: auth.empresaId,
-      ticketId: ticket.id,
-      usuarioId: auth.usuarioId,
-      eventos: [
-        { tipo_evento: "subtarea_estado", valor_anterior: "cambios_solicitados", valor_nuevo: "pendiente", metadata: { subtarea_id: sub.id, titulo: sub.titulo, reentrega: true } },
-      ],
-    });
-    await avisarSoporte(auth, {
-      usuarioId: sub.asignado_id,
-      titulo: `Ticket ${numeroTicket(ticket.numero)} corregido, listo para revisar de nuevo`,
-      cuerpo: ticket.asunto,
-      ticketId: ticket.id,
-      subtareaId: sub.id,
-    });
-    return sub;
-  }
-
-  const [{ data: ultimas }, equipo] = await Promise.all([
+  const [{ data: previas }, equipo] = await Promise.all([
     auth.sb
       .from("soporte_subtareas")
-      .select("numero")
+      .select(SUBTAREA_CAMPOS)
       .eq("empresa_id", auth.empresaId)
       .eq("ticket_id", ticket.id)
-      .order("numero", { ascending: false })
-      .limit(1),
+      .order("numero", { ascending: false }),
     personasDeEmpresa(auth.empresaId),
   ]);
-  const numero = (((ultimas ?? []) as { numero: number }[])[0]?.numero ?? 0) + 1;
-  const qa = equipo.find((p) => p.es_qa) ?? null;
+  const todas = (previas ?? []) as SubtareaFila[];
+  const enCurso = todas.find((s) => subtareaAbierta(s.estado));
+  if (enCurso) return enCurso;
+
+  const numero = (todas[0]?.numero ?? 0) + 1;
+  const devuelta = todas.find((s) => s.estado === "cambios_solicitados") ?? null;
+  const qaDevolvio = devuelta?.asignado_id ? equipo.find((p) => p.id === devuelta.asignado_id && p.es_qa) : null;
+  const qa = qaDevolvio ?? equipo.find((p) => p.es_qa) ?? null;
 
   const { data, error } = await auth.sb
     .from("soporte_subtareas")
@@ -140,11 +112,13 @@ export async function abrirRevisionQa(
     empresaId: auth.empresaId,
     ticketId: ticket.id,
     usuarioId: auth.usuarioId,
-    eventos: [{ tipo_evento: "subtarea_creada", valor_nuevo: sub.titulo, metadata: { subtarea_id: sub.id, asignado_id: sub.asignado_id } }],
+    eventos: [{ tipo_evento: "subtarea_creada", valor_nuevo: sub.titulo, metadata: { subtarea_id: sub.id, asignado_id: sub.asignado_id, reentrega: !!devuelta } }],
   });
   await avisarSoporte(auth, {
     usuarioId: sub.asignado_id,
-    titulo: `Ticket ${numeroTicket(ticket.numero)} listo para revisión`,
+    titulo: devuelta
+      ? `Ticket ${numeroTicket(ticket.numero)} corregido, listo para revisar de nuevo`
+      : `Ticket ${numeroTicket(ticket.numero)} listo para revisión`,
     cuerpo: ticket.asunto,
     ticketId: ticket.id,
     subtareaId: sub.id,

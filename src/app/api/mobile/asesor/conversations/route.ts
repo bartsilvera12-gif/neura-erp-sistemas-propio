@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
-import { fetchChatConversations } from "@/lib/chat/actions";
+import { fetchChatChannels, fetchChatConversations } from "@/lib/chat/actions";
 import { getMyAgentOperationalPresence, listChatQueues } from "@/lib/chat/chat-ops-actions";
 
 export const runtime = "nodejs";
@@ -43,11 +43,21 @@ async function manejar(request: Request) {
     }
 
     // 3) Solo sus asignadas (assignment="mine" aplica scope + filtro por su agent_id).
-    const cola = new URL(request.url).searchParams.get("cola")?.trim() || null;
-    const [{ conversations }, queues] = await Promise.all([
-      fetchChatConversations("inbox", { assignment: "mine", queue_id: cola, limit: 200 }),
+    const sp = new URL(request.url).searchParams;
+    const cola = sp.get("cola")?.trim() || null;
+    // `?canal=`: el selector "Todos los canales" del inbox de escritorio (línea de WhatsApp,
+    // Messenger, Instagram…).
+    const canal = sp.get("canal")?.trim() || null;
+    const [{ conversations }, queues, channels] = await Promise.all([
+      fetchChatConversations("inbox", {
+        assignment: "mine",
+        queue_id: cola,
+        channel_id: canal,
+        limit: 200,
+      }),
       // Si las colas fallan, la lista igual sale: el selector simplemente no aparece.
       listChatQueues().catch(() => []),
+      fetchChatChannels().catch(() => []),
     ]);
 
     const mapped = conversations.map((c) => ({
@@ -66,6 +76,9 @@ async function manejar(request: Request) {
       ok: true,
       is_agent: true,
       queues: queues.filter((q) => q.is_active).map((q) => ({ id: q.id, nombre: q.nombre })),
+      channels: channels
+        .filter((c) => c.activo)
+        .map((c) => ({ id: c.id, nombre: (c.nombre ?? "").trim() || "Canal", tipo: c.type ?? null })),
       conversations: mapped,
     });
   } catch (e) {

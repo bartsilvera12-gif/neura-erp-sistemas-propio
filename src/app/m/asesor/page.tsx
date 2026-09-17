@@ -21,6 +21,7 @@ function shortTime(iso: string | null): string {
 }
 
 const CLAVE_COLA = "neura:asesor:cola";
+const CLAVE_CANAL = "neura:asesor:canal";
 
 export default function MAsesorInboxPage() {
   // Cola elegida ("" = todas). Se recuerda en el dispositivo, como el filtro del escritorio.
@@ -40,15 +41,37 @@ export default function MAsesorInboxPage() {
       /* noop */
     }
   }, []);
+  // Canal elegido ("" = todos): la línea de WhatsApp, Messenger o Instagram, como el selector
+  // "Todos los canales" del escritorio.
+  const [canal, setCanal] = useState("");
+  useEffect(() => {
+    try {
+      setCanal(localStorage.getItem(CLAVE_CANAL) ?? "");
+    } catch {
+      /* sin storage: todos */
+    }
+  }, []);
+  const elegirCanal = useCallback((id: string) => {
+    setCanal(id);
+    try {
+      localStorage.setItem(CLAVE_CANAL, id);
+    } catch {
+      /* noop */
+    }
+  }, []);
   const {
     conversations: convs,
+    channels,
     isAgent,
     supervision,
     queues,
     isLoading: loading,
     error,
     refresh,
-  } = useAsesorInbox(cola);
+  } = useAsesorInbox(cola, canal);
+  useEffect(() => {
+    if (canal && channels.length > 0 && !channels.some((c) => c.id === canal)) elegirCanal("");
+  }, [canal, channels, elegirCanal]);
   // Si la cola guardada ya no está entre las del usuario, se vuelve a "Todas".
   useEffect(() => {
     if (cola && queues.length > 0 && !queues.some((q) => q.id === cola)) elegirCola("");
@@ -131,6 +154,32 @@ export default function MAsesorInboxPage() {
           className="mt-2 w-full rounded-xl border border-white/20 bg-white/95 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-white/40"
           aria-label="Buscar conversación"
         />
+        {channels.length > 1 ? (
+          <div
+            className="-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none]"
+            role="radiogroup"
+            aria-label="Canal"
+          >
+            {[{ id: "", nombre: "Todos los canales", tipo: null }, ...channels].map((c) => {
+              const activo = c.id === canal;
+              return (
+                <button
+                  key={c.id || "todos"}
+                  type="button"
+                  role="radio"
+                  aria-checked={activo}
+                  onClick={() => elegirCanal(c.id)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${
+                    activo ? "bg-white text-[#3F8E91]" : "bg-white/15 text-white active:bg-white/25"
+                  }`}
+                >
+                  {c.nombre}
+                  {c.tipo ? <span className="ml-1 font-normal opacity-70">· {c.tipo}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         {queues.length > 1 ? (
           <div
             className="-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none]"
@@ -199,8 +248,8 @@ export default function MAsesorInboxPage() {
           </div>
         ) : convs.length === 0 ? (
           <div className="p-6 text-center text-slate-500 text-sm">
-            {cola
-              ? "No hay conversaciones en esta cola."
+            {cola || canal
+              ? "No hay conversaciones con este filtro."
               : supervision
                 ? "No hay conversaciones."
                 : "No tenés conversaciones asignadas."}

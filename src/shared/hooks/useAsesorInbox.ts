@@ -16,11 +16,13 @@ export type AsesorConv = {
 };
 
 export type AsesorCola = { id: string; nombre: string };
+export type AsesorCanal = { id: string; nombre: string; tipo: string | null };
 
 type InboxResponse = {
   ok: boolean;
   is_agent?: boolean;
   queues?: AsesorCola[];
+  channels?: AsesorCanal[];
   conversations?: AsesorConv[];
   error?: string;
   /** Puesto por el cliente: la lista vino de la ruta de supervisión. */
@@ -41,8 +43,11 @@ async function pedir(url: string): Promise<InboxResponse> {
  * Asesor → sus chats asignados. Quien no es agente (admin, supervisor) recibe `is_agent:false`
  * y se le muestra el inbox del escritorio con su alcance, en vez de una pantalla vacía.
  */
-async function fetchInbox([, cola]: [string, string]): Promise<InboxResponse> {
-  const qs = cola ? `?cola=${encodeURIComponent(cola)}` : "";
+async function fetchInbox([, cola, canal]: [string, string, string]): Promise<InboxResponse> {
+  const p = new URLSearchParams();
+  if (cola) p.set("cola", cola);
+  if (canal) p.set("canal", canal);
+  const qs = p.toString() ? `?${p.toString()}` : "";
   const propia = await pedir(`${KEY}${qs}`);
   if (propia.is_agent !== false) return propia;
   const sup = await pedir(`${KEY_SUPERVISION}${qs}`);
@@ -62,8 +67,8 @@ async function fetchInbox([, cola]: [string, string]): Promise<InboxResponse> {
  * `refreshInterval` y `revalidateOnFocus` reemplazan al setInterval y al listener
  * de visibilitychange que tenía la página.
  */
-export function useAsesorInbox(cola = "") {
-  const swr = useSWR<InboxResponse>([KEY, cola], fetchInbox, {
+export function useAsesorInbox(cola = "", canal = "") {
+  const swr = useSWR<InboxResponse>([KEY, cola, canal], fetchInbox, {
     refreshInterval: 20_000,
     revalidateOnFocus: true,
     keepPreviousData: true,
@@ -73,6 +78,7 @@ export function useAsesorInbox(cola = "") {
     isAgent: swr.data?.is_agent !== false,
     supervision: swr.data?.supervision === true,
     queues: swr.data?.queues ?? [],
+    channels: swr.data?.channels ?? [],
     /** Sólo mientras no haya NADA que mostrar; con cache previo no se ve el skeleton. */
     isLoading: swr.isLoading && !swr.data,
     error: swr.error as Error | undefined,

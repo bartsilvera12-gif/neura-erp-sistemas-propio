@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
-import { fetchChatConversations } from "@/lib/chat/actions";
+import { fetchChatChannels, fetchChatConversations } from "@/lib/chat/actions";
 import { listChatQueues } from "@/lib/chat/chat-ops-actions";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 
@@ -36,15 +36,28 @@ export async function GET(request: Request) {
     }
 
     try {
-      const cola = new URL(request.url).searchParams.get("cola")?.trim() || null;
-      const [{ conversations }, queues] = await Promise.all([
-        fetchChatConversations("inbox", { assignment: "all", queue_id: cola, limit: 200 }),
+      const sp = new URL(request.url).searchParams;
+      const cola = sp.get("cola")?.trim() || null;
+      // `?canal=`: el selector "Todos los canales" del inbox de escritorio (línea de WhatsApp,
+      // Messenger, Instagram…).
+      const canal = sp.get("canal")?.trim() || null;
+      const [{ conversations }, queues, channels] = await Promise.all([
+        fetchChatConversations("inbox", {
+          assignment: "all",
+          queue_id: cola,
+          channel_id: canal,
+          limit: 200,
+        }),
         // Si las colas fallan, la lista igual sale: el selector simplemente no aparece.
         listChatQueues().catch(() => []),
+        fetchChatChannels().catch(() => []),
       ]);
       return NextResponse.json({
         ok: true,
         queues: queues.filter((q) => q.is_active).map((q) => ({ id: q.id, nombre: q.nombre })),
+        channels: channels
+          .filter((c) => c.activo)
+          .map((c) => ({ id: c.id, nombre: (c.nombre ?? "").trim() || "Canal", tipo: c.type ?? null })),
         conversations: conversations.map((c) => ({
           id: c.id,
           status: c.status,

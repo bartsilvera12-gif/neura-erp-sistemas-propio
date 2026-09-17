@@ -16,7 +16,9 @@ import {
 } from "@/lib/chat/chat-ops-actions";
 import {
   getErpAttachmentCaption,
+  getErpAttachmentFilename,
   getErpAttachmentPublicUrl,
+  getMetaInboundDocumentFilename,
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
@@ -109,6 +111,28 @@ const EMOJIS = [
 function mediaUrl(m: Msg): string | null {
   const raw = (m.raw_payload ?? null) as Parameters<typeof getErpAttachmentPublicUrl>[0];
   return getErpAttachmentPublicUrl(raw) ?? getWhatsAppMediaUrlFromRawPayload(raw) ?? null;
+}
+
+/**
+ * ¿Corre dentro de la APK de Android (WebView de Capacitor)?
+ *
+ * Ese WebView no muestra PDF/Word/Excel ni tiene manejador de descargas: un link al archivo
+ * no hacía nada. Capacitor sí manda a una app externa (Chrome) todo link cuyo dominio no esté
+ * en `allowNavigation`, así que ahí el archivo se abre con el visor de Google Docs.
+ */
+function esWebViewAndroid(): boolean {
+  if (typeof window === "undefined") return false;
+  const cap = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+  if (cap?.getPlatform?.() === "android") return true;
+  return /Android/.test(navigator.userAgent) && /; wv\)/.test(navigator.userAgent);
+}
+
+function abrirArchivo(url: string) {
+  if (esWebViewAndroid()) {
+    window.location.href = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}`;
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function fmtSecs(s: number): string {
@@ -247,7 +271,7 @@ function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
     } catch (err) {
       // Cancelar la hoja de compartir no es un error.
       if ((err as { name?: string } | null)?.name !== "AbortError") {
-        window.open(url, "_blank", "noopener,noreferrer");
+        abrirArchivo(url);
       }
     } finally {
       setSaving(false);
@@ -495,10 +519,34 @@ function MessageBody({
       </a>
     );
   }
+  if (m.message_type === "document" && url) {
+    const raw = (m.raw_payload ?? null) as Parameters<typeof getErpAttachmentPublicUrl>[0];
+    const nombre =
+      getErpAttachmentFilename(raw) ?? getMetaInboundDocumentFilename(raw) ?? decodeURIComponent(url.split("?")[0].split("/").pop() || "Documento");
+    const caption = imageCaption(m);
+    return (
+      <div className="space-y-1">
+        <button
+          type="button"
+          onClick={() => abrirArchivo(url)}
+          className="flex w-60 max-w-full items-center gap-2.5 rounded-xl bg-black/5 p-2.5 text-left active:bg-black/10"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-[10px] font-bold uppercase text-slate-600">
+            {(nombre.split(".").pop() || "doc").slice(0, 4)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold">{nombre}</span>
+            <span className="block text-[11px] opacity-70">Tocá para abrir</span>
+          </span>
+        </button>
+        {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+      </div>
+    );
+  }
   return url ? (
-    <a href={url} target="_blank" rel="noreferrer" className="break-all underline">
+    <button type="button" onClick={() => abrirArchivo(url)} className="break-all text-left underline">
       [{m.message_type}]
-    </a>
+    </button>
   ) : (
     <span className="italic opacity-80">[{m.message_type}]</span>
   );

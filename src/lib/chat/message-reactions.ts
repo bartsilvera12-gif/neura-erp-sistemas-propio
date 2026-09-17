@@ -103,5 +103,21 @@ export function agruparReacciones(
   return salida;
 }
 
+/**
+ * WAMID de un mensaje, que es a lo que apuntan las reacciones y las citas de WhatsApp.
+ *
+ * En los salientes, `wa_message_id` muchas veces es el id interno de YCloud (al enviar
+ * todavía no había WAMID); el real lo guarda el webhook de estado en `raw_payload.neura_wamid`.
+ */
+export function wamidDeMensaje(m: {
+  wa_message_id?: string | null;
+  raw_payload?: Record<string, unknown> | null;
+}): string | null {
+  const propio = txt(m.wa_message_id);
+  if (propio.startsWith("wamid.")) return propio;
+  const guardado = txt(m.raw_payload?.neura_wamid);
+  return guardado.startsWith("wamid.") ? guardado : null;
+}
+
 /** Los seis de WhatsApp, en el mismo orden. */
 export const EMOJIS_REACCION = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const;

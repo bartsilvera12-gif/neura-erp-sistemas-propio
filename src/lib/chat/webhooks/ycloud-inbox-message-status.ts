@@ -72,6 +72,13 @@ export async function applyYCloudInboxMessageStatus(params: {
     (row as { whatsapp_delivery_status?: string | null }).whatsapp_delivery_status ?? ""
   ).toLowerCase();
 
+  // WAMID real del mensaje. Al enviar, YCloud muchas veces responde antes de tenerlo y se
+  // guarda su id interno en `wa_message_id`; el WAMID llega recién en estos eventos. Sin él,
+  // una reacción o una cita del cliente (que apuntan al WAMID) no encuentran su mensaje.
+  // Se guarda aparte, en raw_payload, ANTES de la guarda monotónica: aunque el estado no
+  // cambie, el dato sirve. `wa_message_id` no se toca: por él se buscan los estados.
+  await guardarWamidReal(sb, empresaId, row as { id?: string; raw_payload?: unknown }, wamid);
+
   // Guarda monotónica: no pisar un estado terminal/superior.
   if (cur === "failed") return; // failed es terminal
   if (statusRaw === "failed") {
@@ -122,4 +129,29 @@ export async function applyYCloudInboxMessageStatus(params: {
     de: cur || null,
     a: statusRaw,
   });
+}
+
+async function guardarWamidReal(
+  sb: SupabaseAdmin,
+  empresaId: string,
+  row: { id?: string; raw_payload?: unknown },
+  wamid: string
+): Promise<void> {
+  if (!wamid.startsWith("wamid.") || !row.id) return;
+  const raw =
+    row.raw_payload && typeof row.raw_payload === "object" && !Array.isArray(row.raw_payload)
+      ? (row.raw_payload as Record<string, unknown>)
+      : {};
+  if (raw.neura_wamid === wamid) return;
+  const { error } = await sb
+    .from("chat_messages")
+    .update({ raw_payload: { ...raw, neura_wamid: wamid } })
+    .eq("id", row.id)
+    .eq("empresa_id", empresaId);
+  if (error) {
+    console.warn("[ycloud-inbox-status] guardar_wamid_falló", error.message);
+    return;
+  }
+  // El merge de estado de abajo parte de este raw_payload: que no pise el WAMID recién puesto.
+  row.raw_payload = { ...raw, neura_wamid: wamid };
 }

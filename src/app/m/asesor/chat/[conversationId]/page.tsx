@@ -20,7 +20,7 @@ import {
   getWhatsAppMediaUrlFromRawPayload,
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
-import { agruparReacciones, EMOJIS_REACCION, type ReaccionEnUI } from "@/lib/chat/message-reactions";
+import { agruparReacciones, EMOJIS_REACCION, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import {
@@ -705,7 +705,7 @@ export default function MAsesorChatPage() {
                 ...(modoSupervision() ? { conversation_id: conversationId } : {}),
                 message: msg,
                 // wamid → cita real en WhatsApp; contexto → snapshot para nuestra UI.
-                ...(reply?.wa_message_id ? { reply_to_wamid: reply.wa_message_id } : {}),
+                ...(reply && wamidDeMensaje(reply) ? { reply_to_wamid: wamidDeMensaje(reply) } : {}),
                 ...(reply
                   ? {
                       reply_context: {
@@ -900,7 +900,7 @@ export default function MAsesorChatPage() {
   // ahí se desactiva el menú nativo, y el gesto sigue funcionando dentro del visor a
   // pantalla completa, que es donde se usa de verdad.
   const puedeReaccionar = useCallback(
-    (m: Msg) => Boolean(m.wa_message_id?.startsWith("wamid.")) && m.message_type !== "reaction",
+    (m: Msg) => Boolean(wamidDeMensaje(m)) && m.message_type !== "reaction",
     []
   );
 
@@ -911,7 +911,7 @@ export default function MAsesorChatPage() {
     async (m: Msg, emoji: string) => {
       setReaccionandoA(null);
       setReaccionError(null);
-      const wamid = m.wa_message_id;
+      const wamid = wamidDeMensaje(m);
       if (!wamid) return;
       // Se pinta ANTES de salir a la red: el viaje completo (enviar + recargar toda la
       // conversación) tardaba segundos y parecía que el toque no había hecho nada.
@@ -1422,9 +1422,9 @@ export default function MAsesorChatPage() {
                   {/* Cuelgan del borde inferior, medio salidas de la burbuja, como en
                       WhatsApp: así no empujan el texto ni se confunden con contenido. */}
                   {(() => {
-                    const rs: ReaccionEnUI[] = m.wa_message_id
-                      ? reacciones.get(m.wa_message_id) ?? []
-                      : [];
+                    // Por el WAMID real: en los salientes puede no ser `wa_message_id`.
+                    const clave = wamidDeMensaje(m) ?? m.wa_message_id;
+                    const rs: ReaccionEnUI[] = clave ? reacciones.get(clave) ?? [] : [];
                     if (rs.length === 0) return null;
                     return (
                       <div className="-mb-3 mt-0.5 flex justify-end gap-1">

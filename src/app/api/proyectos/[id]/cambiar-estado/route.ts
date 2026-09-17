@@ -103,8 +103,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       estadoAnteriorCodigo = (estPrev as { codigo?: string | null } | null)?.codigo ?? null;
     }
 
-    await cerrarSegmentoHistorialAbierto(sb, empresaId, pid);
-
     const now = new Date().toISOString();
     const cur = proyecto as {
       etapa_desarrollo?: string | null;
@@ -204,6 +202,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .eq("id", pid);
 
     if (e3) return NextResponse.json(errorResponse(e3.message), { status: 400 });
+
+    // --- Historial: cerrar el tramo viejo y abrir el nuevo -------------------
+    // RECIÉN acá, con el cambio de estado ya confirmado. Antes el cierre iba
+    // ANTES del update: si el update fallaba, el proyecto quedaba en el estado
+    // viejo pero SIN tramo abierto, y "días en estado" + el semáforo de SLA de
+    // esa tarjeta mostraban datos falsos sin avisar. Con el update ya hecho, el
+    // estado quedó bien pase lo que pase; y estos dos van pegados, sin las
+    // notificaciones en el medio, para achicar al mínimo la ventana entre
+    // cerrar el viejo y abrir el nuevo.
+    await cerrarSegmentoHistorialAbierto(sb, empresaId, pid);
+    await insertHistorialCambioEstado({
+      sb,
+      empresaId,
+      proyectoId: pid,
+      estadoAnteriorId: anteriorId,
+      estadoNuevoId: nuevoEstadoId,
+      tipoSlaSnapshot: tipoSla,
+      changedBy: auth.usuarioCatalogId,
+      responsableTecnicoId: tecnicoSnapshot,
+    });
 
     // Aviso al comercial y al PM del proyecto. Va después del update por la
     // misma razón que el de QA: si falla, el movimiento ya está guardado y no
@@ -314,17 +332,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         });
       }
     }
-
-    await insertHistorialCambioEstado({
-      sb,
-      empresaId,
-      proyectoId: pid,
-      estadoAnteriorId: anteriorId,
-      estadoNuevoId: nuevoEstadoId,
-      tipoSlaSnapshot: tipoSla,
-      changedBy: auth.usuarioCatalogId,
-      responsableTecnicoId: tecnicoSnapshot,
-    });
 
     const { data: row } = await sb.from("proyectos").select("*").eq("empresa_id", empresaId).eq("id", pid);
     const first = Array.isArray(row) ? row[0] : row;

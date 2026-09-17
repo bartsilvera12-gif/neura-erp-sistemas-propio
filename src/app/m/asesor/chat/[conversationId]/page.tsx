@@ -502,6 +502,17 @@ function MessageBody({
   );
 }
 
+/**
+ * `?s=1`: se abrió desde la lista de supervisión (cuenta sin agente de chat). Esos chats no
+ * están asignados a un agente propio, así que las rutas de asesor responden 403; se usan las
+ * del escritorio, que validan el alcance omnicanal. Se lee al momento de cada pedido para no
+ * depender del render del servidor.
+ */
+function modoSupervision(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("s") === "1";
+}
+
 export default function MAsesorChatPage() {
   const params = useParams<{ conversationId: string }>();
   const conversationId = (params?.conversationId as string) ?? "";
@@ -573,7 +584,9 @@ export default function MAsesorChatPage() {
       if (!silent) setLoading(true);
       try {
         const res = await fetchWithSupabaseSession(
-          `/api/mobile/asesor/conversations/${conversationId}`,
+          modoSupervision()
+            ? `/api/mobile/supervision/conversations/${conversationId}`
+            : `/api/mobile/asesor/conversations/${conversationId}`,
           { cache: "no-store" }
         );
         const data = await res.json().catch(() => ({}));
@@ -666,11 +679,12 @@ export default function MAsesorChatPage() {
       void (async () => {
         try {
           const res = await fetchWithSupabaseSession(
-            `/api/mobile/asesor/conversations/${conversationId}/send`,
+            modoSupervision() ? "/api/chat/send" : `/api/mobile/asesor/conversations/${conversationId}/send`,
             {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({
+                ...(modoSupervision() ? { conversation_id: conversationId } : {}),
                 message: msg,
                 // wamid → cita real en WhatsApp; contexto → snapshot para nuestra UI.
                 ...(reply?.wa_message_id ? { reply_to_wamid: reply.wa_message_id } : {}),
@@ -716,8 +730,9 @@ export default function MAsesorChatPage() {
         try {
           const fd = new FormData();
           fd.set("file", file, file.name || "nota-voz.webm");
+          if (modoSupervision()) fd.set("conversation_id", conversationId);
           const res = await fetchWithSupabaseSession(
-            `/api/mobile/asesor/conversations/${conversationId}/send-media`,
+            (modoSupervision() ? "/api/chat/send-media" : `/api/mobile/asesor/conversations/${conversationId}/send-media`),
             { method: "POST", body: fd }
           );
           const data = await res.json().catch(() => ({}));
@@ -747,11 +762,14 @@ export default function MAsesorChatPage() {
       void (async () => {
         try {
           const res = await fetchWithSupabaseSession(
-            `/api/mobile/asesor/conversations/${conversationId}/send-sticker`,
+            modoSupervision() ? "/api/chat/send-sticker" : `/api/mobile/asesor/conversations/${conversationId}/send-sticker`,
             {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ sticker_url: stickerUrl }),
+              body: JSON.stringify({
+                ...(modoSupervision() ? { conversation_id: conversationId } : {}),
+                sticker_url: stickerUrl,
+              }),
             }
           );
           const data = await res.json().catch(() => ({}));
@@ -882,11 +900,15 @@ export default function MAsesorChatPage() {
       setReaccionesLocales((prev) => ({ ...prev, [wamid]: emoji }));
       try {
         const res = await fetchWithSupabaseSession(
-          `/api/mobile/asesor/conversations/${conversationId}/react`,
+          modoSupervision() ? "/api/chat/react" : `/api/mobile/asesor/conversations/${conversationId}/react`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target_wa_message_id: wamid, emoji }),
+            body: JSON.stringify({
+              ...(modoSupervision() ? { conversation_id: conversationId } : {}),
+              target_wa_message_id: wamid,
+              emoji,
+            }),
           }
         );
         const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };

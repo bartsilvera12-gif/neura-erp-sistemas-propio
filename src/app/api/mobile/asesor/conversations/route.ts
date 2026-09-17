@@ -3,7 +3,7 @@ import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { fetchChatConversations } from "@/lib/chat/actions";
-import { getMyAgentOperationalPresence } from "@/lib/chat/chat-ops-actions";
+import { getMyAgentOperationalPresence, listChatQueues } from "@/lib/chat/chat-ops-actions";
 
 export const runtime = "nodejs";
 
@@ -21,10 +21,10 @@ export async function GET(request: Request) {
   // Todo el handler corre con el token disponible: `fetchChatConversations` y
   // `getMyAgentOperationalPresence` resuelven al usuario por su cuenta leyendo cookies, y
   // desde la app nativa no hay ninguna. Con el contexto lo encuentran sin cambiar sus firmas.
-  return conBearer(extractBearerTokenFromRequest(request), () => manejar());
+  return conBearer(extractBearerTokenFromRequest(request), () => manejar(request));
 }
 
-async function manejar() {
+async function manejar(request: Request) {
   // 1) Sesión.
   try {
     await requireEmpresaTenantServiceRole();
@@ -43,10 +43,12 @@ async function manejar() {
     }
 
     // 3) Solo sus asignadas (assignment="mine" aplica scope + filtro por su agent_id).
-    const { conversations } = await fetchChatConversations("inbox", {
-      assignment: "mine",
-      limit: 200,
-    });
+    const cola = new URL(request.url).searchParams.get("cola")?.trim() || null;
+    const [{ conversations }, queues] = await Promise.all([
+      fetchChatConversations("inbox", { assignment: "mine", queue_id: cola, limit: 200 }),
+      // Si las colas fallan, la lista igual sale: el selector simplemente no aparece.
+      listChatQueues().catch(() => []),
+    ]);
 
     const mapped = conversations.map((c) => ({
       id: c.id,
@@ -56,10 +58,16 @@ async function manejar() {
       unread_count: c.unread_count,
       contact_nombre: c.contact?.name ?? null,
       contact_telefono: c.contact?.phone_number ?? null,
+      queue_id: c.queue_id ?? null,
       window_open: null as boolean | null,
     }));
 
-    return NextResponse.json({ ok: true, is_agent: true, conversations: mapped });
+    return NextResponse.json({
+      ok: true,
+      is_agent: true,
+      queues: queues.filter((q) => q.is_active).map((q) => ({ id: q.id, nombre: q.nombre })),
+      conversations: mapped,
+    });
   } catch (e) {
     console.error("[mobile/asesor/conversations]", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });

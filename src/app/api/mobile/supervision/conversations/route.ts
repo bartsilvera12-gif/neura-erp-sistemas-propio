@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
 import { fetchChatConversations } from "@/lib/chat/actions";
+import { listChatQueues } from "@/lib/chat/chat-ops-actions";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 
 export const runtime = "nodejs";
@@ -35,12 +36,15 @@ export async function GET(request: Request) {
     }
 
     try {
-      const { conversations } = await fetchChatConversations("inbox", {
-        assignment: "all",
-        limit: 200,
-      });
+      const cola = new URL(request.url).searchParams.get("cola")?.trim() || null;
+      const [{ conversations }, queues] = await Promise.all([
+        fetchChatConversations("inbox", { assignment: "all", queue_id: cola, limit: 200 }),
+        // Si las colas fallan, la lista igual sale: el selector simplemente no aparece.
+        listChatQueues().catch(() => []),
+      ]);
       return NextResponse.json({
         ok: true,
+        queues: queues.filter((q) => q.is_active).map((q) => ({ id: q.id, nombre: q.nombre })),
         conversations: conversations.map((c) => ({
           id: c.id,
           status: c.status,
@@ -49,6 +53,7 @@ export async function GET(request: Request) {
           unread_count: c.unread_count,
           contact_nombre: c.contact?.name ?? null,
           contact_telefono: c.contact?.phone_number ?? null,
+          queue_id: c.queue_id ?? null,
         })),
       });
     } catch (e) {

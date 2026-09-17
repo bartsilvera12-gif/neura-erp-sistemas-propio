@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 import { attachmentCaptionForDisplay } from "@/lib/chat/message-erp-display";
@@ -20,8 +20,39 @@ function shortTime(iso: string | null): string {
   return d.toLocaleDateString("es-PY", { day: "2-digit", month: "2-digit" });
 }
 
+const CLAVE_COLA = "neura:asesor:cola";
+
 export default function MAsesorInboxPage() {
-  const { conversations: convs, isAgent, isLoading: loading, error, refresh } = useAsesorInbox();
+  // Cola elegida ("" = todas). Se recuerda en el dispositivo, como el filtro del escritorio.
+  const [cola, setCola] = useState("");
+  useEffect(() => {
+    try {
+      setCola(localStorage.getItem(CLAVE_COLA) ?? "");
+    } catch {
+      /* sin storage: todas */
+    }
+  }, []);
+  const elegirCola = useCallback((id: string) => {
+    setCola(id);
+    try {
+      localStorage.setItem(CLAVE_COLA, id);
+    } catch {
+      /* noop */
+    }
+  }, []);
+  const {
+    conversations: convs,
+    isAgent,
+    supervision,
+    queues,
+    isLoading: loading,
+    error,
+    refresh,
+  } = useAsesorInbox(cola);
+  // Si la cola guardada ya no está entre las del usuario, se vuelve a "Todas".
+  useEffect(() => {
+    if (cola && queues.length > 0 && !queues.some((q) => q.id === cola)) elegirCola("");
+  }, [cola, queues, elegirCola]);
   const [q, setQ] = useState("");
 
   // ── Deslizar hacia abajo para refrescar ────────────────────────────────────
@@ -89,7 +120,7 @@ export default function MAsesorInboxPage() {
         // iOS: respetar la barra de estado (notch). env(safe-area-inset-top)=0 en Android/web.
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
       >
-        <h1 className="text-base font-semibold">Mis conversaciones</h1>
+        <h1 className="text-base font-semibold">{supervision ? "Conversaciones" : "Mis conversaciones"}</h1>
         <p className="text-[11px] text-white/80">Contact Center · Neura</p>
         <input
           type="search"
@@ -100,6 +131,31 @@ export default function MAsesorInboxPage() {
           className="mt-2 w-full rounded-xl border border-white/20 bg-white/95 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-white/40"
           aria-label="Buscar conversación"
         />
+        {queues.length > 1 ? (
+          <div
+            className="-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none]"
+            role="radiogroup"
+            aria-label="Cola"
+          >
+            {[{ id: "", nombre: "Todas las colas" }, ...queues].map((q) => {
+              const activa = q.id === cola;
+              return (
+                <button
+                  key={q.id || "todas"}
+                  type="button"
+                  role="radio"
+                  aria-checked={activa}
+                  onClick={() => elegirCola(q.id)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${
+                    activa ? "bg-white text-[#3F8E91]" : "bg-white/15 text-white active:bg-white/25"
+                  }`}
+                >
+                  {q.nombre}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </header>
 
       <main
@@ -137,12 +193,18 @@ export default function MAsesorInboxPage() {
               Reintentar
             </button>
           </div>
-        ) : !isAgent ? (
+        ) : !isAgent && !supervision ? (
           <div className="p-6 text-center text-slate-500 text-sm">
             Tu usuario no está configurado como asesor de chat.
           </div>
         ) : convs.length === 0 ? (
-          <div className="p-6 text-center text-slate-500 text-sm">No tenés conversaciones asignadas.</div>
+          <div className="p-6 text-center text-slate-500 text-sm">
+            {cola
+              ? "No hay conversaciones en esta cola."
+              : supervision
+                ? "No hay conversaciones."
+                : "No tenés conversaciones asignadas."}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="p-6 text-center text-slate-500 text-sm">Sin resultados para “{q.trim()}”.</div>
         ) : (
@@ -152,7 +214,7 @@ export default function MAsesorInboxPage() {
               return (
                 <li key={c.id}>
                   <Link
-                    href={`/m/asesor/chat/${c.id}`}
+                    href={`/m/asesor/chat/${c.id}${supervision ? "?s=1" : ""}`}
                     className="flex items-center gap-3 px-4 py-3 active:bg-slate-100"
                   >
                     <div className="h-10 w-10 shrink-0 rounded-full bg-[#4FAEB2]/15 text-[#3F8E91] grid place-items-center font-semibold">

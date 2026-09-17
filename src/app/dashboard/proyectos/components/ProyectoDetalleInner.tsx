@@ -1320,6 +1320,15 @@ export default function ProyectoDetalleInner({
     setProjectManagerId(pm);
     setBloqueoTipo(bt);
     setBloqueoMotivo(bm);
+    // Estos tres se leían de la base pero NUNCA se hidrataban al formulario: se
+    // veían vacíos y, al guardar cualquier otro campo, se mandaban vacíos y se
+    // borraban en la base. Además la firma en vivo (que sale del estado) no
+    // coincidía con el snapshot (que sale de estos valores), así que el botón
+    // Guardar quedaba habilitado apenas se abría la ficha. Al setearlos, el
+    // formulario muestra el dato real y el snapshot vuelve a coincidir.
+    setBloqueoResponsable(br);
+    setBloqueoProximaAccion(bpa);
+    setCancelacionMotivo(cm);
     setPrioridad(prio);
     setFechaPrometida(fProm);
     setDatosSnapshot(

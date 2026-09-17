@@ -55,24 +55,29 @@ export async function avisarSoporte(
   }
 }
 
+/** Estados del ticket que le tocan a las PM: son ellas las que hablan con el cliente. */
+const TITULO_PARA_PM: Record<string, (n: number) => string> = {
+  resuelto: (n) => `Ticket ${numeroTicket(n)} resuelto`,
+  falta_informacion: (n) => `Ticket ${numeroTicket(n)} necesita información del cliente`,
+};
+
 /**
- * Avisa a las PM que un ticket quedó Resuelto. Son quienes le responden al
- * cliente, así que se enteran sin tener que mirar el listado. Nunca lanza: ver
- * `avisarSoporte`.
+ * Avisa a las PM que un ticket llegó a un estado que depende de ellas: Resuelto
+ * (hay que avisarle al cliente) o Falta información (hay que ir a pedirla). Les
+ * llega estén donde estén: la campanita vive en el encabezado de todo el
+ * sistema. Nunca lanza: ver `avisarSoporte`.
  */
-export async function avisarResueltoAPMs(
+export async function avisarEstadoAPMs(
   auth: SoporteContexto,
-  ticket: { id: string; numero: number; asunto: string; cliente_nombre?: string | null }
+  ticket: { id: string; numero: number; asunto: string; cliente_nombre?: string | null },
+  estadoCodigo: string
 ): Promise<void> {
+  const titulo = TITULO_PARA_PM[estadoCodigo];
+  if (!titulo) return;
   const equipo = await personasDeEmpresa(auth.empresaId);
   const cuerpo = ticket.cliente_nombre ? `${ticket.cliente_nombre} · ${ticket.asunto}` : ticket.asunto;
   for (const pm of equipo.filter((p) => p.es_project_manager)) {
-    await avisarSoporte(auth, {
-      usuarioId: pm.id,
-      titulo: `Ticket ${numeroTicket(ticket.numero)} resuelto`,
-      cuerpo,
-      ticketId: ticket.id,
-    });
+    await avisarSoporte(auth, { usuarioId: pm.id, titulo: titulo(ticket.numero), cuerpo, ticketId: ticket.id });
   }
 }
 

@@ -1265,6 +1265,10 @@ export default function ProyectoDetalleInner({
   const [clientes, setClientes] = useState<{ id: string; empresa?: string | null; nombre_contacto?: string | null }[]>([]);
   const [datosSnapshot, setDatosSnapshot] = useState("");
   const [guardandoDatos, setGuardandoDatos] = useState(false);
+  // Versión (updated_at) del proyecto tal como se cargó: viaja en el PATCH para
+  // el locking optimista (#7). Se refresca con la respuesta de cada guardado y
+  // en cada recarga, así dos guardados seguidos no se auto-chocan.
+  const versionRef = useRef<string | null>(null);
 
   /**
    * `silencioso` refresca sin encender el spinner: se usa después de guardar,
@@ -1295,6 +1299,16 @@ export default function ProyectoDetalleInner({
     if (silencioso) return;
 
     const p = j.data.proyecto;
+    // Versión para el locking optimista: se toma SOLO acá, cuando el formulario
+    // se re-hidrata de verdad. Se guarda tal cual la manda el server (string con
+    // microsegundos), sin re-parsear a Date, para que el `.eq` del PATCH matchee
+    // exacto. En el reload silencioso NO se toca: el form sigue mostrando lo que
+    // el usuario tenía sobre la versión vieja, así que su próximo save debe
+    // seguir comparando contra esa versión (si otro guardó, dará 409).
+    {
+      const ua = (p as { updated_at?: unknown }).updated_at;
+      versionRef.current = typeof ua === "string" ? ua : null;
+    }
     const merged = coalesceBriefData(p.brief_data);
     const saas = readSaasBriefData(p.brief_data);
     const lists: Record<string, string[]> = {};
@@ -1725,17 +1739,29 @@ export default function ProyectoDetalleInner({
         // instante exacto. Antes se forzaba el mediodía y la hora que eligiera
         // el usuario se perdía.
         fecha_prometida: fechaPrometida ? new Date(fechaPrometida).toISOString() : null,
+        // Locking optimista (#7): la versión que se cargó. Si otro guardó antes,
+        // el server responde 409 y NO se pisa su trabajo.
+        expected_updated_at: versionRef.current ?? undefined,
       }),
     });
-    const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+    const j = (await res.json().catch(() => null)) as
+      | { success?: boolean; error?: string; data?: { updated_at?: unknown } }
+      | null;
     if (!res.ok || !j?.success) {
+      // El 409 (conflicto) cae acá: se muestra el aviso del server y NO se marca
+      // limpio el formulario, así el usuario conserva sus cambios para recargar
+      // y volver a aplicarlos.
       setErr(j?.error ?? "No se pudo guardar");
       return;
     }
 
-    // Guardado confirmado por el servidor. El formulario se marca limpio acá,
-    // con lo que el usuario acaba de escribir, y NO se espera la recarga: el
-    // botón se apaga apenas responde el PATCH.
+    // Guardado confirmado por el servidor. Se refresca la versión con el
+    // updated_at que devolvió el PATCH (ya bumpeado por el trigger), así un
+    // segundo guardado seguido no se auto-choca.
+    if (typeof j.data?.updated_at === "string") versionRef.current = j.data.updated_at;
+
+    // El formulario se marca limpio acá, con lo que el usuario acaba de escribir,
+    // y NO se espera la recarga: el botón se apaga apenas responde el PATCH.
     setDatosSnapshot(datosFirma);
 
     // Reconciliación en segundo plano: trae historial, SLA y lo que el servidor

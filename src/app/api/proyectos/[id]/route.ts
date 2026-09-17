@@ -674,17 +674,45 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json(errorResponse("Nada para actualizar"), { status: 400 });
     }
 
-    const { data: updated, error } = await sb
-      .from("proyectos")
-      .update(patch)
-      .eq("empresa_id", auth.empresaId)
-      .eq("id", pid)
-      .select("*");
+    // Locking optimista (#7): si el cliente mandó el `updated_at` que cargó, el
+    // UPDATE sólo pega si la fila NO cambió desde entonces (`.eq("updated_at")`,
+    // que el trigger `set_updated_at` bumpea en cada escritura). Así dos personas
+    // editando el mismo proyecto no se pisan en silencio: el segundo save que
+    // llega tarde no escribe y el usuario se entera. Sin ese campo, se comporta
+    // como antes (compatibilidad con clientes viejos).
+    const expectedUpdatedAt =
+      typeof body.expected_updated_at === "string" && body.expected_updated_at.trim()
+        ? body.expected_updated_at.trim()
+        : null;
+
+    let q = sb.from("proyectos").update(patch).eq("empresa_id", auth.empresaId).eq("id", pid);
+    if (expectedUpdatedAt) q = q.eq("updated_at", expectedUpdatedAt);
+    const { data: updated, error } = await q.select("*");
 
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 
     const row = Array.isArray(updated) ? updated[0] : updated;
-    if (!row) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+    if (!row) {
+      // 0 filas con lock activo: puede ser conflicto (otro guardó antes) o que el
+      // proyecto ya no exista. Se distingue con una consulta de existencia.
+      if (expectedUpdatedAt) {
+        const { data: sigue } = await sb
+          .from("proyectos")
+          .select("id")
+          .eq("empresa_id", auth.empresaId)
+          .eq("id", pid)
+          .maybeSingle();
+        if (sigue) {
+          return NextResponse.json(
+            errorResponse(
+              "Otra persona guardó cambios en este proyecto mientras lo editabas. Actualizá para ver los suyos; tus cambios no se guardaron para no pisarlos."
+            ),
+            { status: 409 }
+          );
+        }
+      }
+      return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
+    }
 
     // Reasignación de técnico → queda en el historial. No bloqueante: el update ya
     // se aplicó, un fallo del registro no debe voltear la operación.

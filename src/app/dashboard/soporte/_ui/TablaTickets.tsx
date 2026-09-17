@@ -79,10 +79,16 @@ export default function TablaTickets({
   pestanas,
   soloMios = false,
   ocultarResponsable = false,
+  abrirPestanaConDatos = false,
 }: {
   pestanas: readonly PestanaDef[];
   soloMios?: boolean;
   ocultarResponsable?: boolean;
+  /**
+   * Si se entra sin elegir pestaña y la primera está vacía, se abre la primera
+   * que tenga tickets (p. ej. QA entra a "Mis tickets" y va directo a "Por revisar").
+   */
+  abrirPestanaConDatos?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -188,6 +194,16 @@ export default function TablaTickets({
     if (!p.estados) return Object.values(pe).reduce((s, n) => s + n, 0);
     return p.estados.reduce((s, e) => s + (pe[e] ?? 0), 0);
   };
+
+  const pestanaElegida = params.has("pestana");
+  useEffect(() => {
+    if (!abrirPestanaConDatos || pestanaElegida || !datos) return;
+    if (contador(pestana) > 0) return;
+    const conDatos = pestanas.find((p) => contador(p) > 0);
+    if (conDatos && conDatos.id !== pestana.id) cambiar({ pestana: conDatos.id });
+    // `contador` sale de `datos`: alcanza con reaccionar a los datos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirPestanaConDatos, pestanaElegida, datos]);
 
   const op = useMemo(() => {
     const todos = (etq: string) => [{ value: "", label: etq }];

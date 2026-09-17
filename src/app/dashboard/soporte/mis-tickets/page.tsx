@@ -25,7 +25,7 @@ export default function SoporteMisTicketsPage() {
     <Pagina>
       <Encabezado titulo="Mis tickets" subtitulo="Los tickets donde tenés la próxima acción" icono={UserRoundCheck} tono="violeta" />
       <Suspense fallback={<Cargando />}>
-        <TablaTickets pestanas={PESTANAS} soloMios ocultarResponsable />
+        <TablaTickets pestanas={PESTANAS} soloMios ocultarResponsable abrirPestanaConDatos />
       </Suspense>
     </Pagina>
   );

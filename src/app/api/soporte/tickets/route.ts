@@ -10,6 +10,7 @@ const POR_PAGINA_MAX = 100;
  * GET /api/soporte/tickets
  *
  * Filtros: pestana, estados (lista separada por comas; manda sobre pestana),
+ * cargados=1 (los que cargó quien consulta),
  * q (texto o #número), cliente_id, estado, tipo, responsable_id, prioridad,
  * mios=1 (asignados a quien consulta), revision=1 (con una revisión de QA sin
  * terminar asignada a quien consulta), pagina, por_pagina.
@@ -39,6 +40,8 @@ export async function GET(request: Request) {
         if (/^\d+$/.test(numero)) b = b.eq("numero", Number(numero));
         else b = b.ilike("asunto", `%${texto.replace(/[%_]/g, "")}%`);
       }
+      // Los que cargó quien consulta: sirve para seguir lo que uno mismo derivó.
+      if (p.get("cargados") === "1") b = b.eq("created_by", auth.usuarioId);
       for (const [param, columna] of [
         ["cliente_id", "cliente_id"],
         ["estado", "estado_codigo"],

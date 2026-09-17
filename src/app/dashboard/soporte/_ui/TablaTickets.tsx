@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlarmClock, ChevronLeft, ChevronRight, Inbox, Search, X } from "lucide-react";
+import { AlarmClock, ChevronLeft, ChevronRight, Inbox, Search, UserPen, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   apiSoporte,
@@ -41,6 +41,7 @@ type TicketLista = {
   tipo_codigo: string;
   clasificacion_nombre: string | null;
   responsable: Persona | null;
+  creador: Persona | null;
   updated_at: string;
   sla: { estado: string };
 };
@@ -102,7 +103,9 @@ export default function TablaTickets({
     estado: params.get("estado") ?? "",
     tipo: params.get("tipo") ?? "",
     responsable_id: params.get("responsable_id") ?? "",
+    cargados: params.get("cargados") ?? "",
   };
+  const soloCargados = filtros.cargados === "1";
   const pagina = Math.max(1, Number(params.get("pagina") ?? "1") || 1);
 
   const consulta = useMemo(() => {
@@ -249,7 +252,7 @@ export default function TablaTickets({
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)]">
         {/* Filtros */}
-        <div className="grid gap-2 border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(130px,1fr))_auto]">
+        <div className="grid gap-2 border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(130px,1fr))_auto_auto]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
             <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por asunto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
@@ -262,12 +265,25 @@ export default function TablaTickets({
           ) : (
             <SelectorBuscable tam="sm" avatares ariaLabel="Asignado a" value={filtros.responsable_id} onChange={(v) => cambiar({ responsable_id: v || null })} opciones={op.responsable} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
           )}
+          <button
+            type="button"
+            onClick={() => cambiar({ cargados: soloCargados ? null : "1" })}
+            aria-pressed={soloCargados}
+            title="Sólo los tickets que cargué yo"
+            className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-[12px] font-semibold transition-colors ${
+              soloCargados
+                ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+            }`}
+          >
+            <UserPen className="h-3.5 w-3.5" aria-hidden /> Cargados por mí
+          </button>
           {hayFiltros ? (
             <button
               type="button"
               onClick={() => {
                 setTexto("");
-                cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null });
+                cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null, cargados: null });
               }}
               className="inline-flex items-center justify-center gap-1 rounded-xl px-2.5 text-[12px] font-semibold text-rose-500 hover:bg-rose-50"
             >
@@ -297,7 +313,7 @@ export default function TablaTickets({
           <>
             {/* Desktop */}
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[920px] text-left text-[13px]">
+              <table className="w-full min-w-[1040px] text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                     <th className="w-24 px-5 py-3">#</th>
@@ -307,6 +323,7 @@ export default function TablaTickets({
                     <th className="px-3 py-3">Estado</th>
                     <th className="px-3 py-3">Clasificación</th>
                     {ocultarResponsable ? null : <th className="px-3 py-3">Asignado a</th>}
+                    <th className="px-3 py-3">Cargado por</th>
                     <th className="px-5 py-3 text-right">Actualizado</th>
                   </tr>
                 </thead>
@@ -381,6 +398,16 @@ export default function TablaTickets({
                           </div>
                         </td>
                       )}
+                      <td className="px-3 py-3.5">
+                        {t.creador ? (
+                          <span className="inline-flex items-center gap-2 font-medium text-slate-700">
+                            <Avatar nombre={t.creador.nombre} tam={24} />
+                            {t.creador.nombre}
+                          </span>
+                        ) : (
+                          <span className="text-[12px] italic text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-500">{fechaHora(t.updated_at)}</td>
                     </tr>
                   ))}
@@ -404,6 +431,7 @@ export default function TablaTickets({
                       <Fase n={t.fase} />
                       {t.clasificacion_nombre ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600">{t.clasificacion_nombre}</span> : null}
                     </div>
+                    {t.creador ? <p className="mt-1 text-[11.5px] text-slate-400">Cargado por {t.creador.nombre}</p> : null}
                   </Link>
                 </li>
               ))}

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, FolderKanban, Headphones, MessageCircle } from "lucide-react";
 import { useMisModulos } from "@/shared/hooks/useMisModulos";
+import useSWR from "swr";
 import { useNotificaciones } from "@/shared/hooks/useNotificaciones";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 /**
  * Barra de pestañas de la app del asesor.
@@ -26,18 +28,35 @@ const TABS = [
   { href: "/m/asesor/proyectos", label: "Proyectos", Icon: FolderKanban, exact: false, modulo: null },
   { href: "/m/asesor/avisos", label: "Avisos", Icon: Bell, exact: false, modulo: null },
   /**
-   * Soporte abre el módulo REAL (/dashboard/soporte), tal cual funciona en el navegador, y
-   * no una copia metida adentro de /m/asesor. El módulo tiene decenas de enlaces internos a
-   * /dashboard/soporte/...: una copia se saldría al primer toque, salvo reescribirlos todos en
-   * código de otro módulo. Así no se duplica nada y cualquier cambio en Soporte aparece acá
-   * solo. Se vuelve con el gesto de atrás.
+   * Soporte abre el módulo REAL, tal cual funciona en el navegador, y no una copia metida
+   * adentro de /m/asesor. El módulo tiene decenas de enlaces internos a /dashboard/soporte/...:
+   * una copia se saldría al primer toque, salvo reescribirlos todos en código de otro módulo.
    *
-   * Solo aparece con el módulo `soporte`, que es la misma regla que aplica el layout del
-   * módulo: sin la fila en usuario_modulos (o rol admin) la pestaña no se dibuja, en vez de
-   * llevar a una pantalla de "Acceso denegado".
+   * Va a /tickets y no al tablero, igual que el menú lateral: PM, QA y Desarrollo no ven el
+   * Dashboard, y con ese enlace caían en una página que no pueden abrir.
    */
-  { href: "/dashboard/soporte", label: "Soporte", Icon: Headphones, exact: false, modulo: "soporte" },
+  { href: "/dashboard/soporte/tickets", label: "Soporte", Icon: Headphones, exact: false, modulo: "soporte" },
 ] as const;
+
+/**
+ * ¿Puede entrar a Soporte? Lo responde el propio módulo (`/api/soporte/acceso`), con su regla
+ * exacta: rol admin, super admin o fila explícita en `usuario_modulos`.
+ *
+ * NO se usa `tieneModulo("soporte")` de la lista general: esa lista, para un usuario común,
+ * exige además que el módulo esté activo en `empresa_modulos`, y Soporte no lo exige. Con ese
+ * chequeo alguien podía entrar a Soporte sin que la pestaña apareciera nunca.
+ */
+function useAccesoSoporte(habilitado: boolean): boolean {
+  const { data } = useSWR(
+    habilitado ? "/api/soporte/acceso" : null,
+    async (url: string) => {
+      const r = await fetchWithSupabaseSession(url, { cache: "no-store" });
+      return r.ok;
+    },
+    { revalidateOnFocus: false }
+  );
+  return data === true;
+}
 
 export default function AsesorTabBar() {
   const { tieneModulo } = useMisModulos();
@@ -45,6 +64,7 @@ export default function AsesorTabBar() {
   const pathname = usePathname() ?? "";
   /* SWR deduplica: comparte la misma petición con la pantalla de Avisos, no la repite. */
   const { noLeidas } = useNotificaciones({ enabled: habilitado });
+  const accesoSoporte = useAccesoSoporte(habilitado);
 
   if (!habilitado) return null;
 
@@ -55,7 +75,7 @@ export default function AsesorTabBar() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="flex items-stretch">
-        {TABS.filter((t) => !t.modulo || tieneModulo(t.modulo) === true).map(({ href, label, Icon, exact }) => {
+        {TABS.filter((t) => t.modulo !== "soporte" || accesoSoporte).map(({ href, label, Icon, exact }) => {
           const active = exact ? pathname === href : pathname.startsWith(href);
           return (
             <li key={href} className="flex-1">

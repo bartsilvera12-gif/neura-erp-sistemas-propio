@@ -24,6 +24,7 @@ import {
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { agruparReacciones, EMOJIS_REACCION, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
+import { useAsesorInbox, type AsesorConv } from "@/shared/hooks/useAsesorInbox";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
 import {
   extractBodyPlaceholderKeysOrdered,
@@ -934,6 +935,86 @@ export default function MAsesorChatPage() {
   // "Guardar en Fotos", que los asesores usan, y no se lo pisa.
   const [reaccionandoA, setReaccionandoA] = useState<Msg | null>(null);
   const [reaccionError, setReaccionError] = useState<string | null>(null);
+
+  // ── Reenviar ────────────────────────────────────────────────────────────────
+  // Destinos: la misma lista de la bandeja (asesor: sus chats; supervisión: su alcance), y
+  // cada envío va por la ruta que corresponde a ese modo, que vuelve a validar el permiso.
+  const bandeja = useAsesorInbox();
+  const [reenviando, setReenviando] = useState<Msg | null>(null);
+  const [reenvioDestino, setReenvioDestino] = useState<AsesorConv | null>(null);
+  const [reenvioBusqueda, setReenvioBusqueda] = useState("");
+  const [reenvioEnviando, setReenvioEnviando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  const reenviar = useCallback(
+    async (m: Msg, destino: AsesorConv) => {
+      const sup = bandeja.supervision;
+      const base = `/api/mobile/asesor/conversations/${destino.id}`;
+      const extra = sup ? { conversation_id: destino.id } : {};
+      const postJson = (url: string, body: Record<string, unknown>) =>
+        fetchWithSupabaseSession(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...extra, ...body }),
+        });
+
+      let res: Response;
+      const url = mediaUrl(m);
+      if (m.message_type === "text") {
+        res = await postJson(sup ? "/api/chat/send" : `${base}/send`, { message: m.content ?? "" });
+      } else if (m.message_type === "sticker" && getErpAttachmentPublicUrl(m.raw_payload as Parameters<typeof getErpAttachmentPublicUrl>[0])) {
+        const stable = getErpAttachmentPublicUrl(m.raw_payload as Parameters<typeof getErpAttachmentPublicUrl>[0]);
+        res = await postJson(sup ? "/api/chat/send-sticker" : `${base}/send-sticker`, { sticker_url: stable });
+      } else if (url && ["image", "document", "audio", "video"].includes(m.message_type)) {
+        // El archivo se baja y se vuelve a subir: así sale como un envío normal, con la copia
+        // en el storage y el transcodificado de audio/video que ya hace send-media.
+        const r = await fetch(url, { mode: "cors" });
+        if (!r.ok) throw new Error("No se pudo leer el archivo original");
+        const blob = await r.blob();
+        const raw = (m.raw_payload ?? null) as Parameters<typeof getErpAttachmentPublicUrl>[0];
+        const ext = ((blob.type || "").split("/")[1] || "bin").split(";")[0];
+        const nombre =
+          getErpAttachmentFilename(raw) ?? getMetaInboundDocumentFilename(raw) ?? `${m.message_type}-${Date.now()}.${ext}`;
+        const fd = new FormData();
+        fd.set("file", new File([blob], nombre, { type: blob.type || "application/octet-stream" }));
+        const caption = m.message_type === "audio" ? null : imageCaption(m);
+        if (caption) fd.set("caption", caption);
+        if (sup) fd.set("conversation_id", destino.id);
+        res = await fetchWithSupabaseSession(sup ? "/api/chat/send-media" : `${base}/send-media`, {
+          method: "POST",
+          body: fd,
+        });
+      } else {
+        throw new Error("Este tipo de mensaje no se puede reenviar");
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "No se pudo reenviar");
+    },
+    [bandeja.supervision]
+  );
+
+  const confirmarReenvio = useCallback(async () => {
+    if (!reenviando || !reenvioDestino || reenvioEnviando) return;
+    setReenvioEnviando(true);
+    try {
+      await reenviar(reenviando, reenvioDestino);
+      setAviso(`Reenviado a ${reenvioDestino.contact_nombre || reenvioDestino.contact_telefono || "el chat"}`);
+      setReenviando(null);
+      setReenvioDestino(null);
+      setReenvioBusqueda("");
+      if (reenvioDestino.id === conversationId) void load(true);
+    } catch (e) {
+      setReaccionError(e instanceof Error ? e.message : "No se pudo reenviar");
+    } finally {
+      setReenvioEnviando(false);
+    }
+  }, [reenviando, reenvioDestino, reenvioEnviando, reenviar, conversationId, load]);
+
+  useEffect(() => {
+    if (!aviso) return;
+    const t = window.setTimeout(() => setAviso(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [aviso]);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cancelarHold = useCallback(() => {
@@ -1060,7 +1141,9 @@ export default function MAsesorChatPage() {
   const onBubbleTouchStart = useCallback((e: React.TouchEvent, m: Msg) => {
     // Arrancando pegado al borde manda el gesto de volver, no el de citar ni el de reaccionar.
     if (e.touches[0].clientX <= BORDE) return;
-    if (puedeReaccionar(m)) {
+    // El toque largo abre la hoja para reaccionar, copiar o reenviar. Reaccionar pide WAMID;
+    // reenviar no, así que la hoja se abre para cualquier mensaje.
+    if (m.message_type !== "reaction") {
       cancelarHold();
       holdTimer.current = setTimeout(() => {
         holdTimer.current = null;
@@ -1834,6 +1917,7 @@ export default function MAsesorChatPage() {
             <p className="mb-2 line-clamp-2 text-[12px] text-slate-500">
               {reaccionandoA.content?.trim() || `[${reaccionandoA.message_type}]`}
             </p>
+            {puedeReaccionar(reaccionandoA) ? (
             <div className="flex justify-between gap-1 pb-1">
               {EMOJIS_REACCION.map((e) => (
                 <button
@@ -1847,6 +1931,18 @@ export default function MAsesorChatPage() {
                 </button>
               ))}
             </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => {
+                setReenviando(reaccionandoA);
+                setReaccionandoA(null);
+              }}
+              className="mt-1 w-full rounded-xl py-2.5 text-[14px] font-medium text-slate-600 active:bg-slate-100"
+            >
+              Reenviar
+            </button>
 
             {reaccionandoA.content?.trim() ? (
               <button
@@ -1861,6 +1957,86 @@ export default function MAsesorChatPage() {
               </button>
             ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {reenviando ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/30"
+          onClick={() => !reenvioEnviando && (setReenviando(null), setReenvioDestino(null))}
+        >
+          <div
+            className="flex max-h-[80svh] w-full flex-col rounded-t-3xl bg-white pt-3 shadow-2xl"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-300" />
+            <div className="px-4">
+              <h2 className="text-[15px] font-semibold text-slate-900">Reenviar a…</h2>
+              <p className="mt-0.5 line-clamp-1 text-[12px] text-slate-500">
+                {reenviando.content?.trim() || `[${reenviando.message_type}]`}
+              </p>
+              <input
+                type="search"
+                value={reenvioBusqueda}
+                onChange={(e) => setReenvioBusqueda(e.target.value)}
+                placeholder="Buscar chat o número…"
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] outline-none focus:border-[#4FAEB2]"
+              />
+            </div>
+            <ul className="mt-2 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+              {bandeja.conversations
+                .filter((c) => {
+                  const t = reenvioBusqueda.trim().toLowerCase();
+                  if (!t) return true;
+                  return (c.contact_nombre ?? "").toLowerCase().includes(t) || (c.contact_telefono ?? "").includes(t);
+                })
+                .map((c) => {
+                  const nombre = c.contact_nombre || c.contact_telefono || "Contacto";
+                  const elegido = reenvioDestino?.id === c.id;
+                  return (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => setReenvioDestino(elegido ? null : c)}
+                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${elegido ? "bg-[#4FAEB2]/10" : "active:bg-slate-50"}`}
+                      >
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#4FAEB2]/15 font-semibold text-[#3F8E91]">
+                          {nombre.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px] font-medium text-slate-800">{nombre}</span>
+                          {c.contact_nombre && c.contact_telefono ? (
+                            <span className="block text-[12px] text-slate-500">{c.contact_telefono}</span>
+                          ) : null}
+                        </span>
+                        {elegido ? <span className="text-[#3F8E91]">✓</span> : null}
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+            <div className="px-4 pt-2">
+              <button
+                type="button"
+                disabled={!reenvioDestino || reenvioEnviando}
+                onClick={() => void confirmarReenvio()}
+                className="w-full rounded-xl bg-[#3F8E91] py-3 text-[14px] font-semibold text-white disabled:opacity-40"
+              >
+                {reenvioEnviando
+                  ? "Reenviando…"
+                  : reenvioDestino
+                    ? `Reenviar a ${reenvioDestino.contact_nombre || reenvioDestino.contact_telefono || "este chat"}`
+                    : "Elegí un chat"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {aviso ? (
+        <div className="fixed inset-x-3 bottom-24 z-50 rounded-xl bg-slate-900/90 px-3 py-2 text-center text-[13px] text-white shadow-lg">
+          {aviso}
         </div>
       ) : null}
 

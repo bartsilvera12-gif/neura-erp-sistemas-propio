@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { exigirPermisoQaMutacion } from "@/lib/proyectos/qa-permisos";
 import {
   QA_OBSERVACION_COMENTARIO_SELECT,
   bumpProyectoActividad,
@@ -27,6 +28,8 @@ export async function DELETE(
 
   try {
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const gate = await exigirPermisoQaMutacion(sb, auth.empresaId, auth.usuarioCatalogId, pid);
+    if (!gate.ok) return NextResponse.json(errorResponse(gate.message), { status: gate.status });
 
     const { data: comentario, error: errC } = await sb
       .from("proyecto_qa_observacion_comentarios")
@@ -102,6 +105,8 @@ export async function PATCH(
     if (!texto) return NextResponse.json(errorResponse("texto obligatorio"), { status: 400 });
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const gate = await exigirPermisoQaMutacion(sb, auth.empresaId, auth.usuarioCatalogId, pid);
+    if (!gate.ok) return NextResponse.json(errorResponse(gate.message), { status: gate.status });
 
     const { data: comentario, error: errC } = await sb
       .from("proyecto_qa_observacion_comentarios")

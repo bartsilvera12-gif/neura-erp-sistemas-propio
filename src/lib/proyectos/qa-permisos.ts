@@ -133,3 +133,35 @@ export async function permisoQADe(
 export function origenesVisibles(permiso: PermisoQA): string[] {
   return permiso.puedeVerInterno ? ["qa", "tecnico", "interno"] : ["qa", "tecnico"];
 }
+
+export type ExigirQaResult =
+  | { ok: true; permiso: PermisoQA }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Guarda para las rutas que MUTAN QA. Antes casi ninguna chequeaba nada más allá
+ * del módulo, así que cualquiera con Proyectos (incluido un comercial, que ni ve
+ * QA) podía aprobar, editar o borrar QA de un proyecto ajeno.
+ *
+ *  - Sin `soloQa`: pasa cualquiera con acceso a QA del proyecto (QA, PM, admin o
+ *    el técnico responsable). Bloquea al comercial y a los ajenos.
+ *  - Con `soloQa: true`: además exige la vista `qa` (QA, PM o admin). Es para lo
+ *    que es decisión de QA o estructura del checklist: el veredicto, editar/
+ *    borrar observaciones, clonar, reordenar, secciones, etc. El técnico no.
+ */
+export async function exigirPermisoQaMutacion(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  usuarioId: string,
+  proyectoId: string,
+  opts?: { soloQa?: boolean }
+): Promise<ExigirQaResult> {
+  const permiso = await permisoQADe(sb, empresaId, usuarioId, proyectoId);
+  if (permiso.vista === null) {
+    return { ok: false, status: 403, message: "No tenés acceso a QA de este proyecto." };
+  }
+  if (opts?.soloQa && permiso.vista !== "qa") {
+    return { ok: false, status: 403, message: "Solo QA, un PM o un administrador pueden hacer esto." };
+  }
+  return { ok: true, permiso };
+}

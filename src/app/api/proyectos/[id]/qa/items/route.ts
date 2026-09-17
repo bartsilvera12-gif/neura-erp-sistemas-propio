@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { exigirPermisoQaMutacion } from "@/lib/proyectos/qa-permisos";
 import { bumpProyectoActividad, registrarEventoQA, siguienteSortOrder } from "@/lib/proyectos/qa-shared";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -20,6 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!etapa_id) return NextResponse.json(errorResponse("etapa_id obligatorio"), { status: 400 });
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const gate = await exigirPermisoQaMutacion(sb, auth.empresaId, auth.usuarioCatalogId, pid, { soloQa: true });
+    if (!gate.ok) return NextResponse.json(errorResponse(gate.message), { status: gate.status });
     const { data: etapa, error: errE } = await sb
       .from("proyecto_qa_etapas")
       .select("id, grupo_id")

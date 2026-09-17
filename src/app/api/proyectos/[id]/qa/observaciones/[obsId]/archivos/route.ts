@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { exigirPermisoQaMutacion } from "@/lib/proyectos/qa-permisos";
 import {
   PROYECTOS_ARCHIVO_MAX_BYTES,
   PROYECTOS_BUCKET,
@@ -62,6 +63,8 @@ export async function POST(
     const nombre = (file.name || "captura").trim().slice(0, 200) || "captura";
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const gate = await exigirPermisoQaMutacion(sb, auth.empresaId, auth.usuarioCatalogId, pid);
+    if (!gate.ok) return NextResponse.json(errorResponse(gate.message), { status: gate.status });
     const observacion = await fetchObservacion(sb, auth.empresaId, pid, oid);
     if (!observacion) {
       return NextResponse.json(errorResponse("Observación no encontrada"), { status: 404 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { exigirPermisoQaMutacion } from "@/lib/proyectos/qa-permisos";
 import { bumpProyectoActividad, registrarEventoQA } from "@/lib/proyectos/qa-shared";
 
 type ItemActual = {
@@ -29,6 +30,8 @@ export async function PATCH(
     if (!body) return NextResponse.json(errorResponse("Body inválido"), { status: 400 });
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const gate = await exigirPermisoQaMutacion(sb, auth.empresaId, auth.usuarioCatalogId, pid, { soloQa: true });
+    if (!gate.ok) return NextResponse.json(errorResponse(gate.message), { status: gate.status });
 
     const { data: actual, error: errA } = await sb
       .from("proyecto_qa_items")
@@ -140,6 +143,8 @@ export async function DELETE(
 
   try {
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const gate = await exigirPermisoQaMutacion(sb, auth.empresaId, auth.usuarioCatalogId, pid, { soloQa: true });
+    if (!gate.ok) return NextResponse.json(errorResponse(gate.message), { status: gate.status });
     const { data: item } = await sb
       .from("proyecto_qa_items")
       .select("texto, etapa_id")

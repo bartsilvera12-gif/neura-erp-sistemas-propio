@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { exigirPermisoQaMutacion } from "@/lib/proyectos/qa-permisos";
 import {
   QA_SECCION_SELECT,
   bumpProyectoActividad,
@@ -50,6 +51,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+    const gate = await exigirPermisoQaMutacion(sb, auth.empresaId, auth.usuarioCatalogId, pid, { soloQa: true });
+    if (!gate.ok) return NextResponse.json(errorResponse(gate.message), { status: gate.status });
 
     const [origen, seccionesOrigen, seccionesDestino] = await Promise.all([
       sb

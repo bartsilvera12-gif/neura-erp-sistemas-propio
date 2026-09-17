@@ -1,13 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, ListChecks, Play, RotateCcw, Send, XCircle } from "lucide-react";
+import { CheckCircle2, ListChecks, Paperclip, Play, RotateCcw, Send, X, XCircle } from "lucide-react";
 import { ESTADOS_SUBTAREA, TRANSICIONES_SUBTAREA, subtareaAbierta, type EstadoSubtarea } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
-import { apiSoporte, fechaHora, obtenerSubtareas, subtareasEnMemoria, type Persona } from "./api";
+import { apiSoporte, fechaHora, obtenerSubtareas, subirArchivos, subtareasEnMemoria, type Persona } from "./api";
 import { Aviso, Avatar, Boton, Insignia, TONOS, TONO_AREA, claseInput } from "./ui";
 
-type Comentario = { id: string; contenido: string; es_rechazo_qa: boolean; created_at: string; autor: Persona | null };
+type Comentario = {
+  id: string;
+  contenido: string;
+  es_rechazo_qa: boolean;
+  created_at: string;
+  autor: Persona | null;
+  adjuntos: { id: string; nombre: string }[];
+};
 
 type Subtarea = {
   id: string;
@@ -24,8 +31,8 @@ type Subtarea = {
  * Subtareas del ticket: hoy, las revisiones de QA.
  *
  * Se abren solas cuando el ticket pasa a "Listo para revisión". QA comenta acá
- * y cierra la revisión: "Cambios solicitados" (con comentario obligatorio)
- * devuelve el ticket a En proceso en una fase nueva; "Finalizado" deja pasarlo a Resuelto.
+ * y cierra la revisión, con comentario, archivos o ambos: "Cambios solicitados"
+ * devuelve el ticket a En proceso en una fase nueva; "Finalizado" lo pasa a Resuelto.
  */
 export default function SubtareasTicket() {
   const { ticket, recargar } = useTicket();
@@ -84,6 +91,7 @@ export default function SubtareasTicket() {
 
 function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: Subtarea; alCambiar: (ticketCambio: boolean) => Promise<void> }) {
   const [texto, setTexto] = useState("");
+  const [archivos, setArchivos] = useState<File[]>([]);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const estado = ESTADOS_SUBTAREA.find((e) => e.codigo === sub.estado);
@@ -98,7 +106,8 @@ function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: 
     setOcupado("comentar");
     setError(null);
     try {
-      await apiSoporte(`${url}/comentarios`, { method: "POST", json: { contenido } });
+      const creado = await apiSoporte<{ id: string }>(`${url}/comentarios`, { method: "POST", json: { contenido } });
+      await adjuntar(creado.id);
       setTexto("");
       await alCambiar(false);
     } catch (e) {
@@ -108,16 +117,28 @@ function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: 
     }
   };
 
+  /** Sube lo adjuntado y lo cuelga del comentario recién creado. */
+  const adjuntar = async (comentarioId: string | null) => {
+    if (!archivos.length) return;
+    const r = await subirArchivos(ticketId, archivos, { comentarioId: comentarioId ?? undefined });
+    setArchivos([]);
+    if (r.errores.length) setError(`No se subieron: ${r.errores.join(" · ")}`);
+  };
+
   const cambiarEstado = async (hacia: EstadoSubtarea) => {
     const comentario = texto.trim();
-    if (hacia === "cambios_solicitados" && !comentario) {
-      setError("Escribí qué cambios hacen falta y después tocá “Solicitar cambios”.");
+    if (hacia === "cambios_solicitados" && !comentario && !archivos.length) {
+      setError("Escribí qué cambios hacen falta o adjuntá la captura, y después tocá “Solicitar cambios”.");
       return;
     }
     setOcupado(hacia);
     setError(null);
     try {
-      await apiSoporte(url, { method: "PATCH", json: { estado: hacia, comentario: comentario || undefined } });
+      const r = await apiSoporte<{ comentario_id: string | null }>(url, {
+        method: "PATCH",
+        json: { estado: hacia, comentario: comentario || undefined },
+      });
+      await adjuntar(r.comentario_id);
       setTexto("");
       await alCambiar(true);
     } catch (e) {
@@ -166,6 +187,12 @@ function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: 
                 ) : (
                   <p className="mt-1 whitespace-pre-line rounded-xl rounded-tl-sm bg-white px-3 py-2 text-[13px] leading-relaxed text-slate-700 ring-1 ring-slate-100">{c.contenido}</p>
                 )}
+                {c.adjuntos?.length ? (
+                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-slate-500">
+                    <Paperclip className="h-3.5 w-3.5" aria-hidden />
+                    {c.adjuntos.map((a) => a.nombre).join(", ")}
+                  </p>
+                ) : null}
               </div>
             </li>
           ))}
@@ -188,8 +215,39 @@ function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: 
             placeholder="Comentario de la revisión… (Shift+Enter para otro renglón)"
             disabled={ocupado != null}
           />
+          {archivos.length ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {archivos.map((f, i) => (
+                <li key={`${f.name}-${i}`} className="inline-flex max-w-full items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11.5px] font-medium text-slate-600 ring-1 ring-slate-200">
+                  <Paperclip className="h-3 w-3 shrink-0" aria-hidden />
+                  <span className="truncate">{f.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setArchivos((prev) => prev.filter((_, x) => x !== i))}
+                    aria-label={`Quitar ${f.name}`}
+                    className="shrink-0 text-slate-400 hover:text-rose-600"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {error ? <Aviso>{error}</Aviso> : null}
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <label className="mr-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-semibold text-slate-500 hover:bg-white hover:text-[#2F6E71]">
+              <Paperclip className="h-3.5 w-3.5" aria-hidden /> Adjuntar
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                disabled={ocupado != null}
+                onChange={(e) => {
+                  setArchivos((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <Boton variante="fantasma" tam="sm" onClick={() => void comentar()} cargando={ocupado === "comentar"} disabled={!texto.trim() || ocupado != null}>
               <Send className="h-3.5 w-3.5" aria-hidden /> Comentar
             </Boton>
@@ -206,7 +264,7 @@ function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: 
                 onClick={() => void cambiarEstado("cambios_solicitados")}
                 cargando={ocupado === "cambios_solicitados"}
                 disabled={ocupado != null}
-                title="Devuelve el ticket a En proceso y abre una fase nueva. Requiere comentario."
+                title="Devuelve el ticket a En proceso y abre una fase nueva. Con comentario, archivos o ambos."
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Solicitar cambios
               </Boton>

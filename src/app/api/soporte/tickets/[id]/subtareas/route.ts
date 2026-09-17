@@ -28,13 +28,26 @@ export async function GET(request: Request, { params }: Params) {
     const comentarios = (coms ?? []) as { id: string; subtarea_id: string; usuario_id: string | null; contenido: string; es_rechazo_qa: boolean; created_at: string }[];
     const personas = await personasPorId([...filas.map((s) => s.asignado_id), ...comentarios.map((c) => c.usuario_id)]);
 
+    // Archivos adjuntados junto a cada comentario de la revisión.
+    const adjuntos = new Map<string, { id: string; nombre: string }[]>();
+    if (comentarios.length) {
+      const { data: arch } = await auth.sb
+        .from("soporte_ticket_archivos")
+        .select("id, nombre, comentario_id")
+        .eq("ticket_id", id)
+        .in("comentario_id", comentarios.map((c) => c.id));
+      for (const a of (arch ?? []) as { id: string; nombre: string; comentario_id: string }[]) {
+        adjuntos.set(a.comentario_id, [...(adjuntos.get(a.comentario_id) ?? []), { id: a.id, nombre: a.nombre }]);
+      }
+    }
+
     return ok(
       filas.map((s) => ({
         ...s,
         asignado: s.asignado_id ? (personas.get(s.asignado_id) ?? null) : null,
         comentarios: comentarios
           .filter((c) => c.subtarea_id === s.id)
-          .map((c) => ({ ...c, autor: c.usuario_id ? (personas.get(c.usuario_id) ?? null) : null })),
+          .map((c) => ({ ...c, autor: c.usuario_id ? (personas.get(c.usuario_id) ?? null) : null, adjuntos: adjuntos.get(c.id) ?? [] })),
       }))
     );
   } catch (e) {

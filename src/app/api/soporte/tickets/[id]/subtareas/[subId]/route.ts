@@ -18,7 +18,8 @@ type TicketMin = { id: string; numero: number; asunto: string; estado_codigo: st
 /**
  * PATCH — cambia el estado de una subtarea de revisión.
  *
- *   · "Cambios solicitados" exige un comentario, y si el ticket está en
+ *   · "Cambios solicitados" admite comentario y archivos (QA muchas veces
+ *     devuelve sólo capturas), y si el ticket está en
  *     "Listo para revisión" lo devuelve a "En proceso" en la fase siguiente
  *     (Fase 2, Fase 3, …) y avisa al responsable.
  *   · "Finalizado" pasa el ticket de "Listo para revisión" a "Resuelto" (si no
@@ -50,7 +51,6 @@ export async function PATCH(request: Request, { params }: Params) {
       return falla(`No se puede pasar de "${nombreEstadoSubtarea(desde)}" a "${nombreEstadoSubtarea(hacia)}"`);
     }
     const comentario = typeof body?.comentario === "string" ? body.comentario.trim().slice(0, 20_000) : "";
-    if (hacia === "cambios_solicitados" && !comentario) return falla("Explicá qué cambios hacen falta");
 
     const ahora = new Date().toISOString();
     const { data: actualizada, error } = await auth.sb
@@ -68,6 +68,7 @@ export async function PATCH(request: Request, { params }: Params) {
       { tipo_evento: "subtarea_estado", valor_anterior: desde, valor_nuevo: hacia, metadata: { subtarea_id: sub.id, titulo: sub.titulo } },
     ];
 
+    let comentarioId: string | null = null;
     if (comentario) {
       const { data: com } = await auth.sb
         .from("soporte_ticket_comentarios")
@@ -81,7 +82,8 @@ export async function PATCH(request: Request, { params }: Params) {
         })
         .select("id")
         .single();
-      eventos.push({ tipo_evento: "comentario", metadata: { comentario_id: com?.id ?? null, subtarea_id: sub.id, rechazo_qa: hacia === "cambios_solicitados" } });
+      comentarioId = com?.id ?? null;
+      eventos.push({ tipo_evento: "comentario", metadata: { comentario_id: comentarioId, subtarea_id: sub.id, rechazo_qa: hacia === "cambios_solicitados" } });
     }
 
     // QA pidió cambios: el ticket vuelve a En proceso y arranca una fase nueva.
@@ -131,7 +133,7 @@ export async function PATCH(request: Request, { params }: Params) {
         titulo: ticketReabierto
           ? `QA pidió cambios en el ticket ${numeroTicket(ticket.numero)}: vuelve a En proceso (Fase ${faseNueva})`
           : `QA pidió cambios en el ticket ${numeroTicket(ticket.numero)}`,
-        cuerpo: comentario,
+        cuerpo: comentario || ticket.asunto,
         ticketId: id,
         subtareaId: sub.id,
       });
@@ -149,7 +151,7 @@ export async function PATCH(request: Request, { params }: Params) {
     // Las PM son las que le responden al cliente.
     if (ticketResuelto) await avisarResueltoAPMs(auth, ticket);
 
-    return ok({ actualizado: true, ticket_reabierto: ticketReabierto, ticket_resuelto: ticketResuelto });
+    return ok({ actualizado: true, ticket_reabierto: ticketReabierto, ticket_resuelto: ticketResuelto, comentario_id: comentarioId });
   } catch (e) {
     return errorInesperado(e);
   }

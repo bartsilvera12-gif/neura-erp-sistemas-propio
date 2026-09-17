@@ -224,6 +224,12 @@ export default function NotificacionesBell() {
    */
   const noLeidasPreviasRef = useRef<number | null>(null);
   /**
+   * Fecha del aviso guardado más reciente ya visto. El contador solo no
+   * alcanza: si en el mismo intervalo llega un aviso y otro se marca leído (o
+   * vence un aviso derivado), el total queda igual y el aviso nuevo no sonaba.
+   */
+  const ultimoVistoRef = useRef<string | null>(null);
+  /**
    * Ids de recordatorios de reunión por los que ya sonó la alerta. Como los
    * avisos se calculan en vivo, el mismo recordatorio vuelve en cada poll: sin
    * esto sonaría cada 60 segundos hasta que empiece la reunión.
@@ -282,7 +288,13 @@ export default function NotificacionesBell() {
         // notificación nueva de verdad, no el resultado de marcar algo leído
         // (que lo hace bajar) ni una recarga que trae lo mismo de antes.
         const previas = noLeidasPreviasRef.current;
-        if (previas != null && j.data.no_leidas > previas) {
+        const ultimoVisto = ultimoVistoRef.current;
+        const guardadas = j.data.notificaciones.filter((n) => !n.derivada && n.created_at);
+        const masReciente = guardadas.reduce<string | null>((m, n) => (m == null || n.created_at > m ? n.created_at : m), ultimoVisto);
+        const hayIdNuevo = ultimoVisto != null && guardadas.some((n) => !n.leida_at && n.created_at > ultimoVisto);
+        // Sin avisos todavía se toma "ahora" como referencia, para que el primero que llegue suene.
+        ultimoVistoRef.current = masReciente ?? new Date().toISOString();
+        if (previas != null && (j.data.no_leidas > previas || hayIdNuevo)) {
           // Los recordatorios de reunión llevan su propio sonido, más
           // insistente: tienen una hora encima y no pueden confundirse con el
           // aviso de una observación de QA.
@@ -337,6 +349,13 @@ export default function NotificacionesBell() {
           // recordatorio que ya sonó.
           reunionesAvisadasRef.current = new Set(
             j.data.notificaciones.filter((n) => n.tipo === "agenda_recordatorio").map((n) => n.id)
+          );
+          // Igual con los chats: si no, un chat viejo sin leer hacía que el
+          // próximo aviso (p. ej. de Soporte) sonara con el tono de chat.
+          chatsAvisadosRef.current = new Set(
+            j.data.notificaciones
+              .filter((n) => n.tipo === "conversacion_asignada" || n.tipo === "conversacion_mensaje")
+              .map((n) => n.id)
           );
         }
         noLeidasPreviasRef.current = j.data.no_leidas;

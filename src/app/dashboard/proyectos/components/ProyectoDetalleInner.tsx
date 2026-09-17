@@ -2522,10 +2522,26 @@ export default function ProyectoDetalleInner({
       <div
         className={
           variant === "modal"
-            ? "flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-4 pb-5 pt-6 md:px-6"
-            : "flex flex-col gap-4 border-b border-slate-200 pb-4"
+            ? "relative flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-white to-[#4FAEB2]/5 px-4 pb-5 pr-14 pt-6 md:px-6 md:pr-16"
+            : "relative flex flex-col gap-4 border-b border-slate-200 pb-4 pr-12"
         }
       >
+        {/* Botón X para cerrar/salir del detalle: reemplaza el antiguo "Cerrar" que
+            iba mezclado con los controles de estado/tipo/eliminar. En modal cierra
+            el overlay; en la vista full navega al kanban. */}
+        <button
+          type="button"
+          aria-label="Cerrar"
+          title="Cerrar"
+          onClick={() => (variant === "modal" ? onClose?.() : router.push("/dashboard/proyectos"))}
+          className={
+            variant === "modal"
+              ? "absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+              : "absolute right-0 top-0 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+          }
+        >
+          <X className="h-4 w-4" />
+        </button>
         <div className="min-w-0">
           {onBack ? (
             <button
@@ -2611,23 +2627,6 @@ export default function ProyectoDetalleInner({
               </button>
             );
           })()}
-          {variant === "modal" ? (
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
-              onClick={() => onClose?.()}
-            >
-              Cerrar
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
-              onClick={() => router.push("/dashboard/proyectos")}
-            >
-              Cerrar
-            </button>
-          )}
         </div>
       </div>
 

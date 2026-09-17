@@ -83,13 +83,14 @@ type Data = {
     motivo: string;
     semaforo: "vencido" | "critico" | "en_riesgo";
   }[];
-  proyectos_activos: (Data["criticos"][number] & {
+  proyectos_periodo: (Data["criticos"][number] & {
     estado_id: string | null;
     responsable_tecnico_id: string | null;
+    entregado: boolean;
     demorado: boolean;
     buckets: KpiBucket[];
   })[];
-  estados_activos: {
+  estados_periodo: {
     estado_id: string;
     nombre: string;
     color: string;
@@ -299,13 +300,14 @@ export default function DashboardEjecutivoClient() {
   }, [desde, hasta]);
 
   /**
-   * La lista de abajo: por defecto TODOS los proyectos activos; con una tarjeta
-   * KPI/estado/demorado seleccionada, sólo los de ese recorte. El número de la
-   * tarjeta y esta lista salen del mismo criterio, así que coinciden.
+   * La lista de abajo: por defecto TODOS los proyectos del período (activos +
+   * entregados); con una tarjeta seleccionada, sólo los de ese recorte. Las
+   * señales de riesgo (kpi/demorado) filtran sólo lo vivo, porque los entregados
+   * traen buckets vacío y demorado=false.
    */
   const filasLista = useMemo(() => {
     if (!data) return [];
-    const act = data.proyectos_activos;
+    const act = data.proyectos_periodo;
     if (!sel) return act;
     if (sel.kind === "kpi") return act.filter((p) => p.buckets.includes(sel.bucket));
     if (sel.kind === "estado") return act.filter((p) => p.estado_id === sel.id);
@@ -316,17 +318,17 @@ export default function DashboardEjecutivoClient() {
 
   /** Título de la lista según qué se está mirando. */
   const tituloLista = useMemo(() => {
-    if (!sel) return "Proyectos activos";
+    if (!sel) return "Proyectos del período";
     if (sel.kind === "kpi") return KPI_LABEL[sel.bucket];
     if (sel.kind === "estado") {
-      return data?.estados_activos.find((e) => e.estado_id === sel.id)?.nombre ?? "Estado";
+      return data?.estados_periodo.find((e) => e.estado_id === sel.id)?.nombre ?? "Estado";
     }
     if (sel.kind === "tecnico") {
       const n = data?.tecnicos_resumen.find((t) => t.usuario_id === sel.id)?.nombre;
       return n ? nombreCapitular(n) : "Programador";
     }
     if (sel.estadoId) {
-      const n = data?.estados_activos.find((e) => e.estado_id === sel.estadoId)?.nombre;
+      const n = data?.estados_periodo.find((e) => e.estado_id === sel.estadoId)?.nombre;
       return `Demorados · ${n ?? "estado"}`;
     }
     return "Demorados";
@@ -475,11 +477,11 @@ export default function DashboardEjecutivoClient() {
               >
                 Proyectos por estado
               </CardTitle>
-              {data.estados_activos.length === 0 ? (
+              {data.estados_periodo.length === 0 ? (
                 <p className="text-sm text-slate-400">Sin proyectos activos</p>
               ) : (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {data.estados_activos.map((e) => {
+                  {data.estados_periodo.map((e) => {
                     const activo = sel?.kind === "estado" && sel.id === e.estado_id;
                     const demActivo = sel?.kind === "demorado" && sel.estadoId === e.estado_id;
                     const irAlEstado = () => toggleSel({ kind: "estado", id: e.estado_id });
@@ -567,7 +569,7 @@ export default function DashboardEjecutivoClient() {
                 </CardTitle>
                 {filasLista.length === 0 ? (
                   <p className="text-sm text-slate-400">
-                    {sel ? "Sin proyectos en esta selección." : "No hay proyectos activos."}
+                    {sel ? "Sin proyectos en esta selección." : "No hay proyectos en el período."}
                   </p>
                 ) : (
                   <TablaWrap>
@@ -585,7 +587,12 @@ export default function DashboardEjecutivoClient() {
                       </thead>
                       <tbody>
                         {filasOrdenadas.map((c) => (
-                          <tr key={c.id} className="border-b border-slate-50 text-[11px] last:border-0">
+                          <tr
+                            key={c.id}
+                            className={`border-b border-slate-50 text-[11px] last:border-0 ${
+                              c.entregado ? "opacity-55" : ""
+                            }`}
+                          >
                             <td className="max-w-[150px] truncate py-1.5 pr-2 font-medium text-slate-700">
                               <Link href={`/dashboard/proyectos?proyecto=${c.id}&from=tablero`} className="hover:underline" title={c.titulo}>
                                 {c.titulo}

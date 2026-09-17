@@ -129,12 +129,14 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       tiempo_en_estado_ms: p.tiempo_en_estado_ms,
     }));
 
-  // Toda la cartera activa, con la MISMA fila que la tabla de críticos más la
-  // etiqueta de a qué tarjetas pertenece. Alimenta el filtro por click: apretar
-  // "En desarrollo" muestra sus proyectos aunque estén sanos y no aparezcan como
-  // críticos. Se ordena por score para que, dentro de una tarjeta, lo más urgente
-  // quede arriba.
-  const proyectos_activos = [...activos]
+  // Cartera del PERÍODO: activos + entregados (sin cancelados). Es lo que se ve
+  // en la tabla y en "por estado" — el Director quiere ver TODO, no sólo lo vivo.
+  // Cada fila lleva la etiqueta de a qué tarjetas pertenece para el filtro por
+  // click. Los entregados NO entran en las señales de riesgo (buckets vacío) ni
+  // se marcan demorados: un proyecto entregado ya no está "vencido" ni "detenido".
+  // Se ordena por score para que lo más urgente quede arriba y lo entregado abajo.
+  const periodo = proyectos.filter((p) => !p.cancelado);
+  const proyectos_periodo = [...periodo]
     .sort((a, b) => b.score - a.score)
     .map((p) => ({
       ...filaCritica(p),
@@ -142,26 +144,25 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       tiempo_en_estado_ms: p.tiempo_en_estado_ms,
       estado_id: p.estado_id,
       responsable_tecnico_id: p.responsable_tecnico_id,
-      // "Demorado": lleva más tiempo del objetivo en su estado actual. Es el
-      // `estancado` del motor, el mismo que define el umbral configurable.
-      demorado: p.estancado,
-      buckets: bucketsDeProyecto(p),
+      entregado: p.entregado,
+      demorado: !p.entregado && p.estancado,
+      buckets: p.entregado ? [] : bucketsDeProyecto(p),
     }));
 
-  // ---- Cartera por estado (sólo activos), con cuántos van demorados ----------
+  // ---- Cartera por estado (del período), con cuántos van demorados ------------
   // Responde "¿cuántos proyectos tengo en cada estado, y cuántos ya llevan
-  // demasiado tiempo?". Los estados finales (entregado/cancelado) quedan afuera
-  // porque `activos` ya los excluye. `umbral_horas` es el tiempo máximo que ese
-  // estado tolera antes de marcar demorado: el número que el Director define.
+  // demasiado tiempo?". Incluye el estado de entrega (los entregados), pero un
+  // entregado nunca cuenta como demorado. `umbral_horas` es el tiempo máximo que
+  // ese estado tolera antes de marcar demorado: el número que el Director define.
   const distrib = new Map<string, { cantidad: number; demorados: number }>();
-  for (const p of activos) {
+  for (const p of periodo) {
     if (!p.estado_id) continue;
     const cur = distrib.get(p.estado_id) ?? { cantidad: 0, demorados: 0 };
     cur.cantidad += 1;
-    if (p.estancado) cur.demorados += 1;
+    if (!p.entregado && p.estancado) cur.demorados += 1;
     distrib.set(p.estado_id, cur);
   }
-  const estados_activos = estados
+  const estados_periodo = estados
     .map((e) => ({
       estado_id: e.id,
       nombre: e.nombre ?? "—",
@@ -235,8 +236,8 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     tiempo_por_estado,
     calidad,
     criticos,
-    proyectos_activos,
-    estados_activos,
+    proyectos_periodo,
+    estados_periodo,
     total_activos,
     demorados_total,
     tecnicos_resumen,

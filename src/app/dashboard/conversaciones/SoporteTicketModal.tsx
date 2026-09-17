@@ -103,22 +103,37 @@ export default function SoporteTicketModal({
     };
   }, [clienteId, telefono, contacto]);
 
+  // Proyectos del cliente. Si la carga falla (p. ej. la sesión se estaba
+  // renovando) se reintenta una vez, y si vuelve a fallar se muestra el error:
+  // no se confunde con "el cliente no tiene proyectos".
+  const [proyectosEstado, setProyectosEstado] = useState<"cargando" | "listo" | "error">("listo");
+  const [reintento, setReintento] = useState(0);
   useEffect(() => {
     let vivo = true;
-    const cargar = cliente
-      ? api<{ proyectos: { id: string; titulo: string }[] }>(`/api/soporte/carga-rapida?cliente_id=${cliente}`).then((r) => r.proyectos)
-      : Promise.resolve([]);
-    cargar
+    if (!cliente) {
+      setProyectos([]);
+      setProyectosEstado("listo");
+      return;
+    }
+    setProyectosEstado("cargando");
+    const pedir = () => api<{ proyectos: { id: string; titulo: string }[] }>(`/api/soporte/carga-rapida?cliente_id=${cliente}`).then((r) => r.proyectos);
+    pedir()
+      .catch(() => new Promise<{ id: string; titulo: string }[]>((ok, mal) => setTimeout(() => pedir().then(ok, mal), 800)))
       .then((p) => {
         if (!vivo) return;
         setProyectos(p);
+        setProyectosEstado("listo");
         setProyecto((actual) => (p.some((x) => x.id === actual) ? actual : p.length === 1 ? p[0].id : ""));
       })
-      .catch(() => vivo && setProyectos([]));
+      .catch(() => {
+        if (!vivo) return;
+        setProyectos([]);
+        setProyectosEstado("error");
+      });
     return () => {
       vivo = false;
     };
-  }, [cliente]);
+  }, [cliente, reintento]);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && !guardando && alCerrar();
@@ -257,10 +272,25 @@ export default function SoporteTicketModal({
                     onChange={setProyecto}
                     disabled={!cliente || proyectos.length === 0}
                     opciones={proyectos.map((p) => ({ value: p.id, label: p.titulo }))}
-                    placeholder={!cliente ? "Elegí el cliente" : proyectos.length ? "Elegí el proyecto" : "El cliente no tiene proyectos"}
+                    placeholder={
+                      !cliente
+                        ? "Elegí el cliente"
+                        : proyectosEstado === "cargando"
+                          ? "Cargando proyectos…"
+                          : proyectosEstado === "error"
+                            ? "No se pudieron cargar"
+                            : proyectos.length
+                              ? "Elegí el proyecto"
+                              : "El cliente no tiene proyectos"
+                    }
                     buscarPlaceholder="Buscar proyecto…"
                     vacio="Ningún proyecto coincide"
                   />
+                  {proyectosEstado === "error" ? (
+                    <button type="button" onClick={() => setReintento((n) => n + 1)} className="mt-1 text-[11.5px] font-semibold text-rose-600 hover:underline">
+                      No se pudieron cargar los proyectos · Reintentar
+                    </button>
+                  ) : null}
                 </div>
               </div>
 

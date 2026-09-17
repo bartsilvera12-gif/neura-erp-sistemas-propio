@@ -4,6 +4,8 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { cerrarSegmentoHistorialAbierto, insertHistorialCambioEstado } from "@/lib/proyectos/historial-actions";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { permisoQADe } from "@/lib/proyectos/qa-permisos";
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { patchAsignacionQa, qaDeLaEmpresa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { notificarEntradaQA } from "@/lib/proyectos/qa-notificaciones";
 import { abrirRevisionQA, cerrarRevisionQA } from "@/lib/proyectos/qa-revisiones";
@@ -66,6 +68,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!full) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
       const enriched = await enrichProyectosRows(sb, empresaId, [full as Record<string, unknown>]);
       return NextResponse.json(successResponse(enriched[0]));
+    }
+
+    // --- Permiso para cambiar el estado (#3) ---------------------------------
+    // Antes cualquiera con el módulo podía mover cualquier proyecto a cualquier
+    // estado, y mover a "Entregado" dispara efectos irreversibles (ancla la
+    // ventana de cambios gratis y marca el esqueleto entregado). Se reutiliza la
+    // MISMA regla que QA: pasan admin, PM (es_project_manager), QA (flag global o
+    // asignada al proyecto) y el técnico responsable del proyecto. Un comercial
+    // —u otro ajeno— queda afuera con 403.
+    const esAdmin = auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol);
+    if (!esAdmin) {
+      const permiso = await permisoQADe(sb, empresaId, auth.usuarioCatalogId, pid);
+      if (permiso.vista === null) {
+        return NextResponse.json(
+          errorResponse("No tenés permiso para cambiar el estado de este proyecto."),
+          { status: 403 }
+        );
+      }
     }
 
     const { data: estNuevo, error: e2 } = await sb

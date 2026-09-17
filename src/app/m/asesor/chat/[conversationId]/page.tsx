@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { getStickerFavoritos, toggleStickerFavorito } from "@/lib/chat/sticker-favorites";
 import {
@@ -502,6 +504,11 @@ function MessageBody({
   );
 }
 
+// El mismo formulario que el botón Soporte del inbox de escritorio. Se carga recién al abrirlo.
+const SoporteTicketModal = dynamic(() => import("@/app/dashboard/conversaciones/SoporteTicketModal"), {
+  ssr: false,
+});
+
 /**
  * `?s=1`: se abrió desde la lista de supervisión (cuenta sin agente de chat). Esos chats no
  * están asignados a un agente propio, así que las rutas de asesor responden 403; se usan las
@@ -531,6 +538,17 @@ export default function MAsesorChatPage() {
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   /** Imagen abierta a pantalla completa. */
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+
+  // ── Soporte: cargar un ticket desde el chat (PM o usuario de Soporte, como en escritorio) ──
+  const [puedeSoporte, setPuedeSoporte] = useState(false);
+  const [soporteAbierto, setSoporteAbierto] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    void puedeCargarSoporte().then((p) => vivo && setPuedeSoporte(p));
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   // ── Transferir conversación (mismo comportamiento que el panel de escritorio) ──
   const [transferOpen, setTransferOpen] = useState(false);
@@ -1280,7 +1298,29 @@ export default function MAsesorChatPage() {
         >
           ⇄ Transferir
         </button>
+        {puedeSoporte ? (
+          <button
+            type="button"
+            onClick={() => setSoporteAbierto(true)}
+            aria-label="Cargar ticket de soporte"
+            className="shrink-0 flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-[12px] font-semibold active:bg-white/25"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+            </svg>
+            Soporte
+          </button>
+        ) : null}
       </header>
+      {soporteAbierto ? (
+        <SoporteTicketModal
+          conversationId={conversationId}
+          clienteId={null}
+          contacto={title}
+          telefono={contactPhone}
+          alCerrar={() => setSoporteAbierto(false)}
+        />
+      ) : null}
 
       <div
         ref={scrollRef}

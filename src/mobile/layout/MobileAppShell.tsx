@@ -6,6 +6,7 @@ import BottomNav from "./BottomNav";
 import MobileHeader from "./MobileHeader";
 import MobileMenu from "./MobileMenu";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
+import AsesorTabBar, { MARCA_APP_ASESOR } from "@/app/m/asesor/AsesorTabBar";
 
 const STANDALONE_ROUTES = ["/login"];
 
@@ -31,6 +32,18 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
     !!pathname && (STANDALONE_ROUTES.includes(pathname) || pathname.startsWith("/m/"));
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // ¿Se llegó a esta pantalla desde la app del asesor? La marca la deja su barra de pestañas.
+  // Se lee en un efecto y no durante el render: sessionStorage no existe en el servidor, y
+  // leerlo antes rompería la hidratación.
+  const [desdeAppAsesor, setDesdeAppAsesor] = useState(false);
+  useEffect(() => {
+    try {
+      setDesdeAppAsesor(sessionStorage.getItem(MARCA_APP_ASESOR) === "1");
+    } catch {
+      setDesdeAppAsesor(false);
+    }
+  }, [pathname]);
+
   // Cerrar el menú al cambiar de ruta.
   useEffect(() => {
     setMenuOpen(false);
@@ -38,6 +51,25 @@ export default function MobileAppShell({ children }: { children: React.ReactNode
 
   if (isStandalone) {
     return <>{children}</>;
+  }
+
+  // Soporte abierto desde la app del asesor: sin el encabezado ni la barra del ERP, con la
+  // barra de la app. Solo para /dashboard/soporte — si desde ahí se navega a otra sección del
+  // ERP, vuelve el shell normal, que es lo que corresponde a esa pantalla.
+  if (desdeAppAsesor && pathname?.startsWith("/dashboard/soporte")) {
+    return (
+      <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-[#F8FAFC]">
+        <CapacitorPushRegister />
+        <main
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+          // Sin el encabezado del ERP nadie reserva la barra de estado del iPhone.
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
+          {children}
+        </main>
+        <AsesorTabBar />
+      </div>
+    );
   }
 
   return (

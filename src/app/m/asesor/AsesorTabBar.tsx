@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { Bell, FolderKanban, Headphones, MessageCircle } from "lucide-react";
 import { useMisModulos } from "@/shared/hooks/useMisModulos";
 import useSWR from "swr";
@@ -38,6 +39,9 @@ const TABS = [
   { href: "/dashboard/soporte/tickets", label: "Soporte", Icon: Headphones, exact: false, modulo: "soporte" },
 ] as const;
 
+/** Clave de sesión que marca "entré por la app del asesor". Ver MobileAppShell. */
+export const MARCA_APP_ASESOR = "neura:app-asesor";
+
 /**
  * ¿Puede entrar a Soporte? Lo responde el propio módulo (`/api/soporte/acceso`), con su regla
  * exacta: rol admin, super admin o fila explícita en `usuario_modulos`.
@@ -66,6 +70,19 @@ export default function AsesorTabBar() {
   const { noLeidas } = useNotificaciones({ enabled: habilitado });
   const accesoSoporte = useAccesoSoporte(habilitado);
 
+  // Soporte abre el módulo real en /dashboard/soporte, que por ruta cae en el shell del ERP
+  // con su propia barra (Inicio / Chats / Ventas…). Esta marca le avisa al shell que se llegó
+  // desde la app del asesor, para que ahí siga mostrando ESTA barra. sessionStorage y no
+  // localStorage: vale mientras dure la sesión de la app, no para siempre.
+  useEffect(() => {
+    if (!habilitado) return;
+    try {
+      sessionStorage.setItem(MARCA_APP_ASESOR, "1");
+    } catch {
+      /* navegador sin storage: se ve la barra del ERP, que igual funciona */
+    }
+  }, [habilitado]);
+
   if (!habilitado) return null;
 
   return (
@@ -76,7 +93,9 @@ export default function AsesorTabBar() {
     >
       <ul className="flex items-stretch">
         {TABS.filter((t) => t.modulo !== "soporte" || accesoSoporte).map(({ href, label, Icon, exact }) => {
-          const active = exact ? pathname === href : pathname.startsWith(href);
+          // Soporte abarca todo el módulo (/mis-tickets, un ticket, etc.), no solo /tickets.
+          const prefijo = href.startsWith("/dashboard/soporte") ? "/dashboard/soporte" : href;
+          const active = exact ? pathname === href : pathname.startsWith(prefijo);
           return (
             <li key={href} className="flex-1">
               <Link

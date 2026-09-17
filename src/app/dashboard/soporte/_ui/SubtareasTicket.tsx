@@ -63,7 +63,7 @@ export default function SubtareasTicket() {
         <h3 className="mb-3 text-[13.5px] font-bold text-slate-800">
           Subtareas
           <span className="ml-1.5 font-semibold text-slate-400">
-            {abiertas ? `${abiertas} sin finalizar` : "todas finalizadas"}
+            {abiertas ? `${abiertas} en revisión` : lista.every((s) => s.estado === "finalizado") ? "todas finalizadas" : "sin revisiones pendientes"}
           </span>
         </h3>
         <div className="space-y-3">

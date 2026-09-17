@@ -757,6 +757,67 @@ function LiveElapsedLabel({ sinceIso }: { sinceIso: string | null }) {
   return <span className="tabular-nums font-medium">{formatWaitHuman(sinceIso)}</span>;
 }
 
+/**
+ * Ventana de 24 h de WhatsApp, calculada como la calcula WhatsApp: desde el último mensaje
+ * del CLIENTE.
+ *
+ * Existe porque el chip de al lado ("turno del contacto", con el ícono de persona) muestra
+ * el tiempo desde el último mensaje del ASESOR. Los asesores lo leían como la ventana: veían
+ * "22 h 36 min", entendían que todavía estaban adentro, y WhatsApp rechazaba el mensaje con
+ * 131047 porque el cliente había escrito hacía más de 24 h.
+ *
+ * Las reacciones del cliente se excluyen a propósito. Si reaccionar reabriera la ventana, el
+ * indicador la daría por cerrada un poco antes de tiempo (se usa una plantilla de más); si no
+ * la reabre y la contáramos, la daría por abierta y el mensaje fallaría. Se elige el error
+ * barato.
+ *
+ * Si en los mensajes cargados no hay ninguno del cliente, no se dibuja nada: no se puede
+ * saber, y un "cerrada" inventado sería peor que no decir nada.
+ */
+function VentanaWhatsApp({ messages }: { messages: ChatMessage[] }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((x) => x + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  let ultimo = 0;
+  for (const m of messages) {
+    if (m.from_me || m.message_type === "reaction") continue;
+    const t = Date.parse(m.created_at);
+    if (Number.isFinite(t) && t > ultimo) ultimo = t;
+  }
+  if (!ultimo) return null;
+
+  const restante = ultimo + 24 * 60 * 60 * 1000 - Date.now();
+  if (restante <= 0) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700"
+        title="El cliente escribió hace más de 24 h. WhatsApp solo acepta plantillas hasta que vuelva a escribir."
+      >
+        Ventana 24 h cerrada
+      </span>
+    );
+  }
+  const h = Math.floor(restante / 3_600_000);
+  const min = Math.floor((restante % 3_600_000) / 60_000);
+  const poco = restante < 2 * 3_600_000;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+        poco
+          ? "border-amber-200 bg-amber-50 text-amber-800"
+          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+      }`}
+      title="Tiempo que queda para escribirle libremente. Cuenta desde el último mensaje del CLIENTE, no desde el tuyo."
+    >
+      Ventana: quedan {h > 0 ? `${h} h ` : ""}
+      {min} min
+    </span>
+  );
+}
+
 function inboxClientWaitingSince(c: InboxConversation): string | null {
   if (c.awaiting_agent_reply_since) return null;
   return c.awaiting_client_reply_since ?? null;
@@ -781,7 +842,7 @@ function InboxReplyTurnBadges({ c, dense }: { c: InboxConversation; dense?: bool
       {clientSince ? (
         <span
           className={`inline-flex items-center gap-0.5 font-semibold text-sky-950 bg-sky-50 border border-sky-200 rounded ${pad} shrink-0`}
-          title="Último mensaje saliente; turno del contacto"
+          title="Tiempo desde TU último mensaje (turno del contacto). No es la ventana de 24 h de WhatsApp: esa cuenta desde el último mensaje del cliente."
         >
           <UserRound className={`shrink-0 text-sky-600 ${dense ? "w-3 h-3" : "w-3.5 h-3.5"}`} aria-hidden />
           <LiveElapsedLabel sinceIso={clientSince} />
@@ -4100,6 +4161,7 @@ export function ConversacionesClient({
                                   Sin cola
                                 </span>
                               ) : null}
+                              <VentanaWhatsApp messages={messages} />
                               <InboxReplyTurnBadges c={selected} dense />
                               {selected.assigned_agent_name ? (
                                 <span

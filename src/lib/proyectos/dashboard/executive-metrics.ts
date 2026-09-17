@@ -141,6 +141,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       pm: ds.nombreUsuario(p.project_manager_id ?? ""),
       tiempo_en_estado_ms: p.tiempo_en_estado_ms,
       estado_id: p.estado_id,
+      responsable_tecnico_id: p.responsable_tecnico_id,
       // "Demorado": lleva más tiempo del objetivo en su estado actual. Es el
       // `estancado` del motor, el mismo que define el umbral configurable.
       demorado: p.estancado,

@@ -14,7 +14,7 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Hourglass,
@@ -85,6 +85,7 @@ type Data = {
   }[];
   proyectos_activos: (Data["criticos"][number] & {
     estado_id: string | null;
+    responsable_tecnico_id: string | null;
     demorado: boolean;
     buckets: KpiBucket[];
   })[];
@@ -135,6 +136,7 @@ type Sel =
   | { kind: "kpi"; bucket: KpiBucket }
   | { kind: "estado"; id: string }
   | { kind: "demorado"; estadoId?: string }
+  | { kind: "tecnico"; id: string }
   | null;
 
 /** ¿Dos selecciones son la misma? Para que apretar lo ya activo lo apague. */
@@ -144,6 +146,7 @@ function mismaSel(a: Sel, b: Sel): boolean {
   if (a.kind === "kpi" && b.kind === "kpi") return a.bucket === b.bucket;
   if (a.kind === "estado" && b.kind === "estado") return a.id === b.id;
   if (a.kind === "demorado" && b.kind === "demorado") return a.estadoId === b.estadoId;
+  if (a.kind === "tecnico" && b.kind === "tecnico") return a.id === b.id;
   return false;
 }
 
@@ -306,6 +309,7 @@ export default function DashboardEjecutivoClient() {
     if (!sel) return act;
     if (sel.kind === "kpi") return act.filter((p) => p.buckets.includes(sel.bucket));
     if (sel.kind === "estado") return act.filter((p) => p.estado_id === sel.id);
+    if (sel.kind === "tecnico") return act.filter((p) => p.responsable_tecnico_id === sel.id);
     // demorado
     return act.filter((p) => p.demorado && (sel.estadoId ? p.estado_id === sel.estadoId : true));
   }, [data, sel]);
@@ -316,6 +320,10 @@ export default function DashboardEjecutivoClient() {
     if (sel.kind === "kpi") return KPI_LABEL[sel.bucket];
     if (sel.kind === "estado") {
       return data?.estados_activos.find((e) => e.estado_id === sel.id)?.nombre ?? "Estado";
+    }
+    if (sel.kind === "tecnico") {
+      const n = data?.tecnicos_resumen.find((t) => t.usuario_id === sel.id)?.nombre;
+      return n ? nombreCapitular(n) : "Programador";
     }
     if (sel.estadoId) {
       const n = data?.estados_activos.find((e) => e.estado_id === sel.estadoId)?.nombre;
@@ -330,6 +338,8 @@ export default function DashboardEjecutivoClient() {
    * invierte. El texto va A→Z; el tiempo y la fecha arrancan de mayor a menor.
    */
   const [orden, setOrden] = useState<{ col: OrdenCol; dir: "asc" | "desc" } | null>(null);
+  /** Para saltar a la tabla al elegir un programador (las cards están abajo). */
+  const tablaRef = useRef<HTMLDivElement>(null);
   const clickOrden = useCallback((col: OrdenCol) => {
     setOrden((prev) => {
       if (prev?.col === col) return { col, dir: prev.dir === "asc" ? "desc" : "asc" };
@@ -526,7 +536,7 @@ export default function DashboardEjecutivoClient() {
             </Card>
 
             {/* Tabla de proyectos activos (a todo el ancho) */}
-            <div className="space-y-3">
+            <div ref={tablaRef} className="space-y-3">
               <Card>
                 <CardTitle
                   right={
@@ -616,7 +626,10 @@ export default function DashboardEjecutivoClient() {
               {data.tecnicos_resumen.length === 0 ? (
                 <p className="text-sm text-slate-400">Sin programadores con proyectos.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                <div
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}
+                >
                   {data.tecnicos_resumen.map((t) => (
                     <Kpi
                       key={t.usuario_id}
@@ -625,6 +638,11 @@ export default function DashboardEjecutivoClient() {
                       label={nombreCapitular(t.nombre)}
                       numero={t.total}
                       pie="proyectos"
+                      onClick={() => {
+                        toggleSel({ kind: "tecnico", id: t.usuario_id });
+                        tablaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      seleccionado={sel?.kind === "tecnico" && sel.id === t.usuario_id}
                     />
                   ))}
                 </div>

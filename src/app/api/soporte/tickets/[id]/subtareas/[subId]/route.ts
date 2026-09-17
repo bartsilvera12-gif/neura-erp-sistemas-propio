@@ -6,7 +6,7 @@ import {
   type EstadoSubtarea,
 } from "@/lib/soporte/dominio";
 import { errorInesperado, falla, ok, registrarHistorial, sinPermiso, ticketDeEmpresa, type EventoHistorial } from "@/lib/soporte/servidor";
-import { SUBTAREA_CAMPOS, avisarSoporte, type SubtareaFila } from "@/lib/soporte/subtareas";
+import { SUBTAREA_CAMPOS, avisarSoporte, subtareasSinFinalizar, type SubtareaFila } from "@/lib/soporte/subtareas";
 import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Params = { params: Promise<{ id: string; subId: string }> };
@@ -20,7 +20,8 @@ type TicketMin = { id: string; numero: number; asunto: string; estado_codigo: st
  *
  *   · "Cambios solicitados" exige un comentario, y si el ticket está en
  *     "Listo para revisión" lo devuelve a "Re-abierto" (y avisa al responsable).
- *   · "Finalizado" avisa al responsable: ya puede pasar el ticket a Resuelto.
+ *   · "Finalizado" pasa el ticket de "Listo para revisión" a "Resuelto" (si no
+ *     queda otra revisión abierta) y avisa al responsable.
  *
  * El cambio se aplica sólo si la subtarea sigue en el estado que se leyó: dos
  * personas no pueden cerrar la misma revisión de dos formas distintas.
@@ -97,7 +98,26 @@ export async function PATCH(request: Request, { params }: Params) {
         ticketReabierto = true;
         eventos.push({ tipo_evento: "devolucion_qa", valor_anterior: "listo_revision", valor_nuevo: "reabierto", metadata: { subtarea_id: sub.id } });
       }
-    } else {
+    }
+
+    // QA aprobó: el ticket pasa solo a Resuelto.
+    let ticketResuelto = false;
+    if (hacia === "finalizado" && ticket.estado_codigo === "listo_revision" && (await subtareasSinFinalizar(auth, id)).length === 0) {
+      const { data: t } = await auth.sb
+        .from("soporte_tickets")
+        .update({ estado_codigo: "resuelto", resuelto_at: ahora, cerrado_at: null, updated_at: ahora, updated_by: auth.usuarioId })
+        .eq("empresa_id", auth.empresaId)
+        .eq("id", id)
+        .eq("estado_codigo", "listo_revision")
+        .select("id")
+        .maybeSingle();
+      if (t) {
+        ticketResuelto = true;
+        eventos.push({ tipo_evento: "confirmacion_qa", valor_anterior: "listo_revision", valor_nuevo: "resuelto", metadata: { subtarea_id: sub.id } });
+      }
+    }
+
+    if (!ticketReabierto && !ticketResuelto) {
       await auth.sb.from("soporte_tickets").update({ updated_at: ahora, updated_by: auth.usuarioId }).eq("empresa_id", auth.empresaId).eq("id", id);
     }
 
@@ -114,14 +134,16 @@ export async function PATCH(request: Request, { params }: Params) {
     } else if (hacia === "finalizado") {
       await avisarSoporte(auth, {
         usuarioId: ticket.responsable_id,
-        titulo: `QA finalizó la revisión del ticket ${numeroTicket(ticket.numero)}`,
+        titulo: ticketResuelto
+          ? `QA aprobó el ticket ${numeroTicket(ticket.numero)}: pasó a Resuelto`
+          : `QA finalizó la revisión del ticket ${numeroTicket(ticket.numero)}`,
         cuerpo: ticket.asunto,
         ticketId: id,
         subtareaId: sub.id,
       });
     }
 
-    return ok({ actualizado: true, ticket_reabierto: ticketReabierto });
+    return ok({ actualizado: true, ticket_reabierto: ticketReabierto, ticket_resuelto: ticketResuelto });
   } catch (e) {
     return errorInesperado(e);
   }

@@ -47,6 +47,7 @@ async function clienteDelContacto(
       .from("clientes")
       .select("id, telefono, telefono_secundario, nombre, empresa, nombre_contacto")
       .eq("empresa_id", empresaId)
+      .is("deleted_at", null)
       .range(desde, desde + 999);
     if (error) return null;
     const lote = (data ?? []) as typeof filas;
@@ -60,7 +61,9 @@ async function clienteDelContacto(
     .select("cliente_id, nombre, telefono")
     .eq("empresa_id", empresaId)
     .limit(20_000);
-  const contactos = (contactosData ?? []) as { cliente_id: string; nombre: string; telefono: string | null }[];
+  // Sólo contactos de clientes vigentes (no eliminados).
+  const vigentes = new Set(filas.map((c) => c.id));
+  const contactos = ((contactosData ?? []) as { cliente_id: string; nombre: string; telefono: string | null }[]).filter((c) => vigentes.has(c.cliente_id));
 
   const clave = claveTelefono(telefono);
   if (clave) {
@@ -173,6 +176,7 @@ export async function POST(request: Request) {
       .select("id")
       .eq("empresa_id", auth.empresaId)
       .eq("id", clienteId)
+      .is("deleted_at", null)
       .maybeSingle();
     if (!cliente) return falla("El cliente no existe", 404);
 

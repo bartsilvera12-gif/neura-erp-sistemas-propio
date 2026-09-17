@@ -83,6 +83,7 @@ export async function prepararTicket(
     .select("id")
     .eq("empresa_id", auth.empresaId)
     .eq("id", clienteId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (!cliente) return falla("El cliente no existe");
 

@@ -210,6 +210,8 @@ export function clientesDeEmpresa(sb: AppSupabaseClient, empresaId: string) {
         .from("clientes")
         .select("id, empresa, nombre_contacto")
         .eq("empresa_id", empresaId)
+        // Los clientes eliminados no se ofrecen (Clientes tampoco los lista).
+        .is("deleted_at", null)
         .range(desde, desde + 999);
       if (error) throw new Error(error.message);
       const lote = (data ?? []) as { id: string; empresa?: string | null; nombre_contacto?: string | null }[];

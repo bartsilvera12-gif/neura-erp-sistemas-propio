@@ -14,6 +14,8 @@ type Guardia = {
   soporte_suplente_id: string | null;
   notas: string | null;
   nombres: Record<string, string>;
+  /** Último intercambio principal ↔ suplente de la semana (activación del suplente). */
+  intercambio?: { fecha: string; motivo: string | null; principal: string; realizado_por: string } | null;
 };
 
 type Resp = {
@@ -184,6 +186,19 @@ function Semana({
             </div>
           </div>
 
+          {g.intercambio ? (
+            <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+              <ArrowUpDown className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
+              <span className="min-w-0">
+                <strong className="font-semibold">Suplente activado</strong> el{" "}
+                {new Intl.DateTimeFormat("es-PY", { timeZone: "Etc/GMT+3", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(g.intercambio.fecha))}
+                {g.intercambio.realizado_por ? <> por {g.intercambio.realizado_por}</> : null}
+                {g.intercambio.principal ? <> · queda a cargo {g.intercambio.principal}</> : null}
+                {g.intercambio.motivo ? <span className="block text-amber-800/90">Motivo: {g.intercambio.motivo}</span> : null}
+              </span>
+            </p>
+          ) : null}
+
           {g.notas ? (
             <p className="flex items-start gap-2 px-1 pt-0.5 text-[11px] leading-relaxed text-slate-500">
               <Clock className="mt-px h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
@@ -278,7 +293,8 @@ export default function GuardiasBoton() {
         window.alert(j?.error ?? "No se pudo intercambiar");
         return;
       }
-      // Se actualiza en el lugar: no hace falta volver a pedir las semanas.
+      // Se actualiza en el lugar (con el aviso de activación), sin volver a pedir las semanas.
+      const ahoraIso = new Date().toISOString();
       setGuardias((lista) =>
         lista.map((x) =>
           x.semana_inicio !== lunes
@@ -291,6 +307,12 @@ export default function GuardiasBoton() {
                   ...x.nombres,
                   soporte_principal_id: x.nombres.soporte_suplente_id ?? "",
                   soporte_suplente_id: x.nombres.soporte_principal_id ?? "",
+                },
+                intercambio: {
+                  fecha: ahoraIso,
+                  motivo: motivo.trim() || null,
+                  principal: x.nombres.soporte_suplente_id ?? "",
+                  realizado_por: "vos",
                 },
               }
         )

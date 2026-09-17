@@ -80,13 +80,50 @@ export async function GET(request: Request) {
 
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 
+    // Último intercambio principal ↔ suplente de cada semana (activación del
+    // suplente): quién quedó a cargo, cuándo, por qué y quién lo hizo.
+    const { data: inter } = await sb
+      .from("guardias_intercambios")
+      .select("semana_inicio, principal_nuevo_id, motivo, realizado_por, created_at")
+      .eq("empresa_id", auth.empresaId)
+      .gte("semana_inicio", desde)
+      .lte("semana_inicio", hasta)
+      .order("created_at", { ascending: false });
+    const ultimos = new Map<string, { principal_nuevo_id: string | null; motivo: string | null; realizado_por: string | null; created_at: string }>();
+    for (const i of (inter ?? []) as { semana_inicio: string; principal_nuevo_id: string | null; motivo: string | null; realizado_por: string | null; created_at: string }[]) {
+      if (!ultimos.has(i.semana_inicio)) ultimos.set(i.semana_inicio, i);
+    }
+    const idsPersonas = [...new Set([...ultimos.values()].flatMap((i) => [i.principal_nuevo_id, i.realizado_por]).filter((x): x is string => !!x))];
+    const nombres = new Map<string, string>();
+    if (idsPersonas.length) {
+      const { data: us } = await createServiceRoleClient().from("usuarios").select("id, nombre, email").in("id", idsPersonas);
+      for (const u of (us ?? []) as { id: string; nombre?: string | null; email?: string | null }[]) {
+        nombres.set(u.id, (u.nombre?.trim() || u.email?.trim() || "").trim());
+      }
+    }
+
+    const guardias = (await conNombres((data ?? []) as FilaGuardia[])).map((g) => {
+      const i = ultimos.get(g.semana_inicio);
+      return {
+        ...g,
+        intercambio: i
+          ? {
+              fecha: i.created_at,
+              motivo: i.motivo,
+              principal: i.principal_nuevo_id ? nombres.get(i.principal_nuevo_id) ?? "" : "",
+              realizado_por: i.realizado_por ? nombres.get(i.realizado_por) ?? "" : "",
+            }
+          : null,
+      };
+    });
+
     return NextResponse.json(
       successResponse({
         desde,
         semanas,
         es_admin: auth.esAdmin,
         usuario_id: auth.usuarioCatalogId,
-        guardias: await conNombres((data ?? []) as FilaGuardia[]),
+        guardias,
       })
     );
   } catch (e) {

@@ -6,7 +6,7 @@ import {
   type EstadoSubtarea,
 } from "@/lib/soporte/dominio";
 import { errorInesperado, falla, ok, registrarHistorial, sinPermiso, ticketDeEmpresa, type EventoHistorial } from "@/lib/soporte/servidor";
-import { SUBTAREA_CAMPOS, avisarSoporte, subtareasSinFinalizar, type SubtareaFila } from "@/lib/soporte/subtareas";
+import { SUBTAREA_CAMPOS, avisarResueltoAPMs, avisarSoporte, subtareasSinFinalizar, type SubtareaFila } from "@/lib/soporte/subtareas";
 import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Params = { params: Promise<{ id: string; subId: string }> };
@@ -146,6 +146,8 @@ export async function PATCH(request: Request, { params }: Params) {
         subtareaId: sub.id,
       });
     }
+    // Las PM son las que le responden al cliente.
+    if (ticketResuelto) await avisarResueltoAPMs(auth, ticket);
 
     return ok({ actualizado: true, ticket_reabierto: ticketReabierto, ticket_resuelto: ticketResuelto });
   } catch (e) {

@@ -56,6 +56,27 @@ export async function avisarSoporte(
 }
 
 /**
+ * Avisa a las PM que un ticket quedó Resuelto. Son quienes le responden al
+ * cliente, así que se enteran sin tener que mirar el listado. Nunca lanza: ver
+ * `avisarSoporte`.
+ */
+export async function avisarResueltoAPMs(
+  auth: SoporteContexto,
+  ticket: { id: string; numero: number; asunto: string; cliente_nombre?: string | null }
+): Promise<void> {
+  const equipo = await personasDeEmpresa(auth.empresaId);
+  const cuerpo = ticket.cliente_nombre ? `${ticket.cliente_nombre} · ${ticket.asunto}` : ticket.asunto;
+  for (const pm of equipo.filter((p) => p.es_project_manager)) {
+    await avisarSoporte(auth, {
+      usuarioId: pm.id,
+      titulo: `Ticket ${numeroTicket(ticket.numero)} resuelto`,
+      cuerpo,
+      ticketId: ticket.id,
+    });
+  }
+}
+
+/**
  * Al pasar a "Listo para revisión": deja lista la revisión de QA y le avisa.
  *
  *   · Si hay una pendiente o en proceso, se usa esa.

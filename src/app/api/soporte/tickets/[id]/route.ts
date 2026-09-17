@@ -25,7 +25,7 @@ import {
   type EventoHistorial,
 } from "@/lib/soporte/servidor";
 import { enriquecerTickets } from "@/lib/soporte/tickets-servidor";
-import { abrirRevisionQa, subtareasSinFinalizar } from "@/lib/soporte/subtareas";
+import { abrirRevisionQa, avisarResueltoAPMs, subtareasSinFinalizar } from "@/lib/soporte/subtareas";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -279,6 +279,10 @@ export async function PATCH(request: Request, { params }: Params) {
     // Después del historial: la subtarea queda registrada tras la entrega.
     if (patch.estado_codigo === "listo_revision") {
       await abrirRevisionQa(auth, { id, numero: actual.numero, asunto: (patch.asunto as string | undefined) ?? actual.asunto });
+    }
+    // Resuelto: lo avisamos a las PM, que son las que le responden al cliente.
+    if (patch.estado_codigo === "resuelto") {
+      await avisarResueltoAPMs(auth, { id, numero: actual.numero, asunto: (patch.asunto as string | undefined) ?? actual.asunto });
     }
     return ok({ actualizado: true, eventos: eventos.map((e) => e.tipo_evento) });
   } catch (e) {

@@ -61,9 +61,15 @@ ENV HOSTNAME=0.0.0.0
 # src/app/api/chat/send-media/route.ts los invoca por execFile para transcodificar
 # audio a MP3 y comprimir video < 16 MB antes de mandarlos por WhatsApp. Sin esto,
 # el envío de notas de voz y videos grandes se rompe SOLO en runtime, no en el build.
-# ffmpeg (paquete Debian) incluye ffprobe. Limpiamos apt lists para no engordar la capa.
+# ffmpeg (paquete Debian) incluye ffprobe.
+#
+# curl: lo necesita el HEALTHCHECK de Coolify, que corre DENTRO del contenedor
+# (GET http://localhost:3000/... con curl/wget). node:22-slim no trae ninguno de los
+# dos, así que sin esto la imagen buildea y arranca, pero Coolify la marca "unhealthy"
+# y descarta el deploy aunque la app esté sirviendo bien.
+# Limpiamos apt lists para no engordar la capa.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Usuario no-root (buena práctica; standalone no necesita root).

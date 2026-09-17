@@ -243,6 +243,22 @@ export function Insignia({ color, children, punto = false, icono: Icono }: { col
   );
 }
 
+/**
+ * Fase del ticket: cuántas veces volvió de QA con cambios. La Fase 1 no se
+ * muestra (es la normal); desde la 2 aparece junto al estado.
+ */
+export function Fase({ n, bloque = false }: { n?: number | null; bloque?: boolean }) {
+  if (!n || n < 2) return null;
+  return (
+    <span
+      className={`${bloque ? "mt-1 flex w-fit" : "inline-flex"} items-center whitespace-nowrap rounded-full bg-violet-50 px-2 py-0.5 text-[10.5px] font-bold text-violet-700 ring-1 ring-inset ring-violet-200`}
+      title={`QA pidió cambios ${n - 1} ${n - 1 === 1 ? "vez" : "veces"}`}
+    >
+      Fase {n}
+    </span>
+  );
+}
+
 function oscurecer(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!m) return hex;

@@ -16,7 +16,7 @@ import {
   type CatalogosConEquipo,
   type Persona,
 } from "./api";
-import { Aviso, Avatar, Cargando, Insignia, TONOS, TONO_AREA, TONO_ESTADO, Vacio, claseInput, type Tono } from "./ui";
+import { Aviso, Avatar, Cargando, Fase, Insignia, TONOS, TONO_AREA, TONO_ESTADO, Vacio, claseInput, type Tono } from "./ui";
 import { SelectorBuscable } from "./SelectorBuscable";
 import { numeroTicket } from "@/lib/soporte/dominio";
 
@@ -35,6 +35,7 @@ type TicketLista = {
   cliente_nombre: string | null;
   tipo_etiqueta: string;
   estado_codigo: string;
+  fase?: number;
   estado_nombre: string;
   estado_color: string;
   tipo_codigo: string;
@@ -347,6 +348,7 @@ export default function TablaTickets({
                       <td className="px-3 py-3.5 text-slate-600">{cat?.tipos.find((x) => x.codigo === t.tipo_codigo)?.nombre ?? t.tipo_etiqueta}</td>
                       <td className="px-3 py-3.5">
                         <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
+                        <Fase n={t.fase} bloque />
                       </td>
                       <td className="px-3 py-3.5">
                         <span className="text-slate-600">{t.clasificacion_nombre ?? <span className="text-slate-300">—</span>}</span>
@@ -399,6 +401,7 @@ export default function TablaTickets({
                     <p className="mt-1 text-sm font-semibold text-slate-900">{t.asunto}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
+                      <Fase n={t.fase} />
                       {t.clasificacion_nombre ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600">{t.clasificacion_nombre}</span> : null}
                     </div>
                   </Link>

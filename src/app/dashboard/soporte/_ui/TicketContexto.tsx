@@ -6,6 +6,8 @@ import type { CatalogosConEquipo, Persona } from "./api";
 
 export type TicketDetalle = {
   id: string;
+  /** Ciclos de corrección: sube cada vez que QA pide cambios. */
+  fase?: number;
   numero: number;
   asunto: string;
   descripcion: string;

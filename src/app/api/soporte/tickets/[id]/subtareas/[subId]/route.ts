@@ -13,13 +13,14 @@ type Params = { params: Promise<{ id: string; subId: string }> };
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
-type TicketMin = { id: string; numero: number; asunto: string; estado_codigo: string; responsable_id: string | null };
+type TicketMin = { id: string; numero: number; asunto: string; estado_codigo: string; responsable_id: string | null; fase: number | null };
 
 /**
  * PATCH — cambia el estado de una subtarea de revisión.
  *
  *   · "Cambios solicitados" exige un comentario, y si el ticket está en
- *     "Listo para revisión" lo devuelve a "Re-abierto" (y avisa al responsable).
+ *     "Listo para revisión" lo devuelve a "En proceso" en la fase siguiente
+ *     (Fase 2, Fase 3, …) y avisa al responsable.
  *   · "Finalizado" pasa el ticket de "Listo para revisión" a "Resuelto" (si no
  *     queda otra revisión abierta) y avisa al responsable.
  *
@@ -34,7 +35,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!UUID.test(id) || !UUID.test(subId)) return falla("Subtarea no encontrada", 404);
 
     const [ticket, { data: subData }] = await Promise.all([
-      ticketDeEmpresa<TicketMin>(auth.sb, auth.empresaId, id, "id, numero, asunto, estado_codigo, responsable_id"),
+      ticketDeEmpresa<TicketMin>(auth.sb, auth.empresaId, id, "id, numero, asunto, estado_codigo, responsable_id, fase"),
       auth.sb.from("soporte_subtareas").select(SUBTAREA_CAMPOS).eq("empresa_id", auth.empresaId).eq("ticket_id", id).eq("id", subId).maybeSingle(),
     ]);
     const sub = subData as SubtareaFila | null;
@@ -83,12 +84,13 @@ export async function PATCH(request: Request, { params }: Params) {
       eventos.push({ tipo_evento: "comentario", metadata: { comentario_id: com?.id ?? null, subtarea_id: sub.id, rechazo_qa: hacia === "cambios_solicitados" } });
     }
 
-    // QA pidió cambios: el ticket vuelve a Desarrollo.
+    // QA pidió cambios: el ticket vuelve a En proceso y arranca una fase nueva.
     let ticketReabierto = false;
+    const faseNueva = (ticket.fase ?? 1) + 1;
     if (hacia === "cambios_solicitados" && ticket.estado_codigo === "listo_revision") {
       const { data: t } = await auth.sb
         .from("soporte_tickets")
-        .update({ estado_codigo: "reabierto", resuelto_at: null, cerrado_at: null, updated_at: ahora, updated_by: auth.usuarioId })
+        .update({ estado_codigo: "en_proceso", fase: faseNueva, resuelto_at: null, cerrado_at: null, updated_at: ahora, updated_by: auth.usuarioId })
         .eq("empresa_id", auth.empresaId)
         .eq("id", id)
         .eq("estado_codigo", "listo_revision")
@@ -96,7 +98,7 @@ export async function PATCH(request: Request, { params }: Params) {
         .maybeSingle();
       if (t) {
         ticketReabierto = true;
-        eventos.push({ tipo_evento: "devolucion_qa", valor_anterior: "listo_revision", valor_nuevo: "reabierto", metadata: { subtarea_id: sub.id } });
+        eventos.push({ tipo_evento: "devolucion_qa", valor_anterior: "listo_revision", valor_nuevo: "en_proceso", metadata: { subtarea_id: sub.id, fase: faseNueva } });
       }
     }
 
@@ -126,7 +128,9 @@ export async function PATCH(request: Request, { params }: Params) {
     if (hacia === "cambios_solicitados") {
       await avisarSoporte(auth, {
         usuarioId: ticket.responsable_id,
-        titulo: `QA pidió cambios en el ticket ${numeroTicket(ticket.numero)}`,
+        titulo: ticketReabierto
+          ? `QA pidió cambios en el ticket ${numeroTicket(ticket.numero)}: vuelve a En proceso (Fase ${faseNueva})`
+          : `QA pidió cambios en el ticket ${numeroTicket(ticket.numero)}`,
         cuerpo: comentario,
         ticketId: id,
         subtareaId: sub.id,

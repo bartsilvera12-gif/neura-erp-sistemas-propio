@@ -392,10 +392,12 @@ export type TicketFila = {
   /** `manual` (alta en Soporte) o `tipificacion_cliente`. Null en tickets anteriores. */
   origen: string | null;
   tipificacion_id: string | null;
+  /** Ciclos de corrección: 1 al crearse, +1 cada vez que QA pide cambios. */
+  fase: number;
 };
 
 export const TICKET_CAMPOS =
-  "id, numero, asunto, descripcion, resultado_esperado, impacto_operativo, pasos_reproducir, criterios_aceptacion, cliente_id, proyecto_id, modulo, version, entorno, navegador, tipo_codigo, clasificacion_codigo, prioridad_codigo, estado_codigo, responsable_id, proxima_accion, sla_horas, fecha_objetivo, resuelto_at, cerrado_at, created_by, updated_by, created_at, updated_at, origen, tipificacion_id";
+  "id, numero, asunto, descripcion, resultado_esperado, impacto_operativo, pasos_reproducir, criterios_aceptacion, cliente_id, proyecto_id, modulo, version, entorno, navegador, tipo_codigo, clasificacion_codigo, prioridad_codigo, estado_codigo, responsable_id, proxima_accion, sla_horas, fecha_objetivo, resuelto_at, cerrado_at, created_by, updated_by, created_at, updated_at, origen, tipificacion_id, fase";
 
 /**
  * Etiqueta del "tipo de solicitud" para gráficos y listados.

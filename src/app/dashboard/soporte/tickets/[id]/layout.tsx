@@ -35,7 +35,7 @@ import {
 } from "../../_ui/api";
 import { TicketContext, type TicketCtx, type TicketDetalle } from "../../_ui/TicketContexto";
 import EstadoRapido from "../../_ui/EstadoRapido";
-import { Aviso, Esqueleto, Insignia, Pagina, PestanasRuta, TONOS, claseBoton, type Tono } from "../../_ui/ui";
+import { Aviso, Esqueleto, Fase, Insignia, Pagina, PestanasRuta, TONOS, claseBoton, type Tono } from "../../_ui/ui";
 import { numeroTicket } from "@/lib/soporte/dominio";
 
 type Detalle = { ticket: TicketDetalle; contadores: TicketCtx["contadores"] };
@@ -184,6 +184,7 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
               </h1>
               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                 <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
+                <Fase n={t.fase} />
                 {t.sla.estado === "vencido" || t.sla.estado === "en_riesgo" ? (
                   <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${sla.fondo} ${sla.texto}`}>
                     <Timer className="h-3 w-3" aria-hidden /> SLA {sla.etiqueta.toLowerCase()}

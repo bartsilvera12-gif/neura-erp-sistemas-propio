@@ -25,7 +25,7 @@ type Subtarea = {
  *
  * Se abren solas cuando el ticket pasa a "Listo para revisión". QA comenta acá
  * y cierra la revisión: "Cambios solicitados" (con comentario obligatorio)
- * devuelve el ticket a Re-abierto; "Finalizado" deja pasarlo a Resuelto.
+ * devuelve el ticket a En proceso en una fase nueva; "Finalizado" deja pasarlo a Resuelto.
  */
 export default function SubtareasTicket() {
   const { ticket, recargar } = useTicket();
@@ -206,7 +206,7 @@ function TarjetaSubtarea({ ticketId, sub, alCambiar }: { ticketId: string; sub: 
                 onClick={() => void cambiarEstado("cambios_solicitados")}
                 cargando={ocupado === "cambios_solicitados"}
                 disabled={ocupado != null}
-                title="Devuelve el ticket a Re-abierto. Requiere comentario."
+                title="Devuelve el ticket a En proceso y abre una fase nueva. Requiere comentario."
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Solicitar cambios
               </Boton>

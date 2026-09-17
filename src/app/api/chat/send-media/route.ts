@@ -80,6 +80,38 @@ async function transcodeAudioToMp3(input: Buffer): Promise<Buffer> {
   }
 }
 
+/**
+ * Segundos con sonido de un audio (lo que no es silencio).
+ *
+ * Existe porque llegaron notas de voz "mudas": el micrófono del asesor no captó nada y el
+ * cliente recibía 24 segundos de silencio y respondía "no se escucha". Se mide con
+ * `silencedetect` y se resta del total. -1 si ffmpeg no puede medir (entonces no se bloquea
+ * nada: ante la duda, se manda).
+ */
+async function segundosConSonido(mp3: Buffer): Promise<number> {
+  const dir = await mkdtemp(join(tmpdir(), "ccsil-"));
+  const path = join(dir, "a.mp3");
+  try {
+    await writeFile(path, mp3);
+    const { stderr } = await execFileAsync(
+      "ffmpeg",
+      ["-hide_banner", "-nostats", "-i", path, "-af", "silencedetect=n=-45dB:d=0.3", "-f", "null", "-"],
+      { timeout: 60000 }
+    ).catch((e: { stderr?: string }) => ({ stderr: e?.stderr ?? "" }));
+    const total = await probeDurationSeconds(path);
+    if (!total) return -1;
+    let silencio = 0;
+    for (const m of String(stderr).matchAll(/silence_duration:\s*([0-9.]+)/g)) {
+      silencio += parseFloat(m[1]) || 0;
+    }
+    return Math.max(0, total - silencio);
+  } catch {
+    return -1;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /** Duración del video en segundos (ffprobe). 0 si no se puede determinar. */
 async function probeDurationSeconds(path: string): Promise<number> {
   try {
@@ -303,6 +335,20 @@ export async function POST(request: NextRequest) {
       }
       origName = (origName.replace(/\.(webm|ogg|mp4|m4a|aac)$/i, "") || "audio") + ".mp3";
       uploadMime = "audio/mpeg";
+
+      // Nota de voz muda: no se manda. Antes salía igual y el cliente recibía silencio.
+      const conSonido = await segundosConSonido(buf);
+      if (conSonido >= 0 && conSonido < 0.6) {
+        console.warn("[send-media] audio sin sonido", { conversationId, conSonido });
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "La grabación salió sin sonido: el micrófono no captó tu voz. Fijate que ninguna otra app lo esté usando (llamada, WhatsApp) y volvé a grabar.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Video que supera el límite de WhatsApp → lo comprimimos (máx 720p, ~15 MB). Si no,

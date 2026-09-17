@@ -644,6 +644,9 @@ export default function MAsesorChatPage() {
   const chunksRef = useRef<Blob[]>([]);
   const cancelRecRef = useRef(false);
   const recTimerRef = useRef<number | null>(null);
+  const nivelTimerRef = useRef<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const huboSonidoRef = useRef(true);
 
   const load = useCallback(
     async (silent?: boolean) => {
@@ -1253,7 +1256,11 @@ export default function MAsesorChatPage() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // `autoGainControl` sube el nivel cuando se habla lejos del micrófono: llegaron notas
+      // de voz casi mudas que el cliente no podía escuchar.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       streamRef.current = stream;
       chunksRef.current = [];
       cancelRecRef.current = false;
@@ -1265,6 +1272,12 @@ export default function MAsesorChatPage() {
       };
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
+        if (nivelTimerRef.current) {
+          window.clearInterval(nivelTimerRef.current);
+          nivelTimerRef.current = null;
+        }
+        void audioCtxRef.current?.close().catch(() => {});
+        audioCtxRef.current = null;
         mediaRecorderRef.current = null;
         streamRef.current = null;
         if (recTimerRef.current) {
@@ -1276,10 +1289,44 @@ export default function MAsesorChatPage() {
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         chunksRef.current = [];
         if (cancelRecRef.current || blob.size < 300) return;
+        if (!huboSonidoRef.current) {
+          setSendErr(
+            "La grabación salió sin sonido: el micrófono no captó tu voz. Fijate que ninguna otra app lo esté usando (llamada, WhatsApp) y volvé a grabar."
+          );
+          return;
+        }
         const ext = extForAudioType(blob.type);
         const file = new File([blob], `nota-voz.${ext}`, { type: blob.type || "audio/webm" });
         sendAudio(file);
       };
+      // Medidor de nivel: si el micrófono no capta NADA en toda la grabación, no se manda.
+      // Es lo que pasaba cuando otra app se quedaba con el micrófono: salía silencio y el
+      // cliente contestaba "no se escucha".
+      try {
+        const Ctx =
+          window.AudioContext ??
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (Ctx) {
+          const ctx = new Ctx();
+          audioCtxRef.current = ctx;
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          ctx.createMediaStreamSource(stream).connect(analyser);
+          const datos = new Uint8Array(analyser.frequencyBinCount);
+          huboSonidoRef.current = false;
+          nivelTimerRef.current = window.setInterval(() => {
+            analyser.getByteTimeDomainData(datos);
+            let pico = 0;
+            for (const v of datos) pico = Math.max(pico, Math.abs(v - 128));
+            if (pico > 6) huboSonidoRef.current = true; // ~ -25 dB
+          }, 120);
+        } else {
+          huboSonidoRef.current = true; // sin medidor no se bloquea nada
+        }
+      } catch {
+        huboSonidoRef.current = true;
+      }
+
       setRecording(true);
       setRecSecs(0);
       recTimerRef.current = window.setInterval(() => setRecSecs((s) => s + 1), 1000);

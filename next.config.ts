@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
+   * Salida standalone: genera .next/standalone con server.js y solo el subconjunto
+   * de node_modules que el trazado de Next detecta como necesario. La imagen final
+   * deja de arrastrar todo el proyecto → "exporting layers" mucho más corta.
+   * Arranca con `node server.js` (no `next start`).
+   */
+  output: "standalone",
+  /**
    * El host de build self-hosted (Coolify/nixpacks) tiene RAM acotada y el
    * OOM-killer mata la fase "Running TypeScript"/ESLint de `next build`
    * (SIGKILL, exit 255) en builds fríos con dependencias pesadas (recharts).

@@ -1,0 +1,37 @@
+# Dependencias y build: se regeneran dentro del contenedor
+node_modules
+.next
+out
+
+# Git y metadatos
+.git
+.gitignore
+.cursor
+.claude
+.mcp.json
+
+# Env: los inyecta Coolify, no van en la imagen
+.env*
+
+# Apps móviles: no son parte del build del servidor Next
+android
+ios
+capacitor.config.ts
+
+# Datos sueltos y reportes en la raíz (no los usa la app en runtime)
+*.xlsx
+*.pdf
+*.csv
+*.log
+rollback-pm*.json
+plan-redistribucion.json
+*.generated.sql
+*.neura.sql
+
+# Docs y auditorías
+docs
+*.md
+
+# Herramientas de dev/QA que no corren en producción
+tutorial-erp
+e2e-super-admin*.png

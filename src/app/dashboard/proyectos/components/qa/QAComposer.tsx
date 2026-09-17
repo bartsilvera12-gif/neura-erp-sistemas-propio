@@ -19,6 +19,13 @@ import {
   IconTrash,
 } from "./ui";
 import { FechaSelect } from "@/components/ui/FechaSelect";
+import {
+  borrarBorradorQA,
+  capturasBorradorQA,
+  guardarBorradorQA,
+  leerBorradorQA,
+  type CapturaPendiente,
+} from "./qa-borrador";
 
 type Props = {
   projectId: string;
@@ -38,7 +45,7 @@ type Props = {
 };
 
 /** Captura pendiente: todavía no existe la observación contra la cual subirla. */
-type Pendiente = { file: File; preview: string; id: string };
+type Pendiente = CapturaPendiente;
 
 const LABEL_CLS = "text-[11px] font-medium uppercase tracking-wide text-slate-500";
 
@@ -64,16 +71,27 @@ export default function QAComposer({
   onSeccionCreada,
   onCerrar,
 }: Props) {
-  const [titulo, setTitulo] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [seccionId, setSeccionId] = useState(seccionInicial ?? "");
-  const [nuevaSeccion, setNuevaSeccion] = useState("");
-  const [severidad, setSeveridad] = useState<QAObservacionSeveridad>("media");
-  const [origen, setOrigen] = useState<QAObservacionOrigen>("interno");
-  const [asignadoA, setAsignadoA] = useState("");
-  const [fechaLimite, setFechaLimite] = useState("");
-  const [urlRef, setUrlRef] = useState("");
-  const [pendientes, setPendientes] = useState<Pendiente[]>([]);
+  // Lo que quedó a medio escribir en este proyecto (ver qa-borrador.ts).
+  const [borrador] = useState(() => leerBorradorQA(projectId));
+  const [titulo, setTitulo] = useState(borrador?.titulo ?? "");
+  const [descripcion, setDescripcion] = useState(borrador?.descripcion ?? "");
+  const [seccionId, setSeccionId] = useState(borrador?.seccionId || seccionInicial || "");
+  const [nuevaSeccion, setNuevaSeccion] = useState(borrador?.nuevaSeccion ?? "");
+  const [severidad, setSeveridad] = useState<QAObservacionSeveridad>((borrador?.severidad as QAObservacionSeveridad) || "media");
+  const [origen, setOrigen] = useState<QAObservacionOrigen>((borrador?.origen as QAObservacionOrigen) || "interno");
+  const [asignadoA, setAsignadoA] = useState(borrador?.asignadoA ?? "");
+  const [fechaLimite, setFechaLimite] = useState(borrador?.fechaLimite ?? "");
+  const [urlRef, setUrlRef] = useState(borrador?.urlRef ?? "");
+  const [pendientes, setPendientes] = useState<Pendiente[]>(() => capturasBorradorQA(projectId));
+
+  // Cada cambio queda guardado: al cambiar de pestaña o salir del proyecto no se pierde.
+  useEffect(() => {
+    guardarBorradorQA(
+      projectId,
+      { titulo, descripcion, seccionId, nuevaSeccion, severidad, origen, asignadoA, fechaLimite, urlRef },
+      pendientes
+    );
+  }, [projectId, titulo, descripcion, seccionId, nuevaSeccion, severidad, origen, asignadoA, fechaLimite, urlRef, pendientes]);
 
   const [guardando, setGuardando] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -84,15 +102,8 @@ export default function QAComposer({
     tituloRef.current?.focus();
   }, []);
 
-  // Las object URL de las previsualizaciones se liberan al desmontar.
-  const pendientesRef = useRef<Pendiente[]>([]);
-  pendientesRef.current = pendientes;
-  useEffect(
-    () => () => {
-      for (const p of pendientesRef.current) URL.revokeObjectURL(p.preview);
-    },
-    []
-  );
+  // Las object URL de las previsualizaciones NO se liberan al desmontar: las
+  // capturas siguen en el borrador. Se liberan al quitarlas, limpiar o guardar.
 
   const agregarArchivos = useCallback((archivos: File[]) => {
     setPendientes((prev) => [
@@ -112,6 +123,7 @@ export default function QAComposer({
 
   function limpiar() {
     for (const p of pendientes) URL.revokeObjectURL(p.preview);
+    borrarBorradorQA(projectId);
     setTitulo("");
     setDescripcion("");
     setUrlRef("");

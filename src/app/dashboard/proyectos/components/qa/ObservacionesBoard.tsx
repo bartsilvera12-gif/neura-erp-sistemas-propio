@@ -12,6 +12,7 @@ import {
 } from "@/lib/proyectos/qa-observaciones-config";
 import ClonarObservacionesModal from "./ClonarObservacionesModal";
 import QAComposer from "./QAComposer";
+import { hayBorradorQA } from "./qa-borrador";
 import ObservacionCard from "./ObservacionCard";
 import ObservacionModal from "./ObservacionModal";
 import SeccionesManager from "./SeccionesManager";
@@ -121,6 +122,10 @@ export default function ObservacionesBoard({
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
 
   const [altaOpen, setAltaOpen] = useState(false);
+  // Si quedó una observación a medio cargar, el formulario vuelve abierto con lo escrito.
+  useEffect(() => {
+    if (hayBorradorQA(projectId)) setAltaOpen(true);
+  }, [projectId]);
   const [filtrosOpen, setFiltrosOpen] = useState(false);
 
   const usuariosMap = useMemo(() => {

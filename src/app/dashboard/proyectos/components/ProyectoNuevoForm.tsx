@@ -193,18 +193,26 @@ export default function ProyectoNuevoForm({
     };
     if (estadoId) body.estado_id = estadoId;
 
-    const res = await fetchWithSupabaseSession("/api/proyectos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const j = (await res.json()) as { success?: boolean; data?: { id?: string }; error?: string };
-    setSaving(false);
-    if (!res.ok || !j.success || !j.data?.id) {
-      setErr(j.error ?? "No se pudo crear");
-      return;
+    try {
+      const res = await fetchWithSupabaseSession("/api/proyectos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = (await res.json().catch(() => null)) as
+        | { success?: boolean; data?: { id?: string }; error?: string }
+        | null;
+      if (!res.ok || !j?.success || !j.data?.id) {
+        setErr(j?.error ?? "No se pudo crear");
+        return;
+      }
+      onCreated(j.data.id);
+    } catch (e) {
+      // Antes, un throw de red dejaba "Crear" trabado con el formulario lleno.
+      setErr(e instanceof Error ? e.message : "No se pudo crear el proyecto.");
+    } finally {
+      setSaving(false);
     }
-    onCreated(j.data.id);
   }
 
   if (loading) {

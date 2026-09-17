@@ -402,16 +402,21 @@ export default function SlaProyectosClient() {
     if (fTipo) sp.set("tipo_id", fTipo);
     if (fRc) sp.set("responsable_comercial_id", fRc);
     if (fRt) sp.set("responsable_tecnico_id", fRt);
-    const res = await fetchWithSupabaseSession(`/api/proyectos/sla-dashboard?${sp.toString()}`, { cache: "no-store" });
-    const j = (await res.json().catch(() => ({}))) as { success?: boolean; data?: SlaData; error?: string };
-    if (!res.ok || !j.success || !j.data) {
-      setErr(j.error ?? "No se pudo cargar el dashboard");
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos/sla-dashboard?${sp.toString()}`, { cache: "no-store" });
+      const j = (await res.json().catch(() => ({}))) as { success?: boolean; data?: SlaData; error?: string };
+      if (!res.ok || !j.success || !j.data) {
+        setErr(j.error ?? "No se pudo cargar el dashboard");
+        return;
+      }
+      setData(j.data);
+      setActualizado(new Date());
+    } catch (e) {
+      // Sin esto, un corte de red dejaba el SLA en el esqueleto de carga sin fin.
+      setErr(e instanceof Error ? e.message : "No se pudo cargar el dashboard.");
+    } finally {
       setLoading(false);
-      return;
     }
-    setData(j.data);
-    setActualizado(new Date());
-    setLoading(false);
   }, [desde, hasta, fEstado, fTipo, fRc, fRt]);
 
   useEffect(() => {
@@ -618,7 +623,18 @@ export default function SlaProyectosClient() {
         <PillSelect label="Resp. técnico" value={fRt} onChange={setFRt} options={tecnicos} />
       </div>
 
-      {err ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{err}</div> : null}
+      {err ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          <span>{err}</span>
+          <button
+            type="button"
+            onClick={() => void cargar()}
+            className="rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-[12px] font-medium text-rose-700 transition-colors hover:bg-rose-100"
+          >
+            Reintentar
+          </button>
+        </div>
+      ) : null}
 
       {loading && !data ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">

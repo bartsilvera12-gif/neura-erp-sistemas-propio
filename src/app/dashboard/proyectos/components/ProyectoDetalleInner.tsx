@@ -876,12 +876,16 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         // Sólo viajan las menciones que siguen escritas: si borró el @Nombre
         // del texto, no tiene sentido notificar a esa persona.
         const vigentes = menciones.filter((m) => texto.includes(`@${nombreCorto(m.nombre)}`));
-        const ok = await onEnviar(texto, canal, imagenes, vigentes.map((m) => m.id));
-        setEnviando(false);
-        if (ok) {
-          setTexto("");
-          setImagenes([]);
-          setMenciones([]);
+        try {
+          const ok = await onEnviar(texto, canal, imagenes, vigentes.map((m) => m.id));
+          if (ok) {
+            setTexto("");
+            setImagenes([]);
+            setMenciones([]);
+          }
+        } finally {
+          // Sin este finally, un throw de red dejaba "Publicar" trabado hasta F5.
+          setEnviando(false);
         }
       }}
       className="space-y-2"
@@ -1272,11 +1276,13 @@ export default function ProyectoDetalleInner({
     if (!projectId) return;
     if (!silencioso) setLoading(true);
     setErr(null);
+    try {
     const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, { cache: "no-store" });
-    const j = (await res.json()) as { success?: boolean; data?: DetalleResp; error?: string };
-    if (!res.ok || !j.success || !j.data) {
-      setErr(j.error ?? "Error al cargar");
-      if (!silencioso) setLoading(false);
+    const j = (await res.json().catch(() => null)) as
+      | { success?: boolean; data?: DetalleResp; error?: string }
+      | null;
+    if (!res.ok || !j?.success || !j.data) {
+      setErr(j?.error ?? "Error al cargar");
       return;
     }
     setData(j.data);
@@ -1358,7 +1364,13 @@ export default function ProyectoDetalleInner({
       if (!draft[nro]) draft[nro] = { realizado: false, comentario: "" };
     }
     setCambiosDraft(draft);
-    if (!silencioso) setLoading(false);
+    } catch (e) {
+      // Sin esto, un corte de red o una respuesta no-JSON dejaba la ficha en
+      // "Cargando…" para siempre (sólo salía con F5). Ahora muestra el error.
+      setErr(e instanceof Error ? e.message : "No se pudo cargar el proyecto.");
+    } finally {
+      if (!silencioso) setLoading(false);
+    }
   }, [projectId]);
 
   useEffect(() => {
@@ -1691,6 +1703,7 @@ export default function ProyectoDetalleInner({
     if (tipoIncluyeSaas(tipoCodigo)) {
       briefMerged = applySaasFormToExisting(briefMerged, saasForm);
     }
+    try {
     const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1714,10 +1727,9 @@ export default function ProyectoDetalleInner({
         fecha_prometida: fechaPrometida ? new Date(fechaPrometida).toISOString() : null,
       }),
     });
-    const j = (await res.json()) as { success?: boolean; error?: string };
-    if (!res.ok || !j.success) {
-      setErr(j.error ?? "No se pudo guardar");
-      setGuardandoDatos(false);
+    const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+    if (!res.ok || !j?.success) {
+      setErr(j?.error ?? "No se pudo guardar");
       return;
     }
 
@@ -1725,13 +1737,18 @@ export default function ProyectoDetalleInner({
     // con lo que el usuario acaba de escribir, y NO se espera la recarga: el
     // botón se apaga apenas responde el PATCH.
     setDatosSnapshot(datosFirma);
-    setGuardandoDatos(false);
 
     // Reconciliación en segundo plano: trae historial, SLA y lo que el servidor
     // haya derivado del cambio. Antes esto se esperaba, y entre la recarga del
     // detalle y la del tablero el guardado tardaba varios segundos en devolver
     // el control aunque el dato ya estuviera escrito.
     scheduleReload();
+    } catch (e) {
+      // Antes, un throw de red dejaba "Guardar" trabado hasta recargar la página.
+      setErr(e instanceof Error ? e.message : "No se pudo guardar.");
+    } finally {
+      setGuardandoDatos(false);
+    }
   }
 
   const [deleting, setDeleting] = useState(false);
@@ -1858,6 +1875,7 @@ export default function ProyectoDetalleInner({
     ): Promise<boolean> => {
       const comentario = texto.trim();
       if (!comentario && imagenes.length === 0) return false;
+      try {
       // Las imágenes se suben primero al storage; el comentario guarda sus refs.
       const adjuntos: Array<{ path: string; nombre: string; mime_type: string; size_bytes: number }> = [];
       for (const file of imagenes) {
@@ -1895,6 +1913,11 @@ export default function ProyectoDetalleInner({
       }
       scheduleReload();
       return true;
+      } catch (e) {
+        // Antes un throw de red no mostraba nada; ahora avisa y libera el botón.
+        setErr(e instanceof Error ? e.message : "No se pudo publicar el comentario.");
+        return false;
+      }
     },
     [projectId, scheduleReload]
   );
@@ -2501,7 +2524,20 @@ export default function ProyectoDetalleInner({
   if (loading && !data) {
     return <div className="p-8 text-sm text-slate-500">Cargando…</div>;
   }
-  if (err && !data) return <div className="p-8 text-sm text-rose-600">{err}</div>;
+  if (err && !data) {
+    return (
+      <div className="flex flex-col items-start gap-2 p-8 text-sm">
+        <p className="text-rose-600">{err}</p>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
   if (!data || !proyecto) return null;
 
   const panelCls =

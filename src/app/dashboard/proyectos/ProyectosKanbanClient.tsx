@@ -919,18 +919,26 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     if (filtroRt) sp.set("responsable_tecnico_id", filtroRt);
     if (alcance === "mios") sp.set("mios", "1");
 
-    const rPr = await fetchWithSupabaseSession(`/api/proyectos?${sp.toString()}`, { cache: "no-store" });
-    const jPr = (await rPr.json().catch(() => ({}))) as { success?: boolean; data?: ProyectoCard[]; error?: string };
+    try {
+      const rPr = await fetchWithSupabaseSession(`/api/proyectos?${sp.toString()}`, { cache: "no-store" });
+      const jPr = (await rPr.json().catch(() => ({}))) as { success?: boolean; data?: ProyectoCard[]; error?: string };
 
-    if (ticket !== loadGenRef.current) return;
-    if (!rPr.ok || !jPr.success) {
-      setErr(jPr.error ?? "No se pudieron cargar proyectos");
-      setLoading(false);
-      return;
+      if (ticket !== loadGenRef.current) return;
+      if (!rPr.ok || !jPr.success) {
+        setErr(jPr.error ?? "No se pudieron cargar proyectos");
+        return;
+      }
+      // Se guarda lo que vino tal cual: qué se muestra lo decide `proyectosVisibles`.
+      setProyectos((jPr.data ?? []) as ProyectoCard[]);
+    } catch (e) {
+      // Sin esto, un corte de red dejaba el Kanban en "Cargando proyectos…" para
+      // siempre. Sólo el ticket vigente toca el estado (respeta el anti-carrera).
+      if (ticket === loadGenRef.current) {
+        setErr(e instanceof Error ? e.message : "No se pudieron cargar proyectos.");
+      }
+    } finally {
+      if (ticket === loadGenRef.current) setLoading(false);
     }
-    // Se guarda lo que vino tal cual: qué se muestra lo decide `proyectosVisibles`.
-    setProyectos((jPr.data ?? []) as ProyectoCard[]);
-    setLoading(false);
   }, [filtroEstado, filtroTipo, filtroRc, filtroRt, alcance]);
 
   // Catálogos una sola vez (deps estables); la lista en el mount y en cada cambio de filtro.
@@ -1163,7 +1171,18 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   }
 
   if (err && proyectos.length === 0) {
-    return <div className="p-6 text-sm text-red-600">{err}</div>;
+    return (
+      <div className="flex flex-col items-start gap-2 p-6 text-sm">
+        <p className="text-red-600">{err}</p>
+        <button
+          type="button"
+          onClick={() => void loadProyectos()}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
   }
 
   return (

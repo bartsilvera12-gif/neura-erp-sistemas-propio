@@ -350,18 +350,23 @@ export default function ProyectoCredencialesTab({ projectId }: { projectId: stri
   const cargar = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
-    const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/credenciales`, {
-      cache: "no-store",
-    });
-    const j = (await res.json().catch(() => null)) as ApiResp<ProyectoCredencial[]> | null;
-    if (!res.ok || !j?.success || !j.data) {
-      setErr(j?.error ?? "Error al cargar las credenciales");
+    try {
+      const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/credenciales`, {
+        cache: "no-store",
+      });
+      const j = (await res.json().catch(() => null)) as ApiResp<ProyectoCredencial[]> | null;
+      if (!res.ok || !j?.success || !j.data) {
+        setErr(j?.error ?? "Error al cargar las credenciales");
+        return;
+      }
+      setErr(null);
+      setItems(j.data);
+    } catch (e) {
+      // Sin esto, un corte de red dejaba la pestaña en "Cargando…" para siempre.
+      setErr(e instanceof Error ? e.message : "Error al cargar las credenciales.");
+    } finally {
       setLoading(false);
-      return;
     }
-    setErr(null);
-    setItems(j.data);
-    setLoading(false);
   }, [projectId]);
 
   useEffect(() => {
@@ -493,8 +498,15 @@ export default function ProyectoCredencialesTab({ projectId }: { projectId: stri
       </div>
 
       {err ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900">
-          {err}
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900">
+          <span>{err}</span>
+          <button
+            type="button"
+            onClick={() => void cargar()}
+            className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[12px] font-medium text-amber-800 transition-colors hover:bg-amber-100"
+          >
+            Reintentar
+          </button>
         </div>
       ) : null}
 

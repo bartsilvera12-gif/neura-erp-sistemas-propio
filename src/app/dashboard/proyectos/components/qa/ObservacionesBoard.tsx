@@ -140,33 +140,38 @@ export default function ObservacionesBoard({
   // los volúmenes son de decenas y así los contadores y la búsqueda responden
   // sin ida y vuelta. Los filtros del endpoint quedan para otros consumidores.
   const cargar = useCallback(async () => {
-    const [resObs, resSec] = await Promise.all([
-      fetchWithSupabaseSession(`/api/proyectos/${projectId}/qa/observaciones`, { cache: "no-store" }),
-      fetchWithSupabaseSession(`/api/proyectos/${projectId}/qa/secciones`, { cache: "no-store" }),
-    ]);
-    const jObs = (await resObs.json().catch(() => null)) as QAApiResp<{
-      observaciones: QAObservacion[];
-      permiso?: { vista: "qa" | "desarrollo"; puede_ver_interno: boolean };
-    }> | null;
-    const jSec = (await resSec.json().catch(() => null)) as QAApiResp<{
-      secciones: QASeccion[];
-    }> | null;
+    try {
+      const [resObs, resSec] = await Promise.all([
+        fetchWithSupabaseSession(`/api/proyectos/${projectId}/qa/observaciones`, { cache: "no-store" }),
+        fetchWithSupabaseSession(`/api/proyectos/${projectId}/qa/secciones`, { cache: "no-store" }),
+      ]);
+      const jObs = (await resObs.json().catch(() => null)) as QAApiResp<{
+        observaciones: QAObservacion[];
+        permiso?: { vista: "qa" | "desarrollo"; puede_ver_interno: boolean };
+      }> | null;
+      const jSec = (await resSec.json().catch(() => null)) as QAApiResp<{
+        secciones: QASeccion[];
+      }> | null;
 
-    if (!resObs.ok || !jObs?.success || !jObs.data) {
-      setErr(jObs?.error ?? "Error al cargar las observaciones");
+      if (!resObs.ok || !jObs?.success || !jObs.data) {
+        setErr(jObs?.error ?? "Error al cargar las observaciones");
+        return;
+      }
+      setObservaciones(jObs.data.observaciones);
+      if (jObs.data.permiso) {
+        setPermiso({
+          vista: jObs.data.permiso.vista,
+          puedeVerInterno: jObs.data.permiso.puede_ver_interno === true,
+        });
+      }
+      setSecciones(jSec?.success && jSec.data ? jSec.data.secciones : []);
+      setErr(null);
+    } catch (e) {
+      // Sin esto, un corte de red dejaba "Cargando observaciones…" para siempre.
+      setErr(e instanceof Error ? e.message : "Error al cargar las observaciones.");
+    } finally {
       setLoading(false);
-      return;
     }
-    setObservaciones(jObs.data.observaciones);
-    if (jObs.data.permiso) {
-      setPermiso({
-        vista: jObs.data.permiso.vista,
-        puedeVerInterno: jObs.data.permiso.puede_ver_interno === true,
-      });
-    }
-    setSecciones(jSec?.success && jSec.data ? jSec.data.secciones : []);
-    setErr(null);
-    setLoading(false);
   }, [projectId]);
 
   useEffect(() => {
@@ -389,6 +394,26 @@ export default function ObservacionesBoard({
 
   if (loading) {
     return <div className="p-6 text-sm text-slate-500">Cargando observaciones…</div>;
+  }
+
+  // Un fallo de carga no debe disfrazarse de "no hay observaciones": se muestra
+  // el error con opción de reintentar sin recargar la página.
+  if (err && observaciones.length === 0) {
+    return (
+      <div className="flex flex-col items-start gap-2 p-6 text-sm">
+        <p className="text-rose-600">{err}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true);
+            void cargar();
+          }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
   }
 
   // Cuántos filtros están recortando el listado (la búsqueda no cuenta: está

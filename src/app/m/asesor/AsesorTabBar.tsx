@@ -36,7 +36,9 @@ const TABS = [
    * Va a /tickets y no al tablero, igual que el menú lateral: PM, QA y Desarrollo no ven el
    * Dashboard, y con ese enlace caían en una página que no pueden abrir.
    */
-  { href: "/dashboard/soporte/tickets", label: "Soporte", Icon: Headphones, exact: false, modulo: "soporte" },
+  // Soporte propio de la app (Mis tickets / Todos, estado, prioridad, comentarios), igual a la
+  // app nativa. Los enlaces a /dashboard/soporte que queden siguen marcando esta pestaña.
+  { href: "/m/asesor/soporte", label: "Soporte", Icon: Headphones, exact: false, modulo: "soporte" },
 ] as const;
 
 /** Clave de sesión que marca "entré por la app del asesor". Ver MobileAppShell. */
@@ -94,8 +96,9 @@ export default function AsesorTabBar() {
       <ul className="flex items-stretch">
         {TABS.filter((t) => t.modulo !== "soporte" || accesoSoporte).map(({ href, label, Icon, exact }) => {
           // Soporte abarca todo el módulo (/mis-tickets, un ticket, etc.), no solo /tickets.
-          const prefijo = href.startsWith("/dashboard/soporte") ? "/dashboard/soporte" : href;
-          const active = exact ? pathname === href : pathname.startsWith(prefijo);
+          const active = exact
+            ? pathname === href
+            : pathname.startsWith(href) || (href === "/m/asesor/soporte" && pathname.startsWith("/dashboard/soporte"));
           return (
             <li key={href} className="flex-1">
               <Link

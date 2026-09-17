@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, FolderKanban, MessageCircle } from "lucide-react";
+import { Bell, FolderKanban, Headphones, MessageCircle } from "lucide-react";
 import { useMisModulos } from "@/shared/hooks/useMisModulos";
 import { useNotificaciones } from "@/shared/hooks/useNotificaciones";
 
@@ -22,10 +22,22 @@ import { useNotificaciones } from "@/shared/hooks/useNotificaciones";
  */
 
 const TABS = [
-  { href: "/m/asesor", label: "Chats", Icon: MessageCircle, exact: true },
-  { href: "/m/asesor/proyectos", label: "Proyectos", Icon: FolderKanban, exact: false },
-  { href: "/m/asesor/avisos", label: "Avisos", Icon: Bell, exact: false },
-];
+  { href: "/m/asesor", label: "Chats", Icon: MessageCircle, exact: true, modulo: null },
+  { href: "/m/asesor/proyectos", label: "Proyectos", Icon: FolderKanban, exact: false, modulo: null },
+  { href: "/m/asesor/avisos", label: "Avisos", Icon: Bell, exact: false, modulo: null },
+  /**
+   * Soporte abre el módulo REAL (/dashboard/soporte), tal cual funciona en el navegador, y
+   * no una copia metida adentro de /m/asesor. El módulo tiene decenas de enlaces internos a
+   * /dashboard/soporte/...: una copia se saldría al primer toque, salvo reescribirlos todos en
+   * código de otro módulo. Así no se duplica nada y cualquier cambio en Soporte aparece acá
+   * solo. Se vuelve con el gesto de atrás.
+   *
+   * Solo aparece con el módulo `soporte`, que es la misma regla que aplica el layout del
+   * módulo: sin la fila en usuario_modulos (o rol admin) la pestaña no se dibuja, en vez de
+   * llevar a una pantalla de "Acceso denegado".
+   */
+  { href: "/dashboard/soporte", label: "Soporte", Icon: Headphones, exact: false, modulo: "soporte" },
+] as const;
 
 export default function AsesorTabBar() {
   const { tieneModulo } = useMisModulos();
@@ -43,7 +55,7 @@ export default function AsesorTabBar() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="flex items-stretch">
-        {TABS.map(({ href, label, Icon, exact }) => {
+        {TABS.filter((t) => !t.modulo || tieneModulo(t.modulo) === true).map(({ href, label, Icon, exact }) => {
           const active = exact ? pathname === href : pathname.startsWith(href);
           return (
             <li key={href} className="flex-1">

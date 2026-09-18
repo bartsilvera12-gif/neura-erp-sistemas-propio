@@ -67,7 +67,7 @@ export async function GET(
     const hoy = new Date().toISOString().slice(0, 10);
     const { data: facturas, error: errFact } = await supabase
       .from("facturas")
-      .select("id, fecha, fecha_vencimiento, saldo, estado")
+      .select("id, fecha, fecha_vencimiento, saldo, estado, monto")
       .eq("cliente_id", clienteId)
       .eq("suscripcion_id", suscripcion.id)
       .eq("empresa_id", auth.empresa_id);
@@ -76,7 +76,7 @@ export async function GET(
       return NextResponse.json(errorResponse(errFact.message), { status: 400 });
     }
 
-    const facturasPorMes = new Map<string, { id: string; saldo: number; fecha_vencimiento: string; estado: string }>();
+    const facturasPorMes = new Map<string, { id: string; saldo: number; fecha_vencimiento: string; estado: string; monto: number }>();
     for (const f of facturas ?? []) {
       const mes = (f.fecha as string).slice(0, 7);
       if (!facturasPorMes.has(mes)) {
@@ -87,9 +87,20 @@ export async function GET(
           saldo,
           fecha_vencimiento: f.fecha_vencimiento as string,
           estado: estaVencida ? "Vencido" : (f.estado as string),
+          monto: Number(f.monto) || 0,
         });
       }
     }
+
+    // Cambio de plan PROGRAMADO: desde qué mes rige el precio nuevo (YYYY-MM). Así la proyección
+    // muestra el plan/precio nuevo desde su mes de vigencia, en vez del plan viejo.
+    const vigDesdeMes = suscripcion.plan_pendiente_id
+      ? String(suscripcion.plan_pendiente_vigente_desde ?? "").slice(0, 7)
+      : "";
+    const precioActual = Number(suscripcion.precio) || 0;
+    const monedaActual = suscripcion.moneda === "USD" ? "USD" : "GS";
+    const precioPend = Number(suscripcion.precio_pendiente) || 0;
+    const monedaPend = suscripcion.moneda_pendiente === "USD" ? "USD" : "GS";
 
     const facturacion = meses.map((mes) => {
       const factura = facturasPorMes.get(mes);
@@ -102,11 +113,20 @@ export async function GET(
         else if (factura.estado === "Vencido") badgeEstado = "vencida";
         else badgeEstado = "pendiente";
       }
+      // Precio del mes: emitido → monto REAL de la factura; proyectado → plan pendiente si ya rige
+      // para ese mes, sino el plan actual.
+      const aplicaPend = vigDesdeMes !== "" && mes >= vigDesdeMes;
+      const precioMes = factura
+        ? (factura.monto || (aplicaPend ? precioPend : precioActual))
+        : (aplicaPend ? precioPend : precioActual);
+      const monedaMes = factura ? monedaActual : (aplicaPend ? monedaPend : monedaActual);
       return {
         mes,
         estado: estadoBase,
         badge_estado: badgeEstado,
         factura_id: factura?.id ?? null,
+        precio: precioMes,
+        moneda: monedaMes,
       };
     });
 
@@ -119,6 +139,9 @@ export async function GET(
           moneda: suscripcion.moneda,
           fecha_inicio: suscripcion.fecha_inicio,
           duracion_meses: suscripcion.duracion_meses,
+          // Cambio de plan programado (para mostrar aviso en la UI). null si no hay.
+          plan_pendiente_desde: suscripcion.plan_pendiente_id ? (suscripcion.plan_pendiente_vigente_desde ?? null) : null,
+          precio_pendiente: suscripcion.plan_pendiente_id ? precioPend : null,
         },
       })
     );

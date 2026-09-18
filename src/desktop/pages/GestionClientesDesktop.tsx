@@ -306,8 +306,8 @@ function ModalFacturacion({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{
-    facturacion: { mes: string; estado: string; badge_estado: string; factura_id: string | null }[];
-    suscripcion: { id: string; precio: number; moneda: string; fecha_inicio: string; duracion_meses: number } | null;
+    facturacion: { mes: string; estado: string; badge_estado: string; factura_id: string | null; precio: number; moneda: string }[];
+    suscripcion: { id: string; precio: number; moneda: string; fecha_inicio: string; duracion_meses: number; plan_pendiente_desde?: string | null; precio_pendiente?: number | null } | null;
   } | null>(null);
   const [emitiendo, setEmitiendo] = useState<string | null>(null);
   const [errorEmitir, setErrorEmitir] = useState<string | null>(null);
@@ -408,6 +408,15 @@ function ModalFacturacion({
               </span>
             </p>
           )}
+          {data?.suscripcion?.plan_pendiente_desde && (
+            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+              <span aria-hidden="true">🗓️</span>
+              Cambio de plan programado desde el {data.suscripcion.plan_pendiente_desde}
+              {data.suscripcion.precio_pendiente != null
+                ? ` · nuevo precio ${data.suscripcion.moneda === "USD" ? "USD" : "Gs."} ${data.suscripcion.precio_pendiente.toLocaleString("es-PY")}`
+                : ""}
+            </p>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-slate-50/50 px-6 py-4">
@@ -450,8 +459,8 @@ function ModalFacturacion({
                         </span>
                       </div>
                       <div className="shrink-0 text-sm font-semibold tabular-nums text-slate-700">
-                        {data.suscripcion?.moneda === "USD" ? "USD" : "Gs."}{" "}
-                        {(data.suscripcion?.precio ?? 0).toLocaleString("es-PY")}
+                        {item.moneda === "USD" ? "USD" : "Gs."}{" "}
+                        {(item.precio ?? 0).toLocaleString("es-PY")}
                       </div>
                       <div className="shrink-0">
                         {item.estado === "proyectada" && (

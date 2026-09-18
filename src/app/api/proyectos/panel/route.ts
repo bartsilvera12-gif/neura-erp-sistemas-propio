@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import { puedeVerEjecutivo, resolverPerfilDashboard } from "@/lib/proyectos/dashboard/acceso";
 import { tipoEsMixto, tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { msLaborables, MS_JORNADA } from "@/lib/proyectos/reloj-laboral";
@@ -60,6 +61,19 @@ export async function GET(request: Request) {
     return NextResponse.json(errorResponse(auth.message), { status: auth.status });
   }
   try {
+    // Este panel muestra presupuesto y deuda POR ASESOR: es lectura de Directorio.
+    // Antes lo abría cualquiera con el módulo (un comercial incluido). Se restringe
+    // a administración y project managers, el mismo criterio que los dashboards
+    // Ejecutivo/PM. La UI ya vive en Tableros (restringido), pero la API se puede
+    // llamar a mano, así que el control tiene que estar acá.
+    const perfil = await resolverPerfilDashboard(auth);
+    if (!puedeVerEjecutivo(perfil)) {
+      return NextResponse.json(
+        errorResponse("Este panel es de administración y project managers."),
+        { status: 403 }
+      );
+    }
+
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
     const empresaId = auth.empresaId;
     const catalog = createServiceRoleClient();

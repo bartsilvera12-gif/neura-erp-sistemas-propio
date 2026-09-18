@@ -35,6 +35,7 @@ import { agruparHistorial, slvTecnicoDeProyecto, type SegmentoHistorial } from "
 import { qaDeProyecto, type QaProyecto } from "./qa-metrics";
 import { motivo, scorePrioridad, type Motivo } from "./priority-score";
 import { enPeriodo } from "./periodo";
+import { nombrePreferido } from "@/lib/format/nombres";
 export { enPeriodo } from "./periodo";
 
 const PAGINA = 1000;
@@ -341,24 +342,24 @@ export async function cargarDataset(
   ];
   const [usuariosR, pmsR] = await Promise.all([
     usuarioIds.length
-      ? catalogo.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", usuarioIds)
+      ? catalogo.from("usuarios").select("id, nombre, nombre_chat").eq("empresa_id", empresaId).in("id", usuarioIds)
       : Promise.resolve({ data: [] as { id: string; nombre: string | null }[] }),
     // Los PM salen de la bandera del catálogo, no de tener cartera: una PM sin
     // clientes asignados igual tiene que poder elegirse en el selector.
     catalogo
       .from("usuarios")
-      .select("id, nombre")
+      .select("id, nombre, nombre_chat")
       .eq("empresa_id", empresaId)
       .eq("es_project_manager", true)
       .eq("estado", "activo")
       .order("nombre"),
   ]);
   const nombres = new Map(
-    ((usuariosR.data ?? []) as { id: string; nombre: string | null }[]).map((u) => [u.id, u.nombre ?? "—"])
+    ((usuariosR.data ?? []) as { id: string; nombre: string | null; nombre_chat?: string | null }[]).map((u) => [u.id, nombrePreferido(u) || "—"])
   );
-  const pmsOpciones = ((pmsR.data ?? []) as { id: string; nombre: string | null }[]).map((u) => ({
+  const pmsOpciones = ((pmsR.data ?? []) as { id: string; nombre: string | null; nombre_chat?: string | null }[]).map((u) => ({
     id: u.id,
-    nombre: u.nombre ?? "—",
+    nombre: nombrePreferido(u) || "—",
   }));
   // Los PM no siempre son técnicos/comerciales, así que sus nombres pueden no
   // estar en `nombres`. Se agregan para que `nombreUsuario(project_manager_id)`

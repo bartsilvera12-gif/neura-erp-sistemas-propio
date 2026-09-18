@@ -6,6 +6,7 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 /**
  * Reporte: cantidad de proyectos entregados por técnico en un mes, con el
@@ -217,14 +218,15 @@ export async function GET(request: Request) {
       const catalog = createServiceRoleClient();
       const { data: usuarios } = await catalog
         .from("usuarios")
-        .select("id, nombre, email")
+        .select("id, nombre, nombre_chat, email")
         .in("id", tecnicoIds);
       for (const u of (usuarios ?? []) as {
         id: string;
         nombre: string | null;
+        nombre_chat?: string | null;
         email: string | null;
       }[]) {
-        tecnicoNombreById.set(u.id, (u.nombre ?? "").trim() || (u.email ?? "").trim() || "—");
+        tecnicoNombreById.set(u.id, nombrePreferido(u) || (u.email ?? "").trim() || "—");
       }
     }
 

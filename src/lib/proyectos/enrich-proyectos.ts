@@ -2,6 +2,7 @@ import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 export type ProyectoEnriquecido = Record<string, unknown> & {
   proyecto_tipo?: { id: string; nombre?: string; codigo?: string } | null;
@@ -141,7 +142,7 @@ export async function enrichProyectosRows(
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     userIds.length
       ? enLotes<Record<string, unknown>>(userIds, (lote, desde, hasta) =>
-          catalog.from("usuarios").select("id,nombre").eq("empresa_id", empresaId).in("id", lote).range(desde, hasta)
+          catalog.from("usuarios").select("id,nombre,nombre_chat").eq("empresa_id", empresaId).in("id", lote).range(desde, hasta)
         ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     proyectoIds.length
@@ -206,16 +207,16 @@ export async function enrichProyectosRows(
     if (estado_id) out.proyecto_estado = (estadosMap.get(estado_id) as ProyectoEnriquecido["proyecto_estado"]) ?? null;
     if (cliente_id) out.cliente = (clientesMap.get(cliente_id) as ProyectoEnriquecido["cliente"]) ?? null;
     if (rc) {
-      const u = usersMap.get(rc) as { id: string; nombre?: string } | undefined;
-      out.responsable_comercial = u ? { id: u.id, nombre: u.nombre ?? null } : { id: rc, nombre: null };
+      const u = usersMap.get(rc) as { id: string; nombre?: string; nombre_chat?: string } | undefined;
+      out.responsable_comercial = u ? { id: u.id, nombre: nombrePreferido(u) || null } : { id: rc, nombre: null };
     }
     if (rt) {
-      const u = usersMap.get(rt) as { id: string; nombre?: string } | undefined;
-      out.responsable_tecnico = u ? { id: u.id, nombre: u.nombre ?? null } : { id: rt, nombre: null };
+      const u = usersMap.get(rt) as { id: string; nombre?: string; nombre_chat?: string } | undefined;
+      out.responsable_tecnico = u ? { id: u.id, nombre: nombrePreferido(u) || null } : { id: rt, nombre: null };
     }
     if (pm) {
-      const u = usersMap.get(pm) as { id: string; nombre?: string } | undefined;
-      out.project_manager = u ? { id: u.id, nombre: u.nombre ?? null } : { id: pm, nombre: null };
+      const u = usersMap.get(pm) as { id: string; nombre?: string; nombre_chat?: string } | undefined;
+      out.project_manager = u ? { id: u.id, nombre: nombrePreferido(u) || null } : { id: pm, nombre: null };
     }
     const estado = out.proyecto_estado;
     const historial = pid ? historialPorProyecto.get(pid) ?? [] : [];

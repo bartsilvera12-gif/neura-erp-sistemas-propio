@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 /**
  * GET /api/proyectos/paginas
@@ -50,7 +51,7 @@ export async function GET(request: Request) {
         ? sb.from("clientes").select("id, empresa, nombre_contacto").eq("empresa_id", empresaId).in("id", cliIds)
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       comIds.length
-        ? catalog.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", comIds)
+        ? catalog.from("usuarios").select("id, nombre, nombre_chat").eq("empresa_id", empresaId).in("id", comIds)
         : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     ]);
     const cliMap = new Map(
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
     );
     const comMap = new Map(
       ((comR.data ?? []) as Record<string, unknown>[]).map(
-        (u) => [String(u.id), String((u as { nombre?: string }).nombre ?? "").trim()] as const
+        (u) => [String(u.id), nombrePreferido(u as { nombre?: string; nombre_chat?: string })] as const
       )
     );
 

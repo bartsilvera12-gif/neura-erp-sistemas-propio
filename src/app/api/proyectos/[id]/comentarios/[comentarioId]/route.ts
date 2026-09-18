@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 export async function PATCH(
   request: Request,
@@ -68,14 +69,14 @@ export async function PATCH(
     const catalog = createServiceRoleClient();
     const { data: u } = await catalog
       .from("usuarios")
-      .select("nombre")
+      .select("nombre, nombre_chat")
       .eq("id", auth.usuarioCatalogId)
       .maybeSingle();
 
     return NextResponse.json(
       successResponse({
         ...row,
-        usuario_nombre: (u as { nombre?: string } | null)?.nombre ?? null,
+        usuario_nombre: nombrePreferido(u as { nombre?: string; nombre_chat?: string } | null) || null,
       })
     );
   } catch (e) {

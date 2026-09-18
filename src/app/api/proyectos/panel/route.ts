@@ -8,6 +8,7 @@ import { tipoEsMixto, tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/ti
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { msLaborables, MS_JORNADA } from "@/lib/proyectos/reloj-laboral";
 import { TZ_PY } from "@/lib/format/hora-py";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 /**
  * GET /api/proyectos/panel — Panel GERENCIAL de proyectos.
@@ -145,8 +146,8 @@ export async function GET(request: Request) {
     const comNombre = new Map<string, string>();
     for (let i = 0; i < comIds.length; i += 120) {
       const slice = comIds.slice(i, i + 120);
-      const { data } = await catalog.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", slice);
-      for (const u of (data ?? []) as Record<string, unknown>[]) comNombre.set(String(u.id), String(u.nombre ?? "").trim());
+      const { data } = await catalog.from("usuarios").select("id, nombre, nombre_chat").eq("empresa_id", empresaId).in("id", slice);
+      for (const u of (data ?? []) as Record<string, unknown>[]) comNombre.set(String(u.id), nombrePreferido(u as { nombre?: string; nombre_chat?: string }));
     }
 
     // Labels de cliente por proyecto (para los detalles).

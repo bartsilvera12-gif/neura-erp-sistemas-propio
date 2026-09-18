@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 export const PROYECTO_CAMBIOS_SLOTS = [1, 2, 3] as const;
 export type ProyectoCambioNro = (typeof PROYECTO_CAMBIOS_SLOTS)[number];
@@ -83,10 +84,10 @@ export async function listProyectoCambios(
     const catalog = createServiceRoleClient();
     const { data: users } = await catalog
       .from("usuarios")
-      .select("id, nombre")
+      .select("id, nombre, nombre_chat")
       .eq("empresa_id", empresaId)
       .in("id", userIds);
-    nameMap = new Map((users ?? []).map((u) => [u.id as string, (u.nombre as string) ?? ""]));
+    nameMap = new Map((users ?? []).map((u) => [u.id as string, nombrePreferido(u as { nombre?: string; nombre_chat?: string })]));
   }
 
   const byNro = new Map<number, ProyectoCambioRow>();

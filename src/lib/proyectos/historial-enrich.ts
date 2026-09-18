@@ -9,6 +9,7 @@ import {
 } from "@/lib/proyectos/brief-data";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { subestadoDesarrolloLabel } from "@/lib/proyectos/subestados-desarrollo";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 /**
  * Cuánto duró un segmento en HORAS DE TRABAJO.
@@ -105,7 +106,7 @@ export async function enrichProyectoHistorialRows(
       ? sb.from("proyecto_estados").select("id,nombre").eq("empresa_id", empresaId).in("id", [...estadoIds])
       : Promise.resolve({ data: [] as { id: string; nombre?: string }[] }),
     userIds.size > 0
-      ? catalog.from("usuarios").select("id,nombre,email").eq("empresa_id", empresaId).in("id", [...userIds])
+      ? catalog.from("usuarios").select("id,nombre,nombre_chat,email").eq("empresa_id", empresaId).in("id", [...userIds])
       : Promise.resolve({ data: [] as { id: string; nombre?: string; email?: string }[] }),
   ]);
 
@@ -119,7 +120,7 @@ export async function enrichProyectoHistorialRows(
     // Sólo el nombre: el email no aporta nada en el historial y ensuciaba la
     // línea ("ALAN AYALA · alanayalapsn@gmail.com"). El email sigue estando en
     // el módulo de Usuarios, que es donde corresponde buscarlo.
-    const label = String(u.nombre ?? "").trim() || String(u.email ?? "").trim() || u.id.slice(0, 8);
+    const label = nombrePreferido(u as { nombre?: string; nombre_chat?: string }) || String(u.email ?? "").trim() || u.id.slice(0, 8);
     nombreUsuario.set(u.id, label);
   }
 

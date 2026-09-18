@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { isErpRolVendedor } from "@/lib/usuarios/erp-rol-normalize";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 /**
  * Quién ve/escribe qué canal de comentarios del proyecto.
@@ -144,7 +145,7 @@ export type CandidatoMencion = {
   etiqueta: string;
 };
 
-type UsuarioMencion = UsuarioFlags & { id: string; nombre: string | null; es_tecnico: boolean | null };
+type UsuarioMencion = UsuarioFlags & { id: string; nombre: string | null; nombre_chat?: string | null; es_tecnico: boolean | null };
 
 type Rol = "pm" | "qa" | "dev" | "comercial";
 
@@ -174,7 +175,7 @@ export async function candidatosMencionDe(
   const [{ data: usuarios }, proy, { data: comercialesData }] = await Promise.all([
     catalog
       .from("usuarios")
-      .select("id, nombre, rol, es_qa, es_project_manager, es_tecnico")
+      .select("id, nombre, nombre_chat, rol, es_qa, es_project_manager, es_tecnico")
       .eq("empresa_id", empresaId)
       .ilike("estado", "activo")
       .order("nombre"),
@@ -228,7 +229,7 @@ export async function candidatosMencionDe(
     const coincide = [...roles].filter((r) => destino.has(r));
     if (coincide.length === 0) continue;
     if (!canalesParaUsuario(u.id, u, proy).canales.includes(canal)) continue;
-    out.push({ id: u.id, nombre: (u.nombre ?? "").trim() || "—", etiqueta: coincide.map((r) => ETIQUETA[r]).join(" · ") });
+    out.push({ id: u.id, nombre: nombrePreferido(u) || "—", etiqueta: coincide.map((r) => ETIQUETA[r]).join(" · ") });
   }
   return out;
 }

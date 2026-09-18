@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceAuthUsuario } from "@/lib/auth/get-service-auth-usuario";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 type UsuarioActivoRow = {
   id: string;
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabaseSr
       .from("usuarios")
-      .select("id, nombre, email, rol, estado, es_qa, es_project_manager, es_tecnico")
+      .select("id, nombre, nombre_chat, email, rol, estado, es_qa, es_project_manager, es_tecnico")
       .eq("empresa_id", empresaId)
       .ilike("estado", "activo")
       .order("nombre", { ascending: true })
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
 
     const usuarios = ((data ?? []) as UsuarioActivoRow[]).map((u) => ({
       id: u.id,
-      nombre: u.nombre,
+      nombre: nombrePreferido(u) || u.nombre,
       email: u.email ?? "",
       rol: u.rol ?? null,
       estado: u.estado,

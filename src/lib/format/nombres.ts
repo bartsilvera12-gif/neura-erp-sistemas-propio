@@ -35,6 +35,16 @@ export function inicialesNombre(name: string | null | undefined): string {
  * Nombre corto para espacios angostos: nombre + primer apellido, capitular.
  * "IVAN RODRIGO GONZALEZ GONZALEZ" → "Ivan Rodrigo".
  */
+/**
+ * Nombre con el que la persona quiere figurar: el que eligió en su perfil del
+ * chat interno (`nombre_chat`, p. ej. "Luján Gomez" para quien no usa su primer
+ * nombre) y, si no eligió ninguno, el del catálogo. Las consultas que lo usen
+ * tienen que traer `nombre_chat` junto a `nombre`.
+ */
+export function nombrePreferido(u: { nombre?: string | null; nombre_chat?: string | null } | null | undefined): string {
+  return (u?.nombre_chat ?? "").trim() || (u?.nombre ?? "").trim();
+}
+
 export function nombreCorto(name: string | null | undefined): string {
   const capitular = nombreCapitular(name);
   if (capitular === "—") return capitular;

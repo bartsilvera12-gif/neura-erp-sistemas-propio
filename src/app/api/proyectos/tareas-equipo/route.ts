@@ -9,6 +9,7 @@ import { QA_ETAPAS_ACTIVAS, type ProyectoEtapaQA } from "@/lib/proyectos/etapas-
 import { estadosDeTablero, esEstadoPausado, type EstadoTablero } from "@/lib/proyectos/estados-tablero";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { evaluarEsqueleto } from "@/lib/proyectos/esqueleto";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 /**
  * Tablero "Tareas del equipo": proyectos agrupados por programador (técnico).
@@ -225,11 +226,11 @@ export async function GET(request: Request) {
       const catalog = createServiceRoleClient();
       const { data: usuarios } = await catalog
         .from("usuarios")
-        .select("id, nombre, email")
+        .select("id, nombre, nombre_chat, email")
         .eq("empresa_id", empresaId)
         .in("id", tecnicoIds);
-      for (const u of (usuarios ?? []) as { id: string; nombre: string | null; email: string | null }[]) {
-        tecnicoNombre.set(u.id, (u.nombre ?? "").trim() || (u.email ?? "").trim() || "Técnico sin nombre");
+      for (const u of (usuarios ?? []) as { id: string; nombre: string | null; nombre_chat?: string | null; email: string | null }[]) {
+        tecnicoNombre.set(u.id, nombrePreferido(u) || (u.email ?? "").trim() || "Técnico sin nombre");
       }
     }
 
@@ -563,16 +564,16 @@ export async function GET(request: Request) {
       const catalog = createServiceRoleClient();
       const { data: qaUsuarios } = await catalog
         .from("usuarios")
-        .select("id, nombre, email")
+        .select("id, nombre, nombre_chat, email")
         .eq("empresa_id", empresaId)
         .eq("es_qa", true)
         .ilike("estado", "activo");
 
-      for (const u of (qaUsuarios ?? []) as { id: string; nombre: string | null; email: string | null }[]) {
+      for (const u of (qaUsuarios ?? []) as { id: string; nombre: string | null; nombre_chat?: string | null; email: string | null }[]) {
         if (gruposQa.has(u.id)) continue;
         gruposQa.set(u.id, {
           qa_id: u.id,
-          qa_nombre: (u.nombre ?? "").trim() || (u.email ?? "").trim() || "QA sin nombre",
+          qa_nombre: nombrePreferido(u) || (u.email ?? "").trim() || "QA sin nombre",
           cantidad: 0,
           revisiones_cerradas: 0,
           ms_promedio_revision: null,

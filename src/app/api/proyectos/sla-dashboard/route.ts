@@ -5,6 +5,7 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 /**
  * Dashboard SLA del módulo Proyectos. TODO sale de las tablas de proyectos:
@@ -145,7 +146,7 @@ export async function GET(request: Request) {
         ? sb.from("clientes").select("id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social").eq("empresa_id", emp).in("id", clienteIds)
         : Promise.resolve({ data: [] as { id: string; tipo_cliente?: string | null; empresa?: string | null; nombre_contacto?: string | null; nombre?: string | null; razon_social?: string | null }[] }),
       usuarioIds.length > 0
-        ? catalog.from("usuarios").select("id, nombre").eq("empresa_id", emp).in("id", usuarioIds)
+        ? catalog.from("usuarios").select("id, nombre, nombre_chat").eq("empresa_id", emp).in("id", usuarioIds)
         : Promise.resolve({ data: [] as { id: string; nombre?: string | null }[] }),
     ]);
     const clienteNombre = new Map<string, string>();
@@ -154,7 +155,7 @@ export async function GET(request: Request) {
     }
     const tecnicoNombre = new Map<string, string>();
     for (const u of usrRes.data ?? []) {
-      tecnicoNombre.set(u.id, (u.nombre ?? "").trim() || "—");
+      tecnicoNombre.set(u.id, nombrePreferido(u as { nombre?: string | null; nombre_chat?: string | null }) || "—");
     }
     const opciones = (ids: Set<string>) =>
       [...ids]

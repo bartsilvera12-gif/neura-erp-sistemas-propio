@@ -32,6 +32,7 @@ import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacio
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { esBloqueoResponsable, tipoDesdeResponsable } from "@/lib/proyectos/dashboard/config";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
@@ -124,11 +125,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       enrichProyectosRows(sb, empresaId, [proyecto as Record<string, unknown>]),
       enrichProyectoHistorialRows(sb, empresaId, hist.data ?? []),
       uids.length > 0
-        ? catalog.from("usuarios").select("id, nombre").eq("empresa_id", empresaId).in("id", uids)
+        ? catalog.from("usuarios").select("id, nombre, nombre_chat").eq("empresa_id", empresaId).in("id", uids)
         : Promise.resolve({ data: [] as { id: string; nombre?: string }[] }),
     ]);
     const names = namesRes.data;
-    const nameMap = new Map((names ?? []).map((u) => [u.id, u.nombre ?? ""]));
+    const nameMap = new Map((names ?? []).map((u) => [u.id, nombrePreferido(u)]));
 
     const comentariosRich = comRows.map((c) => ({
       ...c,

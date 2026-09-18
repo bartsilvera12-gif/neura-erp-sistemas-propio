@@ -3,6 +3,7 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { notificarNovedadQA } from "@/lib/proyectos/qa-notificaciones";
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 export type QASupabase = Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>;
 
@@ -309,10 +310,12 @@ export async function nombresUsuarios(
   const catalog = createServiceRoleClient();
   const { data } = await catalog
     .from("usuarios")
-    .select("id, nombre")
+    .select("id, nombre, nombre_chat")
     .eq("empresa_id", empresaId)
     .in("id", unicos);
-  return new Map(((data ?? []) as Array<{ id: string; nombre?: string | null }>).map((u) => [u.id, (u.nombre ?? "").trim()]));
+  return new Map(
+    ((data ?? []) as Array<{ id: string; nombre?: string | null; nombre_chat?: string | null }>).map((u) => [u.id, nombrePreferido(u)])
+  );
 }
 
 /** Saca del adjunto lo que no debe salir del server (bucket + path) y le pega la URL firmada. */

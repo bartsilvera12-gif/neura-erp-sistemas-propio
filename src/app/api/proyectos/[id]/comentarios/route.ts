@@ -10,6 +10,7 @@ import {
 import { notificarComentarioProyecto } from "@/lib/proyectos/comentario-notificaciones";
 import { comentarioAdjuntoPrefix } from "@/lib/proyectos/proyectos-archivos-storage";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { nombrePreferido } from "@/lib/format/nombres";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireProyectosApiAccess(request);
@@ -41,9 +42,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const catalog = createServiceRoleClient();
     const { data: names } =
       uids.length > 0
-        ? await catalog.from("usuarios").select("id, nombre").eq("empresa_id", auth.empresaId).in("id", uids)
+        ? await catalog.from("usuarios").select("id, nombre, nombre_chat").eq("empresa_id", auth.empresaId).in("id", uids)
         : { data: [] as { id: string; nombre?: string }[] };
-    const nameMap = new Map((names ?? []).map((u) => [u.id, u.nombre ?? ""]));
+    const nameMap = new Map((names ?? []).map((u) => [u.id, nombrePreferido(u)]));
 
     const rich = rows.map((r) => ({
       ...r,
@@ -160,13 +161,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
       const { data: autorOrig } = await catalog
         .from("usuarios")
-        .select("nombre")
+        .select("nombre, nombre_chat")
         .eq("id", o.usuario_id)
         .maybeSingle();
       reenvio = {
         comentario_id: o.id,
         autor_id: o.usuario_id,
-        autor_nombre: (autorOrig as { nombre?: string } | null)?.nombre ?? null,
+        autor_nombre: nombrePreferido(autorOrig as { nombre?: string; nombre_chat?: string } | null) || null,
         texto: o.comentario ?? "",
         fecha: o.created_at,
         canal_origen: canalOrigen,
@@ -223,10 +224,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const { data: u } = await catalog
       .from("usuarios")
-      .select("nombre")
+      .select("nombre, nombre_chat")
       .eq("id", auth.usuarioCatalogId)
       .maybeSingle();
-    const autorNombre = (u as { nombre?: string } | null)?.nombre ?? null;
+    const autorNombre = nombrePreferido(u as { nombre?: string; nombre_chat?: string } | null) || null;
 
     // Notifica al "otro lado" del canal (+ admins). No bloqueante: nunca lanza.
     // En un reenvío sin nota, el cuerpo usa el texto del comentario reenviado.

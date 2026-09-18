@@ -122,6 +122,16 @@ function areaDe(u: { rol?: string | null; es_qa?: boolean | null; es_tecnico?: b
 }
 
 /** Nombre corto: nombre + primer apellido (con cuatro palabras, la tercera). */
+/**
+ * Nombre que se muestra en Soporte: el que la persona eligió en su perfil del
+ * chat interno (p. ej. "Luján Gomez" para quien no usa su primer nombre) y, si
+ * no eligió ninguno, el del catálogo acortado.
+ */
+function nombreVisibleSoporte(u: Record<string, unknown>): string {
+  const elegido = typeof u.nombre_chat === "string" ? u.nombre_chat.trim() : "";
+  return nombreCorto(elegido || (u.nombre as string) || (u.email as string) || "") || "Usuario";
+}
+
 export function nombreCorto(nombre: string | null | undefined): string {
   const w = (nombre ?? "").trim().split(/\s+/).filter(Boolean);
   if (w.length === 0) return "";
@@ -151,13 +161,13 @@ export async function personasPorId(ids: (string | null | undefined)[]): Promise
   const catalog = createServiceRoleClient();
   const { data } = await catalog
     .from("usuarios")
-    .select("id, nombre, email, rol, es_project_manager, es_tecnico, es_qa")
+    .select("id, nombre, nombre_chat, email, rol, es_project_manager, es_tecnico, es_qa")
     .in("id", faltan);
   for (const u of (data ?? []) as Record<string, unknown>[]) {
     const id = String(u.id);
     mapa.set(id, {
       id,
-      nombre: nombreCorto((u.nombre as string) || (u.email as string) || "") || "Usuario",
+      nombre: nombreVisibleSoporte(u),
       rol: (u.rol as string) ?? null,
       area: areaDe(u as never),
       es_project_manager: u.es_project_manager === true,
@@ -180,13 +190,13 @@ async function personasDeEmpresaDeBase(empresaId: string): Promise<Persona[]> {
   const catalog = createServiceRoleClient();
   const { data } = await catalog
     .from("usuarios")
-    .select("id, nombre, email, rol, estado, es_project_manager, es_tecnico, es_qa")
+    .select("id, nombre, nombre_chat, email, rol, estado, es_project_manager, es_tecnico, es_qa")
     .eq("empresa_id", empresaId)
     .ilike("estado", "activo")
     .order("nombre");
   return ((data ?? []) as Record<string, unknown>[]).map((u) => ({
     id: String(u.id),
-    nombre: nombreCorto((u.nombre as string) || (u.email as string) || "") || "Usuario",
+    nombre: nombreVisibleSoporte(u),
     rol: (u.rol as string) ?? null,
     area: areaDe(u as never),
     es_project_manager: u.es_project_manager === true,

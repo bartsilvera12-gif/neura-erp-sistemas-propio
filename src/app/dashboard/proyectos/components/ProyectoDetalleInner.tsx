@@ -1430,12 +1430,21 @@ export default function ProyectoDetalleInner({
             `/api/proyectos/${projectId}/archivos/${aid}`,
             { cache: "no-store" }
           );
-          const j = (await res.json()) as { success?: boolean; data?: { url?: string } };
-          if (res.ok && j.success && j.data?.url) {
+          const j = (await res.json().catch(() => null)) as
+            | { success?: boolean; data?: { url?: string } }
+            | null;
+          if (res.ok && j?.success && j.data?.url) {
             setThumbUrls((prev) => ({ ...prev, [aid]: j.data!.url! }));
+          } else {
+            // Falló la firma: se marca como fallida para NO reintentarla en cada
+            // éxito ajeno (el efecto depende de `thumbUrls`). Antes cada miniatura
+            // que cargaba bien re-disparaba todas las que habían fallado.
+            thumbFailedRef.current.add(aid);
           }
         } catch {
-          // Silencioso: si falla, la fila muestra el ícono de tipo.
+          // Silencioso: si falla, la fila muestra el ícono de tipo. Se marca como
+          // fallida por la misma razón que arriba (evitar la cascada de reintentos).
+          thumbFailedRef.current.add(aid);
         } finally {
           thumbFetchingRef.current.delete(aid);
         }

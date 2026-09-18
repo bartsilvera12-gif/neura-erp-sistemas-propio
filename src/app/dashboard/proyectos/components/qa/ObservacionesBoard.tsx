@@ -183,22 +183,35 @@ export default function ObservacionesBoard({
     cargarRef.current = cargar;
   }, [cargar]);
 
-  // Realtime: cualquier cambio en las 4 tablas del módulo re-carga.
+  // Freno para el realtime: sin esto, cada fila insertada disparaba una recarga
+  // COMPLETA (clonar un QA de 50 ítems = 50 recargas por navegador abierto). Se
+  // agrupan las ráfagas en una sola recarga, igual que la ficha y el Kanban.
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReload = useCallback(() => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      reloadTimerRef.current = null;
+      void cargarRef.current?.();
+    }, 300);
+  }, []);
+
+  // Realtime: cualquier cambio en las 4 tablas del módulo re-carga (con freno).
   useEffect(() => {
     if (!projectId || !dataSchema) return;
     const sb = createBrowserClientForSchema(dataSchema);
     const filtro = `proyecto_id=eq.${projectId}`;
     const channel = sb
       .channel(`proyecto-qa-obs:${projectId}`)
-      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_observaciones", filter: filtro }, () => void cargarRef.current?.())
-      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_secciones", filter: filtro }, () => void cargarRef.current?.())
-      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_observacion_archivos", filter: filtro }, () => void cargarRef.current?.())
-      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_observacion_comentarios", filter: filtro }, () => void cargarRef.current?.())
+      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_observaciones", filter: filtro }, () => scheduleReload())
+      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_secciones", filter: filtro }, () => scheduleReload())
+      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_observacion_archivos", filter: filtro }, () => scheduleReload())
+      .on("postgres_changes", { event: "*", schema: dataSchema, table: "proyecto_qa_observacion_comentarios", filter: filtro }, () => scheduleReload())
       .subscribe();
     return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
       void sb.removeChannel(channel);
     };
-  }, [projectId, dataSchema]);
+  }, [projectId, dataSchema, scheduleReload]);
 
   const seccionesMap = useMemo(() => new Map(secciones.map((s) => [s.id, s])), [secciones]);
 

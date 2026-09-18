@@ -17,6 +17,7 @@
 import type { Pool } from "pg";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { kickPushDispatcher } from "@/lib/cc/kick-dispatcher";
 
 export function contactCenterV1Enabled(): boolean {
   const v = (process.env.CONTACT_CENTER_V1 ?? "").trim().toLowerCase();
@@ -55,6 +56,10 @@ export async function applyInboundWindowAndAssignPg(
       conversationId,
     ]);
     const row = (r.rows[0] as { r?: { assigned?: boolean; reason?: string; agent_id?: string } } | undefined)?.r;
+    // Si cc_assign asignó a alguien, ese RPC insertó new_lead en
+    // agent_notification_events. Kickeamos el dispatcher para no depender del
+    // cron externo (ver kick-dispatcher.ts).
+    if (row?.assigned) kickPushDispatcher();
     return { ok: true, assigned: Boolean(row?.assigned), reason: row?.reason, agent_id: row?.agent_id };
   } catch (e) {
     // Falla del Contact Center V1 → el webhook hace fallback al motor legacy.
@@ -96,6 +101,7 @@ export async function applyInboundWindowAndAssignRest(
     });
     if (error) return { ok: false, error: error.message };
     const row = (data ?? {}) as { assigned?: boolean; reason?: string; agent_id?: string };
+    if (row.assigned) kickPushDispatcher();
     return { ok: true, assigned: Boolean(row.assigned), reason: row.reason, agent_id: row.agent_id };
   } catch (e) {
     // Falla del Contact Center V1 → el webhook hace fallback al motor legacy.

@@ -9,6 +9,7 @@ import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers
 import { maybeRedistributeInitialAssignment } from "@/lib/chat/initial-assignment-redistribution";
 import { createWhatsappConversationWithActiveFlow } from "@/lib/chat/whatsapp-conversation-bootstrap";
 import { contactCenterV1Enabled } from "@/lib/chat/contact-center-inbound";
+import { kickPushDispatcher } from "@/lib/cc/kick-dispatcher";
 import { markCampaignReplyFromInbound } from "@/lib/campaigns/campaign-inbound-hook";
 import { executeCampaignButtonActionForMatchedRecipient } from "@/lib/campaigns/campaign-button-action-service";
 import type { SupabaseAdmin } from "@/lib/chat/types";
@@ -482,6 +483,11 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
       });
       if (notifErr) {
         console.warn("[saveIncomingMessage] new_message notification insert", notifErr.message);
+      } else {
+        // Fire-and-forget: no depender del cron de Coolify (que ya se colgó una
+        // vez). El propio proceso patea al dispatcher para que el push salga en
+        // segundos. El cron queda como red de contención si esto se pierde.
+        kickPushDispatcher();
       }
     }
   }

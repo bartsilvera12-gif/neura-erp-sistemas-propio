@@ -12,7 +12,8 @@
  *
  * Referencia YCloud (ejemplos SMB / sync): https://docs.ycloud.com/reference/whatsapp-business-app-sent-message-sync-webhook-examples
  */
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
+import { dispararDespachoPush } from "@/lib/cc/dispatch-notifications";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers";
 import { assignConversation } from "@/lib/chat/assign-conversation-service";
@@ -60,6 +61,10 @@ const LOG_IN = "[ycloud-incoming]";
 type PersistMode = "inbound" | "smb_echo";
 
 export async function POST(request: NextRequest) {
+  // Despacho de push en caliente, DESPUÉS de responder a YCloud: el mensaje que llega ahora
+  // crea su evento durante este request, y acá mismo se manda. Así no depende de que el
+  // scheduled task de Coolify esté corriendo (que se cortó y dejó horas sin notificaciones).
+  after(() => dispararDespachoPush());
   const rawBody = await request.text();
   const sigHeader =
     request.headers.get("ycloud-signature") ??

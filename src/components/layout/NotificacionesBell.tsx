@@ -17,6 +17,7 @@ import {
   PackageCheck,
   Play,
   TimerOff,
+  Ticket,
   MoveRight,
   Volume2,
   VolumeX,
@@ -164,8 +165,9 @@ const ESTILO_TIPO: Record<
     label: "Chat de cliente",
   },
   soporte_revision: {
-    icon: Headset,
-    wrap: "bg-violet-50 text-violet-600",
+    // Propio: con el mismo auricular que los chats de cliente se confundían.
+    icon: Ticket,
+    wrap: "bg-orange-50 text-orange-600",
     label: "Soporte",
   },
   qa_aprobado: {
@@ -214,6 +216,8 @@ const ESTILO_TIPO: Record<
 export default function NotificacionesBell() {
   const [abierto, setAbierto] = useState(false);
   const [items, setItems] = useState<Notificacion[]>([]);
+  /** Bandeja visible: Soporte va aparte para que un ticket no se pierda entre comentarios. */
+  const [bandeja, setBandeja] = useState<"general" | "soporte">("general");
   const [noLeidas, setNoLeidas] = useState(0);
   /** Cuántos de los no leídos son avisos derivados (no se pueden marcar). */
   const derivadasRef = useRef(0);
@@ -261,7 +265,7 @@ export default function NotificacionesBell() {
       // `solo_no_leidas`: la campanita es una bandeja de pendientes, no un
       // historial. Lo ya leído deja de aparecer; lo que pasó queda en el
       // historial del proyecto, que es donde se busca a propósito.
-      const res = await fetchWithSupabaseSession("/api/notificaciones?limit=20&solo_no_leidas=1", {
+      const res = await fetchWithSupabaseSession("/api/notificaciones?limit=50&solo_no_leidas=1", {
         cache: "no-store",
       });
       const j = (await res.json().catch(() => null)) as ApiResp | null;
@@ -501,13 +505,24 @@ export default function NotificacionesBell() {
     []
   );
 
+  const esSoporte = (n: Notificacion) => n.tipo === "soporte_revision";
+  const itemsBandeja = items.filter((n) => (bandeja === "soporte" ? esSoporte(n) : !esSoporte(n)));
+  const noLeidasSoporte = items.filter((n) => esSoporte(n) && !n.leida_at).length;
+  const noLeidasGeneral = items.filter((n) => !esSoporte(n) && !n.leida_at).length;
+  const idsMarcablesBandeja = itemsBandeja.filter((n) => !n.leida_at && !n.derivada).map((n) => n.id);
+
   return (
     <div className="relative" ref={panelRef}>
       <button
         type="button"
         onClick={() => {
           setAbierto((v) => !v);
-          if (!abierto) void cargar();
+          if (!abierto) {
+            // Si lo único pendiente es de Soporte, se abre directo ahí.
+            if (noLeidasGeneral === 0 && noLeidasSoporte > 0) setBandeja("soporte");
+            else if (noLeidasSoporte === 0 && noLeidasGeneral > 0) setBandeja("general");
+            void cargar();
+          }
         }}
         aria-label="Notificaciones"
         aria-expanded={abierto}
@@ -565,10 +580,10 @@ export default function NotificacionesBell() {
                   <BellRing className="h-3.5 w-3.5" />
                 </button>
               ) : null}
-              {noLeidas > 0 ? (
+              {idsMarcablesBandeja.length > 0 ? (
                 <button
                   type="button"
-                  onClick={() => void marcarLeidas({ todas: true })}
+                  onClick={() => void marcarLeidas({ ids: idsMarcablesBandeja })}
                   className="text-[11px] font-semibold text-[#0EA5E9] transition-colors hover:text-[#0284c7]"
                 >
                   Marcar todas como leídas
@@ -610,13 +625,51 @@ export default function NotificacionesBell() {
             </div>
           ) : null}
 
+          <div className="flex gap-1 border-b border-slate-100 px-2.5 py-1.5" role="tablist">
+            {(
+              [
+                { id: "general", etiqueta: "General", n: noLeidasGeneral },
+                { id: "soporte", etiqueta: "Soporte", n: noLeidasSoporte },
+              ] as const
+            ).map((t) => {
+              const sel = bandeja === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={sel}
+                  onClick={() => setBandeja(t.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition-colors ${
+                    sel ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                  }`}
+                >
+                  {t.etiqueta}
+                  {t.n > 0 ? (
+                    <span
+                      className={`min-w-4 rounded-full px-1 text-center text-[10px] font-bold tabular-nums ${
+                        sel ? "bg-white/20 text-white" : "bg-[#0EA5E9] text-white"
+                      }`}
+                    >
+                      {t.n > 99 ? "99+" : t.n}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
           <ul className="max-h-[26rem] divide-y divide-slate-100 overflow-y-auto">
-            {items.length === 0 ? (
+            {itemsBandeja.length === 0 ? (
               <li className="px-4 py-8 text-center text-sm text-slate-400">
-                {cargando ? "Cargando…" : "Estás al día. No hay notificaciones pendientes."}
+                {cargando
+                  ? "Cargando…"
+                  : bandeja === "soporte"
+                    ? "No hay avisos de Soporte pendientes."
+                    : "Estás al día. No hay notificaciones pendientes."}
               </li>
             ) : (
-              items.map((n) => {
+              itemsBandeja.map((n) => {
                 const estilo = ESTILO_TIPO[n.tipo] ?? ESTILO_TIPO.qa_novedad;
                 const Icono = estilo.icon;
                 const noLeida = n.leida_at == null;

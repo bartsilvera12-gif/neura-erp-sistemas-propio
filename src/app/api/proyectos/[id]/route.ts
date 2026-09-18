@@ -764,7 +764,8 @@ type StorageCapableClient = {
       list: (
         path: string,
         opts: { limit: number; offset: number }
-      ) => Promise<{ data: { name: string }[] | null; error: { message: string } | null }>;
+        // Supabase marca las CARPETAS con `id: null` (los archivos traen un uuid).
+      ) => Promise<{ data: { name: string; id?: string | null }[] | null; error: { message: string } | null }>;
       remove: (paths: string[]) => Promise<{ error: { message: string } | null }>;
     };
   };
@@ -780,19 +781,39 @@ async function removeProyectoStorageFiles(
   proyectoId: string
 ): Promise<void> {
   const bucket = sb.storage.from(PROYECTOS_BUCKET);
-  const prefix = `${empresaId}/${proyectoId}`;
-  const PAGE = 100;
-  const MAX_PAGES = 200; // corta un loop infinito si el bucket devolviera siempre lo mismo
+  const raiz = `${empresaId}/${proyectoId}`;
+  const PAGE = 1000;
 
-  // Cada pasada borra la página que acaba de listar, así que la siguiente vuelve a pedir desde 0.
-  for (let i = 0; i < MAX_PAGES; i++) {
-    const { data, error } = await bucket.list(prefix, { limit: PAGE, offset: 0 });
+  // Recorre TODO el árbol: `.list` de Supabase no es recursivo, así que los
+  // adjuntos de QA y de comentarios (que viven en subcarpetas) quedaban sin
+  // borrar y ocupando espacio para siempre. Se juntan primero todos los archivos
+  // y recién después se borran en lotes. Guard por si el bucket se comportara
+  // raro, para no colgar el request.
+  const carpetas: string[] = [raiz];
+  const archivos: string[] = [];
+  let guard = 0;
+  while (carpetas.length > 0 && guard < 10_000) {
+    guard++;
+    const dir = carpetas.pop() as string;
+    // Paginar la carpeta por si tiene más de PAGE entradas.
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await bucket.list(dir, { limit: PAGE, offset });
+      if (error) throw new Error(error.message);
+      const filas = data ?? [];
+      for (const f of filas) {
+        if (!f.name) continue;
+        const full = `${dir}/${f.name}`;
+        // id === null (o ausente) = carpeta → se encola; si no, es archivo.
+        if (f.id == null) carpetas.push(full);
+        else archivos.push(full);
+      }
+      if (filas.length < PAGE) break;
+    }
+  }
+
+  for (let i = 0; i < archivos.length; i += PAGE) {
+    const { error } = await bucket.remove(archivos.slice(i, i + PAGE));
     if (error) throw new Error(error.message);
-    const names = (data ?? []).map((f) => f.name).filter((n) => n.length > 0);
-    if (names.length === 0) return;
-
-    const { error: eRemove } = await bucket.remove(names.map((n) => `${prefix}/${n}`));
-    if (eRemove) throw new Error(eRemove.message);
   }
 }
 
@@ -829,8 +850,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (!existing) return NextResponse.json(errorResponse("No encontrado"), { status: 404 });
 
     // Los binarios del bucket no cuelgan del cascade de la BD: hay que borrarlos aparte
-    // o quedan huérfanos. Best-effort: si falla, igual eliminamos el proyecto.
-    await removeProyectoStorageFiles(sb, auth.empresaId, pid).catch(() => {});
+    // o quedan huérfanos. Best-effort: si falla, igual eliminamos el proyecto, pero
+    // se LOGUEA (antes se tragaba el error y los huérfanos eran invisibles).
+    await removeProyectoStorageFiles(sb, auth.empresaId, pid).catch((e) =>
+      console.error("[proyectos] no se pudieron borrar todos los archivos del storage", pid, e)
+    );
 
     const { error: eDel } = await sb
       .from("proyectos")

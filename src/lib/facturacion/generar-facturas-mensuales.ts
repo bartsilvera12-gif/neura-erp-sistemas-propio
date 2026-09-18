@@ -2,7 +2,8 @@ import "server-only";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { montosFacturaItemParaInsert } from "./factura-item-montos";
 import { obtenerSiguienteNumeroFacturaEmpresa } from "./factura-suscripcion-servidor";
-import { vencimientoPeriodo } from "@/lib/fechas/calendario";
+import { vencimientoPeriodo, toCalendarDateStr } from "@/lib/fechas/calendario";
+import { aplicarPlanPendienteSiVencido } from "./suscripcion-plan-pendiente";
 
 /**
  * Motor de FACTURACIÓN MENSUAL automática de suscripciones (server-only).
@@ -68,6 +69,10 @@ type SuscRow = {
   moneda: string | null;
   dia_vencimiento: number | null;
   tipo_servicio: string | null;
+  plan_pendiente_id: string | null;
+  precio_pendiente: number | null;
+  moneda_pendiente: string | null;
+  plan_pendiente_vigente_desde: string | null;
 };
 
 function periodoActualYmd(): string {
@@ -106,7 +111,7 @@ export async function generarFacturasMensuales(opts: {
   // 1) Suscripciones activas (fuente real = suscripciones)
   let q = supabase
     .from("suscripciones")
-    .select("id, cliente_id, plan_id, precio, moneda, dia_vencimiento, tipo_servicio")
+    .select("id, cliente_id, plan_id, precio, moneda, dia_vencimiento, tipo_servicio, plan_pendiente_id, precio_pendiente, moneda_pendiente, plan_pendiente_vigente_desde")
     .eq("empresa_id", empresaId)
     .eq("estado", "activa");
   if (opts.suscripcionIds && opts.suscripcionIds.length > 0) {
@@ -128,6 +133,28 @@ export async function generarFacturasMensuales(opts: {
   resumen.legacy_sin_periodo = legacyCount ?? 0;
 
   if (suscripciones.length === 0) return resumen;
+
+  // 1b) Cambios de plan PROGRAMADOS ya vigentes para este período: aplicarlos ANTES de facturar,
+  //     para que la factura de este mes (y los meses siguientes) usen el plan/precio nuevos. Sin
+  //     esto el cron facturaba con el plan viejo; el emit manual sí lo aplicaba. Se gatea por el
+  //     período que se factura (emisión >= vigente_desde) y por la fecha real (aplicarPlanPendiente
+  //     usa `hoy`), así un backfill de un mes anterior NO adelanta el plan. Idempotente.
+  if (!dryRun) {
+    for (const s of suscripciones) {
+      const vig = toCalendarDateStr(s.plan_pendiente_vigente_desde);
+      if (!s.plan_pendiente_id || !vig || emision < vig) continue;
+      const r = await aplicarPlanPendienteSiVencido({ supabase, empresaId, suscripcionId: s.id });
+      if (r.applied) {
+        s.plan_id = s.plan_pendiente_id;
+        s.precio = Number(s.precio_pendiente);
+        s.moneda = s.moneda_pendiente === "USD" ? "USD" : "GS";
+        s.plan_pendiente_id = null;
+        s.precio_pendiente = null;
+        s.moneda_pendiente = null;
+        s.plan_pendiente_vigente_desde = null;
+      }
+    }
+  }
 
   // 2) Estado de clientes (filtrar eliminados / inactivos / baja)
   const clienteIds = [...new Set(suscripciones.map((s) => String(s.cliente_id ?? "")).filter(Boolean))];

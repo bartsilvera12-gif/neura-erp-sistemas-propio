@@ -95,27 +95,39 @@ export default function AgendaClient() {
   const loadCitas = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const { start, end } = rangeForView(view, anchor);
-      const params = new URLSearchParams();
-      params.set("desde", start.toISOString());
-      params.set("hasta", end.toISOString());
-      if (estado) params.set("estado", estado);
-      if (responsableId) params.set("responsable_id", responsableId);
-      if (q.trim()) params.set("q", q.trim());
-      const res = await fetchWithSupabaseSession(`/api/agenda?${params.toString()}`);
-      const json = await res.json();
-      if (!res.ok || !json?.success) {
-        setError(json?.error ?? "No se pudieron cargar las citas.");
-        setCitas([]);
-      } else {
-        setCitas(json.data as AgendaCitaEnriquecida[]);
+    const { start, end } = rangeForView(view, anchor);
+    const params = new URLSearchParams();
+    params.set("desde", start.toISOString());
+    params.set("hasta", end.toISOString());
+    if (estado) params.set("estado", estado);
+    if (responsableId) params.set("responsable_id", responsableId);
+    if (q.trim()) params.set("q", q.trim());
+
+    // Un corte momentáneo del servidor de datos devuelve la página de error de
+    // Cloudflare (HTML): se reintenta una vez y, si sigue, se muestra un mensaje
+    // legible en vez del HTML crudo.
+    const pedir = async (): Promise<{ ok: true; data: AgendaCitaEnriquecida[] } | { ok: false; error: string }> => {
+      try {
+        const res = await fetchWithSupabaseSession(`/api/agenda?${params.toString()}`);
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success) return { ok: true, data: json.data as AgendaCitaEnriquecida[] };
+        const msg = typeof json?.error === "string" ? json.error : "";
+        return { ok: false, error: msg && !/<\s*(!doctype|html)/i.test(msg) ? msg : "" };
+      } catch {
+        return { ok: false, error: "" };
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error.");
-    } finally {
-      setLoading(false);
+    };
+    let r = await pedir();
+    if (!r.ok) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      r = await pedir();
     }
+    if (r.ok) setCitas(r.data);
+    else {
+      setError(r.error || "No se pudo conectar con el servidor. Probá de nuevo en unos segundos.");
+      setCitas([]);
+    }
+    setLoading(false);
   }, [view, anchor, estado, responsableId, q]);
 
   useEffect(() => {

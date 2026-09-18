@@ -2372,6 +2372,12 @@ export default function ClienteDetalleClient({
                         <tr key={s.id} className="hover:bg-slate-50">
                           <td className="px-4 py-3 font-medium text-slate-800">
                             {planes.find((p) => p.id === s.plan_id)?.nombre ?? s.plan_nombre ?? "—"}
+                            {s.plan_pendiente_vigente_desde && (
+                              <span className="mt-1 flex w-fit items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                                🗓️ Cambio programado desde {formatFecha(s.plan_pendiente_vigente_desde)}
+                                {s.precio_pendiente != null ? ` · ${s.moneda} ${s.precio_pendiente.toLocaleString("es-PY")}` : ""}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-slate-600">{s.precio.toLocaleString("es-PY")}</td>
                           <td className="px-4 py-3 text-slate-600">{s.moneda}</td>

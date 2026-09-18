@@ -22,6 +22,10 @@ interface SuscripcionRow {
   estado: string;
   generar_factura_este_mes: boolean;
   created_at: string;
+  plan_pendiente_id?: string | null;
+  precio_pendiente?: number | null;
+  moneda_pendiente?: string | null;
+  plan_pendiente_vigente_desde?: string | null;
   planes?: { nombre: string } | { nombre: string }[] | null;
 }
 
@@ -86,6 +90,9 @@ export async function getSuscripciones(clienteId: string): Promise<Suscripcion[]
       estado: r.estado as Suscripcion["estado"],
       generar_factura_este_mes: Boolean(r.generar_factura_este_mes),
       created_at: r.created_at,
+      plan_pendiente_id: r.plan_pendiente_id ?? null,
+      precio_pendiente: r.precio_pendiente != null ? Number(r.precio_pendiente) : null,
+      plan_pendiente_vigente_desde: r.plan_pendiente_vigente_desde ?? null,
     }));
   } catch (e) {
     console.error("[facturacion] getSuscripciones:", e);

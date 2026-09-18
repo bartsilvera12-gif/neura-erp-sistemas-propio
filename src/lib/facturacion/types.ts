@@ -14,6 +14,9 @@ export interface Suscripcion {
   estado:                 EstadoSuscripcion;
   generar_factura_este_mes: boolean;
   created_at:             string;
+  plan_pendiente_id?:     string | null;
+  precio_pendiente?:      number | null;
+  plan_pendiente_vigente_desde?: string | null;
 }
 
 export interface FacturaItem {

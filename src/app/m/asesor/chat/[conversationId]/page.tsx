@@ -23,6 +23,7 @@ import {
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { agruparReacciones, EMOJIS_REACCION, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
+import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import { useAsesorInbox, type AsesorConv } from "@/shared/hooks/useAsesorInbox";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
@@ -134,6 +135,27 @@ function abrirArchivo(url: string) {
     return;
   }
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+/**
+ * Copia una imagen al portapapeles para pegarla en otro chat o en otra app. Se pasa a PNG
+ * porque es el único tipo de imagen que Safari/iOS acepta en el portapapeles.
+ */
+async function copiarImagen(url: string): Promise<void> {
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) throw new Error("sin soporte");
+  const png = (async () => {
+    const r = await fetch(url, { mode: "cors" });
+    const blob = await r.blob();
+    if (blob.type === "image/png") return blob;
+    const bmp = await createImageBitmap(blob);
+    const c = document.createElement("canvas");
+    c.width = bmp.width;
+    c.height = bmp.height;
+    c.getContext("2d")!.drawImage(bmp, 0, 0);
+    return await new Promise<Blob>((ok, mal) => c.toBlob((b) => (b ? ok(b) : mal(new Error("png"))), "image/png"));
+  })();
+  // Safari exige crear el ClipboardItem dentro del gesto del usuario: se le pasa la promesa.
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
 }
 
 function fmtSecs(s: number): string {
@@ -1223,6 +1245,9 @@ export default function MAsesorChatPage() {
   );
 
   // Imagen / video: mismo endpoint de media (detecta el tipo por el archivo). Optimista.
+  /** Imagen pegada del portapapeles, esperando confirmación antes de enviarse. */
+  const [imagenPegada, setImagenPegada] = useState<File | null>(null);
+
   const sendFile = useCallback(
     (file: File) => {
       if (!file || file.size < 1) return;
@@ -1753,6 +1778,18 @@ export default function MAsesorChatPage() {
                 </button>
               </div>
             ) : null}
+            {imagenPegada ? (
+              <div className="mb-2">
+                <ImagenPegada
+                  archivo={imagenPegada}
+                  alCancelar={() => setImagenPegada(null)}
+                  alEnviar={() => {
+                    sendFile(imagenPegada);
+                    setImagenPegada(null);
+                  }}
+                />
+              </div>
+            ) : null}
             <div className="flex items-end gap-2">
               <input
                 ref={fileInputRef}
@@ -1795,6 +1832,12 @@ export default function MAsesorChatPage() {
                 ref={taRef}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
+                onPaste={(e) => {
+                  const img = imagenDelPortapapeles(e);
+                  if (!img) return; // texto: pegado normal
+                  e.preventDefault();
+                  setImagenPegada(img);
+                }}
                 rows={1}
                 placeholder="Escribí un mensaje…"
                 className="flex-1 resize-none rounded-2xl border border-slate-200 px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40 max-h-32"
@@ -1978,6 +2021,22 @@ export default function MAsesorChatPage() {
                 </button>
               ))}
             </div>
+            ) : null}
+
+            {reaccionandoA.message_type === "image" && mediaUrl(reaccionandoA) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const u = mediaUrl(reaccionandoA)!;
+                  setReaccionandoA(null);
+                  void copiarImagen(u)
+                    .then(() => setAviso("Imagen copiada"))
+                    .catch(() => setReaccionError("Este dispositivo no deja copiar imágenes. Usá Reenviar."));
+                }}
+                className="mt-1 w-full rounded-xl py-2.5 text-[14px] font-medium text-slate-600 active:bg-slate-100"
+              >
+                Copiar imagen
+              </button>
             ) : null}
 
             <button

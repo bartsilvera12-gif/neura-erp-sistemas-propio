@@ -1,5 +1,6 @@
 "use client";
 
+import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -1073,6 +1074,8 @@ export function ConversacionesClient({
   const [listRefreshing, setListRefreshing] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  /** Imagen pegada con Ctrl/Cmd+V, esperando confirmación antes de enviarse. */
+  const [imagenPegada, setImagenPegada] = useState<File | null>(null);
   const [uploadHint, setUploadHint] = useState<string | null>(null);
   /** Grabación de nota de voz (MediaRecorder) antes de subir a /api/chat/send-media. */
   const [recordingVoice, setRecordingVoice] = useState(false);
@@ -4754,6 +4757,17 @@ export function ConversacionesClient({
                     {sendError}
                   </div>
                 )}
+                {imagenPegada ? (
+                  <ImagenPegada
+                    archivo={imagenPegada}
+                    enviando={uploadingFile}
+                    alCancelar={() => setImagenPegada(null)}
+                    alEnviar={() => {
+                      const f = imagenPegada;
+                      void sendMediaFile(f).finally(() => setImagenPegada(null));
+                    }}
+                  />
+                ) : null}
                 {uploadHint && (
                   <div className="text-xs text-[#3F8E91] bg-[#4FAEB2]/10 border border-[#4FAEB2]/30 rounded-md px-2 py-1">
                     {uploadHint}
@@ -5095,6 +5109,12 @@ export function ConversacionesClient({
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleComposerKeyDown}
+                      onPaste={(e) => {
+                        const img = imagenDelPortapapeles(e);
+                        if (!img) return; // texto: pegado normal
+                        e.preventDefault();
+                        setImagenPegada(img);
+                      }}
                     />
                   )}
                   <button

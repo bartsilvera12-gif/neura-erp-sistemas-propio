@@ -1,23 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
-import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
-import {
-  ProyectoModuloSelector,
-  type ProyectoModuloCatalogo as ModuloCatalogo,
-} from "@/app/dashboard/proyectos/components/ProyectoModuloSelector";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
-import {
-  PROYECTO_DATOS_BRIEF_FIELDS,
-  PROYECTO_FACTURACION_OPCIONES,
-  applyBriefFormToExisting,
-  applySaasFormToExisting,
-  esFacturacionValida,
-  type ProyectoModuloSnapshot,
-} from "@/lib/proyectos/brief-data";
-import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type Tipo = { id: string; nombre: string; codigo: string };
@@ -50,7 +36,6 @@ export default function ProyectoNuevoForm({
   const [estados, setEstados] = useState<Estado[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [modulosCatalogo, setModulosCatalogo] = useState<ModuloCatalogo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -64,51 +49,23 @@ export default function ProyectoNuevoForm({
   const [rt, setRt] = useState("");
   const [fechaIngreso, setFechaIngreso] = useState(() => new Date().toISOString().slice(0, 10));
   const [fechaProm, setFechaProm] = useState("");
-  const [brief, setBrief] = useState<Record<string, string>>({});
-  const [briefLists, setBriefLists] = useState<Record<string, string[]>>({});
-  // Observaciones del proyecto web: se guardan en la columna `observaciones_comerciales`, la
-  // misma que edita la pestaña Datos ("Observaciones comerciales"), para que se reflejen ahí.
-  const [observacionesComerciales, setObservacionesComerciales] = useState("");
-  const [saasEmpresaNombre, setSaasEmpresaNombre] = useState("");
-  // WhatsApp / contacto del proyecto (arriba, junto a Fecha prometida). Se autocompleta con el
-  // teléfono del cliente elegido y queda editable.
+  // WhatsApp / contacto del proyecto. Se autocompleta con el teléfono del cliente
+  // elegido y queda editable. (El resto del brief se completa en el detalle.)
   const [contactoWhatsapp, setContactoWhatsapp] = useState("");
-  const [saasObservaciones, setSaasObservaciones] = useState("");
-  /**
-   * Situación de facturación del cliente. Obligatoria en SaaS/ERP y mixto:
-   * define si el arranque necesita timbrado, certificado y homologación con
-   * la DNIT, o ninguno de los tres. Preguntarlo después es descubrirlo tarde.
-   */
-  const [saasFacturacion, setSaasFacturacion] = useState("");
-  const [saasModuloIds, setSaasModuloIds] = useState<string[]>([]);
-
-  const tipoCodigo = useMemo(() => tipos.find((t) => t.id === tipoId)?.codigo ?? "", [tipos, tipoId]);
-  // El tipo mixto muestra los dos bloques de brief a la vez.
-  const esWeb = tipoIncluyeWeb(tipoCodigo);
-  const esSaas = tipoIncluyeSaas(tipoCodigo);
-  const saasModulosSeleccionados = useMemo<ProyectoModuloSnapshot[]>(
-    () =>
-      modulosCatalogo
-        .filter((modulo) => saasModuloIds.includes(modulo.id))
-        .map((modulo) => ({ id: modulo.id, slug: modulo.slug, nombre: modulo.nombre })),
-    [modulosCatalogo, saasModuloIds]
-  );
 
   useEffect(() => {
     let cancel = false;
     (async () => {
-      const [rT, rE, rC, rU, rM] = await Promise.all([
+      const [rT, rE, rC, rU] = await Promise.all([
         fetchWithSupabaseSession("/api/proyectos/tipos", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/proyectos/estados", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/clientes", { cache: "no-store" }),
         fetchWithSupabaseSession("/api/usuarios/empresa-activos", { cache: "no-store" }),
-        fetchWithSupabaseSession("/api/proyectos/modulos-catalogo", { cache: "no-store" }),
       ]);
       const jT = (await rT.json()) as { success?: boolean; data?: Tipo[] };
       const jE = (await rE.json()) as { success?: boolean; data?: Estado[] };
       const jC = (await rC.json()) as { success?: boolean; data?: Cliente[] };
       const jUsers = (await rU.json()) as { usuarios?: Usuario[] };
-      const jModulos = (await rM.json()) as { success?: boolean; data?: ModuloCatalogo[] };
       if (cancel) return;
       if (jT.success && jT.data) {
         setTipos(jT.data);
@@ -118,7 +75,6 @@ export default function ProyectoNuevoForm({
       if (jE.success && jE.data) setEstados(jE.data);
       if (jC.success && jC.data) setClientes(jC.data);
       setUsuarios(jUsers.usuarios ?? []);
-      if (jModulos.success && jModulos.data) setModulosCatalogo(jModulos.data);
       setLoading(false);
     })();
     return () => {
@@ -146,34 +102,13 @@ export default function ProyectoNuevoForm({
       setErr("El título es requerido.");
       return;
     }
-    // Para proyectos web (o mixto saas+web) el rubro/tipo de web es obligatorio.
-    if (esWeb && !(brief.tipo_web ?? "").trim()) {
-      setErr("El tipo de web (rubro) es obligatorio para proyectos web.");
-      return;
-    }
-    // En SaaS/ERP define qué hay que preparar para la puesta en marcha, así que
-    // se pide ahora y no cuando ya haya que arrancar.
-    if (esSaas && !esFacturacionValida(saasFacturacion)) {
-      setErr("Indicá la situación de facturación del cliente.");
-      return;
-    }
     setSaving(true);
     setErr(null);
-    // Se aplican en cadena, no en if/else: el tipo mixto guarda ambos briefs.
-    // Las claves de cada uno son disjuntas (`saas_*` vs. marca/dominio/…).
-    let brief_data: Record<string, unknown> = {};
-    if (esWeb) brief_data = applyBriefFormToExisting(brief_data, brief, briefLists);
-    if (esSaas) {
-      brief_data = applySaasFormToExisting(brief_data, {
-        empresa_nombre: saasEmpresaNombre,
-        whatsapp_contacto: contactoWhatsapp,
-        observaciones: saasObservaciones,
-        modulos_necesarios: saasModulosSeleccionados,
-        facturacion: saasFacturacion,
-      });
-    }
-    // WhatsApp/contacto único (arriba): se guarda como clave general del brief para web/mixto
-    // (el SaaS ya la tomó como saas_whatsapp_contacto arriba).
+    // El brief (marca, dominio, rubro, secciones, SaaS/facturación, etc.) YA NO se
+    // pide al crear: el comercial registra el proyecto con lo mínimo y todo eso se
+    // completa después en el detalle (pestaña Datos). Lo único que sí conviene
+    // capturar ya es el WhatsApp de contacto, autocompletado con el del cliente.
+    const brief_data: Record<string, unknown> = {};
     const contacto = contactoWhatsapp.trim();
     if (contacto) brief_data.whatsapp_contacto = contacto;
 
@@ -187,8 +122,6 @@ export default function ProyectoNuevoForm({
       responsable_tecnico_id: rt || null,
       fecha_ingreso: new Date(fechaIngreso + "T12:00:00").toISOString(),
       fecha_prometida: fechaProm ? new Date(fechaProm + "T12:00:00").toISOString() : null,
-      // Observaciones del bloque web → columna `observaciones_comerciales` (la lee la pestaña Datos).
-      observaciones_comerciales: esWeb ? observacionesComerciales.trim() || null : null,
       brief_data,
     };
     if (estadoId) body.estado_id = estadoId;
@@ -386,228 +319,6 @@ export default function ProyectoNuevoForm({
           </div>
         </div>
 
-        {esWeb ? (
-          <div
-            className={
-              isModal
-                ? "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                : "rounded-2xl border border-[#4FAEB2]/20 bg-[#4FAEB2]/5 p-5"
-            }
-          >
-            <div className="mb-4 flex items-center gap-2">
-              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <h2 className="text-sm font-semibold text-slate-900">Datos del proyecto (web)</h2>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {/* whatsapp_contacto se pide arriba (junto a Fecha prometida), autocompletado. */}
-              {/* El WhatsApp de contacto se pide arriba, en el bloque del cliente. */}
-              {PROYECTO_DATOS_BRIEF_FIELDS.filter(
-                (f) => f.key !== "whatsapp_contacto"
-              ).map((f) => {
-                // Rubro del negocio: buscador inteligente con lista canónica (antes texto libre).
-                if (f.key === "tipo_web") {
-                  return (
-                    <label key={f.key} className="block text-sm sm:col-span-2">
-                      <span className={LABEL_CLS}>
-                        {f.label} <span className="text-rose-500">*</span>
-                      </span>
-                      <RubroWebSelect
-                        value={brief[f.key] ?? ""}
-                        onChange={(v) => setBrief((b) => ({ ...b, [f.key]: v }))}
-                      />
-                    </label>
-                  );
-                }
-                if (f.kind === "checkbox") {
-                  return (
-                    <label
-                      key={f.key}
-                      className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition-colors hover:border-[#4FAEB2]/60"
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
-                        checked={brief[f.key] === "1"}
-                        onChange={(e) =>
-                          setBrief((b) => ({ ...b, [f.key]: e.target.checked ? "1" : "" }))
-                        }
-                      />
-                      {f.label}
-                    </label>
-                  );
-                }
-                if (f.kind === "url_list") {
-                  const urls = briefLists[f.key] ?? [];
-                  const items = urls.length > 0 ? urls : [""];
-                  return (
-                    <div key={f.key} className="block text-sm sm:col-span-2">
-                      <span className={LABEL_CLS}>{f.label}</span>
-                      <div className="mt-1.5 space-y-2">
-                        {items.map((url, idx) => (
-                          <div key={idx} className="flex items-stretch gap-2">
-                            <input
-                              type="url"
-                              className={`${INPUT_CLS} mt-0 flex-1`}
-                              placeholder={f.placeholder ?? "https://..."}
-                              value={url}
-                              onChange={(e) => {
-                                const next = [...items];
-                                next[idx] = e.target.value;
-                                setBriefLists((b) => ({ ...b, [f.key]: next }));
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = items.filter((_, i) => i !== idx);
-                                setBriefLists((b) => ({ ...b, [f.key]: next }));
-                              }}
-                              disabled={items.length === 1 && !items[0]}
-                              aria-label={`Eliminar ${idx + 1}`}
-                              title="Eliminar"
-                              className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-400"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setBriefLists((b) => ({
-                              ...b,
-                              [f.key]: [...(b[f.key] ?? []), ""],
-                            }))
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[#4FAEB2]/40 bg-[#4FAEB2]/5 px-3 py-2 text-xs font-semibold text-[#3F8E91] transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/10"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                          </svg>
-                          {f.addLabel ?? "Agregar otro link"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <label key={f.key} className="block text-sm sm:col-span-2">
-                    <span className={LABEL_CLS}>{f.label}</span>
-                    <input
-                      className={INPUT_CLS}
-                      placeholder={f.placeholder}
-                      value={brief[f.key] ?? ""}
-                      onChange={(e) => setBrief((b) => ({ ...b, [f.key]: e.target.value }))}
-                    />
-                  </label>
-                );
-              })}
-              <label className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Observaciones</span>
-                <textarea
-                  className={`${INPUT_CLS} min-h-[88px]`}
-                  rows={3}
-                  value={observacionesComerciales}
-                  onChange={(e) => setObservacionesComerciales(e.target.value)}
-                />
-              </label>
-            </div>
-          </div>
-        ) : null}
-
-        {esSaas ? (
-          <div
-            className={
-              isModal
-                ? "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                : "rounded-2xl border border-[#4FAEB2]/20 bg-[#4FAEB2]/5 p-5"
-            }
-          >
-            <div className="mb-4 flex items-center gap-2">
-              <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
-              <h2 className="text-sm font-semibold text-slate-900">Datos del ERP / SaaS</h2>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>
-                  Facturación del cliente <span className="text-rose-500">*</span>
-                </span>
-                <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
-                  {PROYECTO_FACTURACION_OPCIONES.map((o) => {
-                    const activo = saasFacturacion === o.value;
-                    return (
-                      <button
-                        key={o.value}
-                        type="button"
-                        onClick={() => setSaasFacturacion(o.value)}
-                        className={`rounded-xl border px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${
-                          activo
-                            ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/50"
-                        }`}
-                      >
-                        {o.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <label className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Nombre de la empresa</span>
-                <input
-                  className={INPUT_CLS}
-                  value={saasEmpresaNombre}
-                  onChange={(e) => setSaasEmpresaNombre(e.target.value)}
-                />
-              </label>
-              <div className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Módulos necesarios</span>
-                <div className="mt-1.5">
-                  <ProyectoModuloSelector
-                    modulos={modulosCatalogo}
-                    selectedIds={saasModuloIds}
-                    onChange={setSaasModuloIds}
-                  />
-                </div>
-              </div>
-              <label className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Observaciones</span>
-                <textarea
-                  className={`${INPUT_CLS} min-h-[88px]`}
-                  rows={3}
-                  value={saasObservaciones}
-                  onChange={(e) => setSaasObservaciones(e.target.value)}
-                />
-              </label>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <div

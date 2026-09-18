@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
-import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
 import {
   ProyectoModuloSelector,
   type ProyectoModuloCatalogo as ModuloCatalogo,
@@ -126,6 +125,24 @@ export default function ProyectoNuevoForm({
     };
   }, []);
 
+  // Responsable comercial: se preselecciona con el usuario que está creando el
+  // proyecto (queda editable). Antes arrancaba vacío y había que elegirse a mano.
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
+        const j = (await r.json().catch(() => null)) as { usuario?: { id?: string | null } } | null;
+        if (!cancel && j?.usuario?.id) setRc(j.usuario.id);
+      } catch {
+        // Si falla, queda sin preseleccionar (no bloquea la creación).
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
   // Al elegir un cliente: setear el cliente y autocompletar WhatsApp/contacto con su teléfono
   // (editable). Se hace en el evento de selección, no en un efecto.
   function handleClienteChange(id: string) {
@@ -146,9 +163,10 @@ export default function ProyectoNuevoForm({
       setErr("El título es requerido.");
       return;
     }
-    // Para proyectos web (o mixto saas+web) el rubro/tipo de web es obligatorio.
-    if (esWeb && !(brief.tipo_web ?? "").trim()) {
-      setErr("El tipo de web (rubro) es obligatorio para proyectos web.");
+    // Observaciones obligatorias al crear un proyecto web: sin una nota mínima de
+    // qué necesita el cliente, el proyecto nace sin contexto.
+    if (esWeb && !observacionesComerciales.trim()) {
+      setErr("Las observaciones son obligatorias.");
       return;
     }
     // En SaaS/ERP define qué hay que preparar para la puesta en marcha, así que
@@ -286,38 +304,7 @@ export default function ProyectoNuevoForm({
                 />
               </div>
             </div>
-            <div className="block text-sm">
-              <span className={LABEL_CLS}>Estado inicial (opcional)</span>
-              <div className="mt-1.5">
-                <FancySelect
-                  ariaLabel="Estado inicial"
-                  placeholder="Predeterminado de empresa"
-                  value={estadoId}
-                  onChange={setEstadoId}
-                  options={[
-                    { value: "", label: "Predeterminado de empresa" },
-                    ...estados.map((s) => ({ value: s.id, label: s.nombre })),
-                  ]}
-                />
-              </div>
-            </div>
             <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} />
-            <div className="block text-sm">
-              <span className={LABEL_CLS}>Prioridad</span>
-              <div className="mt-1.5">
-                <FancySelect
-                  ariaLabel="Prioridad"
-                  value={prioridad}
-                  onChange={setPrioridad}
-                  options={[
-                    { value: "baja", label: "Baja" },
-                    { value: "normal", label: "Media" },
-                    { value: "alta", label: "Alta" },
-                    { value: "urgente", label: "Urgente" },
-                  ]}
-                />
-              </div>
-            </div>
             <div className="block text-sm">
               <span className={LABEL_CLS}>Resp. comercial</span>
               <div className="mt-1.5">
@@ -336,24 +323,6 @@ export default function ProyectoNuevoForm({
                 />
               </div>
             </div>
-            <div className="block text-sm">
-              <span className={LABEL_CLS}>Resp. técnico</span>
-              <div className="mt-1.5">
-                <FancySelect
-                  ariaLabel="Responsable técnico"
-                  placeholder="—"
-                  value={rt}
-                  onChange={setRt}
-                  options={[
-                    { value: "", label: "—" },
-                    ...usuarios.map((u) => ({
-                      value: u.id,
-                      label: u.nombre ?? u.id.slice(0, 8),
-                    })),
-                  ]}
-                />
-              </div>
-            </div>
             <label className="block text-sm">
               <span className={LABEL_CLS}>Fecha ingreso</span>
               <FechaSelect
@@ -361,14 +330,6 @@ export default function ProyectoNuevoForm({
                 className={INPUT_CLS}
                 value={fechaIngreso}
                 onChange={(e) => setFechaIngreso(e.target.value)}
-/>
-            </label>
-            <label className="block text-sm">
-              <span className={LABEL_CLS}>Fecha prometida</span>
-              <FechaSelect
-                className={INPUT_CLS}
-                value={fechaProm}
-                onChange={(e) => setFechaProm(e.target.value)}
 />
             </label>
             <label className="block text-sm">
@@ -399,25 +360,24 @@ export default function ProyectoNuevoForm({
               <h2 className="text-sm font-semibold text-slate-900">Datos del proyecto (web)</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {/* whatsapp_contacto se pide arriba (junto a Fecha prometida), autocompletado. */}
-              {/* El WhatsApp de contacto se pide arriba, en el bloque del cliente. */}
+              {/* whatsapp_contacto se pide arriba, autocompletado. Y en el POPUP DE
+                  CREAR se dejan solo los esenciales: marca, dominio, tipo de web,
+                  redes y observaciones. El resto del brief (rubro, objetivo,
+                  secciones, colores, logo, referencias) NO se saca del sistema
+                  —sigue en el detalle— sólo se oculta acá para no abrumar al crear. */}
               {PROYECTO_DATOS_BRIEF_FIELDS.filter(
-                (f) => f.key !== "whatsapp_contacto"
+                (f) =>
+                  ![
+                    "whatsapp_contacto",
+                    "tipo_web",
+                    "rubro",
+                    "objetivo",
+                    "secciones",
+                    "estilo_colores",
+                    "logo_cliente",
+                    "referencias_urls",
+                  ].includes(f.key)
               ).map((f) => {
-                // Rubro del negocio: buscador inteligente con lista canónica (antes texto libre).
-                if (f.key === "tipo_web") {
-                  return (
-                    <label key={f.key} className="block text-sm sm:col-span-2">
-                      <span className={LABEL_CLS}>
-                        {f.label} <span className="text-rose-500">*</span>
-                      </span>
-                      <RubroWebSelect
-                        value={brief[f.key] ?? ""}
-                        onChange={(v) => setBrief((b) => ({ ...b, [f.key]: v }))}
-                      />
-                    </label>
-                  );
-                }
                 if (f.kind === "checkbox") {
                   return (
                     <label
@@ -437,83 +397,23 @@ export default function ProyectoNuevoForm({
                   );
                 }
                 if (f.kind === "url_list") {
+                  // En el popup de CREAR se muestra un solo link (sin "Agregar otro
+                  // link"). Se guarda como lista de un elemento; agregar más se hace
+                  // después en el detalle, donde el campo sí es multi-link.
                   const urls = briefLists[f.key] ?? [];
-                  const items = urls.length > 0 ? urls : [""];
                   return (
-                    <div key={f.key} className="block text-sm sm:col-span-2">
+                    <label key={f.key} className="block text-sm sm:col-span-2">
                       <span className={LABEL_CLS}>{f.label}</span>
-                      <div className="mt-1.5 space-y-2">
-                        {items.map((url, idx) => (
-                          <div key={idx} className="flex items-stretch gap-2">
-                            <input
-                              type="url"
-                              className={`${INPUT_CLS} mt-0 flex-1`}
-                              placeholder={f.placeholder ?? "https://..."}
-                              value={url}
-                              onChange={(e) => {
-                                const next = [...items];
-                                next[idx] = e.target.value;
-                                setBriefLists((b) => ({ ...b, [f.key]: next }));
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = items.filter((_, i) => i !== idx);
-                                setBriefLists((b) => ({ ...b, [f.key]: next }));
-                              }}
-                              disabled={items.length === 1 && !items[0]}
-                              aria-label={`Eliminar ${idx + 1}`}
-                              title="Eliminar"
-                              className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-white disabled:hover:text-slate-400"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <line x1="18" y1="6" x2="6" y2="18" />
-                                <line x1="6" y1="6" x2="18" y2="18" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setBriefLists((b) => ({
-                              ...b,
-                              [f.key]: [...(b[f.key] ?? []), ""],
-                            }))
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[#4FAEB2]/40 bg-[#4FAEB2]/5 px-3 py-2 text-xs font-semibold text-[#3F8E91] transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/10"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                          </svg>
-                          {f.addLabel ?? "Agregar otro link"}
-                        </button>
-                      </div>
-                    </div>
+                      <input
+                        type="url"
+                        className={INPUT_CLS}
+                        placeholder={f.placeholder ?? "https://..."}
+                        value={urls[0] ?? ""}
+                        onChange={(e) =>
+                          setBriefLists((b) => ({ ...b, [f.key]: [e.target.value] }))
+                        }
+                      />
+                    </label>
                   );
                 }
                 return (
@@ -529,12 +429,16 @@ export default function ProyectoNuevoForm({
                 );
               })}
               <label className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Observaciones</span>
+                <span className={LABEL_CLS}>
+                  Observaciones <span className="text-rose-500">*</span>
+                </span>
                 <textarea
+                  required
                   className={`${INPUT_CLS} min-h-[88px]`}
                   rows={3}
                   value={observacionesComerciales}
                   onChange={(e) => setObservacionesComerciales(e.target.value)}
+                  placeholder="Contanos brevemente qué necesita el cliente"
                 />
               </label>
             </div>

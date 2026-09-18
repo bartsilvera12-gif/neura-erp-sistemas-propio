@@ -50,27 +50,33 @@ export type ProyectoEnriquecido = Record<string, unknown> & {
  */
 const IDS_POR_LOTE = 40;
 
-/** Ejecuta la consulta por lotes de ids y junta el resultado. */
+/**
+ * Ejecuta la consulta por lotes de ids y junta el resultado, PAGINANDO cada lote
+ * de a 1000. Antes solo avisaba al llegar al tope de PostgREST (1000) pero no lo
+ * prevenía: un lote de proyectos con mucho historial se truncaba y a las últimas
+ * tarjetas les faltaba el tramo abierto (mostraban mal los días). Ahora se piden
+ * todas las páginas del lote hasta que una venga incompleta.
+ */
 async function enLotes<T>(
   ids: string[],
-  build: (lote: string[]) => PromiseLike<{ data: unknown; error: unknown }>
+  build: (lote: string[], desde: number, hasta: number) => PromiseLike<{ data: unknown; error: unknown }>
 ): Promise<T[]> {
+  const PAGINA = 1000;
   const out: T[] = [];
   for (let i = 0; i < ids.length; i += IDS_POR_LOTE) {
-    const { data, error } = await build(ids.slice(i, i + IDS_POR_LOTE));
-    if (error) {
-      // Se avisa en el log: sin historial el tiempo en estado sale del
-      // `updated_at`, que es una aproximación y no debe pasar desapercibida.
-      console.error("[enrich-proyectos] historial", (error as { message?: string }).message ?? error);
-      continue;
+    const lote = ids.slice(i, i + IDS_POR_LOTE);
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data, error } = await build(lote, desde, desde + PAGINA - 1);
+      if (error) {
+        // Sin historial el tiempo en estado sale del `updated_at`, que es una
+        // aproximación y no debe pasar desapercibida.
+        console.error("[enrich-proyectos] lote", (error as { message?: string }).message ?? error);
+        break; // se saltea el resto de este lote y sigue con el próximo
+      }
+      const filas = (data ?? []) as T[];
+      out.push(...filas);
+      if (filas.length < PAGINA) break; // no hay más páginas en este lote
     }
-    const filas = (data ?? []) as T[];
-    // 1000 es el tope por defecto de PostgREST: si un lote lo alcanza, algo se
-    // quedó afuera y hay que achicar el lote. Se avisa en vez de truncar callado.
-    if (filas.length >= 1000) {
-      console.warn("[enrich-proyectos] lote en el tope de 1000 filas; puede faltar historial");
-    }
-    out.push(...filas);
   }
   return out;
 }
@@ -114,36 +120,39 @@ export async function enrichProyectosRows(
       ? sb.from("proyecto_tipos").select("id,nombre,codigo").eq("empresa_id", empresaId).in("id", tipoIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     estadoIds.length
-      ? enLotes<Record<string, unknown>>(estadoIds, (lote) =>
+      ? enLotes<Record<string, unknown>>(estadoIds, (lote, desde, hasta) =>
           sb
             .from("proyecto_estados")
             .select("id,nombre,codigo,color,tipo_sla,cuenta_sla,sla_horas_objetivo,es_estado_final")
             .eq("empresa_id", empresaId)
             .in("id", lote)
+            .range(desde, hasta)
         ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     clienteIds.length
-      ? enLotes<Record<string, unknown>>(clienteIds, (lote) =>
+      ? enLotes<Record<string, unknown>>(clienteIds, (lote, desde, hasta) =>
           sb
             .from("clientes")
             .select("id,tipo_cliente,empresa,nombre_contacto,nombre,razon_social,ruc")
             .eq("empresa_id", empresaId)
             .in("id", lote)
+            .range(desde, hasta)
         ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     userIds.length
-      ? enLotes<Record<string, unknown>>(userIds, (lote) =>
-          catalog.from("usuarios").select("id,nombre").eq("empresa_id", empresaId).in("id", lote)
+      ? enLotes<Record<string, unknown>>(userIds, (lote, desde, hasta) =>
+          catalog.from("usuarios").select("id,nombre").eq("empresa_id", empresaId).in("id", lote).range(desde, hasta)
         ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     proyectoIds.length
-      ? enLotes<Record<string, unknown>>(proyectoIds, (lote) =>
+      ? enLotes<Record<string, unknown>>(proyectoIds, (lote, desde, hasta) =>
           sb
             .from("proyecto_estado_historial")
             .select("proyecto_id, estado_nuevo_id, entered_at, exited_at")
             .eq("empresa_id", empresaId)
             .in("proyecto_id", lote)
             .order("entered_at", { ascending: false })
+            .range(desde, hasta)
         ).then((data) => ({ data }))
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);

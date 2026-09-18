@@ -50,13 +50,29 @@ export async function GET(request: Request) {
       return qq;
     }
 
+    // Trae TODOS los proyectos que matcheen, paginando de a 1000. Sin esto, el
+    // tope de PostgREST (1000) cortaba la respuesta SIN error y el tablero perdía
+    // proyectos en silencio al pasar de mil. Hoy hay ~128, así que era latente.
+    async function traerProyectos(): Promise<Record<string, unknown>[]> {
+      const PAGINA = 1000;
+      const out: Record<string, unknown>[] = [];
+      for (let desde = 0; ; desde += PAGINA) {
+        const { data, error } = await proyectosFiltrados()
+          .order("last_activity_at", { ascending: false })
+          .range(desde, desde + PAGINA - 1);
+        if (error) throw new Error(error.message);
+        const filas = (data ?? []) as Record<string, unknown>[];
+        out.push(...filas);
+        if (filas.length < PAGINA) break;
+      }
+      return out;
+    }
+
     let rows: Record<string, unknown>[] = [];
 
     const q = qRaw?.trim();
     if (!q) {
-      const { data, error } = await proyectosFiltrados().order("last_activity_at", { ascending: false });
-      if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
-      rows = (data ?? []) as Record<string, unknown>[];
+      rows = await traerProyectos();
     } else {
       // Búsqueda: proyectos cuyo título matchea, o cuyo cliente (empresa /
       // contacto) matchea. Traemos proyectos y clientes con los filtros base en
@@ -71,12 +87,8 @@ export async function GET(request: Request) {
       const tokens = tokenizarBusqueda(q);
       const [cli, todos] = await Promise.all([
         sb.from("clientes").select("id, empresa, nombre_contacto").eq("empresa_id", empresaId),
-        proyectosFiltrados().order("last_activity_at", { ascending: false }),
+        traerProyectos(),
       ]);
-
-      if (todos.error) {
-        return NextResponse.json(errorResponse(todos.error.message), { status: 400 });
-      }
 
       // Texto del cliente por id, para no re-armarlo en cada proyecto.
       const textoCliente = new Map<string, string>();
@@ -84,7 +96,7 @@ export async function GET(request: Request) {
         textoCliente.set(c.id, [c.empresa, c.nombre_contacto].filter(Boolean).join(" "));
       }
 
-      rows = ((todos.data ?? []) as Record<string, unknown>[]).filter((r) => {
+      rows = todos.filter((r) => {
         const titulo = typeof r.titulo === "string" ? r.titulo : "";
         const cid = typeof r.cliente_id === "string" ? r.cliente_id : "";
         return coincideBusqueda(tokens, `${titulo} ${textoCliente.get(cid) ?? ""}`);

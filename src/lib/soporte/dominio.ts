@@ -439,27 +439,36 @@ export const TIPOS_RELACION = [
   { codigo: "deriva_de", nombre: "Deriva de" },
 ] as const;
 
-/** Tipos de archivo de evidencia aceptados. */
-export const ARCHIVO_MIMES_ACEPTADOS = [
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "application/pdf",
-  "video/mp4",
-  "video/quicktime",
-  "text/plain",
-] as const;
+/**
+ * Evidencias: se acepta cualquier archivo (Excel, Word, ZIP, capturas, videos,
+ * logs…) salvo lo que se ejecuta o se abre como página. Esos quedan afuera
+ * porque el bucket se sirve por URL: un .html o .svg correría en el navegador
+ * de quien lo abre, y un .exe o .bat es la forma clásica de colar un virus.
+ */
+const EXTENSIONES_BLOQUEADAS =
+  /\.(exe|msi|msp|bat|cmd|com|scr|pif|cpl|dll|sys|vbs|vbe|js|mjs|jse|wsf|wsh|hta|ps1|psm1|sh|jar|app|apk|lnk|reg|html?|xhtml|svg|svgz|php|asp|aspx|jsp)$/i;
+const MIMES_BLOQUEADOS = new Set([
+  "text/html",
+  "application/xhtml+xml",
+  "image/svg+xml",
+  "application/javascript",
+  "text/javascript",
+  "application/x-msdownload",
+  "application/x-msdos-program",
+  "application/x-sh",
+  "application/java-archive",
+  "application/vnd.android.package-archive",
+]);
 
-export const ARCHIVO_EXTENSIONES = ".png,.jpg,.jpeg,.webp,.pdf,.mp4,.mov,.txt,.log";
-
-/** 100 MB: un video de pantalla corto entra holgado. */
-export const ARCHIVO_MAX_BYTES = 100 * 1024 * 1024;
+/**
+ * 50 MB por archivo: es el tope que tiene el bucket en Storage. Poner más acá
+ * sólo hacía que la subida fallara al final con un error confuso.
+ */
+export const ARCHIVO_MAX_BYTES = 50 * 1024 * 1024;
 
 export function mimeAceptado(mime: string, nombre: string): boolean {
-  const m = (mime || "").toLowerCase();
-  if ((ARCHIVO_MIMES_ACEPTADOS as readonly string[]).includes(m)) return true;
-  // Algunos navegadores mandan .mov o .log sin tipo: se valida por extensión.
-  return /\.(png|jpe?g|webp|pdf|mp4|mov|txt|log)$/i.test(nombre);
+  if (EXTENSIONES_BLOQUEADAS.test(nombre.trim())) return false;
+  return !MIMES_BLOQUEADOS.has((mime || "").toLowerCase());
 }
 
 export function tamanoLegible(bytes: number | null | undefined): string {

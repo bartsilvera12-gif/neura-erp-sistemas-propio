@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FileText, Film, ImageIcon, UploadCloud, X } from "lucide-react";
-import { ARCHIVO_EXTENSIONES, ARCHIVO_MAX_BYTES, mimeAceptado, tamanoLegible } from "@/lib/soporte/dominio";
+import { ARCHIVO_MAX_BYTES, mimeAceptado, tamanoLegible } from "@/lib/soporte/dominio";
 
 function IconoArchivo({ tipo }: { tipo: string }) {
   if (tipo.startsWith("image/")) return <ImageIcon className="h-4 w-4" aria-hidden />;
@@ -79,13 +79,12 @@ export default function ZonaArchivos({
         </span>
         <p className="mt-2 text-[13px] font-semibold text-slate-700">Arrastrá archivos aquí o <span className="text-[#2F6E71] underline decoration-[#4FAEB2]/40 underline-offset-2">elegilos</span></p>
         <p className="mt-0.5 text-[11.5px] text-slate-400">
-          PNG, JPG, WEBP, PDF, MP4, MOV, TXT (máx. {tamanoLegible(ARCHIVO_MAX_BYTES)} c/u)
+          Imágenes, videos, PDF, Excel, Word y cualquier otro archivo (máx. {tamanoLegible(ARCHIVO_MAX_BYTES)} c/u)
         </p>
         <input
           ref={input}
           type="file"
           multiple
-          accept={ARCHIVO_EXTENSIONES}
           className="hidden"
           onChange={(e) => {
             if (e.target.files) agregar(e.target.files);

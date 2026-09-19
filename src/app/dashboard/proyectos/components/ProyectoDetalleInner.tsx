@@ -2967,6 +2967,12 @@ export default function ProyectoDetalleInner({
                 <div className="mt-1.5">
                   <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={setClienteId} />
                 </div>
+                {clienteId ? null : (
+                  <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                    Este proyecto no tiene un cliente asignado: no aparece en la ficha de ningún
+                    cliente en Gestión. Asigná el cliente y guardá para vincularlo.
+                  </p>
+                )}
               </div>
             </BloqueDatos>
 

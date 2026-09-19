@@ -656,12 +656,23 @@ function ProyectosLista({
                           >
                             {p.titulo}
                           </div>
-                          <div
-                            className="mt-0.5 break-words text-[11.5px] leading-tight text-slate-500"
-                            title={cli || undefined}
-                          >
-                            {cli || "Sin cliente"}
-                          </div>
+                          {p.cliente ? (
+                            <div
+                              className="mt-0.5 break-words text-[11.5px] leading-tight text-slate-500"
+                              title={cli || undefined}
+                            >
+                              {cli || "—"}
+                            </div>
+                          ) : (
+                            <div className="mt-0.5">
+                              <span
+                                className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+                                title="Este proyecto no tiene un cliente asignado: no aparece en la ficha de ningún cliente en Gestión."
+                              >
+                                Sin cliente asignado
+                              </span>
+                            </div>
+                          )}
                           <div className="mt-1 flex flex-wrap items-center gap-1">
                             {p.bloqueado ? (
                               <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">
@@ -1663,7 +1674,7 @@ function ProjectCardViewBase({
     data: { projectId: p.id, estadoId: p.estado_id },
   });
 
-  const cli = nombreClienteDisplay(p.cliente, "Sin cliente");
+  const cli = nombreClienteDisplay(p.cliente, "");
   const saasModulesLabel = saasModuleCountLabel(p);
   const priorityStyles = getPriorityCardStyles(p.prioridad);
   const postentrega = getPostentregaInfo(p);
@@ -1699,9 +1710,18 @@ function ProjectCardViewBase({
             <div className="text-[15px] font-semibold leading-snug text-slate-950 hover:underline">
               {p.titulo}
             </div>
-            <div className="mt-1 text-xs font-medium text-slate-600">
-              {cli}
-            </div>
+            {p.cliente ? (
+              <div className="mt-1 text-xs font-medium text-slate-600">{cli || "—"}</div>
+            ) : (
+              <div className="mt-1">
+                <span
+                  className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+                  title="Este proyecto no tiene un cliente asignado: no aparece en la ficha de ningún cliente en Gestión."
+                >
+                  Sin cliente asignado
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">

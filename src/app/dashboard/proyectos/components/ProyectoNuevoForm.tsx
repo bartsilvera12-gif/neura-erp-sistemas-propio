@@ -163,6 +163,12 @@ export default function ProyectoNuevoForm({
       setErr("El título es requerido.");
       return;
     }
+    // El cliente es obligatorio: un proyecto sin cliente no aparece en su ficha
+    // en Gestión y queda huérfano. El backend lo valida también (POST /api/proyectos).
+    if (!clienteId) {
+      setErr("Seleccioná el cliente del proyecto.");
+      return;
+    }
     // Observaciones obligatorias al crear un proyecto web: sin una nota mínima de
     // qué necesita el cliente, el proyecto nace sin contexto.
     if (esWeb && !observacionesComerciales.trim()) {
@@ -304,7 +310,7 @@ export default function ProyectoNuevoForm({
                 />
               </div>
             </div>
-            <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} />
+            <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} required />
             <div className="block text-sm">
               <span className={LABEL_CLS}>Resp. comercial</span>
               <div className="mt-1.5">

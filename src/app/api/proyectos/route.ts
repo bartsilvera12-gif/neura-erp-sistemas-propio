@@ -257,6 +257,19 @@ export async function POST(request: Request) {
     const clienteId =
       typeof body.cliente_id === "string" && body.cliente_id ? body.cliente_id : null;
 
+    // Todo proyecto pertenece a un cliente: los tipos son web / saas / mixto, no
+    // existe el proyecto interno sin cliente. Sin `cliente_id` el trabajo no
+    // aparece en la ficha del cliente en Gestión y queda huérfano (era
+    // exactamente el caso "Instemaq"). Se valida en el server porque el POST se
+    // puede llamar directo —formulario, asistente de IA, integraciones—, no solo
+    // desde el formulario que ahora también lo exige.
+    if (!clienteId) {
+      return NextResponse.json(
+        errorResponse("Indicá el cliente del proyecto."),
+        { status: 400 }
+      );
+    }
+
     const brief_data =
       body.brief_data && typeof body.brief_data === "object" && !Array.isArray(body.brief_data)
         ? body.brief_data

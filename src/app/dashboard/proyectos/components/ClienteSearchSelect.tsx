@@ -20,9 +20,15 @@ type Props = {
   clientes: ClienteOpt[];
   value: string;
   onChange: (id: string) => void;
+  /**
+   * Cliente obligatorio. Marca el campo con `*` y oculta el atajo
+   * "Sin cliente / definir luego": es justo esa salida la que dejaba proyectos
+   * huérfanos que no aparecían en la ficha del cliente en Gestión.
+   */
+  required?: boolean;
 };
 
-export function ClienteSearchSelect({ clientes, value, onChange }: Props) {
+export function ClienteSearchSelect({ clientes, value, onChange, required = false }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -45,7 +51,9 @@ export function ClienteSearchSelect({ clientes, value, onChange }: Props) {
 
   return (
     <div ref={wrapRef} className="relative sm:col-span-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Cliente</span>
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        Cliente{required ? <span className="text-rose-500"> *</span> : null}
+      </span>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1">
           <span
@@ -80,17 +88,19 @@ export function ClienteSearchSelect({ clientes, value, onChange }: Props) {
             aria-label="Buscar cliente"
           />
         </div>
-        <button
-          type="button"
-          className="whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
-          onClick={() => {
-            onChange("");
-            setQ("");
-            setOpen(false);
-          }}
-        >
-          Sin cliente / definir luego
-        </button>
+        {required ? null : (
+          <button
+            type="button"
+            className="whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#4FAEB2]"
+            onClick={() => {
+              onChange("");
+              setQ("");
+              setOpen(false);
+            }}
+          >
+            Sin cliente / definir luego
+          </button>
+        )}
       </div>
 
       {open && q.trim() && filtered.length === 0 ? (

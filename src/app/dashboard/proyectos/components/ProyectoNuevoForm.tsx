@@ -311,16 +311,7 @@ export default function ProyectoNuevoForm({
           ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm sm:col-span-2">
-              <span className={LABEL_CLS}>Título</span>
-              <input
-                required
-                className={INPUT_CLS}
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Nombre del proyecto"
-              />
-            </label>
+            {/* Fila 1: Tipo | Resp. comercial */}
             <div className="block text-sm">
               <span className={LABEL_CLS}>
                 Tipo <span className="text-rose-500">*</span>
@@ -335,7 +326,6 @@ export default function ProyectoNuevoForm({
                 />
               </div>
             </div>
-            <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} required />
             <div className="block text-sm">
               <span className={LABEL_CLS}>Resp. comercial</span>
               <div className="mt-1.5">
@@ -354,6 +344,20 @@ export default function ProyectoNuevoForm({
                 />
               </div>
             </div>
+            {/* Fila 2: Título (todo el ancho) */}
+            <label className="block text-sm sm:col-span-2">
+              <span className={LABEL_CLS}>Título</span>
+              <input
+                required
+                className={INPUT_CLS}
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
+                placeholder="Nombre del proyecto"
+              />
+            </label>
+            {/* Fila 3: Cliente (todo el ancho) */}
+            <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} required />
+            {/* Fila 4: Fecha ingreso | WhatsApp */}
             <label className="block text-sm">
               <span className={LABEL_CLS}>Fecha ingreso</span>
               <FechaSelect

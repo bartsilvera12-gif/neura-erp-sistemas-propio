@@ -174,7 +174,7 @@ export default function ProyectoNuevoForm({
     }
     // Comentario obligatorio: describe qué necesita el cliente y queda como el
     // primer comentario de la tarjeta.
-    if (esWeb && !comentarioInicial.trim()) {
+    if ((esWeb || esSaas) && !comentarioInicial.trim()) {
       setErr("El comentario es obligatorio.");
       return;
     }
@@ -273,6 +273,76 @@ export default function ProyectoNuevoForm({
   }
 
   const isModal = variant === "modal";
+
+  // "Comentarios" + "Archivos": el mismo bloque para web y SaaS. El texto crea el
+  // primer comentario de la tarjeta (canal Comercial) y los archivos van a la
+  // pestaña Archivos del proyecto (cualquier tipo).
+  const comentariosYArchivos = (
+    <>
+      <label className="block text-sm sm:col-span-2">
+        <span className={LABEL_CLS}>
+          Comentarios <span className="text-rose-500">*</span>
+        </span>
+        <textarea
+          required
+          className={`${INPUT_CLS} min-h-[88px]`}
+          rows={3}
+          value={comentarioInicial}
+          onChange={(e) => setComentarioInicial(e.target.value)}
+          placeholder="Contanos qué necesita el cliente. Queda como primer comentario de la tarjeta."
+        />
+      </label>
+      {/* Archivos de cualquier tipo (pdf, docs, imágenes…): al crear el proyecto
+          se suben a su pestaña Archivos. */}
+      <div className="block text-sm sm:col-span-2">
+        <span className={LABEL_CLS}>Archivos (opcional)</span>
+        <div className="mt-1.5 space-y-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-[#4FAEB2]/40 bg-[#4FAEB2]/5 px-3 py-2 text-xs font-semibold text-[#3F8E91] transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/10">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+            Adjuntar archivos
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const nuevos = Array.from(e.target.files ?? []);
+                if (nuevos.length > 0) setArchivosNuevos((prev) => [...prev, ...nuevos]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {archivosNuevos.length > 0 ? (
+            <ul className="space-y-1">
+              {archivosNuevos.map((f, idx) => (
+                <li
+                  key={`${f.name}-${idx}`}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] text-slate-600"
+                >
+                  <span className="min-w-0 flex-1 truncate" title={f.name}>
+                    {f.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setArchivosNuevos((prev) => prev.filter((_, i) => i !== idx))}
+                    className="shrink-0 text-slate-400 transition-colors hover:text-rose-500"
+                    aria-label={`Quitar ${f.name}`}
+                    title="Quitar"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <form
@@ -463,68 +533,7 @@ export default function ProyectoNuevoForm({
                   </label>
                 );
               })}
-              <label className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>
-                  Comentarios <span className="text-rose-500">*</span>
-                </span>
-                <textarea
-                  required
-                  className={`${INPUT_CLS} min-h-[88px]`}
-                  rows={3}
-                  value={comentarioInicial}
-                  onChange={(e) => setComentarioInicial(e.target.value)}
-                  placeholder="Contanos qué necesita el cliente. Queda como primer comentario de la tarjeta."
-                />
-              </label>
-              {/* Archivos de cualquier tipo (pdf, docs, imágenes…): al crear el
-                  proyecto se suben a su pestaña Archivos. */}
-              <div className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Archivos (opcional)</span>
-                <div className="mt-1.5 space-y-2">
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-[#4FAEB2]/40 bg-[#4FAEB2]/5 px-3 py-2 text-xs font-semibold text-[#3F8E91] transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/10">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                    Adjuntar archivos
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        const nuevos = Array.from(e.target.files ?? []);
-                        if (nuevos.length > 0) setArchivosNuevos((prev) => [...prev, ...nuevos]);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
-                  {archivosNuevos.length > 0 ? (
-                    <ul className="space-y-1">
-                      {archivosNuevos.map((f, idx) => (
-                        <li
-                          key={`${f.name}-${idx}`}
-                          className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] text-slate-600"
-                        >
-                          <span className="min-w-0 flex-1 truncate" title={f.name}>
-                            {f.name}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setArchivosNuevos((prev) => prev.filter((_, i) => i !== idx))}
-                            className="shrink-0 text-slate-400 transition-colors hover:text-rose-500"
-                            aria-label={`Quitar ${f.name}`}
-                            title="Quitar"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <line x1="18" y1="6" x2="6" y2="18" />
-                              <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              </div>
+              {comentariosYArchivos}
             </div>
           </div>
         ) : null}
@@ -566,14 +575,6 @@ export default function ProyectoNuevoForm({
                   })}
                 </div>
               </div>
-              <label className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Nombre de la empresa</span>
-                <input
-                  className={INPUT_CLS}
-                  value={saasEmpresaNombre}
-                  onChange={(e) => setSaasEmpresaNombre(e.target.value)}
-                />
-              </label>
               <div className="block text-sm sm:col-span-2">
                 <span className={LABEL_CLS}>Módulos necesarios</span>
                 <div className="mt-1.5">
@@ -584,15 +585,7 @@ export default function ProyectoNuevoForm({
                   />
                 </div>
               </div>
-              <label className="block text-sm sm:col-span-2">
-                <span className={LABEL_CLS}>Observaciones</span>
-                <textarea
-                  className={`${INPUT_CLS} min-h-[88px]`}
-                  rows={3}
-                  value={saasObservaciones}
-                  onChange={(e) => setSaasObservaciones(e.target.value)}
-                />
-              </label>
+              {comentariosYArchivos}
             </div>
           </div>
         ) : null}

@@ -1135,8 +1135,9 @@ export function ConversacionesClient({
     let vivo = true;
     fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j: { data?: { es_project_manager?: boolean } }) => {
-        if (vivo) setEsPm(j?.data?.es_project_manager === true);
+      // Esta ruta responde `{ usuario: {...} }`, no el sobre `{ data }` del resto.
+      .then((j: { usuario?: { es_project_manager?: boolean } }) => {
+        if (vivo) setEsPm(j?.usuario?.es_project_manager === true);
       })
       .catch(() => {});
     return () => {

@@ -582,6 +582,7 @@ export default function ProyectoNuevoForm({
                     modulos={modulosCatalogo}
                     selectedIds={saasModuloIds}
                     onChange={setSaasModuloIds}
+                    layout="chips"
                   />
                 </div>
               </div>

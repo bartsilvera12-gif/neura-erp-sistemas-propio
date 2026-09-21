@@ -1123,6 +1123,26 @@ export function ConversacionesClient({
   // Soporte desde el chat: PM o quien usa Soporte. Se consulta una vez al entrar.
   const [puedeSoporte, setPuedeSoporte] = useState(false);
   const [soporteModalOpen, setSoporteModalOpen] = useState(false);
+  /**
+   * Las PM no usan el CRM: en la cabecera del chat ven sólo "Cliente →", que
+   * abre la ficha en Gestión de clientes. Si el contacto no está asociado, se
+   * busca el cliente por teléfono / contactos secundarios / nombre (la misma
+   * búsqueda que usa el botón Soporte), guardado por conversación.
+   */
+  const [esPm, setEsPm] = useState(false);
+  const [clienteDeChat, setClienteDeChat] = useState<Record<string, string | null>>({});
+  useEffect(() => {
+    let vivo = true;
+    fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { data?: { es_project_manager?: boolean } }) => {
+        if (vivo) setEsPm(j?.data?.es_project_manager === true);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
   useEffect(() => {
     let vivo = true;
     void puedeCargarSoporte().then((p) => vivo && setPuedeSoporte(p));
@@ -2838,6 +2858,29 @@ export function ConversacionesClient({
 
   const selected = conversations.find((c) => c.id === selectedId);
 
+  // Deps por valor: `selected` cambia de identidad en cada refresco del inbox y
+  // eso cancelaría el pedido antes de que vuelva.
+  const pmConvId = esPm && selected && !selected.contact.cliente_id ? selected.id : null;
+  const pmTel = selected?.contact.phone_number ?? "";
+  const pmNombre = selected?.contact.name ?? "";
+  const pmYaResuelto = pmConvId ? pmConvId in clienteDeChat : true;
+  useEffect(() => {
+    if (!pmConvId || pmYaResuelto) return;
+    let vivo = true;
+    const qs = new URLSearchParams();
+    if (pmTel) qs.set("contacto_telefono", pmTel);
+    if (pmNombre) qs.set("contacto_nombre", pmNombre);
+    fetchWithSupabaseSession(`/api/soporte/carga-rapida?${qs.toString()}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { data?: { asociado?: { cliente_id?: string } | null } }) => {
+        if (vivo) setClienteDeChat((m) => ({ ...m, [pmConvId]: j?.data?.asociado?.cliente_id ?? null }));
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [pmConvId, pmTel, pmNombre, pmYaResuelto]);
+
   // Ventana de servicio 24h: abierta si el contacto escribió hace < 24h. Fuera de ella, un
   // mensaje libre rebota (131047) → hay que recontactar con plantilla. Se calcula desde los
   // mensajes cargados (último inbound).
@@ -4207,7 +4250,23 @@ export function ConversacionesClient({
                             </>
                           ) : null}
 
-                          {selected.contact.cliente_id || selected.contact.crm_prospecto_id ? (
+                          {esPm ? (
+                            (() => {
+                              const cid = selected.contact.cliente_id ?? clienteDeChat[selected.id] ?? null;
+                              return cid ? (
+                                <>
+                                  <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-slate-200" />
+                                  <Link
+                                    href={`/gestion-clientes?cliente=${cid}`}
+                                    title="Abrir la ficha en Gestión de clientes"
+                                    className="inline-flex items-center gap-1 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-0.5 text-[10px] font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/12"
+                                  >
+                                    Cliente →
+                                  </Link>
+                                </>
+                              ) : null;
+                            })()
+                          ) : selected.contact.cliente_id || selected.contact.crm_prospecto_id ? (
                             <>
                               <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-slate-200" />
                               {selected.contact.cliente_id ? (

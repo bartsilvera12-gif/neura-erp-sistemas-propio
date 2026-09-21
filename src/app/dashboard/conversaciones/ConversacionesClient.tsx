@@ -1125,9 +1125,8 @@ export function ConversacionesClient({
   const [soporteModalOpen, setSoporteModalOpen] = useState(false);
   /**
    * Las PM no usan el CRM: en la cabecera del chat ven sólo "Cliente →", que
-   * abre la ficha en Gestión de clientes. Si el contacto no está asociado, se
-   * busca el cliente por teléfono / contactos secundarios / nombre (la misma
-   * búsqueda que usa el botón Soporte), guardado por conversación.
+   * abre la ficha en Gestión de clientes. `clienteDeChat` guarda, por
+   * conversación, el cliente hallado para contactos que no estaban asociados.
    */
   const [esPm, setEsPm] = useState(false);
   const [clienteDeChat, setClienteDeChat] = useState<Record<string, string | null>>({});
@@ -2859,28 +2858,29 @@ export function ConversacionesClient({
 
   const selected = conversations.find((c) => c.id === selectedId);
 
-  // Deps por valor: `selected` cambia de identidad en cada refresco del inbox y
-  // eso cancelaría el pedido antes de que vuelva.
-  const pmConvId = esPm && selected && !selected.contact.cliente_id ? selected.id : null;
-  const pmTel = selected?.contact.phone_number ?? "";
-  const pmNombre = selected?.contact.name ?? "";
-  const pmYaResuelto = pmConvId ? pmConvId in clienteDeChat : true;
+  // Chat cuyo contacto no está asociado a un cliente: se busca por teléfono
+  // (ficha o contactos secundarios) y, si hay uno solo, el servidor lo deja
+  // vinculado. Una vez por conversación. Deps por valor: `selected` cambia de
+  // identidad en cada refresco del inbox y eso cancelaría el pedido.
+  const sinClienteId = selected && !selected.contact.cliente_id ? selected.id : null;
+  const yaBuscado = sinClienteId ? sinClienteId in clienteDeChat : true;
   useEffect(() => {
-    if (!pmConvId || pmYaResuelto) return;
+    if (!sinClienteId || yaBuscado) return;
     let vivo = true;
-    const qs = new URLSearchParams();
-    if (pmTel) qs.set("contacto_telefono", pmTel);
-    if (pmNombre) qs.set("contacto_nombre", pmNombre);
-    fetchWithSupabaseSession(`/api/soporte/carga-rapida?${qs.toString()}`, { cache: "no-store" })
+    fetchWithSupabaseSession("/api/chat/contactos/vincular-cliente", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: sinClienteId }),
+    })
       .then((r) => r.json())
-      .then((j: { data?: { asociado?: { cliente_id?: string } | null } }) => {
-        if (vivo) setClienteDeChat((m) => ({ ...m, [pmConvId]: j?.data?.asociado?.cliente_id ?? null }));
+      .then((j: { data?: { cliente_id?: string | null } }) => {
+        if (vivo) setClienteDeChat((m) => ({ ...m, [sinClienteId]: j?.data?.cliente_id ?? null }));
       })
       .catch(() => {});
     return () => {
       vivo = false;
     };
-  }, [pmConvId, pmTel, pmNombre, pmYaResuelto]);
+  }, [sinClienteId, yaBuscado]);
 
   // Ventana de servicio 24h: abierta si el contacto escribió hace < 24h. Fuera de ella, un
   // mensaje libre rebota (131047) → hay que recontactar con plantilla. Se calcula desde los
@@ -4267,12 +4267,12 @@ export function ConversacionesClient({
                                 </>
                               ) : null;
                             })()
-                          ) : selected.contact.cliente_id || selected.contact.crm_prospecto_id ? (
+                          ) : (selected.contact.cliente_id ?? clienteDeChat[selected.id]) || selected.contact.crm_prospecto_id ? (
                             <>
                               <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-slate-200" />
-                              {selected.contact.cliente_id ? (
+                              {(selected.contact.cliente_id ?? clienteDeChat[selected.id]) ? (
                                 <Link
-                                  href={`/clientes/${selected.contact.cliente_id}`}
+                                  href={`/clientes/${selected.contact.cliente_id ?? clienteDeChat[selected.id]}`}
                                   className="inline-flex items-center gap-1 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-0.5 text-[10px] font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/12"
                                 >
                                   Cliente →

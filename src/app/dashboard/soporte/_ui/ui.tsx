@@ -259,7 +259,8 @@ export function Fase({ n, bloque = false }: { n?: number | null; bloque?: boolea
   );
 }
 
-function oscurecer(hex: string): string {
+/** El mismo color, más oscuro: para texto legible sobre su fondo suave. */
+export function oscurecer(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!m) return hex;
   const n = parseInt(m[1], 16);

@@ -6,6 +6,7 @@ import { useTicket } from "./TicketContexto";
 import { apiSoporte, comentariosEnMemoria, fechaHora, obtenerComentarios, subirArchivos, type Persona } from "./api";
 import ZonaArchivos from "./ZonaArchivos";
 import { Aviso, Avatar, Boton, Cargando, TONOS, TONO_AREA, Tarjeta, Vacio, claseInput } from "./ui";
+import { EVENTO_COMENTARIO_NUEVO } from "./NotasRapidas";
 
 type Comentario = {
   id: string;
@@ -47,6 +48,15 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  // Una nota rápida (columna del ticket) es un comentario: la lista se refresca.
+  useEffect(() => {
+    const alNuevo = (e: Event) => {
+      if ((e as CustomEvent<{ ticketId?: string }>).detail?.ticketId === ticket.id) void cargar(true);
+    };
+    window.addEventListener(EVENTO_COMENTARIO_NUEVO, alNuevo);
+    return () => window.removeEventListener(EVENTO_COMENTARIO_NUEVO, alNuevo);
+  }, [cargar, ticket.id]);
 
   const comentar = async () => {
     const contenido = texto.trim();

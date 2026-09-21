@@ -8,7 +8,7 @@
  * el mismo mecanismo que ya usan Conversaciones y la tarjeta de proyecto.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Camera,
@@ -522,12 +522,45 @@ function Adjuntito({
   );
 }
 
+const SIN_CONEXION = "No se pudo conectar. Revisá tu conexión y probá de nuevo.";
+
+/**
+ * Como `fetchWithSupabaseSession`, pero un corte de red vuelve como una
+ * respuesta fallida con mensaje en vez de una excepción. Así cada acción cae en
+ * su propio "no se pudo…" y el aviso se ve: antes la excepción se perdía y el
+ * botón parecía no hacer nada.
+ */
+async function pedir(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetchWithSupabaseSession(url, init);
+  } catch {
+    return new Response(JSON.stringify({ success: false, error: SIN_CONEXION }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
 export default function ChatInternoClient({ mobile = false }: { mobile?: boolean } = {}) {
   const [salas, setSalas] = useState<Sala[]>([]);
   const [salaId, setSalaId] = useState<string | null>(null);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [cargandoSalas, setCargandoSalas] = useState(true);
   const [cargandoMsgs, setCargandoMsgs] = useState(false);
+  /** Error al traer los mensajes de la sala abierta (con botón de reintentar). */
+  const [errorMsgs, setErrorMsgs] = useState<string | null>(null);
+  /** Hay mensajes más viejos que los que se ven. */
+  const [hayMas, setHayMas] = useState(false);
+  const [cargandoAnteriores, setCargandoAnteriores] = useState(false);
+  /** Sala a la que pertenecen los mensajes en pantalla (null en la vista de búsqueda). */
+  const salaDeMensajesRef = useRef<string | null>(null);
+  /** Ya se pidieron páginas anteriores: el refresco no debe pisar `hayMas`. */
+  const anterioresCargadosRef = useRef(false);
+  /** Distancia al fondo antes de sumar mensajes viejos arriba, para no mover la vista. */
+  const anclaScrollRef = useRef<number | null>(null);
+  const listaRef = useRef<HTMLDivElement>(null);
+  /** El scroll dispara muchos eventos seguidos: un solo pedido de anteriores a la vez. */
+  const pidiendoAnterioresRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [acceso, setAcceso] = useState<"cargando" | "ok" | "denegado">("cargando");
 
@@ -647,10 +680,25 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         cache: "no-store",
       });
       const j = (await r.json().catch(() => ({}))) as {
-        data?: { mensajes?: Mensaje[]; escribiendo?: string[] };
+        data?: { mensajes?: Mensaje[]; escribiendo?: string[]; hay_mas?: boolean };
+        error?: string;
       };
       if (!vigente()) return;
+      // Una respuesta fallida NO es "no hay mensajes": antes vaciaba la
+      // conversación en pantalla. Se deja lo que había y se avisa.
+      if (!r.ok) {
+        if (!silencioso) setErrorMsgs(j?.error ?? "No se pudieron cargar los mensajes");
+        return;
+      }
+      setErrorMsgs(null);
       const llegaron = j?.data?.mensajes ?? [];
+      // El refresco trae sólo la última página: lo que se cargó con "ver
+      // anteriores" se conserva, y `hayMas` lo decide esa carga, no ésta.
+      const misma = !q && salaDeMensajesRef.current === id;
+      if (!misma) anterioresCargadosRef.current = false;
+      if (!q && !anterioresCargadosRef.current) setHayMas(Boolean(j?.data?.hay_mas));
+      if (q) setHayMas(false);
+      salaDeMensajesRef.current = q ? null : id;
       // Buscar es otra vista: ahí el cartel de "escribiendo" no viene al caso.
       if (!q) {
         // La clave es el nombre: si la misma persona llega por los dos
@@ -663,7 +711,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       setMensajes((prev) => {
         const confirmados = new Set(llegaron.map((m) => m.id));
         const enVuelo = prev.filter((m) => m.pendiente && !confirmados.has(m.id));
-        const nuevos = [...llegaron, ...enVuelo];
+        const masViejo = llegaron[0]?.created_at;
+        const anteriores =
+          misma && masViejo
+            ? prev.filter((m) => !m.pendiente && !confirmados.has(m.id) && m.created_at < masViejo)
+            : [];
+        const nuevos = [...anteriores, ...llegaron, ...enVuelo];
         // Si es lo mismo que ya está en pantalla, se deja la lista anterior:
         // reemplazarla por una copia idéntica vuelve a renderizar todo y
         // mueve el scroll cada tres segundos.
@@ -682,10 +735,60 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         });
         setSalas((prev) => prev.map((s) => (s.id === id ? { ...s, no_leidos: 0 } : s)));
       }
+    } catch {
+      if (!silencioso && vigente()) setErrorMsgs(SIN_CONEXION);
     } finally {
       if (!silencioso && vigente()) setCargandoMsgs(false);
     }
   }, []);
+
+  /** Trae la página anterior a la más vieja que se ve y la suma arriba. */
+  const cargarAnteriores = useCallback(async () => {
+    const id = salaDeMensajesRef.current;
+    if (!id || pidiendoAnterioresRef.current) return;
+    const primero = mensajes.find((m) => !m.pendiente);
+    if (!primero) return;
+    pidiendoAnterioresRef.current = true;
+    setCargandoAnteriores(true);
+    try {
+      const r = await pedir(
+        `/api/chat-interno/salas/${id}/mensajes?antes_de=${encodeURIComponent(primero.created_at)}`,
+        { cache: "no-store" }
+      );
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { mensajes?: Mensaje[]; hay_mas?: boolean };
+        error?: string;
+      };
+      // Si mientras tanto se cambió de conversación, esto ya no corresponde.
+      if (salaDeMensajesRef.current !== id) return;
+      if (!r.ok) {
+        setErr(j?.error ?? "No se pudieron cargar los mensajes anteriores");
+        return;
+      }
+      const viejos = j?.data?.mensajes ?? [];
+      anterioresCargadosRef.current = true;
+      setHayMas(Boolean(j?.data?.hay_mas));
+      const cont = listaRef.current;
+      if (cont) anclaScrollRef.current = cont.scrollHeight - cont.scrollTop;
+      setMensajes((prev) => {
+        const ya = new Set(prev.map((m) => m.id));
+        return [...viejos.filter((m) => !ya.has(m.id)), ...prev];
+      });
+    } finally {
+      pidiendoAnterioresRef.current = false;
+      setCargandoAnteriores(false);
+    }
+  }, [mensajes]);
+
+  // Al sumar mensajes viejos arriba, la vista se queda donde estaba en vez de
+  // saltar: se restaura la misma distancia al fondo.
+  useLayoutEffect(() => {
+    const cont = listaRef.current;
+    const ancla = anclaScrollRef.current;
+    if (!cont || ancla == null) return;
+    anclaScrollRef.current = null;
+    cont.scrollTop = cont.scrollHeight - ancla;
+  }, [mensajes]);
 
   useEffect(() => {
     void cargarSalas();
@@ -753,6 +856,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     // durante ese rato la pantalla está diciendo algo que no es cierto.
     setMensajes([]);
     setEscribiendo({});
+    setErrorMsgs(null);
+    setHayMas(false);
+    salaDeMensajesRef.current = null;
+    anterioresCargadosRef.current = false;
     saltarAlFinalRef.current = true;
     if (salaId) {
       setCargandoMsgs(true);
@@ -1088,9 +1195,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     const yoId = perfil?.usuario_id ?? "";
     const yoNombre = perfil?.nombre ?? "Yo";
     const yoFoto = perfil?.avatar_url ?? null;
-    const antes = mensajes;
 
-    setMensajes((prev) =>
+    // Poner y sacar una reacción es la misma operación: si el servidor falla,
+    // se aplica otra vez y queda como estaba, sin pisar mensajes que hayan
+    // llegado mientras tanto (antes se restauraba una copia vieja de la lista).
+    const alternar = (prev: Mensaje[]) =>
       prev.map((m) => {
         if (m.id !== msgId) return m;
         const quienes = m.reacciones[emoji] ?? [];
@@ -1114,24 +1223,24 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             : [...(caras[emoji] ?? []), yoFoto];
         }
         return { ...m, reacciones, reacciones_nombres: nombres, reacciones_avatares: caras };
-      })
-    );
-
-    try {
-      const r = await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${msgId}/reaccion`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emoji }),
       });
-      if (!r.ok) setMensajes(antes);
-    } catch {
-      setMensajes(antes);
+    setMensajes(alternar);
+
+    const r = await pedir(`/api/chat-interno/mensajes/${msgId}/reaccion`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emoji }),
+    });
+    if (!r.ok) {
+      setMensajes(alternar);
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      setErr(j.error ?? "No se pudo guardar la reacción");
     }
   }
 
   async function borrarMensaje(msgId: string) {
     if (!window.confirm("¿Eliminar este mensaje? Queda el aviso de que fue eliminado.")) return;
-    const r = await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${msgId}`, {
+    const r = await pedir(`/api/chat-interno/mensajes/${msgId}`, {
       method: "DELETE",
     });
     const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
@@ -1149,7 +1258,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   async function guardarEdicion() {
     if (!editando) return;
-    const r = await fetchWithSupabaseSession(`/api/chat-interno/mensajes/${editando.id}`, {
+    const r = await pedir(`/api/chat-interno/mensajes/${editando.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texto: editando.texto }),
@@ -1429,7 +1538,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
     setGuardandoGrupo(true);
     try {
-      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}`, {
+      const r = await pedir(`/api/chat-interno/salas/${salaId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1451,10 +1560,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   const recargarMiembros = useCallback(async () => {
     if (!salaId) return;
-    const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/miembros`, {
+    const r = await pedir(`/api/chat-interno/salas/${salaId}/miembros`, {
       cache: "no-store",
     });
-    const j = (await r.json().catch(() => ({}))) as { data?: { miembros?: MiembroSala[] } };
+    const j = (await r.json().catch(() => ({}))) as { data?: { miembros?: MiembroSala[] }; error?: string };
+    if (!r.ok) {
+      setErr(j?.error ?? "No se pudo actualizar la lista de integrantes");
+      return;
+    }
     setMiembrosSala(j?.data?.miembros ?? []);
   }, [salaId]);
 
@@ -1467,7 +1580,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     if (!salaId) return;
     setTocandoMiembros(true);
     try {
-      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}/miembros`, {
+      const r = await pedir(`/api/chat-interno/salas/${salaId}/miembros`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cambio),
@@ -1494,7 +1607,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   async function guardarMiNombre() {
     if (editandoNombre === null) return;
-    const r = await fetchWithSupabaseSession("/api/chat-interno/perfil", {
+    const r = await pedir("/api/chat-interno/perfil", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nombre: editandoNombre }),
@@ -1521,7 +1634,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}`, {
+      const r = await pedir(`/api/chat-interno/salas/${salaId}`, {
         method: "POST",
         body: fd,
       });
@@ -1540,7 +1653,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     if (!salaId) return;
     setSubiendoFotoGrupo(true);
     try {
-      const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${salaId}`, {
+      const r = await pedir(`/api/chat-interno/salas/${salaId}`, {
         method: "DELETE",
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
@@ -1561,7 +1674,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   async function abrirDirecto(u: UsuarioOpcion) {
     setAbriendoDirecto(u.id);
     try {
-      const r = await fetchWithSupabaseSession("/api/chat-interno/salas", {
+      const r = await pedir("/api/chat-interno/salas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo: "directo", miembros: [u.id] }),
@@ -1600,8 +1713,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     setDescGrupo("");
     setElegidos([]);
     setBuscaUsuario("");
-    const r = await fetchWithSupabaseSession("/api/chat-interno/usuarios", { cache: "no-store" });
-    const j = (await r.json().catch(() => ({}))) as { data?: { usuarios?: UsuarioOpcion[] } };
+    const r = await pedir("/api/chat-interno/usuarios", { cache: "no-store" });
+    const j = (await r.json().catch(() => ({}))) as { data?: { usuarios?: UsuarioOpcion[] }; error?: string };
+    if (!r.ok) setErr(j?.error ?? "No se pudo cargar la lista de personas");
     setUsuarios(j?.data?.usuarios ?? []);
   }
 
@@ -1609,7 +1723,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     // Con una sola persona y sin nombre es una conversación directa; con nombre
     // o con varias, un grupo. Se deduce en vez de pedir que lo elijan.
     const esDirecto = elegidos.length === 1 && !nombreGrupo.trim();
-    const r = await fetchWithSupabaseSession("/api/chat-interno/salas", {
+    const r = await pedir("/api/chat-interno/salas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2072,9 +2186,43 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             ) : null}
 
             <div
+              ref={listaRef}
+              onScroll={(e) => {
+                // Llegar arriba de todo trae lo anterior, como en cualquier chat.
+                if (e.currentTarget.scrollTop < 60 && hayMas && !enBusqueda) void cargarAnteriores();
+              }}
               className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4"
               style={ESTILO_FONDO}
             >
+              {errorMsgs ? (
+                <div className="mx-auto flex max-w-md items-center justify-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-[12.5px] text-rose-700">
+                  <span>{errorMsgs}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!salaId) return;
+                      setErrorMsgs(null);
+                      setCargandoMsgs(true);
+                      void cargarMensajes(salaId, enBusqueda ? busca : undefined);
+                    }}
+                    className="shrink-0 font-semibold underline underline-offset-2"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              ) : null}
+              {hayMas && !enBusqueda && mensajes.length > 0 ? (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => void cargarAnteriores()}
+                    disabled={cargandoAnteriores}
+                    className="rounded-full bg-white px-3.5 py-1 text-[12px] font-medium text-[#2F6E71] shadow-[0_1px_2px_rgba(15,23,42,0.08)] hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {cargandoAnteriores ? "Cargando…" : "Ver mensajes anteriores"}
+                  </button>
+                </div>
+              ) : null}
               {cargandoMsgs && mensajes.length === 0 ? (
                 // Globos de mentira mientras llega lo de verdad: dice "acá va
                 // una conversación, esperá" sin dejar la pantalla en blanco ni
@@ -2102,7 +2250,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     </div>
                   ))}
                 </div>
-              ) : mensajes.length === 0 ? (
+              ) : mensajes.length === 0 && errorMsgs ? null : mensajes.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center px-8 text-center">
                   <MessagesSquare className="h-16 w-16 text-[#4FAEB2]/35" strokeWidth={1.2} />
                   <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-slate-500">

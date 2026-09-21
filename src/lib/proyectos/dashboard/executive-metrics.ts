@@ -143,11 +143,32 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       pm: ds.nombreUsuario(p.project_manager_id ?? ""),
       tiempo_en_estado_ms: p.tiempo_en_estado_ms,
       estado_id: p.estado_id,
+      tipo_id: p.tipo_id,
       responsable_tecnico_id: p.responsable_tecnico_id,
       entregado: p.entregado,
       demorado: !p.entregado && p.estancado,
       buckets: p.entregado ? [] : bucketsDeProyecto(p),
     }));
+
+  // ---- Cartera por tipo de proyecto (del período) --------------------------
+  // Web / SaaS-ERP / mixto: cuántos proyectos de cada tipo hay en el período
+  // (activos + entregados, sin cancelados). Se recorre el catálogo completo para
+  // que un tipo sin proyectos igual aparezca en cero, no que desaparezca la
+  // tarjeta. Cada una se puede apretar para ver esos proyectos en la tabla.
+  const porTipoProyecto = new Map<string, number>();
+  for (const p of periodo) {
+    if (p.tipo_id) porTipoProyecto.set(p.tipo_id, (porTipoProyecto.get(p.tipo_id) ?? 0) + 1);
+  }
+  // Orden fijo y legible: Web, SaaS/ERP, mixto; cualquier código nuevo al final.
+  const ORDEN_TIPO: Record<string, number> = { web: 0, saas: 1, web_saas: 2 };
+  const por_tipo = ds.tipos
+    .map((t) => ({
+      tipo_id: t.id,
+      nombre: t.nombre,
+      codigo: t.codigo,
+      cantidad: porTipoProyecto.get(t.id) ?? 0,
+    }))
+    .sort((a, b) => (ORDEN_TIPO[a.codigo ?? ""] ?? 99) - (ORDEN_TIPO[b.codigo ?? ""] ?? 99));
 
   // ---- Cartera por estado (del período), con cuántos van demorados ------------
   // Responde "¿cuántos proyectos tengo en cada estado, y cuántos ya llevan
@@ -240,6 +261,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     estados_periodo,
     total_activos,
     demorados_total,
+    por_tipo,
     tecnicos_resumen,
     bloqueos_por_tipo,
     bloqueos_detalle,

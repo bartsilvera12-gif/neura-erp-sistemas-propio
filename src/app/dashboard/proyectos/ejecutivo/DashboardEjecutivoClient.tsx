@@ -14,12 +14,15 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   AlertCircle,
+  Blocks,
+  Globe,
   Hourglass,
   Layers,
   PauseCircle,
+  Server,
   Timer,
   UsersRound,
 } from "lucide-react";
@@ -85,6 +88,7 @@ type Data = {
   }[];
   proyectos_periodo: (Data["criticos"][number] & {
     estado_id: string | null;
+    tipo_id: string | null;
     responsable_tecnico_id: string | null;
     entregado: boolean;
     demorado: boolean;
@@ -100,6 +104,7 @@ type Data = {
   }[];
   total_activos: number;
   demorados_total: number;
+  por_tipo: { tipo_id: string; nombre: string; codigo: string | null; cantidad: number }[];
   tecnicos_resumen: { usuario_id: string; nombre: string; total: number }[];
   bloqueos_por_tipo: { tipo: string; label: string; cantidad: number }[];
   bloqueos_detalle: {
@@ -130,6 +135,21 @@ const KPI_LABEL: Record<KpiBucket, string> = {
 };
 
 /**
+ * Presentación de cada tipo de proyecto (por `codigo` del catálogo): ícono, tono
+ * y etiqueta corta. Los nombres del catálogo son largos ("Página Web + SaaS /
+ * ERP") y en una tarjeta chica no entran; acá se muestran cortos. Si aparece un
+ * código nuevo cae al default y sigue funcionando, sólo sin ícono a medida.
+ */
+const TIPO_CARD: Record<
+  string,
+  { icon: ComponentType<{ className?: string }>; tono: string; label: string }
+> = {
+  web: { icon: Globe, tono: "azul", label: "Web" },
+  saas: { icon: Server, tono: "violeta", label: "SaaS / ERP" },
+  web_saas: { icon: Blocks, tono: "naranja", label: "Web + SaaS" },
+};
+
+/**
  * Las tres formas de desmenuzar la cartera, unificadas: una tarjeta de riesgo,
  * un estado, o los demorados (todos o de un estado puntual).
  */
@@ -138,6 +158,7 @@ type Sel =
   | { kind: "estado"; id: string }
   | { kind: "demorado"; estadoId?: string }
   | { kind: "tecnico"; id: string }
+  | { kind: "tipo"; id: string }
   | null;
 
 /** ¿Dos selecciones son la misma? Para que apretar lo ya activo lo apague. */
@@ -148,6 +169,7 @@ function mismaSel(a: Sel, b: Sel): boolean {
   if (a.kind === "estado" && b.kind === "estado") return a.id === b.id;
   if (a.kind === "demorado" && b.kind === "demorado") return a.estadoId === b.estadoId;
   if (a.kind === "tecnico" && b.kind === "tecnico") return a.id === b.id;
+  if (a.kind === "tipo" && b.kind === "tipo") return a.id === b.id;
   return false;
 }
 
@@ -311,6 +333,7 @@ export default function DashboardEjecutivoClient() {
     if (!sel) return act;
     if (sel.kind === "kpi") return act.filter((p) => p.buckets.includes(sel.bucket));
     if (sel.kind === "estado") return act.filter((p) => p.estado_id === sel.id);
+    if (sel.kind === "tipo") return act.filter((p) => p.tipo_id === sel.id);
     if (sel.kind === "tecnico") return act.filter((p) => p.responsable_tecnico_id === sel.id);
     // demorado
     return act.filter((p) => p.demorado && (sel.estadoId ? p.estado_id === sel.estadoId : true));
@@ -322,6 +345,9 @@ export default function DashboardEjecutivoClient() {
     if (sel.kind === "kpi") return KPI_LABEL[sel.bucket];
     if (sel.kind === "estado") {
       return data?.estados_periodo.find((e) => e.estado_id === sel.id)?.nombre ?? "Estado";
+    }
+    if (sel.kind === "tipo") {
+      return data?.por_tipo.find((t) => t.tipo_id === sel.id)?.nombre ?? "Tipo";
     }
     if (sel.kind === "tecnico") {
       const n = data?.tecnicos_resumen.find((t) => t.usuario_id === sel.id)?.nombre;
@@ -407,7 +433,7 @@ export default function DashboardEjecutivoClient() {
             {/* Panorama — el total y las señales que cruzan todos los estados.
                 "¿Cómo estoy hoy?" de un vistazo. Cada señal se puede apretar
                 para ver sus proyectos abajo. */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Kpi
                 icon={Layers}
                 tono={TONO.teal}
@@ -433,15 +459,6 @@ export default function DashboardEjecutivoClient() {
                 seleccionado={sel?.kind === "kpi" && sel.bucket === "vencen_pronto"}
               />
               <Kpi
-                icon={Hourglass}
-                tono={TONO.violeta}
-                label="Demorados"
-                sublabel="pasaron su tiempo objetivo"
-                numero={data.demorados_total}
-                onClick={() => toggleSel({ kind: "demorado" })}
-                seleccionado={sel?.kind === "demorado" && !sel.estadoId}
-              />
-              <Kpi
                 icon={PauseCircle}
                 tono={TONO.gris}
                 label="Detenidos"
@@ -450,14 +467,34 @@ export default function DashboardEjecutivoClient() {
                 onClick={() => toggleSel({ kind: "kpi", bucket: "bloqueados" })}
                 seleccionado={sel?.kind === "kpi" && sel.bucket === "bloqueados"}
               />
-              <Kpi
-                icon={UsersRound}
-                tono={TONO.naranja}
-                label="Técnicos con WIP alto"
-                numero={data.kpis.tecnicos_wip_alto}
-                pie={`de ${data.total_tecnicos} técnicos`}
-              />
             </div>
+
+            {/* Por tipo de proyecto — Web / SaaS-ERP / mixto. Cuántos proyectos
+                del período hay de cada tipo; apretá uno para verlos en la tabla
+                de abajo. El desglose sale de la misma cartera que el resto. */}
+            {data.por_tipo.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {data.por_tipo.map((t) => {
+                  const cfg = (t.codigo && TIPO_CARD[t.codigo]) || {
+                    icon: Blocks,
+                    tono: "teal",
+                    label: t.nombre,
+                  };
+                  return (
+                    <Kpi
+                      key={t.tipo_id}
+                      icon={cfg.icon}
+                      tono={TONO[cfg.tono] ?? TONO.teal}
+                      label={cfg.label}
+                      numero={t.cantidad}
+                      pie="proyectos"
+                      onClick={() => toggleSel({ kind: "tipo", id: t.tipo_id })}
+                      seleccionado={sel?.kind === "tipo" && sel.id === t.tipo_id}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
 
             {/* Proyectos por estado — el centro del tablero: cuántos hay en cada
                 estado y cuántos ya llevan demasiado tiempo. Apretá un estado

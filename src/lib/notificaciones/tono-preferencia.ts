@@ -11,10 +11,15 @@ export const TONO_POR_DEFECTO = "1";
 
 export type Tono = { id: string; nombre: string; url: string };
 
-/** 12 tonos disponibles (mismos archivos que public/sounds/tonos/). */
-export const TONOS: readonly Tono[] = Array.from({ length: 12 }, (_, i) => {
+/** Nombres propios de algunos tonos; el resto se muestra como "Tono N". */
+const NOMBRES: Record<string, string> = {
+  "13": "Pluh",
+};
+
+/** Tonos disponibles (mismos archivos que public/sounds/tonos/{id}.mp3). */
+export const TONOS: readonly Tono[] = Array.from({ length: 13 }, (_, i) => {
   const id = String(i + 1);
-  return { id, nombre: `Tono ${id}`, url: `/sounds/tonos/${id}.mp3` };
+  return { id, nombre: NOMBRES[id] ?? `Tono ${id}`, url: `/sounds/tonos/${id}.mp3` };
 });
 
 export function leerTonoSeleccionado(): string {

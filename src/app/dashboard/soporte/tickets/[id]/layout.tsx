@@ -35,7 +35,6 @@ import {
 import { TicketContext, type TicketCtx, type TicketDetalle } from "../../_ui/TicketContexto";
 import EstadoRapido from "../../_ui/EstadoRapido";
 import AccesosProyecto from "../../_ui/AccesosProyecto";
-import NotasRapidas from "../../_ui/NotasRapidas";
 import { Aviso, Esqueleto, Pagina, claseBoton } from "../../_ui/ui";
 
 type Detalle = { ticket: TicketDetalle; contadores: TicketCtx["contadores"] };
@@ -70,12 +69,12 @@ function Resumen({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 px-4 py-3">
-      {adorno ?? (Icono ? <Icono className="h-6 w-6 shrink-0 text-slate-500" strokeWidth={1.8} aria-hidden /> : null)}
-      <div className="min-w-0">
-        <p className="text-[12px] font-medium text-slate-400">{etiqueta}</p>
-        <div className="mt-0.5 truncate text-[15.5px] font-bold text-slate-800">{children}</div>
-      </div>
+    <div className="min-w-0 px-4 py-3">
+      <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-slate-400">
+        {adorno ?? (Icono ? <Icono className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden /> : null)}
+        {etiqueta}
+      </p>
+      <div className="mt-1 line-clamp-2 break-words text-[14px] font-bold leading-snug text-slate-800">{children}</div>
     </div>
   );
 }
@@ -83,10 +82,10 @@ function Resumen({
 /** Fila de "Información clave". */
 function Clave({ icono: Icono, etiqueta, children }: { icono: LucideIcon; etiqueta: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[22px_112px_minmax(0,1fr)] items-center gap-2 py-2">
-      <Icono className="h-[18px] w-[18px] text-slate-400" strokeWidth={1.8} aria-hidden />
-      <span className="text-[13px] text-slate-500">{etiqueta}</span>
-      <div className="min-w-0 text-[13.5px] font-medium text-slate-800">{children}</div>
+    <div className="grid grid-cols-[14px_104px_minmax(0,1fr)] items-start gap-x-2.5 py-2">
+      <Icono className="mt-[3px] h-3.5 w-3.5 text-slate-400" strokeWidth={2} aria-hidden />
+      <span className="text-[12.5px] leading-5 text-slate-500">{etiqueta}</span>
+      <div className="min-w-0 break-words text-[13px] font-medium leading-5 text-slate-800">{children}</div>
     </div>
   );
 }
@@ -201,8 +200,8 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
     entregaMs == null || !abierto
       ? null
       : entregaMs >= 0
-        ? { texto: `(en ${duracionCorta(entregaMs)})`, clase: entregaMs < 24 * 3600_000 ? "text-orange-500" : "text-slate-400" }
-        : { texto: `(vencida hace ${duracionCorta(-entregaMs)})`, clase: "text-rose-600" };
+        ? { texto: `en ${duracionCorta(entregaMs)}`, clase: entregaMs < 24 * 3600_000 ? "text-orange-500" : "text-slate-400" }
+        : { texto: `vencida hace ${duracionCorta(-entregaMs)}`, clase: "text-rose-600" };
 
   const pestanas = [
     { id: "descripcion", etiqueta: "Descripción", href: base, contador: null as number | null },
@@ -276,26 +275,28 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
         ) : (
           <>
             {/* Franja de resumen. */}
-            <section className={`${TARJETA} mb-5 grid grid-cols-1 divide-y divide-slate-100 p-2 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3 xl:grid-cols-6 xl:divide-x`}>
-              <div className="flex min-w-0 items-center gap-3 rounded-xl bg-[#4FAEB2]/10 px-4 py-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border-2 border-[#4FAEB2] text-[#2F8F8F]">
-                  <Folder className="h-5 w-5" strokeWidth={2} aria-hidden />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[12px] font-medium text-[#3F8E91]">Proyecto</p>
-                  {t.proyecto_id ? (
-                    <Link href={`/dashboard/proyectos/${t.proyecto_id}`} className="mt-0.5 block truncate text-[16px] font-bold text-[#2F8F8F] no-underline hover:underline">
-                      {t.proyecto_titulo ?? "Ver proyecto"}
-                    </Link>
-                  ) : (
-                    <p className="mt-0.5 text-[15px] font-semibold text-slate-400">Sin proyecto</p>
-                  )}
-                </div>
+            <section className={`${TARJETA} mb-5 grid grid-cols-1 divide-y divide-slate-100 p-2 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-3 xl:grid-cols-[1.35fr_1.35fr_0.8fr_1fr_1fr_0.85fr] xl:divide-x`}>
+              <div className="min-w-0 rounded-xl bg-[#4FAEB2]/10 px-4 py-3">
+                <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-[#3F8E91]">
+                  <Folder className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  Proyecto
+                </p>
+                {t.proyecto_id ? (
+                  <Link
+                    href={`/dashboard/proyectos/${t.proyecto_id}`}
+                    title={t.proyecto_titulo ?? undefined}
+                    className="mt-1 line-clamp-2 break-words text-[14px] font-bold leading-snug text-[#2F8F8F] no-underline hover:underline"
+                  >
+                    {t.proyecto_titulo ?? "Ver proyecto"}
+                  </Link>
+                ) : (
+                  <p className="mt-1 text-[14px] font-semibold text-slate-400">Sin proyecto</p>
+                )}
               </div>
               <Resumen icono={UserRound} etiqueta="Cliente">
                 {t.cliente_id ? (
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <Link href={`/clientes/${t.cliente_id}`} title={t.cliente_nombre ?? "Abrir la ficha del cliente"} className="truncate text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">
+                  <span className="inline">
+                    <Link href={`/clientes/${t.cliente_id}`} title={t.cliente_nombre ?? "Abrir la ficha del cliente"} className="text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">
                       {t.cliente_nombre ?? "—"}
                     </Link>
                     {t.origen === "tipificacion_cliente" ? (
@@ -303,9 +304,9 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                         href={`/clientes/${t.cliente_id}/tipificacion${t.tipificacion_id ? `#tip-${t.tipificacion_id}` : ""}`}
                         title="Creado desde la tipificación de cliente"
                         aria-label="Creado desde la tipificación de cliente"
-                        className="inline-flex shrink-0 items-center rounded-full bg-[#4FAEB2]/12 p-1 text-[#2F6E71] hover:bg-[#4FAEB2]/25"
+                        className="ml-1.5 inline-flex translate-y-[1px] items-center rounded-full bg-[#4FAEB2]/12 p-[3px] align-baseline text-[#2F6E71] hover:bg-[#4FAEB2]/25"
                       >
-                        <Headset className="h-3 w-3" aria-hidden />
+                        <Headset className="h-2.5 w-2.5" aria-hidden />
                       </Link>
                     ) : null}
                   </span>
@@ -316,8 +317,8 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
               <Resumen icono={Settings} etiqueta="Tipo">{tipoNombre}</Resumen>
               <Resumen
                 adorno={
-                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${clasif.circulo}`}>
-                    <ArrowUp className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+                  <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full ${clasif.circulo}`}>
+                    <ArrowUp className="h-3 w-3" strokeWidth={2.6} aria-hidden />
                   </span>
                 }
                 etiqueta="Clasificación"
@@ -358,13 +359,13 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
 
               <aside className="min-w-0 space-y-5">
                 <section className={`${TARJETA} px-5 py-4`}>
-                  <h2 className="mb-2 flex items-center gap-2 text-[15px] font-bold text-slate-800">
+                  <h2 className="mb-1 flex items-center gap-1.5 text-[14.5px] font-bold text-slate-800">
                     Información clave
-                    <Info className="h-3.5 w-3.5 text-slate-300" aria-hidden />
+                    <Info className="h-3 w-3 text-slate-300" aria-hidden />
                   </h2>
                   <Clave icono={Folder} etiqueta="Proyecto">
                     {t.proyecto_id ? (
-                      <Link href={`/dashboard/proyectos/${t.proyecto_id}`} className="inline-block max-w-full truncate rounded-lg bg-[#4FAEB2]/12 px-2.5 py-1 font-semibold text-[#2F8F8F] no-underline hover:bg-[#4FAEB2]/20">
+                      <Link href={`/dashboard/proyectos/${t.proyecto_id}`} className="inline-block max-w-full rounded-md bg-[#4FAEB2]/12 px-2 py-0.5 font-semibold text-[#2F8F8F] no-underline hover:bg-[#4FAEB2]/20">
                         {t.proyecto_titulo ?? "Ver proyecto"}
                       </Link>
                     ) : (
@@ -373,43 +374,41 @@ export default function TicketLayout({ children }: { children: React.ReactNode }
                   </Clave>
                   <Clave icono={UserRound} etiqueta="Cliente">
                     {t.cliente_id ? (
-                      <Link href={`/clientes/${t.cliente_id}`} className="block truncate text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">{t.cliente_nombre ?? "—"}</Link>
+                      <Link href={`/clientes/${t.cliente_id}`} className="text-slate-800 no-underline hover:text-[#2F6E71] hover:underline">{t.cliente_nombre ?? "—"}</Link>
                     ) : (
                       "—"
                     )}
                   </Clave>
                   <Clave icono={UserRound} etiqueta="Responsable">
-                    <span className="block truncate">{t.responsable?.nombre ?? <span className="text-slate-400">Sin asignar</span>}</span>
+                    {t.responsable?.nombre ?? <span className="text-slate-400">Sin asignar</span>}
                   </Clave>
                   <Clave icono={ArrowUp} etiqueta="Clasificación">
                     {t.clasificacion_nombre ? (
-                      <span className={`inline-block max-w-full truncate rounded-lg px-2.5 py-1 font-semibold ${clasif.fondo}`}>{t.clasificacion_nombre}</span>
+                      <span className={`inline-block max-w-full rounded-md px-2 py-0.5 font-semibold ${clasif.fondo}`}>{t.clasificacion_nombre}</span>
                     ) : (
                       <span className="text-slate-400">—</span>
                     )}
                   </Clave>
                   <Clave icono={Settings} etiqueta="Tipo">
-                    <span className="inline-block rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">{tipoNombre}</span>
+                    <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">{tipoNombre}</span>
                   </Clave>
 
-                  <div className="my-2 border-t border-slate-100" />
+                  <div className="my-1.5 border-t border-slate-100" />
 
                   <Clave icono={CalendarDays} etiqueta="Creado">{fechaHora(t.created_at)}</Clave>
                   <Clave icono={CalendarDays} etiqueta="Actualizado">{fechaHora(t.updated_at)}</Clave>
                   <Clave icono={Target} etiqueta="Entrega estimada">
                     {t.fecha_objetivo ? (
-                      <span>
-                        {fechaHora(t.fecha_objetivo)}{" "}
-                        {entregaRel ? <span className={`font-semibold ${entregaRel.clase}`}>{entregaRel.texto}</span> : null}
-                      </span>
+                      <>
+                        <span className="block">{fechaHora(t.fecha_objetivo)}</span>
+                        {entregaRel ? <span className={`block text-[12px] font-semibold ${entregaRel.clase}`}>{entregaRel.texto}</span> : null}
+                      </>
                     ) : (
                       <span className="text-slate-400">Sin fecha</span>
                     )}
                   </Clave>
                   {t.creador?.nombre ? <Clave icono={UserRound} etiqueta="Cargado por">{t.creador.nombre}</Clave> : null}
                 </section>
-
-                <NotasRapidas />
 
                 {t.proyecto_id ? (
                   <section className={`${TARJETA} p-4`}>

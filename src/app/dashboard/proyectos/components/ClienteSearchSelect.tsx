@@ -26,9 +26,20 @@ type Props = {
    * huérfanos que no aparecían en la ficha del cliente en Gestión.
    */
   required?: boolean;
+  /** Oculta el label interno "Cliente" (cuando ya hay un título arriba). */
+  hideLabel?: boolean;
+  /** Oculta la línea "Seleccionado: …" de abajo. */
+  hideSelected?: boolean;
 };
 
-export function ClienteSearchSelect({ clientes, value, onChange, required = false }: Props) {
+export function ClienteSearchSelect({
+  clientes,
+  value,
+  onChange,
+  required = false,
+  hideLabel = false,
+  hideSelected = false,
+}: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -51,10 +62,12 @@ export function ClienteSearchSelect({ clientes, value, onChange, required = fals
 
   return (
     <div ref={wrapRef} className="relative sm:col-span-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        Cliente{required ? <span className="text-rose-500"> *</span> : null}
-      </span>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      {hideLabel ? null : (
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          Cliente{required ? <span className="text-rose-500"> *</span> : null}
+        </span>
+      )}
+      <div className={`${hideLabel ? "" : "mt-1.5 "}flex flex-wrap items-center gap-2`}>
         <div className="relative min-w-[200px] flex-1">
           <span
             aria-hidden="true"
@@ -152,7 +165,7 @@ export function ClienteSearchSelect({ clientes, value, onChange, required = fals
         </ul>
       ) : null}
 
-      {value && selected ? (
+      {!hideSelected && value && selected ? (
         <p className="mt-2 text-xs text-slate-500">
           Seleccionado:{" "}
           <span className="inline-flex items-center rounded-full bg-[#4FAEB2]/10 px-2 py-0.5 text-xs font-medium text-[#3F8E91]">

@@ -2931,9 +2931,6 @@ export default function ProyectoDetalleInner({
                   <span className="h-5 w-1 rounded-full bg-[#4FAEB2]" />
                   <h2 className="text-sm font-semibold text-slate-900">Datos del proyecto</h2>
                 </div>
-                <p className="mt-1.5 text-xs text-slate-500">
-                  Editá los campos guardados en el proyecto. Los datos previos se conservan al guardar.
-                </p>
               </div>
               <button
                 type="button"
@@ -2950,22 +2947,22 @@ export default function ProyectoDetalleInner({
                 Tipo &quot;Proyecto Web&quot;: campos adicionales del brief comercial.
               </p>
             ) : null}
-            {esSaas ? (
-              <p className="rounded-lg bg-[#4FAEB2]/8 px-3 py-2 text-xs text-[#3F8E91]">
-                Tipo &quot;SaaS / ERP&quot;: snapshot de módulos requeridos, sin activar permisos ni módulos reales.
-              </p>
-            ) : null}
 
             {/*
               Datos del alta. Se cargan en "Nuevo proyecto" pero no se veían
               acá: si el alta salía con el cliente o el asesor equivocado, no
               había forma de corregirlo desde la ficha.
             */}
-            <BloqueDatos titulo="Cliente">
+            <BloqueDatos titulo="Cliente asignado">
               <div className="block text-sm">
-                <span className={labelCls}>Cliente asignado</span>
-                <div className="mt-1.5">
-                  <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={setClienteId} />
+                <div>
+                  <ClienteSearchSelect
+                    clientes={clientes}
+                    value={clienteId}
+                    onChange={setClienteId}
+                    hideLabel
+                    hideSelected
+                  />
                 </div>
                 {clienteId ? null : (
                   <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">

@@ -3036,68 +3036,6 @@ export default function ProyectoDetalleInner({
                     </div>
                   )}
                 </div>
-                <div className="block text-sm">
-                  <span className={labelCls}>Motivo de pausa o bloqueo</span>
-                  <div className="mt-1.5">
-                    <FancySelect
-                      ariaLabel="Tipo de bloqueo"
-                      value={bloqueoTipo}
-                      onChange={setBloqueoTipo}
-                      options={[
-                        { value: "", label: "Sin clasificar" },
-                        { value: "cliente", label: "Cliente" },
-                        { value: "interno", label: "Interno" },
-                        { value: "tercero", label: "Tercero" },
-                      ]}
-                    />
-                  </div>
-                  {/*
-                    El texto libre acompaña al tipo: el tipo agrupa en el
-                    dashboard, el texto explica el caso concreto. Sin esto, un
-                    proyecto pausado sólo podía decir "Pausado", que es el
-                    estado y no el motivo.
-                  */}
-                  <input
-                    value={bloqueoMotivo}
-                    onChange={(e) => setBloqueoMotivo(e.target.value)}
-                    placeholder="Ej.: falta acceso a Meta"
-                    className={inputCls}
-                    aria-label="Motivo del bloqueo"
-                  />
-                </div>
-
-                {/*
-                  Quién destraba y qué sigue. El motivo dice por qué está
-                  parado; estos dos dicen cómo sale, y son los que convierten un
-                  bloqueo en algo que alguien puede tomar. Al pausar desde el
-                  tablero son obligatorios; acá se pueden corregir después, que
-                  es lo que pasa cuando un bloqueo cambia de manos.
-                */}
-                <div className="block text-sm">
-                  <span className={labelCls}>Quién debe destrabarlo</span>
-                  <div className="mt-1.5">
-                    <FancySelect
-                      ariaLabel="Quién debe destrabarlo"
-                      value={bloqueoResponsable}
-                      onChange={setBloqueoResponsable}
-                      options={[
-                        { value: "", label: "Sin definir" },
-                        ...BLOQUEO_RESPONSABLES.map((r) => ({
-                          value: r,
-                          label: BLOQUEO_RESPONSABLE_LABEL[r],
-                        })),
-                      ]}
-                    />
-                  </div>
-                  <input
-                    value={bloqueoProximaAccion}
-                    onChange={(e) => setBloqueoProximaAccion(e.target.value)}
-                    placeholder="Próxima acción — ej.: solicitar acceso hoy"
-                    className={inputCls}
-                    aria-label="Próxima acción para destrabar"
-                  />
-                </div>
-
                 {/*
                   Sólo aparece con el proyecto en Cancelado. Un campo de "por
                   qué se canceló" siempre visible invita a llenarlo en un
@@ -3126,44 +3064,6 @@ export default function ProyectoDetalleInner({
                       </span>
                     ) : null}
                   </div>
-                ) : null}
-                <div className="block text-sm">
-                  <span className={labelCls}>Prioridad</span>
-                  <div className="mt-1.5">
-                    <FancySelect
-                      ariaLabel="Prioridad"
-                      value={prioridad}
-                      onChange={setPrioridad}
-                      options={[
-                        { value: "baja", label: "Baja" },
-                        { value: "normal", label: "Normal" },
-                        { value: "alta", label: "Alta" },
-                        { value: "urgente", label: "Urgente" },
-                      ]}
-                    />
-                  </div>
-                </div>
-                <div className="block text-sm">
-                  <span className={labelCls}>Fecha y hora de entrega comprometida</span>
-                  <div className="mt-1.5">
-                    <FechaHoraSelect
-                      ariaLabel="Fecha y hora de entrega comprometida"
-                      value={fechaPrometida}
-                      onChange={setFechaPrometida}
-                    />
-                  </div>
-                </div>
-                {esWeb ? (
-                  <label className="block text-sm sm:col-span-2">
-                    <span className={labelCls}>Observaciones comerciales</span>
-                    <textarea
-                      className={`${inputCls} mt-1.5 min-h-[88px]`}
-                      rows={3}
-                      value={observaciones}
-                      onChange={(e) => setObservaciones(e.target.value)}
-                      placeholder="Detalle adicional negociado con el cliente…"
-                    />
-                  </label>
                 ) : null}
               </div>
             </BloqueDatos>

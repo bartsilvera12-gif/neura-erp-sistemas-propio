@@ -79,6 +79,37 @@ function IconCapas() {
   );
 }
 
+/**
+ * Color por estado: cada estado (por nombre) recibe siempre el mismo color, así
+ * se distinguen de un vistazo en la línea de tiempo. Los estados son
+ * configurables por empresa, por eso el color se deriva de un hash del nombre
+ * en vez de un mapa fijo. Ámbar e índigo quedan reservados para reasignación y
+ * sub-etapa (que no son estados), y no entran en esta paleta.
+ */
+type PaletaEstado = { icon: string; chip: string };
+const PALETAS_ESTADO: PaletaEstado[] = [
+  { icon: "bg-teal-100 text-teal-700", chip: "bg-teal-50 text-teal-700 border-teal-200" },
+  { icon: "bg-blue-100 text-blue-700", chip: "bg-blue-50 text-blue-700 border-blue-200" },
+  { icon: "bg-violet-100 text-violet-700", chip: "bg-violet-50 text-violet-700 border-violet-200" },
+  { icon: "bg-rose-100 text-rose-700", chip: "bg-rose-50 text-rose-700 border-rose-200" },
+  { icon: "bg-emerald-100 text-emerald-700", chip: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { icon: "bg-orange-100 text-orange-700", chip: "bg-orange-50 text-orange-700 border-orange-200" },
+  { icon: "bg-cyan-100 text-cyan-700", chip: "bg-cyan-50 text-cyan-700 border-cyan-200" },
+  { icon: "bg-fuchsia-100 text-fuchsia-700", chip: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
+  { icon: "bg-sky-100 text-sky-700", chip: "bg-sky-50 text-sky-700 border-sky-200" },
+  { icon: "bg-pink-100 text-pink-700", chip: "bg-pink-50 text-pink-700 border-pink-200" },
+];
+function hashEstado(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function paletaEstado(key: string): PaletaEstado {
+  const k = key.trim().toLowerCase();
+  if (!k) return PALETAS_ESTADO[0];
+  return PALETAS_ESTADO[hashEstado(k) % PALETAS_ESTADO.length];
+}
+
 export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
   // "desc" = más nuevo primero (por defecto); "asc" = más antiguo primero (el
   // alta del proyecto arriba). El usuario lo alterna con el botón de la cabecera.
@@ -162,6 +193,14 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
               // estado". Se normaliza a vacío.
               const durCruda = String(h.duration_label ?? "").trim();
               const duracion = durCruda && durCruda !== "—" ? durCruda : "";
+              // Segmento abierto = el proyecto sigue en ese estado (no tiene
+              // salida). Es el "estado actual": recién entrado, el tiempo laboral
+              // acumulado es ~0, y mostrar "0s en este estado" confundía.
+              const esEstadoActual = !h.exited_at;
+              // Color propio del estado destino (el que quedó en negrita).
+              const palEstado = paletaEstado(
+                (h.estado_nuevo_nombre as string | undefined) ?? String(h.estado_nuevo_id ?? "")
+              );
               // Primera sub-etapa (no había ninguna antes): se muestra como
               // "Estableció: X" en vez del feo "Sin definir → X".
               const subestadoPrimera =
@@ -194,7 +233,7 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                             ? "bg-amber-100 text-amber-700"
                             : esSubestado
                               ? "bg-indigo-100 text-indigo-700"
-                              : "bg-[#4FAEB2]/12 text-[#2F6E71]"
+                              : palEstado.icon
                         }`}
                       >
                         {esReasignacion ? <IconPersona /> : esSubestado ? <IconCapas /> : <IconFlecha />}
@@ -251,21 +290,24 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                                 {(h.estado_anterior_nombre as string | undefined) ?? "Alta del proyecto"}
                               </span>
                               <span aria-hidden="true" className="text-slate-300">→</span>
-                              <span className="font-semibold text-slate-900">
+                              <span
+                                className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-semibold ${palEstado.chip}`}
+                              >
                                 {(h.estado_nuevo_nombre as string | undefined) ??
                                   String(h.estado_nuevo_id ?? "—")}
                               </span>
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
-                              {duracion ? (
+                              {esEstadoActual ? (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-[#4FAEB2]/10 px-1.5 py-0.5 font-medium text-[#2F6E71]">
+                                  Estado actual
+                                  {duracion && duracion !== "0s" ? ` · ${duracion} acá` : ""}
+                                </span>
+                              ) : duracion ? (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">
                                   {duracion} en este estado
                                 </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-[#4FAEB2]/10 px-1.5 py-0.5 font-medium text-[#2F6E71]">
-                                  Estado actual
-                                </span>
-                              )}
+                              ) : null}
                               {h.tipo_sla_label ? <span>{String(h.tipo_sla_label)}</span> : null}
                             </div>
                           </>

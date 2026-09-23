@@ -31,6 +31,7 @@ import {
   esComercialSoloLectura,
   puedeEliminarProyectos,
   requireProyectosApiAccess,
+  type AsignacionFlujo,
 } from "@/lib/proyectos/proyectos-auth";
 import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
@@ -182,9 +183,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         current_user_id: auth.usuarioCatalogId,
         current_user_rol: auth.rol ?? null,
         current_user_puede_eliminar: puedeEliminarProyectos(auth),
-        // El comercial (rol vendedor puro) abre la ficha para coordinar pero no
-        // maneja el flujo: la UI le esconde Tipo/Estado/Sub-etapa y Eliminar.
-        current_user_solo_lectura: await esComercialSoloLectura(auth),
+        // El comercial (o cualquiera fuera del equipo del proyecto) abre la ficha
+        // para coordinar pero no maneja el flujo: la UI le esconde Tipo/Estado/
+        // Sub-etapa y Eliminar. Se pasan las asignaciones para el escape del equipo.
+        current_user_solo_lectura: await esComercialSoloLectura(
+          auth,
+          base as { responsable_tecnico_id?: string | null; project_manager_id?: string | null; qa_responsable_id?: string | null }
+        ),
       })
     );
   } catch (e) {
@@ -217,17 +222,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       });
     }
 
-    // Defensa en el servidor: el comercial (solo lectura) no cambia Tipo ni
-    // Sub-etapa aunque llame a la API a mano. La consulta al catálogo sólo corre
-    // si el body toca justamente esos campos.
-    if (("tipo_id" in body || "subestado_desarrollo" in body) && (await esComercialSoloLectura(auth))) {
-      return NextResponse.json(
-        errorResponse("Tu perfil comercial no puede cambiar el tipo ni la sub-etapa del proyecto."),
-        { status: 403 }
-      );
-    }
-
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
+
+    // Defensa en el servidor: quien es solo lectura del flujo (comercial / fuera
+    // del equipo) no cambia Tipo ni Sub-etapa aunque llame a la API a mano. Sólo
+    // se consulta cuando el body toca justamente esos campos.
+    if ("tipo_id" in body || "subestado_desarrollo" in body) {
+      const { data: asg } = await sb
+        .from("proyectos")
+        .select("responsable_tecnico_id, project_manager_id, qa_responsable_id")
+        .eq("empresa_id", auth.empresaId)
+        .eq("id", pid)
+        .maybeSingle();
+      if (await esComercialSoloLectura(auth, asg as AsignacionFlujo | null)) {
+        return NextResponse.json(
+          errorResponse("Tu perfil no puede cambiar el tipo ni la sub-etapa del proyecto."),
+          { status: 403 }
+        );
+      }
+    }
 
     const patch: Record<string, unknown> = {
       updated_by: auth.usuarioCatalogId,

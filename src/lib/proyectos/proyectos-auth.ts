@@ -4,7 +4,6 @@ import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
-import { isErpRolVendedor } from "@/lib/usuarios/erp-rol-normalize";
 import { resolveEffectiveModules } from "@/lib/modulos/resolve-effective-modules";
 
 export type ProyectosApiAuthOk = {
@@ -29,19 +28,33 @@ export function puedeEliminarProyectos(auth: ProyectosApiAuthOk): boolean {
   return auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol);
 }
 
+/** Asignaciones de un proyecto que habilitan a manejar su flujo. */
+export type AsignacionFlujo = {
+  responsable_tecnico_id?: string | null;
+  project_manager_id?: string | null;
+  qa_responsable_id?: string | null;
+};
+
 /**
- * ¿El usuario es un comercial/vendedor "puro" y por lo tanto SOLO LECTURA sobre
- * el flujo del proyecto? El comercial abre la ficha para coordinar (ver datos,
- * comentarios y archivos), pero no maneja el tablero: no cambia Tipo, Estado ni
- * Sub-etapa, ni elimina.
+ * ¿El usuario es SOLO LECTURA del flujo del proyecto? (Tipo, Estado, Sub-etapa,
+ * Eliminar.) El comercial —y cualquier usuario que no sea del equipo— abre la
+ * ficha para coordinar (datos, comentarios, archivos) pero no maneja el tablero.
  *
- * Se resuelve por ROL (vendedor/asesor/comercial), nunca por `usuarios.area`
- * (poco confiable). Un admin, PM, QA o técnico NO es solo-lectura aunque además
- * tenga rol de vendedor: los flags funcionales ganan.
+ * El flujo lo maneja el EQUIPO del proyecto: admin, Project Manager, QA o técnico,
+ * ya sea por flag global (`es_project_manager`/`es_qa`/`es_tecnico`) o por estar
+ * ASIGNADO a ese proyecto (responsable técnico / PM / QA). Todo el resto es solo
+ * lectura.
+ *
+ * Clave: NO se filtra por `usuarios.area` (poco confiable) ni por el rol string
+ * suelto. Un comercial real suele figurar con rol "usuario" y área "ventas"
+ * (p. ej. Marco), así que confiar en eso lo dejaría afuera. Se decide por función
+ * real (flags + asignación): si no sos del equipo técnico/gestión, no tocás el flujo.
  */
-export async function esComercialSoloLectura(auth: ProyectosApiAuthOk): Promise<boolean> {
+export async function esComercialSoloLectura(
+  auth: ProyectosApiAuthOk,
+  proyecto?: AsignacionFlujo | null
+): Promise<boolean> {
   if (auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol)) return false;
-  if (!isErpRolVendedor(auth.rol)) return false;
   const catalog = createServiceRoleClient();
   const { data } = await catalog
     .from("usuarios")
@@ -53,7 +66,18 @@ export async function esComercialSoloLectura(auth: ProyectosApiAuthOk): Promise<
     es_qa?: boolean | null;
     es_tecnico?: boolean | null;
   };
+  // Equipo técnico / gestión por flag global → maneja el flujo.
   if (u.es_project_manager === true || u.es_qa === true || u.es_tecnico === true) return false;
+  // O asignado a ESTE proyecto como técnico / PM / QA → también.
+  const uid = auth.usuarioCatalogId;
+  if (
+    proyecto &&
+    (proyecto.responsable_tecnico_id === uid ||
+      proyecto.project_manager_id === uid ||
+      proyecto.qa_responsable_id === uid)
+  ) {
+    return false;
+  }
   return true;
 }
 

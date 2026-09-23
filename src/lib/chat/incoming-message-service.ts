@@ -3,6 +3,7 @@
  * WhatsApp en producción sigue pasando por `processInboundWebhookValue` (flujos, CRM, media);
  * este módulo concentra la escritura en BD reutilizable y el route genérico `/api/webhooks/[channel]`.
  */
+import { avisarSupervisionPorPush } from "@/lib/cc/push-supervision";
 import { assignConversation } from "@/lib/chat/assign-conversation-service";
 import { ensureCentralChatConversationMirror } from "@/lib/chat/central-chat-conversation-mirror";
 import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers";
@@ -490,6 +491,16 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
         kickPushDispatcher();
       }
     }
+
+    // Y a quien mira los chats sin ser asesor (supervisión, PM, admin), que no tiene
+    // `agent_id` y por eso quedaba afuera de la cola de arriba.
+    void avisarSupervisionPorPush({
+      supabase,
+      empresaId,
+      conversationId,
+      assignedAgentId,
+      preview: preview.slice(0, 140),
+    });
   }
 
   let campaignReplyMatch: Awaited<ReturnType<typeof markCampaignReplyFromInbound>> = {

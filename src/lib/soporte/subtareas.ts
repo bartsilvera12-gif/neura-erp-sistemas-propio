@@ -1,4 +1,5 @@
 import "server-only";
+import { avisarPorPush } from "@/lib/cc/push-usuarios";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import { subtareaAbierta } from "@/lib/soporte/dominio";
 import { personasDeEmpresa, registrarHistorial } from "@/lib/soporte/servidor";
@@ -50,6 +51,15 @@ export async function avisarSoporte(
       metadata: { ticket_id: args.ticketId, subtarea_id: args.subtareaId ?? null },
     });
     if (error) console.error("[soporte] no se pudo avisar", error.message);
+    // Mismo aviso, en el teléfono. No corta el flujo si falla.
+    void avisarPorPush({
+      empresaId: auth.empresaId,
+      usuarioIds: [args.usuarioId],
+      titulo: args.titulo,
+      cuerpo: args.cuerpo,
+      ruta: `/dashboard/soporte/tickets/${args.ticketId}`,
+      agrupar: `ticket-${args.ticketId}`,
+    });
   } catch (e) {
     console.error("[soporte] no se pudo avisar", e);
   }

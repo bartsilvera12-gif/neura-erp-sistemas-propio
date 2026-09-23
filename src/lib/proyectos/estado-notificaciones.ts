@@ -1,4 +1,5 @@
 import "server-only";
+import { avisarPorPush } from "@/lib/cc/push-usuarios";
 import type { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 
@@ -112,6 +113,14 @@ export async function notificarCambioEstado(
     if (error) {
       console.error("[estado-notificaciones] no se pudo insertar la notificación", error.message);
     }
+    void avisarPorPush({
+      empresaId: args.empresaId,
+      usuarioIds: [...destinatarios],
+      titulo,
+      cuerpo,
+      ruta: `/m/asesor/proyectos/${args.proyectoId}`,
+      agrupar: `proyecto-${args.proyectoId}`,
+    });
   } catch (e) {
     console.error("[estado-notificaciones] no se pudo notificar el cambio de estado", e);
   }

@@ -1,4 +1,5 @@
 import "server-only";
+import { avisarPorPush } from "@/lib/cc/push-usuarios";
 import type { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { QAAccion } from "@/lib/proyectos/qa-shared";
@@ -69,6 +70,14 @@ export async function notificarEntradaQA(
 
     if (await refrescar()) return;
 
+    void avisarPorPush({
+      empresaId: args.empresaId,
+      usuarioIds: [args.qaUsuarioId],
+      titulo: `Entró a QA · ${args.tituloProyecto}`,
+      cuerpo,
+      ruta: `/m/asesor/proyectos/${args.proyectoId}`,
+      agrupar: `proyecto-${args.proyectoId}`,
+    });
     const { error } = await sb.from("usuario_notificaciones").insert({
       empresa_id: args.empresaId,
       usuario_id: args.qaUsuarioId,
@@ -241,6 +250,15 @@ async function upsertNovedad(
     return true;
   };
 
+  void avisarPorPush({
+    empresaId: args.empresaId,
+    usuarioIds: [args.usuarioId],
+    titulo: `QA · ${args.tituloProyecto}`,
+    cuerpo: cuerpoUltima,
+    ruta: `/m/asesor/proyectos/${args.proyectoId}`,
+    agrupar: `proyecto-${args.proyectoId}`,
+  });
+
   if (await actualizar()) return;
 
   const { error } = await sb.from("usuario_notificaciones").insert({
@@ -354,6 +372,16 @@ export async function notificarVeredictoQA(
     }));
 
     await sb.from("usuario_notificaciones").insert(filas);
+    for (const fila of filas as { usuario_id: string; titulo: string; cuerpo: string }[]) {
+      void avisarPorPush({
+        empresaId: args.empresaId,
+        usuarioIds: [fila.usuario_id],
+        titulo: fila.titulo,
+        cuerpo: fila.cuerpo,
+        ruta: `/m/asesor/proyectos/${args.proyectoId}`,
+        agrupar: `proyecto-${args.proyectoId}`,
+      });
+    }
   } catch (e) {
     console.error("[qa-notificaciones] no se pudo notificar el veredicto", e);
   }

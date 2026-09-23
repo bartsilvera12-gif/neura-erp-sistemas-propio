@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, RefreshCw, Search, Sparkles } from "lucide-react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AlertTriangle, ChevronRight, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import BlurText from "@/components/reactbits/BlurText";
 import CountUp from "@/components/reactbits/CountUp";
@@ -180,9 +182,6 @@ function Barra({
   );
 }
 
-/** Cuántos sistemas se ven antes de pedir "ver todos". Producción tiene ~68. */
-const SISTEMAS_VISIBLES = 5;
-
 /** Para buscar sin pelearse con acentos ni mayúsculas. */
 function normalizar(s: string): string {
   return s
@@ -192,10 +191,226 @@ function normalizar(s: string): string {
     .replace(/\p{M}/gu, "");
 }
 
+/** El puntito de estado con su halo: 3 px del mismo color, bien tenue. */
+function PuntoEstado({ tono }: { tono: Semaforo }) {
+  const color = tono === "rojo" ? "225, 29, 72" : tono === "amarillo" ? "245, 158, 11" : "16, 185, 129";
+  return (
+    <span
+      aria-hidden
+      className="h-2 w-2 shrink-0 rounded-full"
+      style={{ backgroundColor: `rgb(${color})`, boxShadow: `0 0 0 3px rgba(${color}, 0.13)` }}
+    />
+  );
+}
+
+function TileServicio({ c }: { c: EstadoContenedor }) {
+  const tono = contenedorSemaforo(c);
+  const caido = tono === "rojo";
+  return (
+    <li
+      className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 ${
+        caido ? "border-rose-100 bg-rose-50/70" : "border-slate-200 bg-white"
+      }`}
+    >
+      <PuntoEstado tono={tono} />
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-[13.5px] font-medium ${caido ? "text-rose-800" : "text-slate-700"}`}>
+          {nombreLindo(c.name)}
+        </p>
+        {c.domain ? <p className="truncate text-[11px] text-slate-400">{c.domain}</p> : null}
+      </div>
+      <span className={`shrink-0 text-[11px] font-medium ${caido ? "text-rose-600" : "text-slate-400"}`}>
+        {caido ? "caído" : tono === "amarillo" ? "levantando" : "activo"}
+      </span>
+    </li>
+  );
+}
+
+/** Separador fino con etiqueta, para partir la lista en dos grupos. */
+function SeparadorGrupo({ texto, tono }: { texto: string; tono: "rojo" | "neutro" }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${
+          tono === "rojo" ? "text-rose-600" : "text-slate-400"
+        }`}
+      >
+        {texto}
+      </span>
+      <span className={`h-px flex-1 ${tono === "rojo" ? "bg-rose-100" : "bg-slate-100"}`} />
+    </div>
+  );
+}
+
+/**
+ * Todos los servicios de una máquina, en un diálogo aparte. Producción tiene
+ * ~68: dentro de la tarjeta era una lista con scroll imposible de leer. Acá
+ * entran de a dos por fila, lo que falla arriba y el resto abajo.
+ */
+function ModalSistemas({
+  titulo,
+  containers,
+  onClose,
+}: {
+  titulo: string;
+  containers: EstadoContenedor[];
+  onClose: () => void;
+}) {
+  const [busqueda, setBusqueda] = useState("");
+  const cajaRef = useRef<HTMLDivElement>(null);
+  const reducirMovimiento = useReducedMotion();
+
+  useEffect(() => {
+    // Esc cierra; Tab no se escapa del diálogo (queda dando vueltas adentro).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const caja = cajaRef.current;
+      if (!caja) return;
+      const focuseables = caja.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focuseables.length === 0) return;
+      const primero = focuseables[0];
+      const ultimo = focuseables[focuseables.length - 1];
+      if (e.shiftKey && document.activeElement === primero) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && document.activeElement === ultimo) {
+        e.preventDefault();
+        primero.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // El foco entra al diálogo; el fondo no se mueve mientras está abierto.
+  useEffect(() => {
+    const previo = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    cajaRef.current?.querySelector<HTMLElement>("input, button")?.focus();
+    return () => {
+      document.body.style.overflow = overflow;
+      previo?.focus?.();
+    };
+  }, []);
+
+  const q = normalizar(busqueda);
+  const porNombre = (a: EstadoContenedor, b: EstadoContenedor) =>
+    nombreLindo(a.name).localeCompare(nombreLindo(b.name), "es");
+  const filtrados = q
+    ? containers.filter((c) =>
+        normalizar(`${nombreLindo(c.name)} ${c.name ?? ""} ${c.domain ?? ""}`).includes(q)
+      )
+    : containers;
+  const conProblema = filtrados.filter(contenedorCaido).sort(porNombre);
+  const sanos = filtrados.filter((c) => !contenedorCaido(c)).sort(porNombre);
+  const totalCaidos = containers.filter(contenedorCaido).length;
+
+  // El diálogo sólo existe tras un click, así que el DOM ya está; igual se
+  // comprueba por si alguna vez se renderiza en el servidor.
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <motion.div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]"
+      role="presentation"
+      onClick={onClose}
+      initial={reducirMovimiento ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.16 }}
+    >
+      <motion.div
+        ref={cajaRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Sistemas y servicios de ${titulo}`}
+        className="flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        initial={reducirMovimiento ? false : { opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={reducirMovimiento ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+      >
+        <header className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-[17px] font-bold text-slate-900">{titulo}</h2>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {containers.length} servicios · {containers.length - totalCaidos} funcionando
+              {totalCaidos > 0 ? ` · ${totalCaidos} con problema` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="-mr-1.5 -mt-1 shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </header>
+
+        <div className="border-b border-slate-100 px-6 py-3">
+          <div className="relative">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              type="search"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar sistema o dominio…"
+              aria-label={`Buscar sistema en ${titulo}`}
+              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-[13.5px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {filtrados.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">Ningún sistema se llama así.</p>
+          ) : (
+            <div className="space-y-6">
+              {conProblema.length > 0 ? (
+                <section className="space-y-3">
+                  <SeparadorGrupo texto="Requieren atención" tono="rojo" />
+                  <ul className="grid gap-2.5 sm:grid-cols-2">
+                    {conProblema.map((c, i) => (
+                      <TileServicio key={`mal-${c.name}-${i}`} c={c} />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              {sanos.length > 0 ? (
+                <section className="space-y-3">
+                  <SeparadorGrupo texto="Funcionando" tono="neutro" />
+                  <ul className="grid gap-2.5 sm:grid-cols-2">
+                    {sanos.map((c, i) => (
+                      <TileServicio key={`ok-${c.name}-${i}`} c={c} />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
 function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }) {
   const [abierto, setAbierto] = useState(false);
-  const [busqueda, setBusqueda] = useState("");
-  const [verTodos, setVerTodos] = useState(false);
   const titulo = NOMBRE_SERVIDOR[item.server] ?? item.server;
 
   if (esSaludConError(item)) {
@@ -235,23 +450,6 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
   const containers = Array.isArray(s.containers) ? s.containers : [];
   const caidos = containers.filter(contenedorCaido);
   const cleanup = s.cleanup;
-
-  // Lo que anda mal va primero: si hay algo caído tiene que entrar en los
-  // primeros cinco, sin buscarlo. El resto queda en orden alfabético.
-  const q = normalizar(busqueda);
-  const ordenados = [...containers].sort((a, b) => {
-    const pa = contenedorCaido(a) ? 0 : 1;
-    const pb = contenedorCaido(b) ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    return nombreLindo(a.name).localeCompare(nombreLindo(b.name), "es");
-  });
-  const filtrados = q
-    ? ordenados.filter((c) =>
-        normalizar(`${nombreLindo(c.name)} ${c.name ?? ""} ${c.domain ?? ""}`).includes(q)
-      )
-    : ordenados;
-  const visibles = verTodos ? filtrados : filtrados.slice(0, SISTEMAS_VISIBLES);
-  const restantes = filtrados.length - visibles.length;
 
   const detalleCaidos =
     caidos.length === 0
@@ -334,76 +532,24 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
               </p>
               <button
                 type="button"
-                onClick={() => setAbierto((v) => !v)}
+                onClick={() => setAbierto(true)}
                 className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
-                aria-expanded={abierto}
+                aria-haspopup="dialog"
               >
-                {abierto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                <ChevronRight className="h-3.5 w-3.5" aria-hidden />
                 Ver sistemas
               </button>
             </div>
 
-            {abierto ? (
-              <div className="mt-2">
-                <div className="relative">
-                  <Search
-                    aria-hidden
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="search"
-                    value={busqueda}
-                    onChange={(e) => {
-                      setBusqueda(e.target.value);
-                      setVerTodos(false);
-                    }}
-                    placeholder="Buscar sistema…"
-                    aria-label={`Buscar sistema en ${titulo}`}
-                    className="w-full rounded-lg border border-slate-200 py-1.5 pl-8 pr-2 text-[13px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
-                  />
-                </div>
-
-                {filtrados.length === 0 ? (
-                  <p className="mt-2 text-[13px] text-slate-400">
-                    Ningún sistema se llama así.
-                  </p>
-                ) : (
-                  <ul className={`mt-2 space-y-1 ${verTodos ? "max-h-72 overflow-y-auto pr-1" : ""}`}>
-                    {visibles.map((c, i) => {
-                      const tono = contenedorSemaforo(c);
-                      return (
-                        <li key={`${c.name}-${i}`} className="flex items-start gap-2 py-0.5">
-                          <span
-                            className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                              tono === "rojo"
-                                ? "bg-rose-500"
-                                : tono === "amarillo"
-                                  ? "bg-amber-500"
-                                  : "bg-emerald-500"
-                            }`}
-                            aria-hidden
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] text-slate-700">{nombreLindo(c.name)}</p>
-                            {c.domain ? <p className="truncate text-[11px] text-slate-400">{c.domain}</p> : null}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-
-                {restantes > 0 || verTodos ? (
-                  <button
-                    type="button"
-                    onClick={() => setVerTodos((v) => !v)}
-                    className="mt-1.5 text-xs font-semibold text-slate-500 transition-colors hover:text-slate-700"
-                  >
-                    {verTodos ? "Ver menos" : `Ver los ${restantes} restantes`}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
+            <AnimatePresence>
+              {abierto ? (
+                <ModalSistemas
+                  titulo={titulo}
+                  containers={containers}
+                  onClose={() => setAbierto(false)}
+                />
+              ) : null}
+            </AnimatePresence>
           </>
         )}
       </div>

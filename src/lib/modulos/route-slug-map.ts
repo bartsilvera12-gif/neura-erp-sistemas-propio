@@ -104,6 +104,10 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/ayuda")) return null;
 
   if (p.startsWith("/dashboard")) {
+    // Panel de Control: no tiene módulo de empresa. El permiso es por correo y
+    // lo aplican la página y la API en el servidor (ver `acceso-panel-control`).
+    // Sin esta línea caería en el fallback "conversaciones" de más abajo.
+    if (p.startsWith("/dashboard/panel-control")) return null;
     if (p.startsWith("/dashboard/guardias")) return "guardias";
     if (p.startsWith("/dashboard/soporte")) return "soporte";
     if (p.startsWith("/dashboard/marketing-ops")) return "marketing_ops";

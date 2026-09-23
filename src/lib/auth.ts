@@ -11,6 +11,8 @@ export type CurrentUsuario = {
   email?: string | null;
   nombre?: string | null;
   rol?: string | null;
+  /** Desarrollador/técnico. Lo usa el ítem "Panel de Control" del sidebar. */
+  es_tecnico?: boolean | null;
   estado?: string | null;
   telefono?: string | null;
   fecha_nacimiento?: string | null;

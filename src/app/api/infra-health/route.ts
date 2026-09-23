@@ -17,7 +17,7 @@ import {
  * archivo falta o vino roto, ese servidor viaja como `{ error: true }` y los
  * otros dos se muestran igual.
  *
- * Acceso: administradores del ERP y los correos habilitados en
+ * Acceso: administradores del ERP, desarrolladores y los correos habilitados en
  * `acceso-panel-control`. Se comprueba acá además de en la página, porque saber
  * la URL no es un permiso.
  */
@@ -48,9 +48,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
   const email = sesion.authUser.email ?? null;
+  // `catalogUsuario` no trae `es_tecnico`: se lee aparte con el service role.
+  let esTecnico = false;
+  const usuarioId = sesion.catalogUsuario?.id;
+  if (usuarioId) {
+    const { data } = await sesion.supabaseSr
+      .from("usuarios")
+      .select("es_tecnico")
+      .eq("id", usuarioId)
+      .limit(1);
+    esTecnico = (data?.[0] as { es_tecnico?: boolean | null } | undefined)?.es_tecnico === true;
+  }
   const puede =
     isBootstrapSuperAdminEmail(email) ||
-    puedeEntrarAlPanelControl(email, sesion.catalogUsuario?.rol ?? null);
+    puedeEntrarAlPanelControl(email, sesion.catalogUsuario?.rol ?? null, esTecnico);
   if (!puede) {
     return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
   }

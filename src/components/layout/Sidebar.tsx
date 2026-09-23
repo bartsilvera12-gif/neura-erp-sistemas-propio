@@ -351,7 +351,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
 /**
  * ¿Se muestra este ítem? Para todos vale el permiso de módulo; "Panel de
  * Control" es la excepción: no es un módulo de empresa, lo ven los
- * administradores del ERP y los correos habilitados a mano. Esconder el ítem no
+ * administradores del ERP, los desarrolladores y los correos habilitados a mano. Esconder el ítem no
  * es el permiso — la página y la API lo vuelven a comprobar en el servidor.
  */
 function esItemVisible(
@@ -359,9 +359,12 @@ function esItemVisible(
   access: (slug: string) => boolean,
   email: string | null,
   rol: string | null,
+  esTecnico: boolean,
   esSuperAdmin: boolean
 ): boolean {
-  if (item.key === "panel_control") return esSuperAdmin || puedeEntrarAlPanelControl(email, rol);
+  if (item.key === "panel_control") {
+    return esSuperAdmin || puedeEntrarAlPanelControl(email, rol, esTecnico);
+  }
   return access(item.slug);
 }
 
@@ -566,6 +569,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   /** Correo y rol de la sesión: sólo los usa el ítem "Panel de Control". */
   const [emailSesion, setEmailSesion] = useState<string | null>(null);
   const [rolSesion, setRolSesion] = useState<string | null>(null);
+  const [esTecnicoSesion, setEsTecnicoSesion] = useState(false);
   /** Filtro visual del menú (no altera permisos ni rutas). */
   const [menuSearchQuery, setMenuSearchQuery] = useState("");
   const { setSidebarReady } = useBoot();
@@ -604,6 +608,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           setEsSuperAdmin(false);
           setEmailSesion(null);
           setRolSesion(null);
+          setEsTecnicoSesion(false);
           return;
         }
         setEmailSesion(session.user.email ?? null);
@@ -632,6 +637,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           try {
             const cu = await getCurrentUser();
             setRolSesion(cu?.rol ?? null);
+            setEsTecnicoSesion(cu?.es_tecnico === true);
             if ((cu?.rol ?? "").trim() === "super_admin") {
               superA = true;
               const mr = await fetchWithSupabaseSession("/api/admin/modulos", { cache: "no-store" });
@@ -699,7 +705,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const modulosSlugs = new Set(modulos.map((m) => m.slug));
   const hasAccess = (slug: string) =>
     slug === "panel_control"
-      ? esSuperAdmin || puedeEntrarAlPanelControl(emailSesion, rolSesion)
+      ? esSuperAdmin || puedeEntrarAlPanelControl(emailSesion, rolSesion, esTecnicoSesion)
       : canAccessSidebarSlug(slug, modulosSlugs, esSuperAdmin);
 
   const isActive = (slug: string, href: string) => {
@@ -728,10 +734,10 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     return MENU_STRUCTURE.filter(
       (item) =>
         favoritos.includes(item.key) &&
-        esItemVisible(item, access, emailSesion, rolSesion, esSuperAdmin) &&
+        esItemVisible(item, access, emailSesion, rolSesion, esTecnicoSesion, esSuperAdmin) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
-  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion, rolSesion]);
+  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion, rolSesion, esTecnicoSesion]);
 
   const mainItemsFiltered = useMemo(() => {
     const slugs = new Set(modulos.map((m) => m.slug));
@@ -739,10 +745,10 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     return MENU_STRUCTURE.filter(
       (item) =>
         !favoritos.includes(item.key) &&
-        esItemVisible(item, access, emailSesion, rolSesion, esSuperAdmin) &&
+        esItemVisible(item, access, emailSesion, rolSesion, esTecnicoSesion, esSuperAdmin) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
-  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion, rolSesion]);
+  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion, rolSesion, esTecnicoSesion]);
 
   /** Agrupa `mainItemsFiltered` por familia (preservando acceso/búsqueda/favoritos ya aplicados). */
   const familiesToRender = useMemo(() => {

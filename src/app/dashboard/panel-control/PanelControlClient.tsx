@@ -29,6 +29,11 @@ import {
   type SaludServidorItem,
 } from "@/lib/infra/salud-tipos";
 import { servicioSilenciado } from "@/lib/infra/servicios-silenciados";
+import {
+  horaParaguay,
+  LIMPIEZA_POR_SERVIDOR,
+  proximaLimpieza,
+} from "@/lib/infra/limpieza-programada";
 
 /**
  * Estado de infraestructura: las tres máquinas de un vistazo.
@@ -504,6 +509,9 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
   const sinSwap = swapTotal === 0;
 
   const containers = Array.isArray(s.containers) ? s.containers : [];
+  // Cuándo vuelve a limpiar esta máquina. Se recalcula en cada refresco porque
+  // `now` viene del servidor y cambia cada 30 s.
+  const programada = LIMPIEZA_POR_SERVIDOR[s.server] ?? null;
   const caidos = containers.filter(contenedorCaido);
   // Silenciados: se listan aparte y no cuentan como problema.
   const pausados = containers.filter(contenedorEnPausa);
@@ -621,6 +629,12 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
             ? `Última limpieza: ${hace(num(cleanup.ts), now)} · ${liberado(num(cleanup.freed_mb))}`
             : "Sin limpieza registrada"}
         </p>
+        {programada ? (
+          <p className="mt-0.5 text-xs text-slate-400">
+            {programada.texto} · Siguiente limpieza{" "}
+            {horaParaguay(proximaLimpieza(programada, new Date(now * 1000)))}
+          </p>
+        ) : null}
       </div>
     </SpotlightCard>
   );

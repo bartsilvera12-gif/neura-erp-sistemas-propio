@@ -356,10 +356,10 @@ export async function cargarDataset(
   for (let i = 0; i < clienteIds.length; i += IDS_POR_LOTE) {
     const lote = clienteIds.slice(i, i + IDS_POR_LOTE);
     try {
-      const rows = await traerTodo<{ cliente_id?: unknown; monto?: unknown; estado?: unknown }>((a, b) =>
+      const rows = await traerTodo<{ cliente_id?: unknown; saldo?: unknown; estado?: unknown }>((a, b) =>
         sb
           .from("facturas")
-          .select("cliente_id, monto, estado")
+          .select("cliente_id, saldo, estado")
           .eq("empresa_id", empresaId)
           .in("cliente_id", lote)
           .range(a, b)
@@ -369,8 +369,10 @@ export async function cargarDataset(
         if (!cid) continue;
         const estado = String(f.estado ?? "").trim().toLowerCase();
         if (ESTADOS_FACTURA_NO_DEUDA.has(estado)) continue;
-        const monto = Number(f.monto ?? 0);
-        deudaPorCliente.set(cid, (deudaPorCliente.get(cid) ?? 0) + (Number.isFinite(monto) ? monto : 0));
+        // `saldo` = lo REALMENTE adeudado (monto menos lo cobrado). Sumar `monto`
+        // contaba de más las facturas pagadas en parte.
+        const saldo = Number(f.saldo ?? 0);
+        deudaPorCliente.set(cid, (deudaPorCliente.get(cid) ?? 0) + (Number.isFinite(saldo) && saldo > 0 ? saldo : 0));
       }
     } catch {
       // Tenant sin facturas o columna distinta: se ignora y queda sin deuda.

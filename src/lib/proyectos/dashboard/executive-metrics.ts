@@ -141,6 +141,11 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     .map((p) => ({
       ...filaCritica(p),
       pm: ds.nombreUsuario(p.project_manager_id ?? ""),
+      // Asesor comercial responsable (columna nueva del tablero).
+      asesor: ds.nombreUsuario(p.responsable_comercial_id ?? ""),
+      // Deuda del cliente del proyecto (columna nueva).
+      deuda_pendiente: p.deuda_pendiente,
+      deuda_monto: p.deuda_monto,
       tiempo_en_estado_ms: p.tiempo_en_estado_ms,
       estado_id: p.estado_id,
       tipo_id: p.tipo_id,

@@ -90,6 +90,12 @@ type Data = {
     estado_id: string | null;
     tipo_id: string | null;
     responsable_tecnico_id: string | null;
+    /** Asesor comercial responsable (columna del tablero). */
+    asesor: string;
+    /** El cliente del proyecto tiene facturas pendientes. */
+    deuda_pendiente: boolean;
+    /** Monto total pendiente del cliente. */
+    deuda_monto: number;
     entregado: boolean;
     demorado: boolean;
     buckets: KpiBucket[];
@@ -180,7 +186,8 @@ type OrdenCol =
   | "estado_nombre"
   | "tecnico"
   | "pm"
-  | "fecha_prometida"
+  | "asesor"
+  | "deuda_monto"
   | "tiempo_en_estado_ms";
 
 /**
@@ -189,8 +196,8 @@ type OrdenCol =
  * "—" no se mezcle con los datos reales.
  */
 function cmpOrden(
-  a: Data["criticos"][number],
-  b: Data["criticos"][number],
+  a: Data["proyectos_periodo"][number],
+  b: Data["proyectos_periodo"][number],
   col: OrdenCol,
   dir: "asc" | "desc"
 ): number {
@@ -203,15 +210,12 @@ function cmpOrden(
     if (bv == null) return -1;
     return (av - bv) * mul;
   }
-  if (col === "fecha_prometida") {
-    const av = a.fecha_prometida ? Date.parse(a.fecha_prometida) : Number.NaN;
-    const bv = b.fecha_prometida ? Date.parse(b.fecha_prometida) : Number.NaN;
-    const an = Number.isNaN(av);
-    const bn = Number.isNaN(bv);
-    if (an && bn) return 0;
-    if (an) return 1;
-    if (bn) return -1;
-    return (av - bv) * mul;
+  if (col === "deuda_monto") {
+    // Sin deuda va siempre al final, ordene como ordene.
+    if (a.deuda_monto === 0 && b.deuda_monto === 0) return 0;
+    if (a.deuda_monto === 0) return 1;
+    if (b.deuda_monto === 0) return -1;
+    return (a.deuda_monto - b.deuda_monto) * mul;
   }
   return String(a[col] ?? "").localeCompare(String(b[col] ?? ""), "es", { sensitivity: "base" }) * mul;
 }
@@ -371,7 +375,7 @@ export default function DashboardEjecutivoClient() {
   const clickOrden = useCallback((col: OrdenCol) => {
     setOrden((prev) => {
       if (prev?.col === col) return { col, dir: prev.dir === "asc" ? "desc" : "asc" };
-      const numerica = col === "tiempo_en_estado_ms" || col === "fecha_prometida";
+      const numerica = col === "tiempo_en_estado_ms" || col === "deuda_monto";
       return { col, dir: numerica ? "desc" : "asc" };
     });
   }, []);
@@ -610,15 +614,16 @@ export default function DashboardEjecutivoClient() {
                   </p>
                 ) : (
                   <TablaWrap>
-                    <table className="w-full min-w-[680px] text-left">
+                    <table className="w-full min-w-[860px] text-left">
                       <thead>
                         <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wide text-slate-400">
                           {th("Proyecto", "titulo")}
                           {th("Cliente", "cliente")}
                           {th("Estado", "estado_nombre")}
                           {th("Técnico", "tecnico")}
-                          {th("Prometida", "fecha_prometida")}
                           {th("PM", "pm")}
+                          {th("Asesor", "asesor")}
+                          {th("Deuda", "deuda_monto")}
                           {th("En estado", "tiempo_en_estado_ms", "")}
                         </tr>
                       </thead>
@@ -644,11 +649,23 @@ export default function DashboardEjecutivoClient() {
                             <td className="max-w-[110px] truncate py-1.5 pr-2 text-slate-500">
                               {nombreCorto(c.tecnico)}
                             </td>
-                            <td className="whitespace-nowrap py-1.5 pr-2 tabular-nums text-slate-500">
-                              {fmtFecha(c.fecha_prometida)}
-                            </td>
                             <td className="max-w-[120px] truncate py-1.5 pr-2 text-slate-500" title={c.pm}>
                               {c.pm && c.pm !== "—" ? nombreCorto(c.pm) : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="max-w-[120px] truncate py-1.5 pr-2 text-slate-500" title={c.asesor}>
+                              {c.asesor && c.asesor !== "—" ? nombreCorto(c.asesor) : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="whitespace-nowrap py-1.5 pr-2">
+                              {c.deuda_pendiente ? (
+                                <span
+                                  className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600"
+                                  title={`Deuda pendiente: Gs ${Math.round(c.deuda_monto).toLocaleString("es-PY")}`}
+                                >
+                                  Gs {Math.round(c.deuda_monto).toLocaleString("es-PY")}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium text-emerald-600">Al día</span>
+                              )}
                             </td>
                             <td className="whitespace-nowrap py-1.5 tabular-nums font-semibold text-slate-600">
                               {fmtDur(c.tiempo_en_estado_ms)}

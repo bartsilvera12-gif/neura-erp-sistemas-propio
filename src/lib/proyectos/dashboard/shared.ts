@@ -70,6 +70,10 @@ export type ProyectoMetrica = {
   titulo: string;
   cliente_id: string | null;
   cliente: string;
+  /** El cliente del proyecto tiene alguna factura pendiente (deuda > 0). */
+  deuda_pendiente: boolean;
+  /** Monto total pendiente del cliente (para mostrar/ordenar). */
+  deuda_monto: number;
   estado_id: string | null;
   estado_nombre: string;
   estado_codigo: string | null;
@@ -152,6 +156,12 @@ function nombreDe(map: Map<string, string>, id: string | null | undefined): stri
  * queda acotada sin importar cuántos proyectos tenga la empresa.
  */
 const IDS_POR_LOTE = 40;
+
+/**
+ * Estados de factura que NO son deuda (mismo criterio que Cobranzas ·
+ * cobranzas-data.ts). Una factura suma deuda salvo que esté en este set.
+ */
+const ESTADOS_FACTURA_NO_DEUDA = new Set(["pagado", "anulado", "corregida nc"]);
 
 /** Trae una tabla completa en páginas de 1000 (el tope de PostgREST). */
 async function traerTodo<T>(
@@ -328,6 +338,44 @@ export async function cargarDataset(
       .eq("archivado", false)
       .limit(5000),
   ]);
+
+  // ---- Deuda pendiente por cliente (best-effort, drift-safe) ----------------
+  // Para la tabla del tablero: ¿el cliente de este proyecto debe plata? Se suma
+  // el monto de sus facturas que no estén pagadas/anuladas/corregidas. Si el
+  // tenant no tiene tabla `facturas`, la consulta falla y queda todo "sin deuda"
+  // (no rompe el tablero). No usa la regla neura de solo-suscripción: acá interesa
+  // cualquier factura impaga del cliente.
+  const clienteIds = [
+    ...new Set(
+      proyectosRows
+        .map((p) => (typeof p.cliente_id === "string" ? p.cliente_id : null))
+        .filter((x): x is string => Boolean(x))
+    ),
+  ];
+  const deudaPorCliente = new Map<string, number>();
+  for (let i = 0; i < clienteIds.length; i += IDS_POR_LOTE) {
+    const lote = clienteIds.slice(i, i + IDS_POR_LOTE);
+    try {
+      const rows = await traerTodo<{ cliente_id?: unknown; monto?: unknown; estado?: unknown }>((a, b) =>
+        sb
+          .from("facturas")
+          .select("cliente_id, monto, estado")
+          .eq("empresa_id", empresaId)
+          .in("cliente_id", lote)
+          .range(a, b)
+      );
+      for (const f of rows) {
+        const cid = typeof f.cliente_id === "string" ? f.cliente_id : null;
+        if (!cid) continue;
+        const estado = String(f.estado ?? "").trim().toLowerCase();
+        if (ESTADOS_FACTURA_NO_DEUDA.has(estado)) continue;
+        const monto = Number(f.monto ?? 0);
+        deudaPorCliente.set(cid, (deudaPorCliente.get(cid) ?? 0) + (Number.isFinite(monto) ? monto : 0));
+      }
+    } catch {
+      // Tenant sin facturas o columna distinta: se ignora y queda sin deuda.
+    }
+  }
 
   const usuarioIds = [
     ...new Set(
@@ -512,6 +560,8 @@ export async function cargarDataset(
       titulo: String(row.titulo ?? "—"),
       cliente_id: clienteId,
       cliente: cli?.nombre ?? "—",
+      deuda_monto: clienteId ? deudaPorCliente.get(clienteId) ?? 0 : 0,
+      deuda_pendiente: clienteId ? (deudaPorCliente.get(clienteId) ?? 0) > 0 : false,
       estado_id: estadoId,
       estado_nombre: estado?.nombre ?? "—",
       estado_codigo: estado?.codigo ?? null,

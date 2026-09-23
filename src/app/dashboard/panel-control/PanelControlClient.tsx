@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { AlertTriangle, ChevronRight, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  LayoutGrid,
+  RefreshCw,
+  Search,
+  Server,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import BlurText from "@/components/reactbits/BlurText";
 import CountUp from "@/components/reactbits/CountUp";
@@ -566,34 +578,45 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
 }
 
 /**
- * KPI con el mismo look que el resto de los tableros (React Bits: el reflejo
- * que sigue al mouse y el número que cuenta hasta su valor). `numero` se anima;
- * si el dato no es un número —la última limpieza, por ejemplo— se pasa `texto`.
+ * Una celda de la franja de resumen: ícono y etiqueta chica arriba, el dato
+ * abajo. Mismo patrón que la franja del ticket de Soporte — una sola tarjeta
+ * partida por líneas finas en vez de cuatro recuadros sueltos.
  */
-function Kpi({
-  label,
+function Resumen({
+  icono: Icono,
+  etiqueta,
   numero,
   texto,
   sub,
   alerta,
 }: {
-  label: string;
+  icono: LucideIcon;
+  etiqueta: string;
   numero?: number;
   texto?: string;
   sub?: string;
   alerta?: boolean;
 }) {
   return (
-    <SpotlightCard
-      spotlightColor={alerta ? "rgba(225, 29, 72, 0.10)" : "rgba(79, 174, 178, 0.12)"}
-      className={`rounded-2xl border bg-white p-4 shadow-sm ${alerta ? "border-rose-200" : "border-slate-200"}`}
-    >
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-      <div className={`mt-1 text-2xl font-bold tabular-nums tracking-tight ${alerta ? "text-rose-700" : "text-slate-800"}`}>
-        {typeof numero === "number" ? <CountUp key={numero} to={numero} duration={0.9} /> : (texto ?? "—")}
+    <div className="min-w-0 bg-white px-5 py-4">
+      <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-slate-400">
+        <Icono className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+        {etiqueta}
+      </p>
+      <div
+        className={`mt-1 flex items-center gap-2 text-[22px] font-bold leading-tight tracking-tight tabular-nums ${
+          alerta ? "text-rose-600" : "text-slate-800"
+        }`}
+      >
+        {alerta ? <PuntoEstado tono="rojo" /> : null}
+        <span className="truncate">
+          {typeof numero === "number" ? <CountUp key={numero} to={numero} duration={0.9} /> : (texto ?? "—")}
+        </span>
       </div>
-      {sub ? <div className={`mt-0.5 text-xs ${alerta ? "text-rose-600" : "text-slate-400"}`}>{sub}</div> : null}
-    </SpotlightCard>
+      {sub ? (
+        <p className={`mt-0.5 truncate text-[12px] ${alerta ? "text-rose-500" : "text-slate-400"}`}>{sub}</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -694,14 +717,10 @@ export default function PanelControlClient() {
     return (
       <div className="p-4 md:p-6">
         <div className="h-6 w-56 animate-pulse rounded bg-slate-200" />
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
-          ))}
-        </div>
+        <div className="mt-6 h-[92px] animate-pulse rounded-2xl bg-slate-100" />
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-80 animate-pulse rounded-xl bg-slate-100" />
+            <div key={i} className="h-80 animate-pulse rounded-2xl bg-slate-100" />
           ))}
         </div>
       </div>
@@ -757,21 +776,34 @@ export default function PanelControlClient() {
         </div>
       ) : null}
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Máquinas" numero={resumen.maquinas} sub={subMaquinas} alerta={resumen.conProblema > 0} />
-        <Kpi label="Sistemas y servicios" numero={resumen.sistemas} sub="en las tres máquinas" />
-        <Kpi
-          label="Incidentes activos"
+      <section className="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-100 shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)] sm:grid-cols-2 lg:grid-cols-4">
+        <Resumen
+          icono={Server}
+          etiqueta="Máquinas"
+          numero={resumen.maquinas}
+          sub={subMaquinas}
+          alerta={resumen.conProblema > 0}
+        />
+        <Resumen
+          icono={LayoutGrid}
+          etiqueta="Sistemas y servicios"
+          numero={resumen.sistemas}
+          sub="en las tres máquinas"
+        />
+        <Resumen
+          icono={resumen.incidentes > 0 ? AlertTriangle : ShieldCheck}
+          etiqueta="Incidentes activos"
           numero={resumen.incidentes}
           sub={resumen.incidentes > 0 ? "hay algo caído" : "nada caído"}
           alerta={resumen.incidentes > 0}
         />
-        <Kpi
-          label="Última limpieza global"
+        <Resumen
+          icono={Trash2}
+          etiqueta="Última limpieza global"
           texto={resumen.limpieza ? hace(resumen.limpieza.ts, resumen.now) : "—"}
           sub={resumen.limpieza ? liberado(resumen.limpieza.freed) : "Sin limpieza registrada"}
         />
-      </div>
+      </section>
 
       {datos ? (
         <div className="mt-4 grid gap-4 lg:grid-cols-3">

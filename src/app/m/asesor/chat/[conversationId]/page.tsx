@@ -20,6 +20,7 @@ import {
   getErpAttachmentPublicUrl,
   getMetaInboundDocumentFilename,
   getWhatsAppMediaUrlFromRawPayload,
+  textoDeMensajeDeSistema,
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { agruparReacciones, EMOJIS_REACCION, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
@@ -422,6 +423,9 @@ function MessageBody({
   if (m.message_type === "text") {
     return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
   }
+  // "Eliminar para todos" y demás avisos de WhatsApp: no tienen contenido propio.
+  const sistema = textoDeMensajeDeSistema(m.message_type);
+  if (sistema) return <span className="italic opacity-70">{sistema}</span>;
   const url = mediaUrl(m);
   if (m.message_type === "audio") {
     return url ? (
@@ -944,7 +948,8 @@ export default function MAsesorChatPage() {
     [opsBusy, load]
   );
 
-  const previewOf = (m: Msg) => (m.content?.trim() || `[${m.message_type}]`).slice(0, 160);
+  const previewOf = (m: Msg) =>
+    (m.content?.trim() || textoDeMensajeDeSistema(m.message_type) || `[${m.message_type}]`).slice(0, 160);
 
   // ── Deslizar una burbuja para citarla ──────────────────────────────────────
   // Umbral de 56 px, igual que WhatsApp. El eje se decide en el primer movimiento

@@ -1,6 +1,7 @@
 "use client";
 
 import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
+import { textoDeMensajeDeSistema, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -228,6 +229,8 @@ function displayFilenameForAttachment(message: ChatMessage): string {
 function messagePreview(m: ChatMessage): string {
   const t = (m.content ?? "").trim();
   if (t && !t.startsWith("[")) return t.slice(0, 90);
+  const sistema = textoDeMensajeDeSistema(m.message_type);
+  if (sistema) return sistema;
   switch (m.message_type) {
     case "image":
     case "sticker":
@@ -3887,7 +3890,7 @@ export function ConversacionesClient({
                         </div>
                       </div>
                       <p className="mt-1 text-[12px] text-slate-500 truncate leading-snug">
-                        {attachmentCaptionForDisplay(c.last_message_preview) || "—"}
+                        {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                       </p>
                     </div>
                   </div>

@@ -207,13 +207,23 @@ export function construirDashboardEjecutivo(ds: Dataset) {
   // Cuántos proyectos tiene cada técnico en el período: activos + entregados,
   // sin los cancelados (un cancelado no es carga de nadie). Es la base de las
   // tarjetas "Por programador"; por ahora sólo el total, después se enriquece.
-  const porTecnico = new Map<string, number>();
+  // total del mes + desglose: cuántos ya entregó y cuántos siguen en proceso.
+  const porTecnico = new Map<string, { total: number; entregados: number }>();
   for (const p of proyectos) {
     if (p.cancelado || !p.responsable_tecnico_id) continue;
-    porTecnico.set(p.responsable_tecnico_id, (porTecnico.get(p.responsable_tecnico_id) ?? 0) + 1);
+    const cur = porTecnico.get(p.responsable_tecnico_id) ?? { total: 0, entregados: 0 };
+    cur.total += 1;
+    if (p.entregado) cur.entregados += 1;
+    porTecnico.set(p.responsable_tecnico_id, cur);
   }
   const tecnicos_resumen = [...porTecnico.entries()]
-    .map(([usuario_id, total]) => ({ usuario_id, nombre: ds.nombreUsuario(usuario_id), total }))
+    .map(([usuario_id, c]) => ({
+      usuario_id,
+      nombre: ds.nombreUsuario(usuario_id),
+      total: c.total,
+      entregados: c.entregados,
+      en_proceso: c.total - c.entregados,
+    }))
     .filter((t) => t.nombre !== "—")
     .sort((a, b) => b.total - a.total);
 

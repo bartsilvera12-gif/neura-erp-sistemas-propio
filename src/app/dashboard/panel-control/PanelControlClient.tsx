@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, RefreshCw, Search, Sparkles } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import BlurText from "@/components/reactbits/BlurText";
+import CountUp from "@/components/reactbits/CountUp";
+import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import {
   esSaludConError,
   NOMBRE_SERVIDOR,
@@ -177,13 +180,30 @@ function Barra({
   );
 }
 
+/** Cuántos sistemas se ven antes de pedir "ver todos". Producción tiene ~68. */
+const SISTEMAS_VISIBLES = 5;
+
+/** Para buscar sin pelearse con acentos ni mayúsculas. */
+function normalizar(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
 function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }) {
   const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [verTodos, setVerTodos] = useState(false);
   const titulo = NOMBRE_SERVIDOR[item.server] ?? item.server;
 
   if (esSaludConError(item)) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+      <SpotlightCard
+        spotlightColor="rgba(100, 116, 139, 0.10)"
+        className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm"
+      >
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-base font-bold text-slate-500">{titulo}</h2>
           <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${BADGE.gris.clase}`}>
@@ -193,7 +213,7 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
         <p className="mt-3 text-sm text-slate-500">
           No se pudo leer el informe de esta máquina.
         </p>
-      </section>
+      </SpotlightCard>
     );
   }
 
@@ -216,6 +236,23 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
   const caidos = containers.filter(contenedorCaido);
   const cleanup = s.cleanup;
 
+  // Lo que anda mal va primero: si hay algo caído tiene que entrar en los
+  // primeros cinco, sin buscarlo. El resto queda en orden alfabético.
+  const q = normalizar(busqueda);
+  const ordenados = [...containers].sort((a, b) => {
+    const pa = contenedorCaido(a) ? 0 : 1;
+    const pb = contenedorCaido(b) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return nombreLindo(a.name).localeCompare(nombreLindo(b.name), "es");
+  });
+  const filtrados = q
+    ? ordenados.filter((c) =>
+        normalizar(`${nombreLindo(c.name)} ${c.name ?? ""} ${c.domain ?? ""}`).includes(q)
+      )
+    : ordenados;
+  const visibles = verTodos ? filtrados : filtrados.slice(0, SISTEMAS_VISIBLES);
+  const restantes = filtrados.length - visibles.length;
+
   const detalleCaidos =
     caidos.length === 0
       ? ""
@@ -224,8 +261,17 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
         : `${nombreLindo(caidos[0].name)} y ${caidos.length - 1} más`;
 
   return (
-    <section
-      className={`rounded-xl border bg-white p-5 shadow-sm ${
+    <SpotlightCard
+      spotlightColor={
+        desactualizado
+          ? "rgba(100, 116, 139, 0.08)"
+          : estado === "rojo"
+            ? "rgba(225, 29, 72, 0.10)"
+            : estado === "amarillo"
+              ? "rgba(245, 158, 11, 0.10)"
+              : "rgba(79, 174, 178, 0.12)"
+      }
+      className={`rounded-2xl border bg-white p-5 shadow-sm ${
         desactualizado ? "border-slate-200 opacity-70" : estado === "rojo" ? "border-rose-200" : "border-slate-200"
       }`}
     >
@@ -298,25 +344,65 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
             </div>
 
             {abierto ? (
-              <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto pr-1">
-                {containers.map((c, i) => {
-                  const tono = contenedorSemaforo(c);
-                  return (
-                    <li key={`${c.name}-${i}`} className="flex items-start gap-2 py-0.5">
-                      <span
-                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                          tono === "rojo" ? "bg-rose-500" : tono === "amarillo" ? "bg-amber-500" : "bg-emerald-500"
-                        }`}
-                        aria-hidden
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-[13px] text-slate-700">{nombreLindo(c.name)}</p>
-                        {c.domain ? <p className="truncate text-[11px] text-slate-400">{c.domain}</p> : null}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="mt-2">
+                <div className="relative">
+                  <Search
+                    aria-hidden
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    type="search"
+                    value={busqueda}
+                    onChange={(e) => {
+                      setBusqueda(e.target.value);
+                      setVerTodos(false);
+                    }}
+                    placeholder="Buscar sistema…"
+                    aria-label={`Buscar sistema en ${titulo}`}
+                    className="w-full rounded-lg border border-slate-200 py-1.5 pl-8 pr-2 text-[13px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
+                  />
+                </div>
+
+                {filtrados.length === 0 ? (
+                  <p className="mt-2 text-[13px] text-slate-400">
+                    Ningún sistema se llama así.
+                  </p>
+                ) : (
+                  <ul className={`mt-2 space-y-1 ${verTodos ? "max-h-72 overflow-y-auto pr-1" : ""}`}>
+                    {visibles.map((c, i) => {
+                      const tono = contenedorSemaforo(c);
+                      return (
+                        <li key={`${c.name}-${i}`} className="flex items-start gap-2 py-0.5">
+                          <span
+                            className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                              tono === "rojo"
+                                ? "bg-rose-500"
+                                : tono === "amarillo"
+                                  ? "bg-amber-500"
+                                  : "bg-emerald-500"
+                            }`}
+                            aria-hidden
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] text-slate-700">{nombreLindo(c.name)}</p>
+                            {c.domain ? <p className="truncate text-[11px] text-slate-400">{c.domain}</p> : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {restantes > 0 || verTodos ? (
+                  <button
+                    type="button"
+                    onClick={() => setVerTodos((v) => !v)}
+                    className="mt-1.5 text-xs font-semibold text-slate-500 transition-colors hover:text-slate-700"
+                  >
+                    {verTodos ? "Ver menos" : `Ver los ${restantes} restantes`}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </>
         )}
@@ -329,27 +415,39 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
             : "Sin limpieza registrada"}
         </p>
       </div>
-    </section>
+    </SpotlightCard>
   );
 }
 
+/**
+ * KPI con el mismo look que el resto de los tableros (React Bits: el reflejo
+ * que sigue al mouse y el número que cuenta hasta su valor). `numero` se anima;
+ * si el dato no es un número —la última limpieza, por ejemplo— se pasa `texto`.
+ */
 function Kpi({
   label,
-  value,
+  numero,
+  texto,
   sub,
   alerta,
 }: {
   label: string;
-  value: string;
+  numero?: number;
+  texto?: string;
   sub?: string;
   alerta?: boolean;
 }) {
   return (
-    <div className={`rounded-xl border bg-white p-4 shadow-sm ${alerta ? "border-rose-200" : "border-slate-200"}`}>
+    <SpotlightCard
+      spotlightColor={alerta ? "rgba(225, 29, 72, 0.10)" : "rgba(79, 174, 178, 0.12)"}
+      className={`rounded-2xl border bg-white p-4 shadow-sm ${alerta ? "border-rose-200" : "border-slate-200"}`}
+    >
       <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-      <div className={`mt-1 text-lg font-bold ${alerta ? "text-rose-700" : "text-slate-800"}`}>{value}</div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums tracking-tight ${alerta ? "text-rose-700" : "text-slate-800"}`}>
+        {typeof numero === "number" ? <CountUp key={numero} to={numero} duration={0.9} /> : (texto ?? "—")}
+      </div>
       {sub ? <div className={`mt-0.5 text-xs ${alerta ? "text-rose-600" : "text-slate-400"}`}>{sub}</div> : null}
-    </div>
+    </SpotlightCard>
   );
 }
 
@@ -358,9 +456,16 @@ export default function PanelControlClient() {
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [ultima, setUltima] = useState<Date | null>(null);
+  /**
+   * Mientras se pide, el botón gira y queda deshabilitado. Sin esto el click
+   * no se nota: el colector escribe una vez por minuto, así que los números
+   * suelen volver idénticos y la pantalla parece no hacer nada.
+   */
+  const [refrescando, setRefrescando] = useState(false);
   const vivoRef = useRef(true);
 
   const cargar = useCallback(async () => {
+    setRefrescando(true);
     try {
       const res = await fetchWithSupabaseSession("/api/infra-health", { cache: "no-store" });
       if (!vivoRef.current) return;
@@ -382,7 +487,13 @@ export default function PanelControlClient() {
       // minuto que una pantalla en blanco.
       setError("No se pudo leer el estado de los servidores. Se reintenta solo.");
     } finally {
-      if (vivoRef.current) setCargando(false);
+      // Piso de medio segundo: una respuesta de 40 ms haría un parpadeo que no
+      // se ve, y el click volvería a parecer ignorado.
+      await new Promise((r) => setTimeout(r, 500));
+      if (vivoRef.current) {
+        setCargando(false);
+        setRefrescando(false);
+      }
     }
   }, []);
 
@@ -455,7 +566,15 @@ export default function PanelControlClient() {
     <div className="p-4 md:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Estado de infraestructura</h1>
+          {/* BlurText renderiza un <p>, así que el título real va aparte y oculto:
+              se lee igual con lector de pantalla y el H1 de la página no se pierde. */}
+          <h1 className="sr-only">Estado de infraestructura</h1>
+          <BlurText
+            text="Estado de infraestructura"
+            animateBy="words"
+            delay={60}
+            className="text-xl font-bold text-slate-900"
+          />
           <p className="mt-0.5 text-sm text-slate-500">Se actualiza cada 30 segundos</p>
         </div>
         <div className="flex items-center gap-3">
@@ -467,15 +586,20 @@ export default function PanelControlClient() {
             En vivo
           </span>
           <span className="text-xs text-slate-400">
-            {ultima ? `Última actualización ${horaCorta(ultima)}` : "—"}
+            {refrescando
+              ? "Actualizando…"
+              : ultima
+                ? `Última actualización ${horaCorta(ultima)}`
+                : "—"}
           </span>
           <button
             type="button"
             onClick={() => void cargar()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+            disabled={refrescando}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Actualizar
+            <RefreshCw className={`h-3.5 w-3.5 ${refrescando ? "animate-spin" : ""}`} />
+            {refrescando ? "Actualizando" : "Actualizar"}
           </button>
         </div>
       </header>
@@ -488,17 +612,17 @@ export default function PanelControlClient() {
       ) : null}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Máquinas" value={String(resumen.maquinas)} sub={subMaquinas} alerta={resumen.conProblema > 0} />
-        <Kpi label="Sistemas y servicios" value={String(resumen.sistemas)} sub="en las tres máquinas" />
+        <Kpi label="Máquinas" numero={resumen.maquinas} sub={subMaquinas} alerta={resumen.conProblema > 0} />
+        <Kpi label="Sistemas y servicios" numero={resumen.sistemas} sub="en las tres máquinas" />
         <Kpi
           label="Incidentes activos"
-          value={String(resumen.incidentes)}
+          numero={resumen.incidentes}
           sub={resumen.incidentes > 0 ? "hay algo caído" : "nada caído"}
           alerta={resumen.incidentes > 0}
         />
         <Kpi
           label="Última limpieza global"
-          value={resumen.limpieza ? hace(resumen.limpieza.ts, resumen.now) : "—"}
+          texto={resumen.limpieza ? hace(resumen.limpieza.ts, resumen.now) : "—"}
           sub={resumen.limpieza ? liberado(resumen.limpieza.freed) : "Sin limpieza registrada"}
         />
       </div>

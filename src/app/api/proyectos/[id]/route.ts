@@ -258,6 +258,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       patch.cliente_id =
         typeof body.cliente_id === "string" && body.cliente_id ? body.cliente_id : null;
     if ("tipo_id" in body && typeof body.tipo_id === "string") patch.tipo_id = body.tipo_id;
+    // Factura de la venta asociada (una por proyecto). "" o null la desasocia.
+    if ("factura_id" in body) {
+      patch.factura_id =
+        typeof body.factura_id === "string" && body.factura_id ? body.factura_id : null;
+    }
     if ("responsable_comercial_id" in body) {
       patch.responsable_comercial_id =
         typeof body.responsable_comercial_id === "string" && body.responsable_comercial_id
@@ -718,7 +723,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     let q = sb.from("proyectos").update(patch).eq("empresa_id", auth.empresaId).eq("id", pid);
     if (expectedUpdatedAt) q = q.eq("updated_at", expectedUpdatedAt);
-    const { data: updated, error } = await q.select("*");
+    let { data: updated, error } = await q.select("*");
+
+    // Drift-safe: tenant sin columna `factura_id` → reintenta el update sin ella.
+    if (error && "factura_id" in patch && /factura_id/i.test(error.message ?? "")) {
+      delete patch.factura_id;
+      let q2 = sb.from("proyectos").update(patch).eq("empresa_id", auth.empresaId).eq("id", pid);
+      if (expectedUpdatedAt) q2 = q2.eq("updated_at", expectedUpdatedAt);
+      ({ data: updated, error } = await q2.select("*"));
+    }
 
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 

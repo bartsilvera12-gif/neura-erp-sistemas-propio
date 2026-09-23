@@ -92,9 +92,11 @@ type Data = {
     responsable_tecnico_id: string | null;
     /** Asesor comercial responsable (columna del tablero). */
     asesor: string;
-    /** El cliente del proyecto tiene facturas pendientes. */
+    /** El proyecto no tiene una factura asociada todavía. */
+    sin_factura: boolean;
+    /** La factura asociada al proyecto tiene saldo por cobrar. */
     deuda_pendiente: boolean;
-    /** Monto total pendiente del cliente. */
+    /** Saldo adeudado de la factura asociada. */
     deuda_monto: number;
     entregado: boolean;
     demorado: boolean;
@@ -656,10 +658,17 @@ export default function DashboardEjecutivoClient() {
                               {c.asesor && c.asesor !== "—" ? nombreCorto(c.asesor) : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="whitespace-nowrap py-1.5 pr-2">
-                              {c.deuda_pendiente ? (
+                              {c.sin_factura ? (
+                                <span
+                                  className="text-[10px] font-medium text-slate-300"
+                                  title="Este proyecto todavía no tiene una factura asociada"
+                                >
+                                  Sin asociar
+                                </span>
+                              ) : c.deuda_pendiente ? (
                                 <span
                                   className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600"
-                                  title={`Deuda pendiente: Gs ${Math.round(c.deuda_monto).toLocaleString("es-PY")}`}
+                                  title={`Saldo de la factura asociada: Gs ${Math.round(c.deuda_monto).toLocaleString("es-PY")}`}
                                 >
                                   Gs {Math.round(c.deuda_monto).toLocaleString("es-PY")}
                                 </span>

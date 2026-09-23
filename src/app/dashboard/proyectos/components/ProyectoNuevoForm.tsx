@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
+import { FacturaSelect } from "@/app/dashboard/proyectos/components/FacturaSelect";
 import {
   ProyectoModuloSelector,
   type ProyectoModuloCatalogo as ModuloCatalogo,
@@ -57,6 +58,7 @@ export default function ProyectoNuevoForm({
   const [tipoId, setTipoId] = useState("");
   const [estadoId, setEstadoId] = useState("");
   const [clienteId, setClienteId] = useState("");
+  const [facturaId, setFacturaId] = useState("");
   const [titulo, setTitulo] = useState("");
   const [prioridad, setPrioridad] = useState("normal");
   const [rc, setRc] = useState("");
@@ -150,6 +152,8 @@ export default function ProyectoNuevoForm({
   // (editable). Se hace en el evento de selección, no en un efecto.
   function handleClienteChange(id: string) {
     setClienteId(id);
+    // La factura pertenece al cliente: al cambiarlo, se descarta la elegida.
+    setFacturaId("");
     if (!id) return;
     const c = clientes.find((x) => x.id === id);
     const tel = (c?.telefono ?? "").trim() || (c?.telefono_secundario ?? "").trim();
@@ -210,6 +214,7 @@ export default function ProyectoNuevoForm({
       descripcion: null,
       prioridad,
       cliente_id: clienteId || null,
+      factura_id: facturaId || null,
       responsable_comercial_id: rc || null,
       responsable_tecnico_id: rt || null,
       fecha_ingreso: new Date(fechaIngreso + "T12:00:00").toISOString(),
@@ -427,6 +432,18 @@ export default function ProyectoNuevoForm({
             </label>
             {/* Fila 3: Cliente (todo el ancho) */}
             <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} required />
+            {/* Factura de la venta asociada (opcional): la deuda del proyecto sale de su saldo. */}
+            <label className="block text-sm sm:col-span-2">
+              <span className={LABEL_CLS}>
+                Factura de la venta <span className="font-normal text-slate-400">(opcional)</span>
+              </span>
+              <div className="mt-1.5">
+                <FacturaSelect clienteId={clienteId} value={facturaId} onChange={setFacturaId} />
+              </div>
+              <span className="mt-1 block text-[11px] text-slate-400">
+                Asociá la factura de esta venta. La deuda del proyecto en el tablero sale de su saldo.
+              </span>
+            </label>
             {/* Fila 4: Fecha ingreso | WhatsApp */}
             <label className="block text-sm">
               <span className={LABEL_CLS}>Fecha ingreso</span>

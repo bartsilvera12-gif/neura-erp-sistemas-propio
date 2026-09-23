@@ -13,6 +13,7 @@ import {
 } from "@/app/dashboard/proyectos/components/ProyectoModuloSelector";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { ClienteSearchSelect } from "@/app/dashboard/proyectos/components/ClienteSearchSelect";
+import { FacturaSelect } from "@/app/dashboard/proyectos/components/FacturaSelect";
 import { PersonaSearchSelect } from "@/app/dashboard/proyectos/components/PersonaSearchSelect";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
@@ -111,6 +112,7 @@ function firmaDatos(v: {
   responsableTecnicoId: string;
   observaciones: string;
   clienteId: string;
+  facturaId: string;
   responsableComercialId: string;
   projectManagerId: string;
   bloqueoTipo: string;
@@ -128,6 +130,7 @@ function firmaDatos(v: {
     responsable_tecnico_id: v.responsableTecnicoId,
     obs: v.observaciones,
     cliente_id: v.clienteId,
+    factura_id: v.facturaId,
     responsable_comercial_id: v.responsableComercialId,
     project_manager_id: v.projectManagerId,
     bloqueo_tipo: v.bloqueoTipo,
@@ -1244,6 +1247,7 @@ export default function ProyectoDetalleInner({
    * alta se cargaba con un dato mal, no había forma de arreglarlo.
    */
   const [clienteId, setClienteId] = useState("");
+  const [facturaId, setFacturaId] = useState("");
   const [responsableComercialId, setResponsableComercialId] = useState("");
   /**
    * PM del proyecto. Vacío = hereda el de la ficha del cliente, que es como
@@ -1325,6 +1329,7 @@ export default function ProyectoDetalleInner({
     const rt = typeof p.responsable_tecnico_id === "string" ? p.responsable_tecnico_id : "";
     const obsCom = typeof p.observaciones_comerciales === "string" ? p.observaciones_comerciales : "";
     const cli = typeof p.cliente_id === "string" ? p.cliente_id : "";
+    const fac = typeof p.factura_id === "string" ? p.factura_id : "";
     const rc = typeof p.responsable_comercial_id === "string" ? p.responsable_comercial_id : "";
     const pm = typeof p.project_manager_id === "string" ? p.project_manager_id : "";
     const bt = typeof p.bloqueo_tipo === "string" ? p.bloqueo_tipo : "";
@@ -1338,6 +1343,7 @@ export default function ProyectoDetalleInner({
     setResponsableTecnicoId(rt);
     setObservaciones(obsCom);
     setClienteId(cli);
+    setFacturaId(fac);
     setResponsableComercialId(rc);
     setProjectManagerId(pm);
     setBloqueoTipo(bt);
@@ -1361,6 +1367,7 @@ export default function ProyectoDetalleInner({
         responsableTecnicoId: rt,
         observaciones: obsCom,
         clienteId: cli,
+        facturaId: fac,
         responsableComercialId: rc,
         projectManagerId: pm,
         bloqueoTipo: bt,
@@ -1678,6 +1685,7 @@ export default function ProyectoDetalleInner({
         responsableTecnicoId,
         observaciones,
         clienteId,
+        facturaId,
         responsableComercialId,
         projectManagerId,
         bloqueoTipo,
@@ -1695,6 +1703,7 @@ export default function ProyectoDetalleInner({
       responsableTecnicoId,
       observaciones,
       clienteId,
+      facturaId,
       responsableComercialId,
       projectManagerId,
       bloqueoTipo,
@@ -1737,6 +1746,7 @@ export default function ProyectoDetalleInner({
         responsable_tecnico_id: responsableTecnicoId || null,
         observaciones_comerciales: observaciones.trim() === "" ? null : observaciones.trim(),
         cliente_id: clienteId || null,
+        factura_id: facturaId || null,
         responsable_comercial_id: responsableComercialId || null,
         project_manager_id: projectManagerId || null,
         bloqueo_tipo: bloqueoTipo || null,
@@ -2969,7 +2979,11 @@ export default function ProyectoDetalleInner({
                   <ClienteSearchSelect
                     clientes={clientes}
                     value={clienteId}
-                    onChange={setClienteId}
+                    onChange={(id) => {
+                      // La factura pertenece al cliente: al cambiarlo, se descarta.
+                      if (id !== clienteId) setFacturaId("");
+                      setClienteId(id);
+                    }}
                     hideLabel
                     hideSelected
                   />
@@ -2980,6 +2994,17 @@ export default function ProyectoDetalleInner({
                     cliente en Gestión. Asigná el cliente y guardá para vincularlo.
                   </p>
                 )}
+                {/* Factura de la venta asociada (una por proyecto): la deuda del
+                    proyecto en el tablero sale de su saldo. Sirve para asociar los
+                    proyectos viejos que quedaron "sin factura". */}
+                <div className="mt-3">
+                  <span className={labelCls}>
+                    Factura de la venta <span className="font-normal text-slate-400">(opcional)</span>
+                  </span>
+                  <div className="mt-1.5">
+                    <FacturaSelect clienteId={clienteId} value={facturaId} onChange={setFacturaId} />
+                  </div>
+                </div>
               </div>
             </BloqueDatos>
 

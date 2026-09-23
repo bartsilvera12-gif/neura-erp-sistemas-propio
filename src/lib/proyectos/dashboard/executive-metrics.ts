@@ -143,7 +143,8 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       pm: ds.nombreUsuario(p.project_manager_id ?? ""),
       // Asesor comercial responsable (columna nueva del tablero).
       asesor: ds.nombreUsuario(p.responsable_comercial_id ?? ""),
-      // Deuda del cliente del proyecto (columna nueva).
+      // Deuda del proyecto = saldo de su factura asociada (columna nueva).
+      sin_factura: p.sin_factura,
       deuda_pendiente: p.deuda_pendiente,
       deuda_monto: p.deuda_monto,
       tiempo_en_estado_ms: p.tiempo_en_estado_ms,

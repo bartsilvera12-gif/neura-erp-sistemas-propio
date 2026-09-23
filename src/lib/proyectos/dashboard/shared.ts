@@ -70,9 +70,13 @@ export type ProyectoMetrica = {
   titulo: string;
   cliente_id: string | null;
   cliente: string;
-  /** El cliente del proyecto tiene alguna factura pendiente (deuda > 0). */
+  /** Factura de la venta asociada al proyecto (una por proyecto), si la tiene. */
+  factura_id: string | null;
+  /** El proyecto todavía no tiene una factura asociada. */
+  sin_factura: boolean;
+  /** La factura asociada tiene saldo por cobrar (deuda > 0). */
   deuda_pendiente: boolean;
-  /** Monto total pendiente del cliente (para mostrar/ordenar). */
+  /** Saldo adeudado de la factura asociada (para mostrar/ordenar). */
   deuda_monto: number;
   estado_id: string | null;
   estado_nombre: string;
@@ -260,6 +264,9 @@ export async function cargarDataset(
   const COLUMNAS_BASE =
     "id, titulo, cliente_id, estado_id, tipo_id, responsable_comercial_id, responsable_tecnico_id, fecha_ingreso, fecha_prometida, fecha_entrega, primera_entrega_at, bloqueado, bloqueo_motivo, created_at";
   const COLUMNAS_NUEVAS = `${COLUMNAS_BASE}, bloqueo_tipo, slv_objetivo_id, project_manager_id`;
+  // `factura_id` es más nuevo aún (solo este cliente): un tercer nivel de fallback
+  // para no perder las columnas intermedias si el tenant no tiene esta.
+  const COLUMNAS_FACTURA = `${COLUMNAS_NUEVAS}, factura_id`;
 
   const pedirProyectos = (columnas: string) =>
     traerTodo<Record<string, unknown>>((a, b) => {
@@ -272,7 +279,9 @@ export async function cargarDataset(
       return q.order("fecha_ingreso", { ascending: false }).range(a, b);
     });
 
-  const proyectosRows = await pedirProyectos(COLUMNAS_NUEVAS).catch(() => pedirProyectos(COLUMNAS_BASE));
+  const proyectosRows = await pedirProyectos(COLUMNAS_FACTURA)
+    .catch(() => pedirProyectos(COLUMNAS_NUEVAS))
+    .catch(() => pedirProyectos(COLUMNAS_BASE));
 
   const ids = proyectosRows.map((p) => String(p.id));
   const desdeActividad = new Date(Date.now() - DIAS_ACTIVIDAD * 86400000).toISOString();
@@ -339,40 +348,33 @@ export async function cargarDataset(
       .limit(5000),
   ]);
 
-  // ---- Deuda pendiente por cliente (best-effort, drift-safe) ----------------
-  // Para la tabla del tablero: ¿el cliente de este proyecto debe plata? Se suma
-  // el monto de sus facturas que no estén pagadas/anuladas/corregidas. Si el
-  // tenant no tiene tabla `facturas`, la consulta falla y queda todo "sin deuda"
-  // (no rompe el tablero). No usa la regla neura de solo-suscripción: acá interesa
-  // cualquier factura impaga del cliente.
-  const clienteIds = [
+  // ---- Deuda por PROYECTO, vía su factura asociada (best-effort, drift-safe) --
+  // La deuda del tablero ya no es "todo lo que debe el cliente", sino el saldo de
+  // la factura de la venta asociada a ESE proyecto (`proyectos.factura_id`). Un
+  // proyecto sin factura queda "sin asociar" (no cuenta deuda). Si el tenant no
+  // tiene tabla `facturas`, la consulta falla y todo queda en 0 (no rompe nada).
+  const facturaIds = [
     ...new Set(
       proyectosRows
-        .map((p) => (typeof p.cliente_id === "string" ? p.cliente_id : null))
+        .map((p) => (typeof p.factura_id === "string" ? p.factura_id : null))
         .filter((x): x is string => Boolean(x))
     ),
   ];
-  const deudaPorCliente = new Map<string, number>();
-  for (let i = 0; i < clienteIds.length; i += IDS_POR_LOTE) {
-    const lote = clienteIds.slice(i, i + IDS_POR_LOTE);
+  const saldoPorFactura = new Map<string, number>();
+  for (let i = 0; i < facturaIds.length; i += IDS_POR_LOTE) {
+    const lote = facturaIds.slice(i, i + IDS_POR_LOTE);
     try {
-      const rows = await traerTodo<{ cliente_id?: unknown; saldo?: unknown; estado?: unknown }>((a, b) =>
-        sb
-          .from("facturas")
-          .select("cliente_id, saldo, estado")
-          .eq("empresa_id", empresaId)
-          .in("cliente_id", lote)
-          .range(a, b)
+      const rows = await traerTodo<{ id?: unknown; saldo?: unknown; estado?: unknown }>((a, b) =>
+        sb.from("facturas").select("id, saldo, estado").eq("empresa_id", empresaId).in("id", lote).range(a, b)
       );
       for (const f of rows) {
-        const cid = typeof f.cliente_id === "string" ? f.cliente_id : null;
-        if (!cid) continue;
+        const fid = typeof f.id === "string" ? f.id : null;
+        if (!fid) continue;
         const estado = String(f.estado ?? "").trim().toLowerCase();
         if (ESTADOS_FACTURA_NO_DEUDA.has(estado)) continue;
-        // `saldo` = lo REALMENTE adeudado (monto menos lo cobrado). Sumar `monto`
-        // contaba de más las facturas pagadas en parte.
+        // `saldo` = lo REALMENTE adeudado (monto menos lo cobrado).
         const saldo = Number(f.saldo ?? 0);
-        deudaPorCliente.set(cid, (deudaPorCliente.get(cid) ?? 0) + (Number.isFinite(saldo) && saldo > 0 ? saldo : 0));
+        saldoPorFactura.set(fid, Number.isFinite(saldo) && saldo > 0 ? saldo : 0);
       }
     } catch {
       // Tenant sin facturas o columna distinta: se ignora y queda sin deuda.
@@ -464,6 +466,7 @@ export async function cargarDataset(
     const tipoId = typeof row.tipo_id === "string" ? row.tipo_id : null;
     const clienteId = typeof row.cliente_id === "string" ? row.cliente_id : null;
     const cli = clienteId ? clientes.get(clienteId) ?? null : null;
+    const facturaIdProy = typeof row.factura_id === "string" ? row.factura_id : null;
 
     const slv = slvTecnicoDeProyecto(id, filas, esTecnico, refMs);
     if (!slv.atribucion_confiable) atribucionParcial = true;
@@ -562,8 +565,10 @@ export async function cargarDataset(
       titulo: String(row.titulo ?? "—"),
       cliente_id: clienteId,
       cliente: cli?.nombre ?? "—",
-      deuda_monto: clienteId ? deudaPorCliente.get(clienteId) ?? 0 : 0,
-      deuda_pendiente: clienteId ? (deudaPorCliente.get(clienteId) ?? 0) > 0 : false,
+      factura_id: facturaIdProy,
+      sin_factura: !facturaIdProy,
+      deuda_monto: facturaIdProy ? saldoPorFactura.get(facturaIdProy) ?? 0 : 0,
+      deuda_pendiente: facturaIdProy ? (saldoPorFactura.get(facturaIdProy) ?? 0) > 0 : false,
       estado_id: estadoId,
       estado_nombre: estado?.nombre ?? "—",
       estado_codigo: estado?.codigo ?? null,

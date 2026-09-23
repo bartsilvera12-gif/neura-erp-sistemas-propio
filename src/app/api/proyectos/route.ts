@@ -349,7 +349,17 @@ export async function POST(request: Request) {
           : null,
     };
 
-    const { data: created, error: insErr } = await sb.from("proyectos").insert(insert).select("*");
+    // Factura de la venta asociada (opcional). Drift-safe: si el tenant no tiene
+    // la columna `factura_id`, el insert se reintenta sin ella.
+    if (typeof body.factura_id === "string" && body.factura_id) {
+      insert.factura_id = body.factura_id;
+    }
+    let { data: created, error: insErr } = await sb.from("proyectos").insert(insert).select("*");
+    if (insErr && "factura_id" in insert && /factura_id/i.test(insErr.message ?? "")) {
+      const sinFactura = { ...insert };
+      delete sinFactura.factura_id;
+      ({ data: created, error: insErr } = await sb.from("proyectos").insert(sinFactura).select("*"));
+    }
     if (insErr || created == null) {
       return NextResponse.json(errorResponse(insErr?.message ?? "No se pudo crear"), { status: 400 });
     }

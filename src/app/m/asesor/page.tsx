@@ -254,6 +254,7 @@ export default function MAsesorInboxPage() {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-[13px] text-slate-500">
+                          {c.last_message_from_me ? <span className="font-medium text-slate-400">Vos: </span> : null}
                           {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                         </span>
                         {c.unread_count > 0 ? (

@@ -3890,6 +3890,7 @@ export function ConversacionesClient({
                         </div>
                       </div>
                       <p className="mt-1 text-[12px] text-slate-500 truncate leading-snug">
+                        {c.last_message_from_me ? <span className="font-medium text-slate-400">Vos: </span> : null}
                         {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                       </p>
                     </div>

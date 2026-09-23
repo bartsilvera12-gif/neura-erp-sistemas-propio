@@ -143,6 +143,12 @@ export type InboxConversation = {
    * Requiere migración con columna `client_turn_since` en el mismo RPC.
    */
   awaiting_client_reply_since: string | null;
+  /**
+   * ¿El último mensaje del hilo lo mandamos nosotros? Se usa para el "Vos:" de la lista, como
+   * WhatsApp: sin esto, la vista previa no dice si el último que habló fue el cliente o el
+   * asesor. Sale de lo mismo que el turno, sin consultas extra.
+   */
+  last_message_from_me: boolean | null;
   /** Flujo asignado (`chat_conversations.flow_code`), si existe. */
   flow_code: string | null;
   /** Nodo actual del motor (`chat_conversations.flow_current_node`), si existe. */
@@ -1136,6 +1142,12 @@ async function fetchChatConversationsUnsafe(
       },
       awaiting_agent_reply_since: awaitingById[row.id as string] ?? null,
       awaiting_client_reply_since: clientTurnById[row.id as string] ?? null,
+      last_message_from_me: (() => {
+        const id = row.id as string;
+        if (clientTurnById[id]) return true; // último = nuestro → esperamos al cliente
+        if (awaitingById[id]) return false; // último = del cliente → esperamos nosotros
+        return null; // sin datos: la UI no muestra nada
+      })(),
     };
   });
   return { conversations: mapped, base_row_count: totalAfterQuery };

@@ -13,6 +13,8 @@ export type AsesorConv = {
   contact_telefono: string | null;
   window_open?: boolean | null;
   queue_id?: string | null;
+  /** El último mensaje lo mandamos nosotros (para el "Vos:" de la lista). */
+  last_message_from_me?: boolean | null;
 };
 
 export type AsesorCola = { id: string; nombre: string };

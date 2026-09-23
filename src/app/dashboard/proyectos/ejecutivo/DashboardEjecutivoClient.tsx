@@ -16,14 +16,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
-  AlertCircle,
   Blocks,
   Globe,
   Hourglass,
-  Layers,
-  PauseCircle,
   Server,
-  Timer,
   UsersRound,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -436,45 +432,6 @@ export default function DashboardEjecutivoClient() {
             {/* Contexto: qué población suman estos números. */}
             <p className="text-[11px] text-slate-400">{alcance}</p>
 
-            {/* Panorama — el total y las señales que cruzan todos los estados.
-                "¿Cómo estoy hoy?" de un vistazo. Cada señal se puede apretar
-                para ver sus proyectos abajo. */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Kpi
-                icon={Layers}
-                tono={TONO.teal}
-                label="Proyectos activos"
-                numero={data.total_activos}
-                pie={`${data.total_proyectos} en total`}
-              />
-              <Kpi
-                icon={AlertCircle}
-                tono={TONO.rojo}
-                label="Vencidos"
-                numero={data.kpis.vencidos}
-                onClick={() => toggleSel({ kind: "kpi", bucket: "vencidos" })}
-                seleccionado={sel?.kind === "kpi" && sel.bucket === "vencidos"}
-              />
-              <Kpi
-                icon={Timer}
-                tono={TONO.ambar}
-                label="Vencen pronto"
-                sublabel="≤ 3 días"
-                numero={data.kpis.vencen_pronto}
-                onClick={() => toggleSel({ kind: "kpi", bucket: "vencen_pronto" })}
-                seleccionado={sel?.kind === "kpi" && sel.bucket === "vencen_pronto"}
-              />
-              <Kpi
-                icon={PauseCircle}
-                tono={TONO.gris}
-                label="Detenidos"
-                sublabel="pausados o bloqueados"
-                numero={data.kpis.bloqueados}
-                onClick={() => toggleSel({ kind: "kpi", bucket: "bloqueados" })}
-                seleccionado={sel?.kind === "kpi" && sel.bucket === "bloqueados"}
-              />
-            </div>
-
             {/* Por tipo de proyecto — Web / SaaS-ERP / mixto. Cuántos proyectos
                 del período hay de cada tipo; apretá uno para verlos en la tabla
                 de abajo. El desglose sale de la misma cartera que el resto. */}
@@ -576,6 +533,37 @@ export default function DashboardEjecutivoClient() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </Card>
+
+            {/* Por programador — nombre + total de proyectos del período
+                (activos + entregados, sin cancelados). Va con el resto de las
+                cards; al apretar uno se baja a la tabla ya filtrada. */}
+            <Card>
+              <CardTitle>Por programador</CardTitle>
+              {data.tecnicos_resumen.length === 0 ? (
+                <p className="text-sm text-slate-400">Sin programadores con proyectos.</p>
+              ) : (
+                <div
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}
+                >
+                  {data.tecnicos_resumen.map((t) => (
+                    <Kpi
+                      key={t.usuario_id}
+                      icon={UsersRound}
+                      tono={TONO.teal}
+                      label={nombreCapitular(t.nombre)}
+                      numero={t.total}
+                      pie="proyectos"
+                      onClick={() => {
+                        toggleSel({ kind: "tecnico", id: t.usuario_id });
+                        tablaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      seleccionado={sel?.kind === "tecnico" && sel.id === t.usuario_id}
+                    />
+                  ))}
                 </div>
               )}
             </Card>
@@ -687,37 +675,6 @@ export default function DashboardEjecutivoClient() {
                 )}
               </Card>
             </div>
-
-            {/* Por programador — nombre + total de proyectos del período
-                (activos + entregados, sin cancelados). Por ahora sólo el total:
-                después le damos vida (click para filtrar, más métricas). */}
-            <Card>
-              <CardTitle>Por programador</CardTitle>
-              {data.tecnicos_resumen.length === 0 ? (
-                <p className="text-sm text-slate-400">Sin programadores con proyectos.</p>
-              ) : (
-                <div
-                  className="grid gap-3"
-                  style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}
-                >
-                  {data.tecnicos_resumen.map((t) => (
-                    <Kpi
-                      key={t.usuario_id}
-                      icon={UsersRound}
-                      tono={TONO.teal}
-                      label={nombreCapitular(t.nombre)}
-                      numero={t.total}
-                      pie="proyectos"
-                      onClick={() => {
-                        toggleSel({ kind: "tecnico", id: t.usuario_id });
-                        tablaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                      }}
-                      seleccionado={sel?.kind === "tecnico" && sel.id === t.usuario_id}
-                    />
-                  ))}
-                </div>
-              )}
-            </Card>
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-400">
               <span>

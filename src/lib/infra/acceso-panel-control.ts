@@ -11,8 +11,24 @@
  * permiso — el permiso lo aplican la página y la API en el servidor, donde el
  * correo sale de la sesión de Supabase y no de nada que mande el navegador.
  */
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
+
 const PERMITIDOS = new Set(["alanayalapsn@gmail.com"]);
 
+/**
+ * Acceso final: los correos de la lista **o** cualquier administrador del ERP
+ * (`admin`, `administrador`, `super_admin`). El rol sale del catálogo
+ * `usuarios`, que sólo se lee en el servidor; en el sidebar se pasa el rol que
+ * ya tiene cargado, y si no lo tiene, el ítem simplemente no se muestra.
+ */
+export function puedeEntrarAlPanelControl(
+  email: string | null | undefined,
+  rol: string | null | undefined
+): boolean {
+  return puedeVerPanelControl(email) || esRolAdminEmpresaOGlobal(rol);
+}
+
+/** Sólo la lista de correos habilitados a mano. */
 export function puedeVerPanelControl(email: string | null | undefined): boolean {
   const e = email?.trim().toLowerCase();
   if (!e) return false;

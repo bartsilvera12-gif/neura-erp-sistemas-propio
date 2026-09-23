@@ -49,7 +49,7 @@ import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { getCurrentUser } from "@/lib/auth";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
-import { puedeVerPanelControl } from "@/lib/infra/acceso-panel-control";
+import { puedeEntrarAlPanelControl } from "@/lib/infra/acceso-panel-control";
 import { supabase } from "@/lib/supabase";
 import type { ModuloEmpresa } from "@/lib/empresas/actions";
 import { getFavoritos, toggleFavorito } from "@/lib/favorites";
@@ -350,16 +350,18 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
 
 /**
  * ¿Se muestra este ítem? Para todos vale el permiso de módulo; "Panel de
- * Control" es la excepción: va por correo y no lo ve nadie más, ni siquiera un
- * super admin. Esconder el ítem no es el permiso — la página y la API lo
- * vuelven a comprobar en el servidor.
+ * Control" es la excepción: no es un módulo de empresa, lo ven los
+ * administradores del ERP y los correos habilitados a mano. Esconder el ítem no
+ * es el permiso — la página y la API lo vuelven a comprobar en el servidor.
  */
 function esItemVisible(
   item: MenuItem,
   access: (slug: string) => boolean,
-  email: string | null
+  email: string | null,
+  rol: string | null,
+  esSuperAdmin: boolean
 ): boolean {
-  if (item.key === "panel_control") return puedeVerPanelControl(email);
+  if (item.key === "panel_control") return esSuperAdmin || puedeEntrarAlPanelControl(email, rol);
   return access(item.slug);
 }
 
@@ -561,8 +563,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const [collapsedFamilies, setCollapsedFamilies] = useState<Record<string, boolean>>({});
   const [cargando, setCargando] = useState(true);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
-  /** Correo de la sesión: sólo lo usa el ítem "Panel de Control". */
+  /** Correo y rol de la sesión: sólo los usa el ítem "Panel de Control". */
   const [emailSesion, setEmailSesion] = useState<string | null>(null);
+  const [rolSesion, setRolSesion] = useState<string | null>(null);
   /** Filtro visual del menú (no altera permisos ni rutas). */
   const [menuSearchQuery, setMenuSearchQuery] = useState("");
   const { setSidebarReady } = useBoot();
@@ -600,6 +603,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           setModulos([]);
           setEsSuperAdmin(false);
           setEmailSesion(null);
+          setRolSesion(null);
           return;
         }
         setEmailSesion(session.user.email ?? null);
@@ -627,6 +631,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         if (!superA) {
           try {
             const cu = await getCurrentUser();
+            setRolSesion(cu?.rol ?? null);
             if ((cu?.rol ?? "").trim() === "super_admin") {
               superA = true;
               const mr = await fetchWithSupabaseSession("/api/admin/modulos", { cache: "no-store" });
@@ -694,7 +699,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const modulosSlugs = new Set(modulos.map((m) => m.slug));
   const hasAccess = (slug: string) =>
     slug === "panel_control"
-      ? puedeVerPanelControl(emailSesion)
+      ? esSuperAdmin || puedeEntrarAlPanelControl(emailSesion, rolSesion)
       : canAccessSidebarSlug(slug, modulosSlugs, esSuperAdmin);
 
   const isActive = (slug: string, href: string) => {
@@ -723,10 +728,10 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     return MENU_STRUCTURE.filter(
       (item) =>
         favoritos.includes(item.key) &&
-        esItemVisible(item, access, emailSesion) &&
+        esItemVisible(item, access, emailSesion, rolSesion, esSuperAdmin) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
-  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion]);
+  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion, rolSesion]);
 
   const mainItemsFiltered = useMemo(() => {
     const slugs = new Set(modulos.map((m) => m.slug));
@@ -734,10 +739,10 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     return MENU_STRUCTURE.filter(
       (item) =>
         !favoritos.includes(item.key) &&
-        esItemVisible(item, access, emailSesion) &&
+        esItemVisible(item, access, emailSesion, rolSesion, esSuperAdmin) &&
         menuItemMatchesQuery(item, menuSearchQuery)
     );
-  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion]);
+  }, [favoritos, menuSearchQuery, modulos, esSuperAdmin, emailSesion, rolSesion]);
 
   /** Agrupa `mainItemsFiltered` por familia (preservando acceso/búsqueda/favoritos ya aplicados). */
   const familiesToRender = useMemo(() => {

@@ -159,7 +159,7 @@ type CatalogoCliente = { id: string; empresa?: string | null; nombre_contacto?: 
  * Con un TTL corto, reabrir es instantáneo y se refresca solo pasado el tiempo.
  */
 type CatalogosDetalle = {
-  estados: { id: string; nombre: string }[];
+  estados: { id: string; nombre: string; codigo?: string | null; tipo_sla?: string | null }[];
   tipos: { id: string; nombre: string }[];
   usuarios: UsuarioActivo[];
   modulos: ModuloCatalogo[];
@@ -1180,7 +1180,9 @@ export default function ProyectoDetalleInner({
         }
       : null
   );
-  const [estados, setEstados] = useState<{ id: string; nombre: string }[]>([]);
+  const [estados, setEstados] = useState<
+    { id: string; nombre: string; codigo?: string | null; tipo_sla?: string | null }[]
+  >([]);
   const [tipos, setTipos] = useState<{ id: string; nombre: string }[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioActivo[]>([]);
   const [modulosCatalogo, setModulosCatalogo] = useState<ModuloCatalogo[]>([]);
@@ -1274,6 +1276,12 @@ export default function ProyectoDetalleInner({
   // Confirmación efímera tras guardar: el botón se apaga solo (queda limpio),
   // pero sin un "Guardado ✓" el usuario no sabía si se aplicó.
   const [guardadoOk, setGuardadoOk] = useState(false);
+  // Popup obligatorio al pasar a "Pausado": el motivo queda como comentario y
+  // recién ahí se aplica el cambio de estado (que va al historial como siempre).
+  const [pausaModal, setPausaModal] = useState<{ estadoId: string } | null>(null);
+  const [pausaMotivo, setPausaMotivo] = useState("");
+  const [pausaGuardando, setPausaGuardando] = useState(false);
+  const [pausaError, setPausaError] = useState<string | null>(null);
   // Versión (updated_at) del proyecto tal como se cargó: viaja en el PATCH para
   // el locking optimista (#7). Se refresca con la respuesta de cada guardado y
   // en cada recarga, así dos guardados seguidos no se auto-chocan.
@@ -1590,7 +1598,10 @@ export default function ProyectoDetalleInner({
         // Para poder cambiar el tipo de proyecto desde la ficha.
         fetchWithSupabaseSession("/api/proyectos/tipos", { cache: "no-store" }),
       ]);
-      const j = (await r.json()) as { success?: boolean; data?: { id: string; nombre: string }[] };
+      const j = (await r.json()) as {
+        success?: boolean;
+        data?: { id: string; nombre: string; codigo?: string | null; tipo_sla?: string | null }[];
+      };
       const jUsers = (await rUsers.json()) as { usuarios?: UsuarioActivo[] };
       const jModulos = (await rModulos.json()) as { success?: boolean; data?: ModuloCatalogo[] };
       const jTipos = (await rTipos.json().catch(() => null)) as
@@ -2471,6 +2482,65 @@ export default function ProyectoDetalleInner({
     }
   }
 
+  // ¿El estado destino es de tipo "pausado"? (mismo criterio que el resto: por
+  // tipo_sla; con fallback al código por si algún catálogo no lo trae).
+  function esEstadoPausado(estadoId: string): boolean {
+    const e = estados.find((x) => x.id === estadoId);
+    return (e?.tipo_sla ?? "") === "pausado" || (e?.codigo ?? "") === "pausado";
+  }
+
+  // Punto único por donde pasa el cambio de estado desde el selector: si va a
+  // Pausado, abre el popup obligatorio en vez de cambiar directo.
+  function intentarCambiarEstado(estadoId: string) {
+    const actual = String(proyecto?.estado_id ?? "");
+    if (!estadoId || estadoId === actual) return;
+    if (esEstadoPausado(estadoId)) {
+      setPausaMotivo("");
+      setPausaError(null);
+      setPausaModal({ estadoId });
+      return;
+    }
+    void cambiarEstado(estadoId);
+  }
+
+  async function confirmarPausa() {
+    if (!pausaModal || pausaGuardando) return;
+    const motivo = pausaMotivo.trim();
+    if (!motivo) {
+      setPausaError("Escribí el motivo de la pausa.");
+      return;
+    }
+    setPausaGuardando(true);
+    setPausaError(null);
+    try {
+      // El comentario va a un canal que el que pausa pueda ver.
+      const canales = data?.comentarios_canales_visibles ?? [];
+      const canal = canales.includes("comercial")
+        ? "comercial"
+        : canales.includes("desarrollo")
+          ? "desarrollo"
+          : "comercial";
+      const resCom = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comentario: `⏸ Pausa: ${motivo}`, canal }),
+      });
+      const jCom = (await resCom.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (!resCom.ok || !jCom?.success) {
+        setPausaError(jCom?.error ?? "No se pudo guardar el comentario.");
+        return;
+      }
+      // Recién con el motivo guardado se aplica el cambio de estado (historial).
+      await cambiarEstado(pausaModal.estadoId);
+      setPausaModal(null);
+      setPausaMotivo("");
+    } catch (e) {
+      setPausaError(e instanceof Error ? e.message : "No se pudo pausar.");
+    } finally {
+      setPausaGuardando(false);
+    }
+  }
+
   async function cambiarTipo(tipoId: string) {
     const actual = String((proyecto as { tipo_id?: string } | undefined)?.tipo_id ?? "");
     if (!tipoId || tipoId === actual) return;
@@ -2693,7 +2763,7 @@ export default function ProyectoDetalleInner({
             className="min-w-[180px]"
             ariaLabel="Cambiar estado del proyecto"
             value={String(proyecto.estado_id ?? "")}
-            onChange={(v) => void cambiarEstado(v)}
+            onChange={(v) => intentarCambiarEstado(v)}
             options={estados.map((e) => ({ value: e.id, label: e.nombre }))}
           />
           {/* Sub-etapa de desarrollo: siempre visible; sólo editable en «En desarrollo».
@@ -4498,6 +4568,85 @@ export default function ProyectoDetalleInner({
           <HistorialLinea eventos={(data.historial ?? []) as Record<string, unknown>[]} />
         ) : null}
       </div>
+
+      {pausaModal ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Cerrar"
+            className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+            onClick={() => { if (!pausaGuardando) setPausaModal(null); }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="proyecto-pausa-titulo"
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl"
+          >
+            <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-amber-400/80 to-amber-300/40" />
+            <div className="flex items-start gap-3 border-b border-slate-100 px-5 pb-4 pt-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 ring-1 ring-amber-200">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="proyecto-pausa-titulo" className="text-base font-semibold text-slate-900">
+                  Pausar proyecto
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Dejá acotado por qué se pausa. Queda como comentario y el cambio va al historial.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => { if (!pausaGuardando) setPausaModal(null); }}
+                className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+                disabled={pausaGuardando}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 px-5 py-4">
+              <label className="block text-xs font-medium text-slate-600">
+                Motivo de la pausa <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={pausaMotivo}
+                onChange={(e) => { setPausaMotivo(e.target.value); if (pausaError) setPausaError(null); }}
+                placeholder="Ej.: falta que el cliente mande el logo y los textos."
+                className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                disabled={pausaGuardando}
+              />
+              {pausaError ? <p className="text-xs text-red-600">{pausaError}</p> : null}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => { if (!pausaGuardando) setPausaModal(null); }}
+                disabled={pausaGuardando}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarPausa()}
+                disabled={pausaGuardando || !pausaMotivo.trim()}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+              >
+                {pausaGuardando ? "Pausando…" : "Pausar proyecto"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {deleteModalOpen ? (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">

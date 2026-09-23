@@ -8,8 +8,10 @@ import {
   ChevronDown,
   ChevronUp,
   Printer,
+  Receipt,
   SlidersHorizontal,
 } from "lucide-react";
+import { RecibosFacturaModal } from "@/components/recibos/RecibosFacturaModal";
 import { ModalCambioPlanGestion } from "@/components/gestion-clientes/ModalCambioPlanGestion";
 import { ModalHistorialClienteGestion } from "@/components/gestion-clientes/ModalHistorialClienteGestion";
 import { ModalContactosCliente } from "@/components/gestion-clientes/ModalContactosCliente";
@@ -154,11 +156,16 @@ function FacturaRowAccionesSifen({
   puedeCobrar,
   onCobrar,
   sifenAprobado,
+  tienePago,
+  onVerRecibos,
 }: {
   facturaId: string;
   sifenAprobado: boolean;
   puedeCobrar: boolean;
   onCobrar?: () => void;
+  /** La factura tiene al menos un cobro registrado (saldo < monto o pagada). */
+  tienePago: boolean;
+  onVerRecibos?: () => void;
 }) {
   const btnBase =
     "inline-flex items-center justify-center w-8 h-8 rounded-lg border border-transparent transition-colors text-slate-500 hover:border-[#4FAEB2]/40 hover:text-[#3F8E91] hover:bg-[#4FAEB2]/10";
@@ -166,6 +173,20 @@ function FacturaRowAccionesSifen({
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
+      {tienePago && onVerRecibos ? (
+        <button
+          type="button"
+          onClick={onVerRecibos}
+          className={btnBase}
+          title="Recibos de esta factura"
+        >
+          <Receipt className="w-4 h-4" strokeWidth={1.75} />
+        </button>
+      ) : (
+        <button type="button" disabled title="Sin cobros registrados" className={`${btnBase} ${disabledCls}`}>
+          <Receipt className="w-4 h-4" strokeWidth={1.75} />
+        </button>
+      )}
       {sifenAprobado ? (
         <a
           href={`/api/facturas/${facturaId}/sifen/kude`}
@@ -713,6 +734,7 @@ function GestionClientesPageInner() {
   const [modalHistorialCliente, setModalHistorialCliente] = useState(false);
   const [modalContactos, setModalContactos] = useState(false);
   const [facturaCobroModal, setFacturaCobroModal] = useState<Factura | null>(null);
+  const [recibosFactura, setRecibosFactura] = useState<Factura | null>(null);
   const [facturasDetalleAbierto, setFacturasDetalleAbierto] = useState(true);
   const [panelFiltrosFacturas, setPanelFiltrosFacturas] = useState(false);
   /** Evita carrera: al limpiar, `?cliente=` aún no se quitó y el efecto URL→estado reabría la ficha. */
@@ -1319,6 +1341,8 @@ function GestionClientesPageInner() {
                                     sifenAprobado={sifenPorFactura[f.id]?.estado_sifen === "aprobado"}
                                     puedeCobrar={facturaPermiteCobro(f)}
                                     onCobrar={() => setFacturaCobroModal(f)}
+                                    tienePago={f.saldo < f.monto || f._estadoEfectivo === "Pagado"}
+                                    onVerRecibos={() => setRecibosFactura(f)}
                                   />
                                 </td>
                               </tr>
@@ -1414,6 +1438,20 @@ function GestionClientesPageInner() {
         onExito={async () => {
           if (selected) getFacturas(selected.id).then(setFacturas);
         }}
+      />
+
+      <RecibosFacturaModal
+        open={!!recibosFactura}
+        factura={
+          recibosFactura
+            ? {
+                id: recibosFactura.id,
+                numero_factura: recibosFactura.numero_factura,
+                moneda: recibosFactura.moneda,
+              }
+            : null
+        }
+        onClose={() => setRecibosFactura(null)}
       />
     </div>
   );

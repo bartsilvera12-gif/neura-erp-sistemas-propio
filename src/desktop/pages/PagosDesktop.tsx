@@ -734,7 +734,7 @@ export default function PagosPage() {
               <table className="w-full min-w-[1040px] table-auto border-separate border-spacing-0 text-sm">
                 <thead className="bg-slate-50/80">
                   <tr>
-                    {["Factura", "Cliente", "Tipo de servicio", "Vendedor", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora"].map(
+                    {["Factura", "Cliente", "Tipo de servicio", "Vendedor", "Monto pagado", "Fecha", "Método", "Usuario", "Fecha y hora", "Recibo"].map(
                       (h) => (
                         <th
                           key={h}
@@ -793,15 +793,27 @@ export default function PagosPage() {
                       >
                         {p.usuario_nombre}
                       </td>
-                      <td className="min-w-[6rem] px-3 py-3 text-sm text-slate-500 last:pr-5 sm:px-4 [overflow-wrap:anywhere] break-words">
+                      <td className="min-w-[6rem] px-3 py-3 text-sm text-slate-500 sm:px-4 [overflow-wrap:anywhere] break-words">
                         {formatFechaHora(p.fecha_registro)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-sm last:pr-5 sm:px-4">
+                        <a
+                          href={`/api/pagos/${p.id}/recibo`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Ver / imprimir recibo de este pago"
+                          className="inline-flex items-center gap-1.5 rounded-md border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-2.5 py-1 text-[11px] font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/20"
+                        >
+                          <IconReceipt className="h-3.5 w-3.5" />
+                          Recibo
+                        </a>
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={8} className="p-0">
+                    <td colSpan={9} className="p-0">
                       <div
                         className="flex w-full min-w-0 flex-col items-stretch gap-2 border-t-2 border-slate-100 bg-slate-50/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
                         role="status"

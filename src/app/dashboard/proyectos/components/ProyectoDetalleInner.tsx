@@ -1271,6 +1271,9 @@ export default function ProyectoDetalleInner({
   const [clientes, setClientes] = useState<{ id: string; empresa?: string | null; nombre_contacto?: string | null }[]>([]);
   const [datosSnapshot, setDatosSnapshot] = useState("");
   const [guardandoDatos, setGuardandoDatos] = useState(false);
+  // Confirmación efímera tras guardar: el botón se apaga solo (queda limpio),
+  // pero sin un "Guardado ✓" el usuario no sabía si se aplicó.
+  const [guardadoOk, setGuardadoOk] = useState(false);
   // Versión (updated_at) del proyecto tal como se cargó: viaja en el PATCH para
   // el locking optimista (#7). Se refresca con la respuesta de cada guardado y
   // en cada recarga, así dos guardados seguidos no se auto-chocan.
@@ -1784,6 +1787,11 @@ export default function ProyectoDetalleInner({
     // El formulario se marca limpio acá, con lo que el usuario acaba de escribir,
     // y NO se espera la recarga: el botón se apaga apenas responde el PATCH.
     setDatosSnapshot(datosFirma);
+
+    // Aviso de éxito por unos segundos (el botón se apaga y sin esto no había
+    // señal de que se guardó).
+    setGuardadoOk(true);
+    window.setTimeout(() => setGuardadoOk(false), 3000);
 
     // Reconciliación en segundo plano: trae historial, SLA y lo que el servidor
     // haya derivado del cambio. Antes esto se esperaba, y entre la recarga del
@@ -2952,14 +2960,24 @@ export default function ProyectoDetalleInner({
                   <h2 className="text-sm font-semibold text-slate-900">Datos del proyecto</h2>
                 </div>
               </div>
-              <button
-                type="button"
-                className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
-                disabled={!datosDirty || guardandoDatos}
-                onClick={() => void guardarDatos()}
-              >
-                {guardandoDatos ? "Guardando…" : "Guardar datos"}
-              </button>
+              <div className="flex items-center gap-2">
+                {guardadoOk ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                    Guardado
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3F8E91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                  disabled={!datosDirty || guardandoDatos}
+                  onClick={() => void guardarDatos()}
+                >
+                  {guardandoDatos ? "Guardando…" : "Guardar datos"}
+                </button>
+              </div>
             </div>
 
             {esWeb ? (

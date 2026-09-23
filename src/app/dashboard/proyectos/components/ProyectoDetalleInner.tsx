@@ -3243,6 +3243,7 @@ export default function ProyectoDetalleInner({
                       modulos={modulosCatalogo}
                       selectedIds={saasModuloIds}
                       onChange={updateSaasModulos}
+                      layout="chips"
                     />
                   </div>
                 </div>

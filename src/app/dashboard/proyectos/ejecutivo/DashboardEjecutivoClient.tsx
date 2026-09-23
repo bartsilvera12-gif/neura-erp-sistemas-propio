@@ -115,6 +115,7 @@ type Data = {
     total: number;
     entregados: number;
     en_proceso: number;
+    pausados: number;
   }[];
   bloqueos_por_tipo: { tipo: string; label: string; cantidad: number }[];
   bloqueos_detalle: {
@@ -596,6 +597,8 @@ export default function DashboardEjecutivoClient() {
                                 <span className="text-emerald-600">{t.entregados} entregados</span>
                                 <span className="text-slate-300">·</span>
                                 <span className="text-[#3F8E91]">{t.en_proceso} en proceso</span>
+                                <span className="text-slate-300">·</span>
+                                <span className="text-amber-600">{t.pausados} pausados</span>
                               </div>
                             </div>
                           </div>

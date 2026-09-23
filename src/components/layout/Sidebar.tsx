@@ -311,7 +311,11 @@ function useOcultosSoporte(activo: boolean): Set<string> {
 }
 
 const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
-  { id: "inicio", title: "Inicio", itemKeys: ["dashboard", "tableros", "chat_interno", "gerencia"] },
+  {
+    id: "inicio",
+    title: "Inicio",
+    itemKeys: ["dashboard", "panel_control", "tableros", "chat_interno", "gerencia"],
+  },
   {
     id: "comercial",
     title: "Comercial",
@@ -341,11 +345,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Marketing y Automatización",
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  {
-    id: "administracion",
-    title: "Administración",
-    itemKeys: ["usuarios", "guardias", "configuracion", "panel_control"],
-  },
+  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion"] },
 ];
 
 /**

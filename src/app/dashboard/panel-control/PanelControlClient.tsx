@@ -28,6 +28,7 @@ import {
   type SaludServidor,
   type SaludServidorItem,
 } from "@/lib/infra/salud-tipos";
+import { servicioSilenciado } from "@/lib/infra/servicios-silenciados";
 
 /**
  * Estado de infraestructura: las tres máquinas de un vistazo.
@@ -119,14 +120,28 @@ function horaCorta(d: Date): string {
   return d.toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-/** Un contenedor cuenta como incidente si no está corriendo o si se reporta enfermo. */
-function contenedorCaido(c: EstadoContenedor): boolean {
+/** Apagado a propósito: no se cuenta como incidente aunque figure caído. */
+function contenedorEnPausa(c: EstadoContenedor): boolean {
+  return servicioSilenciado(c.name);
+}
+
+/** No está corriendo o se reporta enfermo — sin mirar si está silenciado. */
+function contenedorAbajo(c: EstadoContenedor): boolean {
   const state = (c.state ?? "").toLowerCase();
   const health = (c.health ?? "").toLowerCase();
   return state !== "running" || health === "unhealthy";
 }
 
+/**
+ * Un contenedor cuenta como incidente si está abajo Y no está en la lista de
+ * silenciados. Es el único criterio que mueve semáforos y contadores.
+ */
+function contenedorCaido(c: EstadoContenedor): boolean {
+  return contenedorAbajo(c) && !contenedorEnPausa(c);
+}
+
 function contenedorSemaforo(c: EstadoContenedor): Semaforo {
+  if (contenedorEnPausa(c)) return "gris";
   const state = (c.state ?? "").toLowerCase();
   const health = (c.health ?? "").toLowerCase();
   if (state !== "running" || health === "unhealthy") return "rojo";
@@ -205,7 +220,14 @@ function normalizar(s: string): string {
 
 /** El puntito de estado con su halo: 3 px del mismo color, bien tenue. */
 function PuntoEstado({ tono }: { tono: Semaforo }) {
-  const color = tono === "rojo" ? "225, 29, 72" : tono === "amarillo" ? "245, 158, 11" : "16, 185, 129";
+  const color =
+    tono === "rojo"
+      ? "225, 29, 72"
+      : tono === "amarillo"
+        ? "245, 158, 11"
+        : tono === "gris"
+          ? "148, 163, 184"
+          : "16, 185, 129";
   return (
     <span
       aria-hidden
@@ -218,21 +240,26 @@ function PuntoEstado({ tono }: { tono: Semaforo }) {
 function TileServicio({ c }: { c: EstadoContenedor }) {
   const tono = contenedorSemaforo(c);
   const caido = tono === "rojo";
+  const enPausa = tono === "gris";
   return (
     <li
       className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 ${
-        caido ? "border-rose-100 bg-rose-50/70" : "border-slate-200 bg-white"
+        caido ? "border-rose-100 bg-rose-50/70" : enPausa ? "border-slate-200 bg-slate-50" : "border-slate-200 bg-white"
       }`}
     >
       <PuntoEstado tono={tono} />
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-[13.5px] font-medium ${caido ? "text-rose-800" : "text-slate-700"}`}>
+        <p
+          className={`truncate text-[13.5px] font-medium ${
+            caido ? "text-rose-800" : enPausa ? "text-slate-500" : "text-slate-700"
+          }`}
+        >
           {nombreLindo(c.name)}
         </p>
         {c.domain ? <p className="truncate text-[11px] text-slate-400">{c.domain}</p> : null}
       </div>
       <span className={`shrink-0 text-[11px] font-medium ${caido ? "text-rose-600" : "text-slate-400"}`}>
-        {caido ? "caído" : tono === "amarillo" ? "levantando" : "activo"}
+        {caido ? "caído" : enPausa ? "en pausa" : tono === "amarillo" ? "levantando" : "activo"}
       </span>
     </li>
   );
@@ -322,8 +349,13 @@ function ModalSistemas({
       )
     : containers;
   const conProblema = filtrados.filter(contenedorCaido).sort(porNombre);
-  const sanos = filtrados.filter((c) => !contenedorCaido(c)).sort(porNombre);
+  const enPausa = filtrados.filter(contenedorEnPausa).sort(porNombre);
+  const sanos = filtrados
+    .filter((c) => !contenedorCaido(c) && !contenedorEnPausa(c))
+    .sort(porNombre);
   const totalCaidos = containers.filter(contenedorCaido).length;
+  const totalEnPausa = containers.filter(contenedorEnPausa).length;
+  const totalSanos = containers.length - totalCaidos - totalEnPausa;
 
   // El diálogo sólo existe tras un click, así que el DOM ya está; igual se
   // comprueba por si alguna vez se renderiza en el servidor.
@@ -355,8 +387,9 @@ function ModalSistemas({
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[17px] font-bold text-slate-900">{titulo}</h2>
             <p className="mt-0.5 text-xs text-slate-400">
-              {containers.length} servicios · {containers.length - totalCaidos} funcionando
+              {containers.length} servicios · {totalSanos} funcionando
               {totalCaidos > 0 ? ` · ${totalCaidos} con problema` : ""}
+              {totalEnPausa > 0 ? ` · ${totalEnPausa} en pausa` : ""}
             </p>
           </div>
           <button
@@ -412,6 +445,17 @@ function ModalSistemas({
                   </ul>
                 </section>
               ) : null}
+
+              {enPausa.length > 0 ? (
+                <section className="space-y-3">
+                  <SeparadorGrupo texto="En pausa" tono="neutro" />
+                  <ul className="grid gap-2.5 sm:grid-cols-2">
+                    {enPausa.map((c, i) => (
+                      <TileServicio key={`pausa-${c.name}-${i}`} c={c} />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
             </div>
           )}
         </div>
@@ -461,6 +505,8 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
 
   const containers = Array.isArray(s.containers) ? s.containers : [];
   const caidos = containers.filter(contenedorCaido);
+  // Silenciados: se listan aparte y no cuentan como problema.
+  const pausados = containers.filter(contenedorEnPausa);
   const cleanup = s.cleanup;
 
   const detalleCaidos =
@@ -541,6 +587,9 @@ function TarjetaServidor({ item, now }: { item: SaludServidorItem; now: number }
                 {caidos.length > 0
                   ? `${containers.length} servicios · ${detalleCaidos} caído`
                   : `${containers.length} sistemas · todos arriba`}
+                {pausados.length > 0 ? (
+                  <span className="font-normal text-slate-400"> · {pausados.length} en pausa</span>
+                ) : null}
               </p>
               <button
                 type="button"

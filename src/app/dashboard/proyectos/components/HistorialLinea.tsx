@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
 import { TZ_PY, horaPY } from "@/lib/format/hora-py";
+import { msLaborables } from "@/lib/proyectos/reloj-laboral";
+import { formatDurationHuman } from "@/lib/proyectos/brief-data";
 
 /**
  * Historial del proyecto como línea de tiempo.
@@ -115,6 +117,15 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
   // alta del proyecto arriba). El usuario lo alterna con el botón de la cabecera.
   const [orden, setOrden] = useState<"desc" | "asc">("desc");
 
+  // Reloj en vivo para el estado actual: el "X min acá" se recalcula solo cada
+  // 30s (sin recargar la ficha). El cálculo es horario LABORAL, la misma unidad
+  // que el resto del historial, así que de noche o el fin de semana no sube.
+  const [ahoraMs, setAhoraMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setAhoraMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const porDia = useMemo(() => {
     // Se ordena tanto los días como los eventos dentro de cada día por
     // `entered_at`, en el sentido elegido.
@@ -197,6 +208,18 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
               // salida). Es el "estado actual": recién entrado, el tiempo laboral
               // acumulado es ~0, y mostrar "0s en este estado" confundía.
               const esEstadoActual = !h.exited_at;
+              // Tiempo laboral acumulado en el estado actual, recalculado en vivo
+              // contra `ahoraMs`. Bajo 1 min no se muestra número (solo "Estado
+              // actual"), para no mostrar un "0s"/"45s" que confunde.
+              const segActual = esEstadoActual
+                ? Math.floor(
+                    (msLaborables(
+                      String(h.entered_at ?? ""),
+                      new Date(ahoraMs).toISOString()
+                    ) ?? 0) / 1000
+                  )
+                : 0;
+              const duracionActual = segActual >= 60 ? formatDurationHuman(segActual) : "";
               // Color propio del estado destino (el que quedó en negrita).
               const palEstado = paletaEstado(
                 (h.estado_nuevo_nombre as string | undefined) ?? String(h.estado_nuevo_id ?? "")
@@ -301,7 +324,7 @@ export function HistorialLinea({ eventos }: { eventos: Evento[] }) {
                               {esEstadoActual ? (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-[#4FAEB2]/10 px-1.5 py-0.5 font-medium text-[#2F6E71]">
                                   Estado actual
-                                  {duracion && duracion !== "0s" ? ` · ${duracion} acá` : ""}
+                                  {duracionActual ? ` · ${duracionActual} acá` : ""}
                                 </span>
                               ) : duracion ? (
                                 <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">

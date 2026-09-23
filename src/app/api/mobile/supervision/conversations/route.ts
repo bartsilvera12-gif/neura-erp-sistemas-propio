@@ -68,6 +68,7 @@ export async function GET(request: Request) {
           contact_telefono: c.contact?.phone_number ?? null,
           queue_id: c.queue_id ?? null,
           last_message_from_me: c.last_message_from_me ?? null,
+          last_message_status: c.last_message_status ?? null,
         })),
       });
     } catch (e) {

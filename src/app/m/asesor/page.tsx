@@ -5,6 +5,7 @@ import Link from "next/link";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 import { attachmentCaptionForDisplay, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
 import { useAsesorInbox } from "@/shared/hooks/useAsesorInbox";
+import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import AsesorTabBar from "./AsesorTabBar";
 
 function shortTime(iso: string | null): string {
@@ -254,7 +255,14 @@ export default function MAsesorInboxPage() {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-[13px] text-slate-500">
-                          {c.last_message_from_me ? <span className="font-medium text-slate-400">Vos: </span> : null}
+                          {c.last_message_from_me ? (
+                            <MessageDeliveryTicks
+                              status={c.last_message_status}
+                              className={`mr-1 inline-block align-[-2px] ${
+                                (c.last_message_status ?? "") === "read" ? "text-sky-500" : "text-slate-400"
+                              }`}
+                            />
+                          ) : null}
                           {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                         </span>
                         {c.unread_count > 0 ? (

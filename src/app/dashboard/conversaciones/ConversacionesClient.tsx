@@ -3890,7 +3890,14 @@ export function ConversacionesClient({
                         </div>
                       </div>
                       <p className="mt-1 text-[12px] text-slate-500 truncate leading-snug">
-                        {c.last_message_from_me ? <span className="font-medium text-slate-400">Vos: </span> : null}
+                        {c.last_message_from_me ? (
+                          <MessageDeliveryTicks
+                            status={c.last_message_status}
+                            className={`mr-1 inline-block align-[-2px] ${
+                              (c.last_message_status ?? "") === "read" ? "text-sky-500" : "text-slate-400"
+                            }`}
+                          />
+                        ) : null}
                         {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                       </p>
                     </div>

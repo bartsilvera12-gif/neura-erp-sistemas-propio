@@ -149,6 +149,12 @@ export type InboxConversation = {
    * asesor. Sale de lo mismo que el turno, sin consultas extra.
    */
   last_message_from_me: boolean | null;
+  /**
+   * Estado de ENTREGA del último mensaje nuestro (sent/delivered/read/failed), para dibujar
+   * las tildes en la lista como WhatsApp. Null cuando no se pudo averiguar: ahí no se dibuja
+   * nada, en vez de mostrar una tilde que quizá no corresponde.
+   */
+  last_message_status: string | null;
   /** Flujo asignado (`chat_conversations.flow_code`), si existe. */
   flow_code: string | null;
   /** Nodo actual del motor (`chat_conversations.flow_current_node`), si existe. */
@@ -913,6 +919,31 @@ async function fetchChatConversationsUnsafe(
     }
   }
 
+  // Estado del último mensaje NUESTRO, para las tildes de la lista. Una sola consulta para
+  // todos los chats (no una por chat): se traen los últimos salientes y se toma el más nuevo
+  // de cada conversación. Si alguno queda afuera del tope, su chat no muestra tilde.
+  const estadoUltimoPorConv: Record<string, string | null> = {};
+  const idsNuestros = convIdList.filter((id) => clientTurnById[id] != null);
+  if (idsNuestros.length > 0) {
+    const { data: msgRows, error: msgErr } = await supabase
+      .from("chat_messages")
+      .select("conversation_id, from_me, whatsapp_delivery_status, created_at")
+      .eq("empresa_id", empresa_id)
+      .in("conversation_id", idsNuestros)
+      .eq("from_me", true)
+      .order("created_at", { ascending: false })
+      .limit(Math.min(2000, idsNuestros.length * 5));
+    if (msgErr) {
+      console.warn("[fetchChatConversations] estado último mensaje:", msgErr.message);
+    } else {
+      for (const r of (msgRows ?? []) as { conversation_id?: string; whatsapp_delivery_status?: string | null }[]) {
+        const cid = String(r.conversation_id ?? "").trim();
+        if (!cid || cid in estadoUltimoPorConv) continue; // el primero es el más nuevo
+        estadoUltimoPorConv[cid] = r.whatsapp_delivery_status ?? null;
+      }
+    }
+  }
+
   const channelIds = [
     ...new Set(
       list
@@ -1148,6 +1179,7 @@ async function fetchChatConversationsUnsafe(
         if (awaitingById[id]) return false; // último = del cliente → esperamos nosotros
         return null; // sin datos: la UI no muestra nada
       })(),
+      last_message_status: estadoUltimoPorConv[row.id as string] ?? null,
     };
   });
   return { conversations: mapped, base_row_count: totalAfterQuery };

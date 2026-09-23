@@ -15,6 +15,8 @@ export type AsesorConv = {
   queue_id?: string | null;
   /** El último mensaje lo mandamos nosotros (para el "Vos:" de la lista). */
   last_message_from_me?: boolean | null;
+  /** Estado de entrega de ese último mensaje nuestro, para las tildes. */
+  last_message_status?: string | null;
 };
 
 export type AsesorCola = { id: string; nombre: string };

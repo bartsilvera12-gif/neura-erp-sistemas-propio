@@ -4,6 +4,7 @@ import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
+import { isErpRolVendedor } from "@/lib/usuarios/erp-rol-normalize";
 import { resolveEffectiveModules } from "@/lib/modulos/resolve-effective-modules";
 
 export type ProyectosApiAuthOk = {
@@ -26,6 +27,34 @@ export type ProyectosApiAuth =
  */
 export function puedeEliminarProyectos(auth: ProyectosApiAuthOk): boolean {
   return auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol);
+}
+
+/**
+ * ¿El usuario es un comercial/vendedor "puro" y por lo tanto SOLO LECTURA sobre
+ * el flujo del proyecto? El comercial abre la ficha para coordinar (ver datos,
+ * comentarios y archivos), pero no maneja el tablero: no cambia Tipo, Estado ni
+ * Sub-etapa, ni elimina.
+ *
+ * Se resuelve por ROL (vendedor/asesor/comercial), nunca por `usuarios.area`
+ * (poco confiable). Un admin, PM, QA o técnico NO es solo-lectura aunque además
+ * tenga rol de vendedor: los flags funcionales ganan.
+ */
+export async function esComercialSoloLectura(auth: ProyectosApiAuthOk): Promise<boolean> {
+  if (auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol)) return false;
+  if (!isErpRolVendedor(auth.rol)) return false;
+  const catalog = createServiceRoleClient();
+  const { data } = await catalog
+    .from("usuarios")
+    .select("es_project_manager, es_qa, es_tecnico")
+    .eq("id", auth.usuarioCatalogId)
+    .maybeSingle();
+  const u = (data ?? {}) as {
+    es_project_manager?: boolean | null;
+    es_qa?: boolean | null;
+    es_tecnico?: boolean | null;
+  };
+  if (u.es_project_manager === true || u.es_qa === true || u.es_tecnico === true) return false;
+  return true;
 }
 
 export async function requireProyectosApiAccess(request: Request): Promise<ProyectosApiAuth> {

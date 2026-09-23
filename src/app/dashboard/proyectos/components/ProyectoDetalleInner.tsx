@@ -77,6 +77,8 @@ export type DetalleResp = {
   current_user_id?: string | null;
   current_user_rol?: string | null;
   current_user_puede_eliminar?: boolean;
+  /** `true` para el comercial (rol vendedor puro): ficha en solo lectura del flujo. */
+  current_user_solo_lectura?: boolean;
   /** Canales de comentarios que este usuario puede ver/escribir (comercial/desarrollo). */
   comentarios_canales_visibles?: string[];
 };
@@ -2652,6 +2654,22 @@ export default function ProyectoDetalleInner({
             <span className="text-slate-600">Avance {data.avance_pct ?? "—"}%</span>
           </p>
         </div>
+        {data.current_user_solo_lectura ? (
+          // Comercial (solo lectura): ve en qué estado/sub-etapa está el proyecto,
+          // pero no maneja el flujo. Sin Tipo, sin cambiar Estado, sin Eliminar.
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700">
+              {estados.find((e) => e.id === String(proyecto.estado_id ?? ""))?.nombre ??
+                (proyecto as { proyecto_estado?: { nombre?: string } }).proyecto_estado?.nombre ??
+                "—"}
+            </span>
+            {subestadoActual ? (
+              <span className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-600">
+                {subestadosDisponibles.find((s) => s.codigo === subestadoActual)?.nombre ?? subestadoActual}
+              </span>
+            ) : null}
+          </div>
+        ) : (
         <div className="flex flex-wrap items-center gap-2">
           {tipos.length > 0 ? (
             <FancySelect
@@ -2708,6 +2726,7 @@ export default function ProyectoDetalleInner({
             );
           })()}
         </div>
+        )}
       </div>
 
       {err ? (

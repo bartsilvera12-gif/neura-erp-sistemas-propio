@@ -27,7 +27,11 @@ import {
 import { esEstadoPausado } from "@/lib/proyectos/estados-tablero";
 import { msLaborables } from "@/lib/proyectos/reloj-laboral";
 import { computeSlaTotales, type HistorialRow } from "@/lib/proyectos/sla-from-historial";
-import { puedeEliminarProyectos, requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
+import {
+  esComercialSoloLectura,
+  puedeEliminarProyectos,
+  requireProyectosApiAccess,
+} from "@/lib/proyectos/proyectos-auth";
 import { patchAsignacionQa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { PROYECTOS_BUCKET } from "@/lib/proyectos/proyectos-archivos-storage";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
@@ -178,6 +182,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         current_user_id: auth.usuarioCatalogId,
         current_user_rol: auth.rol ?? null,
         current_user_puede_eliminar: puedeEliminarProyectos(auth),
+        // El comercial (rol vendedor puro) abre la ficha para coordinar pero no
+        // maneja el flujo: la UI le esconde Tipo/Estado/Sub-etapa y Eliminar.
+        current_user_solo_lectura: await esComercialSoloLectura(auth),
       })
     );
   } catch (e) {
@@ -208,6 +215,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json(errorResponse("Usá POST /api/proyectos/[id]/cambiar-estado para mover estado"), {
         status: 400,
       });
+    }
+
+    // Defensa en el servidor: el comercial (solo lectura) no cambia Tipo ni
+    // Sub-etapa aunque llame a la API a mano. La consulta al catálogo sólo corre
+    // si el body toca justamente esos campos.
+    if (("tipo_id" in body || "subestado_desarrollo" in body) && (await esComercialSoloLectura(auth))) {
+      return NextResponse.json(
+        errorResponse("Tu perfil comercial no puede cambiar el tipo ni la sub-etapa del proyecto."),
+        { status: 403 }
+      );
     }
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);

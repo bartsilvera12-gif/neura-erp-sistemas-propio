@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Repeat } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Repeat, Tags } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -91,6 +91,14 @@ const REPORTES: ReporteCard[] = [
       "Efectividad de campañas Meta/Facebook/Instagram según mensajes de WhatsApp, leads y tipificaciones de cierre.",
     icon: Megaphone,
     href: "/reportes/campanas-meta",
+  },
+  {
+    title: "Tipificaciones",
+    subtitle: "Atención",
+    description:
+      "Volumen de tipificaciones por Estado (Solicitud, Reclamo, Consulta…) con desglose en sub-estados y ranking por usuario. Marca cuántas generaron un ticket de Soporte. Filtrable por fecha, cliente y usuario.",
+    icon: Tags,
+    href: "/reportes/tipificaciones",
   },
 ];
 

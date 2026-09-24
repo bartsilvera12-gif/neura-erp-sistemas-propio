@@ -53,8 +53,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (typeof body.activo === "boolean") patch.activo = body.activo;
     if (Number.isFinite(Number(body.sort_order))) patch.sort_order = Number(body.sort_order);
-    // Comportamiento (superpoder) solo aplica a la familia.
-    if (nivel === "familia" && "comportamiento" in body) {
+    // Comportamiento (superpoder) vive en el sub-estado.
+    if (nivel === "subestado" && "comportamiento" in body) {
       const comp = String((body as { comportamiento?: unknown }).comportamiento ?? "");
       patch.comportamiento = ["ticket_error", "ticket_cambio", "capacitacion"].includes(comp) ? comp : null;
     }

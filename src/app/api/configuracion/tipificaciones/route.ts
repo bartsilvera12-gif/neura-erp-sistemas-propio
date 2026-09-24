@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     const [famRes, estRes, subRes] = await Promise.all([
       sb.from("tipificacion_familias").select("id, nombre, sort_order, activo, comportamiento").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
       sb.from("tipificacion_estados").select("id, familia_id, nombre, sort_order, activo").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
-      sb.from("tipificacion_subestados").select("id, estado_id, nombre, sort_order, activo").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
+      sb.from("tipificacion_subestados").select("id, estado_id, nombre, sort_order, activo, comportamiento").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
     ]);
     const err = famRes.error || estRes.error || subRes.error;
     if (err) return NextResponse.json(errorResponse(err.message), { status: 400 });
@@ -96,13 +96,15 @@ export async function POST(request: Request) {
         : 0,
     };
     if (nivel === "estado") registro.familia_id = parentId;
-    if (nivel === "subestado") registro.estado_id = parentId;
-    if (nivel === "familia") {
+    if (nivel === "subestado") {
+      registro.estado_id = parentId;
+      // El comportamiento (superpoder) vive en el SUB-ESTADO: es lo más granular
+      // y es lo que dispara la acción (crear ticket, agendar) al tipificar.
       const comp = String((body as { comportamiento?: unknown }).comportamiento ?? "");
       registro.comportamiento = COMPORTAMIENTOS.includes(comp as (typeof COMPORTAMIENTOS)[number]) && comp ? comp : null;
     }
 
-    const sel = nivel === "familia" ? "id, nombre, sort_order, activo, comportamiento" : "id, nombre, sort_order, activo";
+    const sel = nivel === "subestado" ? "id, nombre, sort_order, activo, comportamiento" : "id, nombre, sort_order, activo";
     const { data, error } = await sb.from(TABLA[nivel]).insert(registro).select(sel).single();
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 

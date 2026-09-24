@@ -12,9 +12,9 @@ import {
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 
 type Nivel = "familia" | "estado" | "subestado";
-type Nodo = { id: string; nombre: string; activo: boolean; sort_order: number };
+type Nodo = { id: string; nombre: string; activo: boolean; sort_order: number; comportamiento?: string | null };
 type Estado = Nodo & { subestados: Nodo[] };
-type Familia = Nodo & { comportamiento?: string | null; estados: Estado[] };
+type Familia = Nodo & { estados: Estado[] };
 type Resp = { success?: boolean; error?: string; data?: { familias: Familia[]; meta: { can_edit: boolean } } };
 
 /** Superpoderes que puede disparar una familia al tipificar. */
@@ -42,7 +42,8 @@ export default function ConfiguracionTipificacionesPage() {
 
   // Inputs de alta por nivel (familia global; estado por familia; sub por estado).
   const [nuevaFamilia, setNuevaFamilia] = useState("");
-  const [nuevaFamiliaComp, setNuevaFamiliaComp] = useState("");
+  // Comportamiento del NUEVO sub-estado a crear, por estado padre.
+  const [nuevoSubComp, setNuevoSubComp] = useState<Record<string, string>>({});
   const [nuevoEstado, setNuevoEstado] = useState<Record<string, string>>({});
   const [nuevoSub, setNuevoSub] = useState<Record<string, string>>({});
 
@@ -198,29 +199,18 @@ export default function ConfiguracionTipificacionesPage() {
           <ConfigSectionTitle>Agregar familia</ConfigSectionTitle>
           <ConfigHelpText>Cada familia agrupa estados; cada estado, sus sub-estados. Lo desactivado no se ofrece al tipificar.</ConfigHelpText>
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px] flex-1">
+            <div className="min-w-[240px] flex-1">
               <label className={F_LABEL} htmlFor="nueva-familia">Nombre de la familia</label>
               <input
                 id="nueva-familia"
                 className={F_INPUT}
                 value={nuevaFamilia}
                 onChange={(e) => setNuevaFamilia(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { void crear("familia", nuevaFamilia, undefined, { comportamiento: nuevaFamiliaComp }); setNuevaFamilia(""); setNuevaFamiliaComp(""); } }}
+                onKeyDown={(e) => { if (e.key === "Enter") { void crear("familia", nuevaFamilia); setNuevaFamilia(""); } }}
                 placeholder="Ej: Solicitud, Reclamo, Consulta…"
               />
             </div>
-            <div className="min-w-[220px]">
-              <label className={F_LABEL} htmlFor="nueva-familia-comp">Comportamiento</label>
-              <select
-                id="nueva-familia-comp"
-                className={F_INPUT}
-                value={nuevaFamiliaComp}
-                onChange={(e) => setNuevaFamiliaComp(e.target.value)}
-              >
-                {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-            <button type="button" className={BTN_PRIMARY} onClick={() => { void crear("familia", nuevaFamilia, undefined, { comportamiento: nuevaFamiliaComp }); setNuevaFamilia(""); setNuevaFamiliaComp(""); }} disabled={busy || !nuevaFamilia.trim()}>
+            <button type="button" className={BTN_PRIMARY} onClick={() => { void crear("familia", nuevaFamilia); setNuevaFamilia(""); }} disabled={busy || !nuevaFamilia.trim()}>
               Agregar familia
             </button>
           </div>
@@ -239,21 +229,6 @@ export default function ConfiguracionTipificacionesPage() {
               <div key={f.id} className="rounded-xl border border-slate-200 bg-white">
                 <div className="border-b border-slate-100 bg-slate-50/70 px-3 py-2.5">
                   <Fila nivel="familia" nodo={f} hijosAviso={`¿Eliminar la familia "${f.nombre}" y todos sus estados y sub-estados?`} />
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-medium text-slate-400">Comportamiento:</span>
-                    {canEdit ? (
-                      <select
-                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
-                        value={f.comportamiento ?? ""}
-                        onChange={(e) => void patchNodo("familia", f.id, { comportamiento: e.target.value })}
-                        disabled={busy}
-                      >
-                        {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
-                    ) : (
-                      <span className="text-[11px] text-slate-600">{compLabel(f.comportamiento)}</span>
-                    )}
-                  </div>
                 </div>
 
                 <div className="space-y-2 px-3 py-3 sm:pl-6">
@@ -272,19 +247,42 @@ export default function ConfiguracionTipificacionesPage() {
                             e.subestados.map((s) => (
                               <div key={s.id} className="border-l-2 border-slate-100 pl-2.5">
                                 <Fila nivel="subestado" nodo={s} hijosAviso={`¿Eliminar el sub-estado "${s.nombre}"?`} />
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[10px] font-medium text-slate-400">Acción:</span>
+                                  {canEdit ? (
+                                    <select
+                                      className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
+                                      value={s.comportamiento ?? ""}
+                                      onChange={(ev) => void patchNodo("subestado", s.id, { comportamiento: ev.target.value })}
+                                      disabled={busy}
+                                    >
+                                      {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                    </select>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-500">{compLabel(s.comportamiento)}</span>
+                                  )}
+                                </div>
                               </div>
                             ))
                           )}
                           {canEdit ? (
-                            <div className="flex items-center gap-2 pt-1">
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
                               <input
-                                className={`${F_INPUT} h-8 flex-1 text-xs`}
+                                className={`${F_INPUT} h-8 min-w-[180px] flex-1 text-xs`}
                                 value={nuevoSub[e.id] ?? ""}
                                 onChange={(ev) => setNuevoSub((m) => ({ ...m, [e.id]: ev.target.value }))}
-                                onKeyDown={(ev) => { if (ev.key === "Enter") { void crear("subestado", nuevoSub[e.id] ?? "", e.id); setNuevoSub((m) => ({ ...m, [e.id]: "" })); } }}
+                                onKeyDown={(ev) => { if (ev.key === "Enter") { void crear("subestado", nuevoSub[e.id] ?? "", e.id, { comportamiento: nuevoSubComp[e.id] ?? "" }); setNuevoSub((m) => ({ ...m, [e.id]: "" })); setNuevoSubComp((m) => ({ ...m, [e.id]: "" })); } }}
                                 placeholder="Nuevo sub-estado…"
                               />
-                              <button type="button" className={BTN_GHOST} onClick={() => { void crear("subestado", nuevoSub[e.id] ?? "", e.id); setNuevoSub((m) => ({ ...m, [e.id]: "" })); }} disabled={busy || !(nuevoSub[e.id] ?? "").trim()}>
+                              <select
+                                className="h-8 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
+                                value={nuevoSubComp[e.id] ?? ""}
+                                onChange={(ev) => setNuevoSubComp((m) => ({ ...m, [e.id]: ev.target.value }))}
+                                title="Acción que dispara este sub-estado"
+                              >
+                                {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                              </select>
+                              <button type="button" className={BTN_GHOST} onClick={() => { void crear("subestado", nuevoSub[e.id] ?? "", e.id, { comportamiento: nuevoSubComp[e.id] ?? "" }); setNuevoSub((m) => ({ ...m, [e.id]: "" })); setNuevoSubComp((m) => ({ ...m, [e.id]: "" })); }} disabled={busy || !(nuevoSub[e.id] ?? "").trim()}>
                                 + Sub-estado
                               </button>
                             </div>

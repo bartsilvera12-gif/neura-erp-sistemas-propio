@@ -11,48 +11,43 @@ function esAdmin(rol: string | null): boolean {
   return r === "super_admin" || esRolAdminEmpresaOGlobal(r);
 }
 
-type FamiliaRow = { id: string; nombre: string; sort_order: number; activo: boolean; comportamiento?: string | null };
-type EstadoRow = FamiliaRow & { familia_id: string };
-type SubestadoRow = FamiliaRow & { estado_id: string };
+type FamiliaRow = { id: string; nombre: string; sort_order: number; activo: boolean };
+type EstadoRow = FamiliaRow & { familia_id: string; comportamiento?: string | null };
 
-/** Comportamientos que puede disparar una familia (superpoderes configurables). */
+/** Acciones que puede disparar un SUB-ESTADO (superpoderes configurables). */
 const COMPORTAMIENTOS = ["", "ticket_error", "ticket_cambio", "capacitacion"] as const;
 
-const NIVELES = ["familia", "estado", "subestado"] as const;
+// Modelo de 2 niveles: "familia" = ESTADO (Solicitud/Reclamo/Consulta) ·
+// "estado" = SUB-ESTADO (la cosa puntual, lleva el comportamiento/acción).
+// La tabla tipificacion_subestados (3er nivel) quedó sin uso.
+const NIVELES = ["familia", "estado"] as const;
 type Nivel = (typeof NIVELES)[number];
 const TABLA: Record<Nivel, string> = {
   familia: "tipificacion_familias",
   estado: "tipificacion_estados",
-  subestado: "tipificacion_subestados",
 };
 
-/** GET — árbol completo: familias → estados → sub-estados. */
+/** GET — árbol de 2 niveles: Estado → Sub-estados (con su acción). */
 export async function GET(request: Request) {
   try {
     const auth = await requireTenantUserApiAccess(request);
     if (!auth.ok) return NextResponse.json(errorResponse(auth.message), { status: auth.status });
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
-    const [famRes, estRes, subRes] = await Promise.all([
-      sb.from("tipificacion_familias").select("id, nombre, sort_order, activo, comportamiento").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
-      sb.from("tipificacion_estados").select("id, familia_id, nombre, sort_order, activo").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
-      sb.from("tipificacion_subestados").select("id, estado_id, nombre, sort_order, activo, comportamiento").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
+    const [famRes, estRes] = await Promise.all([
+      sb.from("tipificacion_familias").select("id, nombre, sort_order, activo").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
+      sb.from("tipificacion_estados").select("id, familia_id, nombre, sort_order, activo, comportamiento").eq("empresa_id", auth.empresaId).order("sort_order").order("nombre"),
     ]);
-    const err = famRes.error || estRes.error || subRes.error;
+    const err = famRes.error || estRes.error;
     if (err) return NextResponse.json(errorResponse(err.message), { status: 400 });
 
-    const subs = (subRes.data ?? []) as SubestadoRow[];
     const estados = (estRes.data ?? []) as EstadoRow[];
     const familias = (famRes.data ?? []) as FamiliaRow[];
 
+    // En la respuesta, cada Estado (familia) trae sus Sub-estados (estados).
     const arbol = familias.map((f) => ({
       ...f,
-      estados: estados
-        .filter((e) => e.familia_id === f.id)
-        .map((e) => ({
-          ...e,
-          subestados: subs.filter((s) => s.estado_id === e.id),
-        })),
+      subestados: estados.filter((e) => e.familia_id === f.id),
     }));
 
     return NextResponse.json(successResponse({ familias: arbol, meta: { can_edit: esAdmin(auth.rol) } }));
@@ -95,16 +90,15 @@ export async function POST(request: Request) {
         ? Number((body as { sort_order?: unknown }).sort_order)
         : 0,
     };
-    if (nivel === "estado") registro.familia_id = parentId;
-    if (nivel === "subestado") {
-      registro.estado_id = parentId;
-      // El comportamiento (superpoder) vive en el SUB-ESTADO: es lo más granular
-      // y es lo que dispara la acción (crear ticket, agendar) al tipificar.
+    if (nivel === "estado") {
+      registro.familia_id = parentId;
+      // El comportamiento (superpoder) vive en el SUB-ESTADO (nivel "estado"): es
+      // lo más granular y es lo que dispara la acción (ticket / agenda) al tipificar.
       const comp = String((body as { comportamiento?: unknown }).comportamiento ?? "");
       registro.comportamiento = COMPORTAMIENTOS.includes(comp as (typeof COMPORTAMIENTOS)[number]) && comp ? comp : null;
     }
 
-    const sel = nivel === "subestado" ? "id, nombre, sort_order, activo, comportamiento" : "id, nombre, sort_order, activo";
+    const sel = nivel === "estado" ? "id, nombre, sort_order, activo, comportamiento" : "id, nombre, sort_order, activo";
     const { data, error } = await sb.from(TABLA[nivel]).insert(registro).select(sel).single();
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
 

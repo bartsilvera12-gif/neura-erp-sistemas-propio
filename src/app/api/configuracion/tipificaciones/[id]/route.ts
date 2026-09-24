@@ -11,12 +11,12 @@ function esAdmin(rol: string | null): boolean {
   return r === "super_admin" || esRolAdminEmpresaOGlobal(r);
 }
 
-const NIVELES = ["familia", "estado", "subestado"] as const;
+// 2 niveles: "familia" = ESTADO · "estado" = SUB-ESTADO (lleva el comportamiento).
+const NIVELES = ["familia", "estado"] as const;
 type Nivel = (typeof NIVELES)[number];
 const TABLA: Record<Nivel, string> = {
   familia: "tipificacion_familias",
   estado: "tipificacion_estados",
-  subestado: "tipificacion_subestados",
 };
 
 function nivelDe(v: string | null): Nivel | null {
@@ -53,8 +53,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (typeof body.activo === "boolean") patch.activo = body.activo;
     if (Number.isFinite(Number(body.sort_order))) patch.sort_order = Number(body.sort_order);
-    // Comportamiento (superpoder) vive en el sub-estado.
-    if (nivel === "subestado" && "comportamiento" in body) {
+    // Comportamiento (superpoder) vive en el sub-estado (nivel "estado").
+    if (nivel === "estado" && "comportamiento" in body) {
       const comp = String((body as { comportamiento?: unknown }).comportamiento ?? "");
       patch.comportamiento = ["ticket_error", "ticket_cambio", "capacitacion"].includes(comp) ? comp : null;
     }

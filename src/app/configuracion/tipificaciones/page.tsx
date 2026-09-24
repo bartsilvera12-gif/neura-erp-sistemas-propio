@@ -173,6 +173,7 @@ export default function ConfiguracionTipificacionesPage() {
     <GlobalConfigSubpageShell
       title="Tipificaciones"
       eyebrow="Gestión de clientes"
+      maxWidthClassName="max-w-none"
       description="Estados de tipificación (Solicitud, Reclamo, Consulta…) y sus sub-estados. La acción (crear ticket de Soporte o agendar capacitación) vive en el sub-estado. Es el catálogo que se usa al tipificar la gestión de un cliente."
     >
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}

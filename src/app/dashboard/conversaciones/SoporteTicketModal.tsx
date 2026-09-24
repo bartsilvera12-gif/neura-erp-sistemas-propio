@@ -83,7 +83,7 @@ export default function SoporteTicketModal({
   const [guardando, setGuardando] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [avisoArchivos, setAvisoArchivos] = useState<string | null>(null);
-  const [creado, setCreado] = useState<{ id: string; numero: number } | null>(null);
+  const [creado, setCreado] = useState<{ esTicket: boolean; id?: string; numero?: number } | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -157,6 +157,9 @@ export default function SoporteTicketModal({
   const subElegido = estadoElegido?.subestados.find((s) => s.id === subestadoTip) ?? null;
   // Tipo de ticket derivado de la acción del sub-estado.
   const tipo = subElegido?.comportamiento === "ticket_cambio" ? "cambio" : subElegido?.comportamiento === "ticket_error" ? "error" : "";
+  // ¿El sub-estado elegido crea un ticket? Si no (Consulta, etc.) sólo se
+  // registra la tipificación: no hace falta proyecto ni clasificación.
+  const esTicket = tipo === "error" || tipo === "cambio";
 
   const niveles = useMemo(() => (datos?.clasificaciones ?? []).filter((c) => c.tipo_codigo === tipo), [datos, tipo]);
   const nivelElegido = niveles.find((c) => c.codigo === nivel);
@@ -164,10 +167,10 @@ export default function SoporteTicketModal({
 
   const faltan: string[] = [];
   if (!cliente) faltan.push("cliente");
-  if (!proyecto) faltan.push("proyecto");
+  if (esTicket && !proyecto) faltan.push("proyecto");
   if (!estadoTip) faltan.push("estado");
   if (!subestadoTip) faltan.push("sub-estado");
-  if (niveles.length > 0 && !nivel) faltan.push("clasificación");
+  if (esTicket && niveles.length > 0 && !nivel) faltan.push("clasificación");
   if (!descripcion.trim()) faltan.push("descripción");
 
   const guardar = async () => {
@@ -178,7 +181,7 @@ export default function SoporteTicketModal({
     setGuardando(true);
     setError(null);
     try {
-      const r = await api<{ id: string; numero: number }>("/api/soporte/carga-rapida", {
+      const r = await api<{ id: string | null; numero: number | null; ticket?: boolean }>("/api/soporte/carga-rapida", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -191,15 +194,16 @@ export default function SoporteTicketModal({
           descripcion,
         }),
       });
-      // El ticket ya existe: si alguna evidencia falla se avisa y se puede volver
-      // a subir desde la pestaña Archivos del ticket.
-      if (archivos.length) {
+      const fueTicket = r.ticket !== false && !!r.id;
+      // Las evidencias se adjuntan al ticket. Si no se creó ticket (tipificación
+      // simple), no hay dónde adjuntarlas.
+      if (fueTicket && r.id && archivos.length) {
         const sub = await subirArchivos(r.id, archivos);
         if (sub.errores.length) setAvisoArchivos(`${sub.errores.length} archivo(s) no se subieron: ${sub.errores.join(" · ")}`);
       }
-      setCreado(r);
+      setCreado({ esTicket: fueTicket, id: r.id ?? undefined, numero: r.numero ?? undefined });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo crear el ticket");
+      setError(e instanceof Error ? e.message : "No se pudo registrar");
     } finally {
       setGuardando(false);
     }
@@ -222,10 +226,10 @@ export default function SoporteTicketModal({
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="soporte-ticket-titulo" className="text-[17px] font-semibold text-slate-900">
-              Cargar ticket de soporte
+              {esTicket ? "Cargar ticket de soporte" : "Tipificar desde el chat"}
             </h2>
             <p className="mt-0.5 truncate text-[13px] text-slate-600">
-              {contacto ? `Desde la conversación con ${contacto}` : "Nuevo ticket"}
+              {contacto ? `Desde la conversación con ${contacto}` : "Nueva tipificación"}
             </p>
           </div>
           <button type="button" onClick={alCerrar} aria-label="Cerrar" className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white/70 hover:text-slate-700">
@@ -236,16 +240,27 @@ export default function SoporteTicketModal({
         {creado ? (
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
             <CheckCircle2 className="h-12 w-12 text-emerald-500" aria-hidden />
-            <p className="text-lg font-semibold text-slate-900">Ticket {numeroTicket(creado.numero)} creado</p>
-            <p className="text-sm text-slate-500">Quedó en Soporte como Pendiente y en el historial del cliente.</p>
+            {creado.esTicket ? (
+              <>
+                <p className="text-lg font-semibold text-slate-900">Ticket {creado.numero != null ? numeroTicket(creado.numero) : ""} creado</p>
+                <p className="text-sm text-slate-500">Quedó en Soporte como Pendiente y en el historial del cliente.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-semibold text-slate-900">Tipificación registrada</p>
+                <p className="text-sm text-slate-500">Quedó en el historial del cliente.</p>
+              </>
+            )}
             {avisoArchivos ? <p className="text-xs font-medium text-amber-700">{avisoArchivos}</p> : null}
             <div className="mt-2 flex gap-2">
-              <Link
-                href={`/dashboard/soporte/tickets/${creado.id}`}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
-              >
-                Ver ticket
-              </Link>
+              {creado.esTicket && creado.id ? (
+                <Link
+                  href={`/dashboard/soporte/tickets/${creado.id}`}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+                >
+                  Ver ticket
+                </Link>
+              ) : null}
               <button type="button" onClick={alCerrar} className="rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91]">
                 Listo
               </button>
@@ -286,7 +301,7 @@ export default function SoporteTicketModal({
                   ) : null}
                 </div>
                 <div>
-                  <span className={claseEtiqueta}>Proyecto *</span>
+                  <span className={claseEtiqueta}>Proyecto{esTicket ? " *" : ""}</span>
                   <SelectorBuscable
                     ariaLabel="Proyecto"
                     value={proyecto}
@@ -317,7 +332,7 @@ export default function SoporteTicketModal({
 
               {(datos.estados ?? []).length === 0 ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
-                  No hay sub-estados con acción de ticket configurados. Cargalos en Configuración → Tipificaciones.
+                  No hay estados de tipificación configurados. Cargalos en Configuración → Tipificaciones.
                 </div>
               ) : (
                 <>
@@ -345,7 +360,8 @@ export default function SoporteTicketModal({
                         <option value="">Elegí un sub-estado…</option>
                         {(estadoElegido?.subestados ?? []).map((s) => (
                           <option key={s.id} value={s.id}>
-                            {s.nombre} · {s.comportamiento === "ticket_cambio" ? "Cambio" : "Error"}
+                            {s.nombre}
+                            {s.comportamiento === "ticket_error" ? " · Error" : s.comportamiento === "ticket_cambio" ? " · Cambio" : ""}
                           </option>
                         ))}
                       </select>
@@ -391,11 +407,13 @@ export default function SoporteTicketModal({
                   placeholder="Qué pasa, desde cuándo, qué mensaje aparece…"
                 />
               </div>
-              <div>
-                <span className={claseEtiqueta}>Evidencias</span>
-                <ZonaArchivos archivos={archivos} onCambio={setArchivos} compacta deshabilitada={guardando} />
-              </div>
-              {datos.asignacion?.[tipo === "cambio" ? "cambio" : "error"]?.responsable ? (
+              {esTicket ? (
+                <div>
+                  <span className={claseEtiqueta}>Evidencias</span>
+                  <ZonaArchivos archivos={archivos} onCambio={setArchivos} compacta deshabilitada={guardando} />
+                </div>
+              ) : null}
+              {esTicket && datos.asignacion?.[tipo === "cambio" ? "cambio" : "error"]?.responsable ? (
                 <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">
                   Se asigna a <strong className="text-slate-800">{datos.asignacion[tipo === "cambio" ? "cambio" : "error"].responsable?.nombre}</strong> (
                   {({ ordinario: "Desarrollo de Soporte", guardia: "desarrollador de guardia", guardia_sin_asignar: "no hay guardia cargada esta semana" })[datos.asignacion[tipo === "cambio" ? "cambio" : "error"].motivo]}).
@@ -415,7 +433,7 @@ export default function SoporteTicketModal({
                 className="inline-flex items-center gap-2 rounded-xl bg-[#4FAEB2] px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-[#4FAEB2]/20 hover:bg-[#3F8E91] disabled:opacity-60"
               >
                 {guardando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                {guardando && archivos.length ? "Creando y subiendo…" : "Crear ticket"}
+                {esTicket ? (guardando && archivos.length ? "Creando y subiendo…" : "Crear ticket") : guardando ? "Guardando…" : "Guardar tipificación"}
               </button>
             </div>
           </>

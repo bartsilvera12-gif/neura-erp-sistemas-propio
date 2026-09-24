@@ -24,8 +24,13 @@ function tipoTicketDeComportamiento(comp: string | null | undefined): "error" | 
   return c === "ticket_error" ? "error" : c === "ticket_cambio" ? "cambio" : null;
 }
 
-/** Estados (activos) con sus sub-estados (activos) que crean ticket de Soporte. */
-async function estadosConSubTicket(sb: AppSupabaseClient, empresaId: string) {
+/**
+ * Catálogo completo (activos) de Estado → Sub-estado, igual que en la
+ * tipificación de Gestión de clientes. Se muestran TODOS: los sub-estados con
+ * acción de ticket crean un ticket de Soporte; el resto (consultas, etc.) queda
+ * como tipificación registrada en el historial del cliente.
+ */
+async function estadosCatalogo(sb: AppSupabaseClient, empresaId: string) {
   try {
     const [famRes, estRes] = await Promise.all([
       sb.from("tipificacion_familias").select("id, nombre, activo").eq("empresa_id", empresaId).order("sort_order").order("nombre"),
@@ -40,13 +45,25 @@ async function estadosConSubTicket(sb: AppSupabaseClient, empresaId: string) {
         id: f.id,
         nombre: f.nombre,
         subestados: estados
-          .filter((e) => e.familia_id === f.id && e.activo && tipoTicketDeComportamiento(e.comportamiento))
+          .filter((e) => e.familia_id === f.id && e.activo)
           .map((e) => ({ id: e.id, nombre: e.nombre, comportamiento: e.comportamiento })),
       }))
       .filter((f) => f.subestados.length > 0);
   } catch {
     return [];
   }
+}
+
+/**
+ * Asocia el contacto del chat al cliente elegido si todavía no lo estaba: la
+ * próxima vez se reconoce solo y aparece "Cliente →" en la conversación.
+ */
+async function asociarContacto(sb: AppSupabaseClient, empresaId: string, conversationId: string | null, clienteId: string) {
+  if (!conversationId) return;
+  const { data: conv } = await sb.from("chat_conversations").select("contact_id").eq("empresa_id", empresaId).eq("id", conversationId).maybeSingle();
+  const contactId = (conv as { contact_id?: string | null } | null)?.contact_id;
+  if (!contactId) return;
+  await sb.from("chat_contacts").update({ cliente_id: clienteId }).eq("empresa_id", empresaId).eq("id", contactId).is("cliente_id", null);
 }
 
 /**
@@ -98,9 +115,10 @@ export async function GET(request: Request) {
       leerCatalogos(auth.sb, auth.empresaId),
       personasDeEmpresa(auth.empresaId),
       clientesDeEmpresa(auth.sb, auth.empresaId),
-      // Catálogo Estado → Sub-estados con ACCIÓN de ticket (Error/Cambio). Es lo
-      // que se elige ahora en el chat, igual que en la tipificación del cliente.
-      estadosConSubTicket(auth.sb, auth.empresaId),
+      // Catálogo completo Estado → Sub-estados (Solicitud/Reclamo/Consulta…),
+      // igual que en la tipificación del cliente. El ticket se crea sólo si el
+      // sub-estado elegido tiene acción ticket_error/ticket_cambio.
+      estadosCatalogo(auth.sb, auth.empresaId),
     ]);
     return ok({
       // Sólo los tipos que nacen de una tipificación (Error y Cambio).
@@ -154,8 +172,10 @@ export async function POST(request: Request) {
     // llega el `tipo_codigo` viejo (error/cambio), se sigue aceptando.
     const estadoId = typeof body.estado_id === "string" && UUID.test(body.estado_id) ? body.estado_id : "";
     const subestadoId = typeof body.subestado_id === "string" && UUID.test(body.subestado_id) ? body.subestado_id : "";
+    const descripcion = typeof body.descripcion === "string" ? body.descripcion.trim() : "";
     let tipoGestion: TipoGestion | null = null;
     let catNombres: { estado: string; sub: string } | null = null;
+
     if (estadoId && subestadoId) {
       const [estRes, subRes] = await Promise.all([
         auth.sb.from("tipificacion_familias").select("id, nombre").eq("empresa_id", auth.empresaId).eq("id", estadoId).maybeSingle(),
@@ -165,14 +185,41 @@ export async function POST(request: Request) {
       const sub = subRes.data as { id: string; nombre: string; comportamiento: string | null; familia_id: string } | null;
       if (!estado || !sub || sub.familia_id !== estadoId) return falla("Elegí un estado y sub-estado válidos");
       const tt = tipoTicketDeComportamiento(sub.comportamiento);
-      if (!tt) return falla("Ese sub-estado no crea un ticket de Soporte");
-      tipoGestion = tt === "error" ? "Error" : "Cambio";
-      catNombres = { estado: estado.nombre, sub: sub.nombre };
+      if (tt) {
+        // Sub-estado con acción de ticket → sigue el flujo de creación de ticket.
+        tipoGestion = tt === "error" ? "Error" : "Cambio";
+        catNombres = { estado: estado.nombre, sub: sub.nombre };
+      } else {
+        // Sub-estado sin ticket (Consulta, etc.): se registra sólo la tipificación
+        // en el historial del cliente, igual que en Gestión de clientes.
+        if (!descripcion) return falla("Escribí una descripción");
+        const [authUser, personas] = await Promise.all([
+          getAuthUserForApiRoute(request).catch(() => null),
+          personasPorId([auth.usuarioId]),
+        ]);
+        const { data: tip, error: insErr } = await auth.sb
+          .from("tipificaciones")
+          .insert({
+            empresa_id: auth.empresaId,
+            cliente_id: clienteId,
+            usuario: personas.get(auth.usuarioId)?.nombre ?? authUser?.email ?? "Usuario",
+            usuario_id: auth.usuarioId,
+            tipo_gestion: estado.nombre,
+            resultado: sub.nombre,
+            observacion: `Desde Conversaciones: ${descripcion}`.slice(0, 5000),
+            familia_id: estadoId,
+            estado_id: subestadoId,
+          })
+          .select("id")
+          .single();
+        if (insErr) return falla(insErr.message);
+        await asociarContacto(auth.sb, auth.empresaId, conversationId, clienteId);
+        return ok({ id: null, numero: null, ticket: false, tipificacion_id: (tip as { id: string }).id });
+      }
     } else {
       tipoGestion = gestionDeTipoTicket(body.tipo_codigo);
     }
     if (!tipoGestion) return falla("Elegí si es un error o un cambio");
-    const descripcion = typeof body.descripcion === "string" ? body.descripcion.trim() : "";
 
     const [authUser, personas] = await Promise.all([
       getAuthUserForApiRoute(request).catch(() => null),
@@ -207,27 +254,9 @@ export async function POST(request: Request) {
         .eq("id", r.tipificacion_id);
     }
 
-    // El contacto del chat queda asociado a ese cliente si todavía no lo estaba:
-    // la próxima vez se reconoce solo y aparece "Cliente →" en la conversación.
-    if (conversationId) {
-      const { data: conv } = await auth.sb
-        .from("chat_conversations")
-        .select("contact_id")
-        .eq("empresa_id", auth.empresaId)
-        .eq("id", conversationId)
-        .maybeSingle();
-      const contactId = (conv as { contact_id?: string | null } | null)?.contact_id;
-      if (contactId) {
-        await auth.sb
-          .from("chat_contacts")
-          .update({ cliente_id: clienteId })
-          .eq("empresa_id", auth.empresaId)
-          .eq("id", contactId)
-          .is("cliente_id", null);
-      }
-    }
+    await asociarContacto(auth.sb, auth.empresaId, conversationId, clienteId);
 
-    return ok({ id: r.ticket_id, numero: r.numero, tipificacion_id: r.tipificacion_id });
+    return ok({ id: r.ticket_id, numero: r.numero, ticket: true, tipificacion_id: r.tipificacion_id });
   } catch (e) {
     return errorInesperado(e);
   }

@@ -54,7 +54,14 @@ async function traer(clienteId: string, archivado: boolean): Promise<{ status: n
  * (`/api/proyectos?cliente_id=`): no hay otra fuente ni otro permiso. Quien no
  * tiene acceso a Proyectos ve el aviso en lugar de la lista.
  */
-export function ProyectosClienteGestion({ clienteId }: { clienteId: string }) {
+export function ProyectosClienteGestion({
+  clienteId,
+  sinCabecera = false,
+}: {
+  clienteId: string;
+  /** En modal: sin la cabecera colapsable (el modal ya pone su título). */
+  sinCabecera?: boolean;
+}) {
   const [abierto, setAbierto] = useState(true);
   const [verArchivados, setVerArchivados] = useState(false);
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
@@ -90,6 +97,7 @@ export function ProyectosClienteGestion({ clienteId }: { clienteId: string }) {
 
   return (
     <section>
+      {sinCabecera ? null : (
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
@@ -122,9 +130,10 @@ export function ProyectosClienteGestion({ clienteId }: { clienteId: string }) {
         </div>
         <span className="shrink-0 text-[10px] font-semibold text-[#3F8E91]">{abierto ? "Ocultar" : "Ver proyectos"}</span>
       </button>
+      )}
 
-      {abierto ? (
-        <div className="border-b border-slate-100 p-2 sm:p-3">
+      {sinCabecera || abierto ? (
+        <div className={sinCabecera ? "p-1" : "border-b border-slate-100 p-2 sm:p-3"}>
           {estado.tipo === "cargando" ? (
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {[0, 1, 2].map((i) => (

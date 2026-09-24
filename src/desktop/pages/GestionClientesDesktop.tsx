@@ -10,6 +10,7 @@ import {
   Printer,
   Receipt,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { RecibosFacturaModal } from "@/components/recibos/RecibosFacturaModal";
 import { ModalCambioPlanGestion } from "@/components/gestion-clientes/ModalCambioPlanGestion";
@@ -732,6 +733,7 @@ function GestionClientesPageInner() {
   const [modalCambioPlan, setModalCambioPlan] = useState(false);
   const [modalFacturarVenta, setModalFacturarVenta] = useState(false);
   const [modalHistorialCliente, setModalHistorialCliente] = useState(false);
+  const [modalProyectos, setModalProyectos] = useState(false);
   const [modalContactos, setModalContactos] = useState(false);
   const [facturaCobroModal, setFacturaCobroModal] = useState<Factura | null>(null);
   const [recibosFactura, setRecibosFactura] = useState<Factura | null>(null);
@@ -1156,10 +1158,14 @@ function GestionClientesPageInner() {
                     activo
                     onClick={() => setModalHistorialCliente(true)}
                   />
+                  <BotonOperativo
+                    label="Proyectos"
+                    icon="📁"
+                    activo
+                    onClick={() => setModalProyectos(true)}
+                  />
                 </div>
               </section>
-
-              <ProyectosClienteGestion key={selected.id} clienteId={selected.id} />
 
               <section>
                 <button
@@ -1408,6 +1414,39 @@ function GestionClientesPageInner() {
           clienteNombre={clienteNombre(selected)}
           onClose={() => setModalHistorialCliente(false)}
         />
+      )}
+      {modalProyectos && selected && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Cerrar"
+            className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+            onClick={() => setModalProyectos(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-slate-900">Proyectos del cliente</h2>
+                <p className="mt-0.5 truncate text-xs text-slate-500">{clienteNombre(selected)}</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar"
+                onClick={() => setModalProyectos(false)}
+                className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-3 py-3 sm:px-4">
+              <ProyectosClienteGestion key={selected.id} clienteId={selected.id} sinCabecera />
+            </div>
+          </div>
+        </div>
       )}
       {modalFacturarVenta && selected && (
         <FacturarVentaModal

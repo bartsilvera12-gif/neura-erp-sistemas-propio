@@ -2,10 +2,17 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, Search, Ticket } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Clock, Plus, Search, Ticket } from "lucide-react";
 import { apiSoporte } from "@/app/dashboard/soporte/_ui/api";
 import { numeroTicket } from "@/lib/soporte/dominio";
+import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
 import AsesorTabBar from "../AsesorTabBar";
+
+// El mismo formulario del escritorio y del chat. Se carga recién al abrirlo.
+const SoporteTicketModal = dynamic(() => import("@/app/dashboard/conversaciones/SoporteTicketModal"), {
+  ssr: false,
+});
 import { Chip, PESTANAS, slaVencido, tonoEstado, tonoPestana, tonoPrioridad, type PestanaId, type TicketMovil } from "./_comun";
 
 /**
@@ -18,6 +25,16 @@ import { Chip, PESTANAS, slaVencido, tonoEstado, tonoPestana, tonoPrioridad, typ
  */
 export default function MAsesorSoportePage() {
   const [mios, setMios] = useState(true);
+  // Cargar un ticket desde acá, sin pasar por un chat. Solo para quien puede (PM o Soporte).
+  const [puedeCargar, setPuedeCargar] = useState(false);
+  const [cargandoTicket, setCargandoTicket] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    void puedeCargarSoporte().then((p) => vivo && setPuedeCargar(p));
+    return () => {
+      vivo = false;
+    };
+  }, []);
   const [pestana, setPestana] = useState<PestanaId>("todos");
   const [q, setQ] = useState("");
   const [tickets, setTickets] = useState<TicketMovil[]>([]);
@@ -59,8 +76,22 @@ export default function MAsesorSoportePage() {
         className="z-10 shrink-0 bg-[#3F8E91] px-4 pb-3 text-white shadow-sm"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
       >
-        <h1 className="text-base font-semibold">Soporte</h1>
-        <p className="text-[11px] text-white/80">Tickets</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-base font-semibold">Soporte</h1>
+            <p className="text-[11px] text-white/80">Tickets</p>
+          </div>
+          {puedeCargar ? (
+            <button
+              type="button"
+              onClick={() => setCargandoTicket(true)}
+              className="inline-flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-[#3F8E91] shadow-sm active:bg-white"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Nuevo
+            </button>
+          ) : null}
+        </div>
 
         <div className="mt-2 grid grid-cols-2 rounded-xl bg-white/15 p-0.5" role="radiogroup" aria-label="Alcance">
           {[
@@ -172,6 +203,19 @@ export default function MAsesorSoportePage() {
           </ul>
         )}
       </main>
+
+      {cargandoTicket ? (
+        <SoporteTicketModal
+          conversationId=""
+          clienteId={null}
+          contacto=""
+          telefono={null}
+          alCerrar={() => {
+            setCargandoTicket(false);
+            void cargar();
+          }}
+        />
+      ) : null}
 
       <AsesorTabBar />
     </div>

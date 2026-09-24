@@ -59,6 +59,7 @@ export default function SoporteTicketModal({
   telefono,
   alCerrar,
 }: {
+  /** Vacío cuando el ticket NO nace de un chat (botón "Nuevo" en Soporte). */
   conversationId: string;
   clienteId: string | null;
   contacto: string;
@@ -97,6 +98,8 @@ export default function SoporteTicketModal({
   // Sin cliente vinculado: se busca por el teléfono o el nombre del contacto.
   useEffect(() => {
     if (clienteId) return;
+    // Sin chat de origen no hay a quién buscar: se elige el cliente a mano.
+    if (!telefono && !contacto) return;
     let vivo = true;
     const q = new URLSearchParams({ contacto_telefono: telefono ?? "", contacto_nombre: contacto });
     api<{ asociado: { cliente_id: string; via: "telefono" | "contacto" | "nombre"; contacto?: string } | null }>(`/api/soporte/carga-rapida?${q.toString()}`)
@@ -179,7 +182,7 @@ export default function SoporteTicketModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conversation_id: conversationId,
+          ...(conversationId ? { conversation_id: conversationId } : {}),
           cliente_id: cliente,
           proyecto_id: proyecto || null,
           estado_id: estadoTip,
@@ -221,7 +224,9 @@ export default function SoporteTicketModal({
             <h2 id="soporte-ticket-titulo" className="text-[17px] font-semibold text-slate-900">
               Cargar ticket de soporte
             </h2>
-            <p className="mt-0.5 truncate text-[13px] text-slate-600">Desde la conversación con {contacto}</p>
+            <p className="mt-0.5 truncate text-[13px] text-slate-600">
+              {contacto ? `Desde la conversación con ${contacto}` : "Nuevo ticket"}
+            </p>
           </div>
           <button type="button" onClick={alCerrar} aria-label="Cerrar" className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-white/70 hover:text-slate-700">
             <X className="h-4 w-4" />

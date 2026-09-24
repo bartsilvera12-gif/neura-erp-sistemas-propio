@@ -25,6 +25,11 @@ interface Usuario {
   nombre: string;
   total: number;
 }
+interface Hora {
+  hora: number;
+  total: number;
+  con_ticket: number;
+}
 interface Data {
   desde: string | null;
   hasta: string | null;
@@ -32,6 +37,7 @@ interface Data {
   con_ticket: number;
   estados: Estado[];
   usuarios: Usuario[];
+  horas: Hora[];
 }
 interface Cliente {
   id: string;
@@ -131,6 +137,8 @@ export default function ReporteTipificacionesPage() {
 
   const maxEstado = data?.estados.reduce((m, e) => Math.max(m, e.total), 0) || 1;
   const maxUsuario = data?.usuarios.reduce((m, u) => Math.max(m, u.total), 0) || 1;
+  const maxHora = data?.horas?.reduce((m, h) => Math.max(m, h.total), 0) || 1;
+  const horaPico = data?.horas?.reduce<Hora | null>((best, h) => (best && best.total >= h.total ? best : h.total > 0 ? h : best), null) ?? null;
 
   return (
     <div className="w-full min-w-0 space-y-5">
@@ -209,6 +217,52 @@ export default function ReporteTipificacionesPage() {
             <p className="text-xs text-slate-400">Usuarios</p>
             <p className="text-lg font-bold tabular-nums text-slate-800">{data.usuarios.length}</p>
           </div>
+        </div>
+      )}
+
+      {/* Distribución por hora del día */}
+      {data && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-700">Por hora del día</h2>
+            {horaPico && (
+              <span className="text-xs text-slate-500">
+                Pico: <span className="font-semibold text-slate-700">{String(horaPico.hora).padStart(2, "0")}:00–{String(horaPico.hora).padStart(2, "0")}:59</span> ({horaPico.total})
+              </span>
+            )}
+          </div>
+          {data.total === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">Sin datos en el período/filtros.</p>
+          ) : (
+            <>
+              <div className="flex items-end gap-1" style={{ height: 140 }}>
+                {data.horas.map((h) => {
+                  const altura = Math.round((h.total / maxHora) * 120);
+                  const alturaTk = h.total > 0 ? Math.round((h.con_ticket / maxHora) * 120) : 0;
+                  return (
+                    <div key={h.hora} className="group relative flex flex-1 flex-col items-center justify-end" style={{ height: 120 }} title={`${String(h.hora).padStart(2, "0")}:00 — ${h.total} tipif.${h.con_ticket ? ` · ${h.con_ticket} con ticket` : ""}`}>
+                      {h.total > 0 && <span className="mb-0.5 text-[9px] font-semibold tabular-nums text-slate-400 opacity-0 group-hover:opacity-100">{h.total}</span>}
+                      <div className="flex w-full max-w-[18px] flex-col justify-end overflow-hidden rounded-t bg-slate-100" style={{ height: Math.max(h.total > 0 ? 4 : 0, altura) }}>
+                        {alturaTk > 0 && <div className="w-full bg-emerald-400" style={{ height: alturaTk }} />}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-1 flex gap-1">
+                {data.horas.map((h) => (
+                  <div key={h.hora} className="flex-1 text-center text-[8px] tabular-nums text-slate-400">
+                    {h.hora % 3 === 0 ? String(h.hora).padStart(2, "0") : ""}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
+                <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-200" /> Tipificaciones</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-400" /> Con ticket</span>
+                <span className="ml-auto">Hora de Paraguay</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 

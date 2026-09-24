@@ -106,9 +106,25 @@ export async function GET(request: NextRequest) {
     // 4) Agrupar por Estado → Sub-estado.
     const estados = new Map<string, EstadoBucket>();
     const usuarios = new Map<string, { id: string | null; nombre: string; total: number }>();
+    // Distribución por hora del día (0–23) en hora de Paraguay: `fecha` es UTC.
+    const horas = Array.from({ length: 24 }, (_, h) => ({ hora: h, total: 0, con_ticket: 0 }));
+    const fmtHora = new Intl.DateTimeFormat("en-US", { timeZone: "America/Asuncion", hour: "2-digit", hour12: false });
 
     for (const r of rows) {
       const conTk = conTicket.has(r.id) ? 1 : 0;
+
+      // Hora local del registro.
+      if (r.fecha) {
+        const d = new Date(r.fecha);
+        if (!Number.isNaN(d.getTime())) {
+          let h = parseInt(fmtHora.format(d), 10);
+          if (h === 24) h = 0; // algunos entornos formatean medianoche como "24"
+          if (h >= 0 && h <= 23) {
+            horas[h].total += 1;
+            horas[h].con_ticket += conTk;
+          }
+        }
+      }
 
       // Estado (familia)
       const famKey = r.familia_id ?? `txt:${(r.tipo_gestion ?? "Sin estado").trim()}`;
@@ -163,6 +179,7 @@ export async function GET(request: NextRequest) {
         con_ticket: conTicket.size,
         estados: estadosOut,
         usuarios: usuariosOut,
+        horas,
       }),
     );
   } catch (err) {

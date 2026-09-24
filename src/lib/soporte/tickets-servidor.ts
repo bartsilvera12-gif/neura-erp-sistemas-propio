@@ -7,10 +7,18 @@ import {
   type InfoSla,
   type TicketFila,
 } from "@/lib/soporte/dominio";
-import { clientesPorId, personasPorId, type Persona } from "@/lib/soporte/servidor";
+import {
+  clientesPorId,
+  personasPorId,
+  proyectosPorCliente,
+  type Persona,
+  type ProyectoLite,
+} from "@/lib/soporte/servidor";
 
 export type TicketVista = TicketFila & {
   cliente_nombre: string | null;
+  /** Proyectos del cliente del ticket (columna "Proyecto"), del más nuevo al más viejo. */
+  proyectos_cliente: ProyectoLite[];
   responsable: Persona | null;
   creador: Persona | null;
   tipo_etiqueta: string;
@@ -37,9 +45,10 @@ export async function enriquecerTickets(
   cat: CatalogosSoporte,
   filas: TicketFila[]
 ): Promise<TicketVista[]> {
-  const [personas, clientes] = await Promise.all([
+  const [personas, clientes, proyectos] = await Promise.all([
     personasPorId(filas.flatMap((t) => [t.responsable_id, t.created_by])),
     clientesPorId(sb, empresaId, filas.map((t) => t.cliente_id)),
+    proyectosPorCliente(sb, empresaId, filas.map((t) => t.cliente_id)),
   ]);
   const ahora = new Date().toISOString();
 
@@ -50,6 +59,7 @@ export async function enriquecerTickets(
     return {
       ...t,
       cliente_nombre: t.cliente_id ? (clientes.get(t.cliente_id) ?? null) : null,
+      proyectos_cliente: t.cliente_id ? (proyectos.get(t.cliente_id) ?? []) : [],
       responsable: t.responsable_id ? (personas.get(t.responsable_id) ?? null) : null,
       creador: t.created_by ? (personas.get(t.created_by) ?? null) : null,
       tipo_etiqueta: etiquetaTipo(cat, t.tipo_codigo, t.clasificacion_codigo),

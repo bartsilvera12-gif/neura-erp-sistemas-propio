@@ -261,6 +261,41 @@ export async function clientesPorId(
   return mapa;
 }
 
+export type ProyectoLite = { id: string; titulo: string };
+
+/**
+ * Proyectos (no archivados) de cada cliente, en lote, para la columna "Proyecto"
+ * del listado de tickets. Un cliente puede tener varios; van del más nuevo al
+ * más viejo. Es lectura cruzada al módulo Proyectos (mismo esquema); si la tabla
+ * no existiera en algún tenant, devuelve vacío sin romper el listado.
+ */
+export async function proyectosPorCliente(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  clienteIds: (string | null | undefined)[]
+): Promise<Map<string, ProyectoLite[]>> {
+  const unicos = [...new Set(clienteIds.filter((x): x is string => typeof x === "string" && x.length > 0))];
+  const mapa = new Map<string, ProyectoLite[]>();
+  if (unicos.length === 0) return mapa;
+  const { data, error } = await sb
+    .from("proyectos")
+    .select("id, titulo, cliente_id, created_at")
+    .eq("empresa_id", empresaId)
+    .eq("archivado", false)
+    .in("cliente_id", unicos)
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  if (error) return mapa;
+  for (const row of (data ?? []) as { id: string; titulo?: string | null; cliente_id?: string | null }[]) {
+    const cid = row.cliente_id;
+    if (!cid) continue;
+    const lista = mapa.get(cid) ?? [];
+    lista.push({ id: row.id, titulo: String(row.titulo ?? "—") });
+    mapa.set(cid, lista);
+  }
+  return mapa;
+}
+
 // -------------------------------------------------------------------- historial
 
 export type EventoHistorial = {

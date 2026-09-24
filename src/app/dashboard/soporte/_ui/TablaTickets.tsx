@@ -33,6 +33,7 @@ type TicketLista = {
   numero: number;
   asunto: string;
   cliente_nombre: string | null;
+  proyectos_cliente: { id: string; titulo: string }[];
   tipo_etiqueta: string;
   estado_codigo: string;
   fase?: number;
@@ -319,6 +320,7 @@ export default function TablaTickets({
                     <th className="w-24 px-5 py-3">#</th>
                     <th className="px-3 py-3">Asunto</th>
                     <th className="px-3 py-3">Cliente</th>
+                    <th className="px-3 py-3">Proyecto</th>
                     <th className="px-3 py-3">Tipo</th>
                     <th className="px-3 py-3">Estado</th>
                     <th className="px-3 py-3">Clasificación</th>
@@ -362,6 +364,26 @@ export default function TablaTickets({
                         ) : null}
                       </td>
                       <td className="max-w-[190px] truncate px-3 py-3.5 font-medium text-slate-600">{t.cliente_nombre ?? "—"}</td>
+                      <td className="max-w-[180px] px-3 py-3.5 text-slate-600">
+                        {t.proyectos_cliente.length === 0 ? (
+                          <span className="text-slate-300">—</span>
+                        ) : (
+                          <span className="flex items-center gap-1.5" title={t.proyectos_cliente.map((p) => p.titulo).join(" · ")}>
+                            <Link
+                              href={`/dashboard/proyectos?proyecto=${t.proyectos_cliente[0].id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="truncate font-medium text-[#3F8E91] hover:underline"
+                            >
+                              {t.proyectos_cliente[0].titulo}
+                            </Link>
+                            {t.proyectos_cliente.length > 1 ? (
+                              <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                                +{t.proyectos_cliente.length - 1}
+                              </span>
+                            ) : null}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-3.5 text-slate-600">{cat?.tipos.find((x) => x.codigo === t.tipo_codigo)?.nombre ?? t.tipo_etiqueta}</td>
                       <td className="px-3 py-3.5">
                         <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
@@ -430,6 +452,15 @@ export default function TablaTickets({
                       <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
                       <Fase n={t.fase} />
                       {t.clasificacion_nombre ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600">{t.clasificacion_nombre}</span> : null}
+                      {t.proyectos_cliente.length > 0 ? (
+                        <span
+                          className="rounded-full bg-[#4FAEB2]/10 px-2 py-0.5 text-[11.5px] font-semibold text-[#3F8E91]"
+                          title={t.proyectos_cliente.map((p) => p.titulo).join(" · ")}
+                        >
+                          {t.proyectos_cliente[0].titulo}
+                          {t.proyectos_cliente.length > 1 ? ` +${t.proyectos_cliente.length - 1}` : ""}
+                        </span>
+                      ) : null}
                     </div>
                     {t.creador ? <p className="mt-1 text-[11.5px] text-slate-400">Cargado por {t.creador.nombre}</p> : null}
                   </Link>

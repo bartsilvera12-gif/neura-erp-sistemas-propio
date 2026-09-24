@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { FileText, Film, ImageIcon, UploadCloud, X } from "lucide-react";
 import { ARCHIVO_MAX_BYTES, mimeAceptado, tamanoLegible } from "@/lib/soporte/dominio";
+import { normalizarImagenes } from "@/lib/imagenes/heic";
 
 function IconoArchivo({ tipo }: { tipo: string }) {
   if (tipo.startsWith("image/")) return <ImageIcon className="h-4 w-4" aria-hidden />;
@@ -33,8 +34,16 @@ export default function ZonaArchivos({
   const [rechazos, setRechazos] = useState<string[]>([]);
 
   const agregar = (lista: FileList | File[]) => {
+    // Las fotos de iPhone vienen en HEIC y los navegadores no las muestran: se pasan a JPG
+    // antes de sumarlas, así la vista previa y el ticket las muestran de verdad.
+    void normalizarImagenes(Array.from(lista)).then(({ listos, fallaron }) => {
+      agregarYaNormalizados(listos, fallaron.map((n) => `${n}: no se pudo leer la foto`));
+    });
+  };
+
+  const agregarYaNormalizados = (lista: File[], rechazosPrevios: string[] = []) => {
     const ok: File[] = [];
-    const malos: string[] = [];
+    const malos: string[] = [...rechazosPrevios];
     for (const f of Array.from(lista)) {
       if (!mimeAceptado(f.type, f.name)) malos.push(`${f.name}: tipo no permitido`);
       else if (f.size > ARCHIVO_MAX_BYTES) malos.push(`${f.name}: supera ${tamanoLegible(ARCHIVO_MAX_BYTES)}`);

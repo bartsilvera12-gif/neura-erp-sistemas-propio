@@ -128,6 +128,61 @@ async function probeDurationSeconds(path: string): Promise<number> {
 }
 
 /**
+ * ¿El video ya viene como lo quiere WhatsApp? MP4 con video H.264 y audio AAC (o sin audio).
+ * Cualquier otra cosa —una grabación de pantalla de iPhone en .mov con HEVC, por ejemplo— la
+ * rechaza con "formato del archivo no soportado", aunque pese poco.
+ */
+async function videoYaCompatible(buf: Buffer, mime: string): Promise<boolean> {
+  if (!mime.toLowerCase().includes("mp4")) return false;
+  const dir = await mkdtemp(join(tmpdir(), "ccvid-"));
+  const path = join(dir, "v.mp4");
+  try {
+    await writeFile(path, buf);
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      ["-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "csv=p=0", path],
+      { timeout: 20000 }
+    );
+    const lineas = String(stdout).trim().split(/\r?\n/).map((l) => l.trim().toLowerCase());
+    const video = lineas.find((l) => l.startsWith("video,"));
+    const audio = lineas.find((l) => l.startsWith("audio,"));
+    if (!video?.includes("h264")) return false;
+    return !audio || audio.includes("aac");
+  } catch {
+    return false; // sin ffprobe no arriesgamos: se convierte
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Pasa cualquier video a MP4 H.264 + AAC, sin cambiar la resolución. */
+async function convertirVideoAMp4(input: Buffer): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), "ccmp4-"));
+  const inPath = join(dir, "in.bin");
+  const outPath = join(dir, "out.mp4");
+  try {
+    await writeFile(inPath, input);
+    await execFileAsync(
+      "ffmpeg",
+      [
+        "-y", "-hide_banner", "-loglevel", "error",
+        "-i", inPath,
+        // Alto par: H.264 no admite dimensiones impares y las grabaciones de pantalla las traen.
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+        "-movflags", "+faststart",
+        outPath,
+      ],
+      { timeout: 170000, maxBuffer: 1024 * 1024 * 64 }
+    );
+    return await readFile(outPath);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
  * Comprime un video para que entre en el límite de 16 MB de WhatsApp. La API de WhatsApp (vía
  * YCloud) NO comprime — rechaza cualquier video > 16 MB. (La app del celular sí comprime sola,
  * por eso ahí "nunca" se ve el límite.) Escalamos a máx 720p (nítido en pantalla de celular) y
@@ -348,6 +403,32 @@ export async function POST(request: NextRequest) {
           },
           { status: 400 }
         );
+      }
+    }
+
+    // Video en un formato que WhatsApp no acepta (grabación de pantalla .mov con HEVC, avi,
+    // mkv, webm…): se pasa a MP4 H.264 + AAC. Antes salía tal cual y el cliente nunca lo
+    // recibía: WhatsApp devolvía "rechazó el formato del archivo".
+    if (originalMime.startsWith("video/") && buf.length <= VIDEO_LIMIT_BYTES) {
+      if (!(await videoYaCompatible(buf, originalMime))) {
+        try {
+          buf = await convertirVideoAMp4(buf);
+          origName = (origName.replace(/\.[^.]+$/, "") || "video") + ".mp4";
+          uploadMime = "video/mp4";
+        } catch (e) {
+          console.warn("[send-media] convertir video falló", {
+            conversationId,
+            name: file.name,
+            detail: e instanceof Error ? e.message : String(e),
+          });
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "No se pudo preparar el video para WhatsApp. Probá con uno más corto o compartí un enlace.",
+            },
+            { status: 400 }
+          );
+        }
       }
     }
 

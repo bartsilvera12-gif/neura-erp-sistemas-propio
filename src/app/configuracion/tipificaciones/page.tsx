@@ -14,8 +14,17 @@ import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 type Nivel = "familia" | "estado" | "subestado";
 type Nodo = { id: string; nombre: string; activo: boolean; sort_order: number };
 type Estado = Nodo & { subestados: Nodo[] };
-type Familia = Nodo & { estados: Estado[] };
+type Familia = Nodo & { comportamiento?: string | null; estados: Estado[] };
 type Resp = { success?: boolean; error?: string; data?: { familias: Familia[]; meta: { can_edit: boolean } } };
+
+/** Superpoderes que puede disparar una familia al tipificar. */
+const COMPORTAMIENTOS: { value: string; label: string }[] = [
+  { value: "", label: "Sin comportamiento" },
+  { value: "ticket_error", label: "Crea ticket de Error (Soporte)" },
+  { value: "ticket_cambio", label: "Crea ticket de Cambio (Soporte)" },
+  { value: "capacitacion", label: "Agenda capacitación" },
+];
+const compLabel = (v?: string | null) => COMPORTAMIENTOS.find((c) => c.value === (v ?? ""))?.label ?? "Sin comportamiento";
 
 const BTN_PRIMARY =
   "rounded-lg bg-[#3F8E91] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#357a7d] disabled:opacity-50";
@@ -33,6 +42,7 @@ export default function ConfiguracionTipificacionesPage() {
 
   // Inputs de alta por nivel (familia global; estado por familia; sub por estado).
   const [nuevaFamilia, setNuevaFamilia] = useState("");
+  const [nuevaFamiliaComp, setNuevaFamiliaComp] = useState("");
   const [nuevoEstado, setNuevoEstado] = useState<Record<string, string>>({});
   const [nuevoSub, setNuevoSub] = useState<Record<string, string>>({});
 
@@ -63,7 +73,7 @@ export default function ConfiguracionTipificacionesPage() {
     void cargar();
   }, [cargar]);
 
-  async function crear(nivel: Nivel, nombre: string, parentId?: string) {
+  async function crear(nivel: Nivel, nombre: string, parentId?: string, extra?: Record<string, unknown>) {
     const nom = nombre.trim();
     if (!nom || busy) return;
     setBusy(true);
@@ -72,7 +82,7 @@ export default function ConfiguracionTipificacionesPage() {
       const r = await apiFetch("/api/configuracion/tipificaciones", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nivel, nombre: nom, parent_id: parentId }),
+        body: JSON.stringify({ nivel, nombre: nom, parent_id: parentId, ...(extra ?? {}) }),
       });
       const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!r.ok || !j.success) {
@@ -188,18 +198,29 @@ export default function ConfiguracionTipificacionesPage() {
           <ConfigSectionTitle>Agregar familia</ConfigSectionTitle>
           <ConfigHelpText>Cada familia agrupa estados; cada estado, sus sub-estados. Lo desactivado no se ofrece al tipificar.</ConfigHelpText>
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <div className="min-w-[240px] flex-1">
+            <div className="min-w-[220px] flex-1">
               <label className={F_LABEL} htmlFor="nueva-familia">Nombre de la familia</label>
               <input
                 id="nueva-familia"
                 className={F_INPUT}
                 value={nuevaFamilia}
                 onChange={(e) => setNuevaFamilia(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { void crear("familia", nuevaFamilia); setNuevaFamilia(""); } }}
-                placeholder="Ej: Reclamo, Consulta, Soporte…"
+                onKeyDown={(e) => { if (e.key === "Enter") { void crear("familia", nuevaFamilia, undefined, { comportamiento: nuevaFamiliaComp }); setNuevaFamilia(""); setNuevaFamiliaComp(""); } }}
+                placeholder="Ej: Solicitud, Reclamo, Consulta…"
               />
             </div>
-            <button type="button" className={BTN_PRIMARY} onClick={() => { void crear("familia", nuevaFamilia); setNuevaFamilia(""); }} disabled={busy || !nuevaFamilia.trim()}>
+            <div className="min-w-[220px]">
+              <label className={F_LABEL} htmlFor="nueva-familia-comp">Comportamiento</label>
+              <select
+                id="nueva-familia-comp"
+                className={F_INPUT}
+                value={nuevaFamiliaComp}
+                onChange={(e) => setNuevaFamiliaComp(e.target.value)}
+              >
+                {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <button type="button" className={BTN_PRIMARY} onClick={() => { void crear("familia", nuevaFamilia, undefined, { comportamiento: nuevaFamiliaComp }); setNuevaFamilia(""); setNuevaFamiliaComp(""); }} disabled={busy || !nuevaFamilia.trim()}>
               Agregar familia
             </button>
           </div>
@@ -218,6 +239,21 @@ export default function ConfiguracionTipificacionesPage() {
               <div key={f.id} className="rounded-xl border border-slate-200 bg-white">
                 <div className="border-b border-slate-100 bg-slate-50/70 px-3 py-2.5">
                   <Fila nivel="familia" nodo={f} hijosAviso={`¿Eliminar la familia "${f.nombre}" y todos sus estados y sub-estados?`} />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-medium text-slate-400">Comportamiento:</span>
+                    {canEdit ? (
+                      <select
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
+                        value={f.comportamiento ?? ""}
+                        onChange={(e) => void patchNodo("familia", f.id, { comportamiento: e.target.value })}
+                        disabled={busy}
+                      >
+                        {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-[11px] text-slate-600">{compLabel(f.comportamiento)}</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2 px-3 py-3 sm:pl-6">

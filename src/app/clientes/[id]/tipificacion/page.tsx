@@ -12,7 +12,6 @@ import {
   CircleCheckBig,
   ClipboardPen,
   ExternalLink,
-  FileText,
   Flag,
   FolderKanban,
   GraduationCap,
@@ -410,7 +409,7 @@ export default function TipificacionPage() {
       if (!listado?.puede_soporte) return setError("Tu usuario no puede cargar tickets de Soporte.");
       const faltan: string[] = [];
       if (!ticket.proyecto_id) faltan.push("proyecto / servicio afectado");
-      if (!ticket.descripcion.trim()) faltan.push(esCambio ? "descripción del cambio" : "descripción del error");
+      // La descripción del ticket sale de "Detalles" (la observación), ya validada arriba.
       if (clasificaciones.length && !ticket.clasificacion_codigo) faltan.push("clasificación");
       if (faltan.length) return setError(`Completá: ${faltan.join(", ")}.`);
     }
@@ -424,7 +423,8 @@ export default function TipificacionPage() {
           estado_id: estadoId,
           subestado_id: subestadoId,
           observacion: form.observacion.trim(),
-          ...(esError ? { ticket } : {}),
+          // La descripción del ticket es la observación (ya no hay campo aparte).
+          ...(esError ? { ticket: { ...ticket, descripcion: form.observacion.trim() } } : {}),
           ...(esCapacitacion && agendar ? { agenda: { ...agenda, responsable_id: capacitador } } : {}),
         }),
       });
@@ -482,7 +482,7 @@ export default function TipificacionPage() {
 
   return (
     <div className="min-h-full bg-[radial-gradient(1200px_500px_at_0%_-10%,rgba(79,174,178,0.12),transparent_60%),radial-gradient(900px_420px_at_100%_0%,rgba(14,165,233,0.08),transparent_55%)] bg-slate-50/70">
-      <Pagina ancho="max-w-[1500px]">
+      <Pagina ancho="max-w-[1800px]">
         <Encabezado
           titulo="Tipificación"
           subtitulo="Registrá la gestión con el cliente. Un error o un cambio se escala a Soporte con su ticket."
@@ -542,13 +542,13 @@ export default function TipificacionPage() {
           {/* ── Columna principal ───────────────────────────────────────── */}
           <div className="min-w-0 space-y-6">
             <Seccion titulo="Nueva tipificación" detalle="¿Qué gestión se hizo con el cliente?" icono={ClipboardPen} tono="turquesa">
-              <Campo etiqueta="Estado" requerido>
-                <div className="max-w-md">
-                  {estadosCat.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      No hay estados de tipificación cargados. Configuralos en Configuración → Tipificaciones.
-                    </p>
-                  ) : (
+              {estadosCat.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No hay estados de tipificación cargados. Configuralos en Configuración → Tipificaciones.
+                </p>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Campo etiqueta="Estado" requerido>
                     <FancySelect
                       ariaLabel="Estado"
                       value={estadoId}
@@ -558,19 +558,14 @@ export default function TipificacionPage() {
                         ...estadosCat.map((e) => ({ value: e.id, label: e.nombre })),
                       ]}
                     />
-                  )}
-                </div>
-              </Campo>
-
-              {estadoId ? (
-                <Campo etiqueta="Sub-estado" requerido>
-                  <div className="max-w-md">
+                  </Campo>
+                  <Campo etiqueta="Sub-estado" requerido>
                     <FancySelect
                       ariaLabel="Sub-estado"
                       value={subestadoId}
                       onChange={elegirSubestado}
                       options={[
-                        { value: "", label: "Elegí un sub-estado…" },
+                        { value: "", label: estadoId ? "Elegí un sub-estado…" : "Elegí un estado primero" },
                         ...(estadoElegido?.subestados ?? []).map((s) => ({
                           value: s.id,
                           label: s.nombre,
@@ -583,16 +578,16 @@ export default function TipificacionPage() {
                         })),
                       ]}
                     />
-                  </div>
-                </Campo>
-              ) : null}
+                  </Campo>
+                </div>
+              )}
 
-              <Campo etiqueta="Observación" requerido>
+              <Campo etiqueta={esError ? (esCambio ? "Detalles del cambio" : "Detalles del error") : "Detalles de la gestión"} requerido>
                 <textarea
                   value={form.observacion}
                   onChange={(e) => { setError(null); setExito(null); setForm((p) => ({ ...p, observacion: e.target.value })); }}
-                  rows={3}
-                  placeholder={esCambio ? "Ej.: Cliente pide cambiar el logo de la factura" : esError ? "Ej.: Cliente informa que no puede facturar" : "Describí la gestión realizada con el cliente…"}
+                  rows={4}
+                  placeholder={esCambio ? "Qué hay que cambiar, cómo debería quedar…" : esError ? "Qué pasa, desde cuándo, qué mensaje aparece…" : "Describí la gestión realizada con el cliente…"}
                   className={claseArea}
                 />
               </Campo>
@@ -675,38 +670,6 @@ export default function TipificacionPage() {
                     </div>
                   ) : (
                     <>
-                      <Seccion titulo="Proyecto afectado" detalle="Sólo los proyectos de este cliente" icono={FolderKanban} tono="celeste">
-                        <Campo etiqueta="Proyecto / servicio afectado" requerido>
-                          {proyectos.length === 0 ? (
-                            <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                              <FolderKanban className="h-4 w-4" aria-hidden /> No hay proyectos asociados a este cliente.
-                            </div>
-                          ) : (
-                            <SelectorBuscable
-                              ariaLabel="Proyecto / servicio afectado"
-                              opciones={proyectos.map((p) => ({ value: p.id, label: p.titulo }))}
-                              value={ticket.proyecto_id}
-                              onChange={(v) => setCampoTicket("proyecto_id", v)}
-                              placeholder="Seleccionar proyecto…"
-                              buscarPlaceholder="Buscar proyecto…"
-                              vacio="Ningún proyecto coincide"
-                            />
-                          )}
-                        </Campo>
-                        <AccesosProyecto proyectoId={ticket.proyecto_id || null} />
-                      </Seccion>
-
-                      <Seccion titulo={esCambio ? "Detalle del cambio" : "Detalle del error"} detalle={esCambio ? "Qué hay que cambiar y en qué módulo" : "Qué pasa y en qué módulo"} icono={FileText} tono="violeta">
-                        <div className="max-w-md">
-                          <Campo etiqueta="Módulo afectado">
-                            <input className={claseInput} value={ticket.modulo} maxLength={120} onChange={(e) => setCampoTicket("modulo", e.target.value)} placeholder="Ej.: Facturación electrónica" />
-                          </Campo>
-                        </div>
-                        <Campo etiqueta={esCambio ? "Descripción del cambio" : "Descripción del error"} requerido>
-                          <textarea rows={4} className={claseArea} value={ticket.descripcion} onChange={(e) => setCampoTicket("descripcion", e.target.value)} placeholder={esCambio ? "Qué hay que cambiar, cómo debería quedar…" : "Qué pasa, desde cuándo, qué mensaje aparece…"} />
-                        </Campo>
-                      </Seccion>
-
                       <Seccion titulo="Clasificación" detalle="La clasificación define el service level y la fecha de entrega" icono={Flag} tono="ambar">
                         <Campo etiqueta="Clasificación" requerido ayuda={entrega ? `Entrega: ${fechaHoraPy(entrega)}` : undefined}>
                           <div role="radiogroup" aria-label="Clasificación" className="grid gap-3 sm:grid-cols-3">
@@ -760,7 +723,34 @@ export default function TipificacionPage() {
           </div>
 
           {/* ── Resumen fijo ────────────────────────────────────────────── */}
-          <aside className="xl:sticky xl:top-6 xl:self-start">
+          <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+            {esError && cat && proyectos != null ? (
+              <div className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
+                <div className="border-b border-slate-100 px-5 py-3.5">
+                  <p className="text-[13.5px] font-bold text-slate-800">Proyecto afectado</p>
+                  <p className="text-[11.5px] text-slate-500">Sólo los proyectos de este cliente</p>
+                </div>
+                <div className="space-y-3 p-4">
+                  {proyectos.length === 0 ? (
+                    <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-500">
+                      <FolderKanban className="h-4 w-4" aria-hidden /> Sin proyectos asociados.
+                    </div>
+                  ) : (
+                    <SelectorBuscable
+                      ariaLabel="Proyecto / servicio afectado"
+                      opciones={proyectos.map((p) => ({ value: p.id, label: p.titulo }))}
+                      value={ticket.proyecto_id}
+                      onChange={(v) => setCampoTicket("proyecto_id", v)}
+                      placeholder="Seleccionar proyecto…"
+                      buscarPlaceholder="Buscar proyecto…"
+                      vacio="Ningún proyecto coincide"
+                    />
+                  )}
+                  <AccesosProyecto proyectoId={ticket.proyecto_id || null} />
+                </div>
+              </div>
+            ) : null}
+
             <div className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
               <div className="px-5 pb-4 pt-5" style={{ backgroundImage: `linear-gradient(135deg, ${TONOS[tipoUi.tono].hex}1f, transparent 70%)` }}>
                 <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Resumen</p>

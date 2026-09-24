@@ -1,5 +1,6 @@
 "use client";
 
+import { esImagenElegida, normalizarImagenes } from "@/lib/imagenes/heic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1013,9 +1014,19 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         multiple
         className="hidden"
         onChange={(e) => {
-          const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
-          if (files.length > 0) setImagenes((prev) => [...prev, ...files].slice(0, 10));
+          const files = Array.from(e.target.files ?? []).filter(esImagenElegida);
           e.target.value = "";
+          if (files.length === 0) return;
+          // Las fotos de iPhone (HEIC) se pasan a JPG acá: los navegadores no las muestran.
+          void normalizarImagenes(files).then(({ listos, fallaron }) => {
+            if (listos.length > 0) setImagenes((prev) => [...prev, ...listos].slice(0, 10));
+            if (fallaron.length > 0) {
+              window.alert(
+                `No se pudieron leer estas fotos: ${fallaron.join(", ")}.\n` +
+                  "Probá enviarlas como JPG o sacar la captura desde la computadora."
+              );
+            }
+          });
         }}
       />
       <div className="flex items-center gap-2">

@@ -16,6 +16,7 @@ import {
   PieChart,
   Receipt,
   SlidersHorizontal,
+  Tags,
   UsersRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -157,6 +158,16 @@ export default function ConfiguracionPage() {
               icon={BookOpen}
               badge={editorBadge}
               href="/configuracion/ayuda"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
+              title="Tipificaciones"
+              subtitle="GLOBAL · GESTIÓN DE CLIENTES"
+              description="Familias de tipificación con sus estados y sub-estados. Es el catálogo que se usa al tipificar la gestión de un cliente."
+              icon={Tags}
+              badge={editorBadge}
+              href="/configuracion/tipificaciones"
             />
           </li>
           <li>

@@ -12,7 +12,6 @@ import {
   CircleCheckBig,
   ClipboardPen,
   ExternalLink,
-  Flag,
   FolderKanban,
   GraduationCap,
   HandCoins,
@@ -670,48 +669,6 @@ export default function TipificacionPage() {
                     </div>
                   ) : (
                     <>
-                      <Seccion titulo="Clasificación" detalle="La clasificación define el service level y la fecha de entrega" icono={Flag} tono="ambar">
-                        <Campo etiqueta="Clasificación" requerido ayuda={entrega ? `Entrega: ${fechaHoraPy(entrega)}` : undefined}>
-                          <div role="radiogroup" aria-label="Clasificación" className="grid gap-3 sm:grid-cols-3">
-                            {clasificaciones.map((c) => {
-                              const t = TONOS[tonoSla(c.sla_horas)];
-                              const activa = ticket.clasificacion_codigo === c.codigo;
-                              return (
-                                <button
-                                  key={c.codigo}
-                                  type="button"
-                                  role="radio"
-                                  aria-checked={activa}
-                                  onClick={() => elegirClasificacion(c.codigo)}
-                                  className={`relative overflow-hidden rounded-2xl border px-4 py-3.5 text-left transition ${
-                                    activa ? `${t.borde} ${t.suave} shadow-sm` : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                                  }`}
-                                >
-                                  <span className={`absolute inset-y-0 left-0 w-1 ${activa ? t.solido : "bg-transparent"}`} aria-hidden />
-                                  <p className={`text-[14px] font-bold ${activa ? t.texto : "text-slate-800"}`}>{c.nombre}</p>
-                                  <p className="mt-1 inline-flex items-center gap-1 text-[12px] font-medium text-slate-500">
-                                    <Timer className="h-3.5 w-3.5" aria-hidden /> SLA {c.sla_horas} h
-                                  </p>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </Campo>
-
-
-                        <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600">
-                          <UserRound className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-                          {asignacion?.responsable ? (
-                            <span>
-                              Se asigna a <strong className="text-slate-800">{asignacion.responsable.nombre}</strong> (
-                              {({ ordinario: "Desarrollo de Soporte", guardia: "desarrollador de guardia", guardia_sin_asignar: "no hay guardia cargada esta semana" })[asignacion.motivo]}). Entra como Pendiente.
-                            </span>
-                          ) : (
-                            <span>Entra como Pendiente, sin responsable.</span>
-                          )}
-                        </div>
-                      </Seccion>
-
                       <Seccion titulo="Evidencias" detalle="Capturas, videos o documentos. Quedan en el ticket." icono={Paperclip} tono="indigo">
                         <ZonaArchivos archivos={archivos} onCambio={setArchivos} deshabilitada={guardando} />
                       </Seccion>
@@ -747,6 +704,52 @@ export default function TipificacionPage() {
                     />
                   )}
                   <AccesosProyecto proyectoId={ticket.proyecto_id || null} />
+                </div>
+              </div>
+            ) : null}
+
+            {esError && cat ? (
+              <div className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
+                <div className="border-b border-slate-100 px-5 py-3.5">
+                  <p className="text-[13.5px] font-bold text-slate-800">Clasificación</p>
+                  <p className="text-[11.5px] text-slate-500">Define el service level y la entrega{entrega ? ` · ${fechaHoraPy(entrega)}` : ""}</p>
+                </div>
+                <div className="space-y-2 p-4">
+                  <div role="radiogroup" aria-label="Clasificación" className="space-y-2">
+                    {clasificaciones.map((c) => {
+                      const t = TONOS[tonoSla(c.sla_horas)];
+                      const activa = ticket.clasificacion_codigo === c.codigo;
+                      return (
+                        <button
+                          key={c.codigo}
+                          type="button"
+                          role="radio"
+                          aria-checked={activa}
+                          onClick={() => elegirClasificacion(c.codigo)}
+                          className={`relative flex w-full items-center justify-between overflow-hidden rounded-xl border px-3.5 py-2.5 text-left transition ${
+                            activa ? `${t.borde} ${t.suave} shadow-sm` : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className={`absolute inset-y-0 left-0 w-1 ${activa ? t.solido : "bg-transparent"}`} aria-hidden />
+                          <span className={`text-[13.5px] font-bold ${activa ? t.texto : "text-slate-800"}`}>{c.nombre}</span>
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-500">
+                            <Timer className="h-3.5 w-3.5" aria-hidden /> {c.sla_horas} h
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
+                    <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                    {asignacion?.responsable ? (
+                      <span>
+                        Se asigna a <strong className="text-slate-800">{asignacion.responsable.nombre}</strong> (
+                        {({ ordinario: "Desarrollo de Soporte", guardia: "desarrollador de guardia", guardia_sin_asignar: "no hay guardia cargada esta semana" })[asignacion.motivo]}). Entra como Pendiente.
+                      </span>
+                    ) : (
+                      <span>Entra como Pendiente, sin responsable.</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { GlobalConfigSubpageShell } from "@/components/config/GlobalConfigSubpageShell";
 import {
   ConfigFormCard,
@@ -135,8 +135,9 @@ export default function ConfiguracionTipificacionesPage() {
     }
   }
 
-  /** Fila editable (nombre + acciones) para Estado o Sub-estado. */
-  function Fila({ nivel, nodo, aviso }: { nivel: NivelApi; nodo: Nodo; aviso: string }) {
+  /** Fila editable (nombre + acciones) para Estado o Sub-estado. `extra` se
+   *  renderiza al lado del nombre (ej. el selector de Acción del sub-estado). */
+  function Fila({ nivel, nodo, aviso, extra }: { nivel: NivelApi; nodo: Nodo; aviso: string; extra?: ReactNode }) {
     if (editId === nodo.id) {
       return (
         <div className="flex flex-wrap items-center gap-2">
@@ -154,14 +155,15 @@ export default function ConfiguracionTipificacionesPage() {
     }
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`flex-1 text-sm ${nodo.activo ? "text-slate-800" : "text-slate-400 line-through"}`}>{nodo.nombre}</span>
+        <span className={`text-sm ${nodo.activo ? "text-slate-800" : "text-slate-400 line-through"}`}>{nodo.nombre}</span>
         {!nodo.activo ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">Inactivo</span> : null}
+        {extra}
         {canEdit ? (
-          <>
+          <div className="ml-auto flex items-center gap-2">
             <button type="button" className={BTN_GHOST} onClick={() => { setEditId(nodo.id); setEditNombre(nodo.nombre); }}>Editar</button>
             <button type="button" className={BTN_GHOST} onClick={() => void patchNodo(nivel, nodo.id, { activo: !nodo.activo })} disabled={busy}>{nodo.activo ? "Desactivar" : "Activar"}</button>
             <button type="button" className={BTN_DANGER} onClick={() => void eliminar(nivel, nodo.id, aviso)} disabled={busy}>Eliminar</button>
-          </>
+          </div>
         ) : null}
       </div>
     );
@@ -216,22 +218,28 @@ export default function ConfiguracionTipificacionesPage() {
                   ) : (
                     est.subestados.map((s) => (
                       <div key={s.id} className="rounded-lg border border-slate-100 px-2.5 py-2">
-                        <Fila nivel="estado" nodo={s} aviso={`¿Eliminar el sub-estado "${s.nombre}"?`} />
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] font-medium text-slate-400">Acción:</span>
-                          {canEdit ? (
-                            <select
-                              className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
-                              value={s.comportamiento ?? ""}
-                              onChange={(ev) => void patchNodo("estado", s.id, { comportamiento: ev.target.value })}
-                              disabled={busy}
-                            >
-                              {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                            </select>
-                          ) : (
-                            <span className="text-[10px] text-slate-500">{compLabel(s.comportamiento)}</span>
-                          )}
-                        </div>
+                        <Fila
+                          nivel="estado"
+                          nodo={s}
+                          aviso={`¿Eliminar el sub-estado "${s.nombre}"?`}
+                          extra={
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="text-[10px] font-medium text-slate-400">Acción:</span>
+                              {canEdit ? (
+                                <select
+                                  className="rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
+                                  value={s.comportamiento ?? ""}
+                                  onChange={(ev) => void patchNodo("estado", s.id, { comportamiento: ev.target.value })}
+                                  disabled={busy}
+                                >
+                                  {COMPORTAMIENTOS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                </select>
+                              ) : (
+                                <span className="text-[11px] text-slate-500">{compLabel(s.comportamiento)}</span>
+                              )}
+                            </span>
+                          }
+                        />
                       </div>
                     ))
                   )}

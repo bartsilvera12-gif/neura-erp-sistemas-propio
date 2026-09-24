@@ -11,8 +11,14 @@ import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
 import { subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 import { numeroTicket } from "@/lib/soporte/dominio";
 
+type EstadoCatTicket = {
+  id: string;
+  nombre: string;
+  subestados: { id: string; nombre: string; comportamiento: string | null }[];
+};
 type Datos = {
   tipos: SoporteTipo[];
+  estados?: EstadoCatTicket[];
   clasificaciones: SoporteClasificacion[];
   asignacion: Record<"error" | "cambio", { responsable: { id: string; nombre: string; area: string } | null; motivo: "ordinario" | "guardia" | "guardia_sin_asignar" }>;
   clientes: { id: string; nombre: string }[];
@@ -67,7 +73,10 @@ export default function SoporteTicketModal({
   const [contactoSecundario, setContactoSecundario] = useState<string | null>(null);
   const [proyectos, setProyectos] = useState<{ id: string; titulo: string }[]>([]);
   const [proyecto, setProyecto] = useState("");
-  const [tipo, setTipo] = useState("error");
+  // Nuevo modelo: se elige Estado → Sub-estado del catálogo; el tipo (error/cambio)
+  // sale del comportamiento del sub-estado.
+  const [estadoTip, setEstadoTip] = useState("");
+  const [subestadoTip, setSubestadoTip] = useState("");
   const [nivel, setNivel] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -141,6 +150,11 @@ export default function SoporteTicketModal({
     return () => window.removeEventListener("keydown", k);
   }, [alCerrar, guardando]);
 
+  const estadoElegido = (datos?.estados ?? []).find((e) => e.id === estadoTip) ?? null;
+  const subElegido = estadoElegido?.subestados.find((s) => s.id === subestadoTip) ?? null;
+  // Tipo de ticket derivado de la acción del sub-estado.
+  const tipo = subElegido?.comportamiento === "ticket_cambio" ? "cambio" : subElegido?.comportamiento === "ticket_error" ? "error" : "";
+
   const niveles = useMemo(() => (datos?.clasificaciones ?? []).filter((c) => c.tipo_codigo === tipo), [datos, tipo]);
   const nivelElegido = niveles.find((c) => c.codigo === nivel);
   const entrega = nivelElegido ? vencimientoSla(Date.now(), nivelElegido.sla_horas) : null;
@@ -148,7 +162,8 @@ export default function SoporteTicketModal({
   const faltan: string[] = [];
   if (!cliente) faltan.push("cliente");
   if (!proyecto) faltan.push("proyecto");
-  if (!tipo) faltan.push("tipo");
+  if (!estadoTip) faltan.push("estado");
+  if (!subestadoTip) faltan.push("sub-estado");
   if (niveles.length > 0 && !nivel) faltan.push("clasificación");
   if (!descripcion.trim()) faltan.push("descripción");
 
@@ -167,7 +182,8 @@ export default function SoporteTicketModal({
           conversation_id: conversationId,
           cliente_id: cliente,
           proyecto_id: proyecto || null,
-          tipo_codigo: tipo,
+          estado_id: estadoTip,
+          subestado_id: subestadoTip,
           clasificacion_codigo: nivel || null,
           descripcion,
         }),
@@ -294,28 +310,44 @@ export default function SoporteTicketModal({
                 </div>
               </div>
 
-              <div>
-                <span className={claseEtiqueta}>Tipo *</span>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Tipo">
-                  {datos.tipos.map((t) => (
-                    <button
-                      key={t.codigo}
-                      type="button"
-                      role="radio"
-                      aria-checked={tipo === t.codigo}
-                      onClick={() => {
-                        setTipo(t.codigo);
-                        setNivel("");
-                      }}
-                      className={`rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition ${
-                        tipo === t.codigo ? "border-[#4FAEB2] bg-[#4FAEB2]/12 text-[#2F6E71]" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      {t.nombre}
-                    </button>
-                  ))}
+              {(datos.estados ?? []).length === 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
+                  No hay sub-estados con acción de ticket configurados. Cargalos en Configuración → Tipificaciones.
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div>
+                    <span className={claseEtiqueta}>Estado *</span>
+                    <select
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 focus:border-[#4FAEB2] focus:outline-none"
+                      value={estadoTip}
+                      onChange={(e) => { setEstadoTip(e.target.value); setSubestadoTip(""); setNivel(""); }}
+                    >
+                      <option value="">Elegí un estado…</option>
+                      {(datos.estados ?? []).map((e) => (
+                        <option key={e.id} value={e.id}>{e.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {estadoTip ? (
+                    <div>
+                      <span className={claseEtiqueta}>Sub-estado *</span>
+                      <select
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 focus:border-[#4FAEB2] focus:outline-none"
+                        value={subestadoTip}
+                        onChange={(e) => { setSubestadoTip(e.target.value); setNivel(""); }}
+                      >
+                        <option value="">Elegí un sub-estado…</option>
+                        {(estadoElegido?.subestados ?? []).map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre} · {s.comportamiento === "ticket_cambio" ? "Cambio" : "Error"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
+                </>
+              )}
 
               {niveles.length > 0 ? (
                 <div>

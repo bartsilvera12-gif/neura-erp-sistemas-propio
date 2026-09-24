@@ -3,6 +3,8 @@ import { puedeEstarACargo } from "@/lib/soporte/dominio";
 import { crearTipificacionConTicket, gestionDeTipoTicket, responsableAutomatico } from "@/lib/soporte/tipificacion-ticket";
 import { requireCargaSoporteApi } from "@/lib/soporte/soporte-auth";
 import { clienteDelContacto } from "@/lib/clientes/cliente-de-contacto";
+import type { TipoGestion } from "@/lib/gestion-clientes/types";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import {
   clientesDeEmpresa,
   errorInesperado,
@@ -15,6 +17,37 @@ import {
 } from "@/lib/soporte/servidor";
 
 const UUID = /^[0-9a-f-]{36}$/i;
+
+/** Mapa comportamiento del sub-estado → tipo de ticket. */
+function tipoTicketDeComportamiento(comp: string | null | undefined): "error" | "cambio" | null {
+  const c = String(comp ?? "").trim();
+  return c === "ticket_error" ? "error" : c === "ticket_cambio" ? "cambio" : null;
+}
+
+/** Estados (activos) con sus sub-estados (activos) que crean ticket de Soporte. */
+async function estadosConSubTicket(sb: AppSupabaseClient, empresaId: string) {
+  try {
+    const [famRes, estRes] = await Promise.all([
+      sb.from("tipificacion_familias").select("id, nombre, activo").eq("empresa_id", empresaId).order("sort_order").order("nombre"),
+      sb.from("tipificacion_estados").select("id, familia_id, nombre, activo, comportamiento").eq("empresa_id", empresaId).order("sort_order").order("nombre"),
+    ]);
+    if (famRes.error || estRes.error) return [];
+    const familias = (famRes.data ?? []) as { id: string; nombre: string; activo: boolean }[];
+    const estados = (estRes.data ?? []) as { id: string; familia_id: string; nombre: string; activo: boolean; comportamiento: string | null }[];
+    return familias
+      .filter((f) => f.activo)
+      .map((f) => ({
+        id: f.id,
+        nombre: f.nombre,
+        subestados: estados
+          .filter((e) => e.familia_id === f.id && e.activo && tipoTicketDeComportamiento(e.comportamiento))
+          .map((e) => ({ id: e.id, nombre: e.nombre, comportamiento: e.comportamiento })),
+      }))
+      .filter((f) => f.subestados.length > 0);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Carga de un ticket de Soporte desde Conversaciones.
@@ -61,14 +94,18 @@ export async function GET(request: Request) {
       responsableAutomatico(auth.sb, auth.empresaId, "error"),
       responsableAutomatico(auth.sb, auth.empresaId, "cambio"),
     ]);
-    const [cat, personas, clientes] = await Promise.all([
+    const [cat, personas, clientes, estadosCat] = await Promise.all([
       leerCatalogos(auth.sb, auth.empresaId),
       personasDeEmpresa(auth.empresaId),
       clientesDeEmpresa(auth.sb, auth.empresaId),
+      // Catálogo Estado → Sub-estados con ACCIÓN de ticket (Error/Cambio). Es lo
+      // que se elige ahora en el chat, igual que en la tipificación del cliente.
+      estadosConSubTicket(auth.sb, auth.empresaId),
     ]);
     return ok({
       // Sólo los tipos que nacen de una tipificación (Error y Cambio).
       tipos: cat.tipos.filter((t) => t.activo && gestionDeTipoTicket(t.codigo)),
+      estados: estadosCat,
       clasificaciones: cat.clasificaciones.filter((c) => c.activo),
       a_cargo: personas.filter(puedeEstarACargo),
       // Quién recibe el ticket: se asigna solo, quien carga no elige.
@@ -112,9 +149,28 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (!cliente) return falla("El cliente no existe", 404);
 
-    // Los tickets nacen de una tipificación: desde el chat también se registra
-    // la gestión (Error o Cambio) en la tipificación del cliente.
-    const tipoGestion = gestionDeTipoTicket(body.tipo_codigo);
+    // Los tickets nacen de una tipificación. Modelo nuevo: se elige un Sub-estado
+    // del catálogo (Estado → Sub-estado) que tenga acción de ticket. Compat: si
+    // llega el `tipo_codigo` viejo (error/cambio), se sigue aceptando.
+    const estadoId = typeof body.estado_id === "string" && UUID.test(body.estado_id) ? body.estado_id : "";
+    const subestadoId = typeof body.subestado_id === "string" && UUID.test(body.subestado_id) ? body.subestado_id : "";
+    let tipoGestion: TipoGestion | null = null;
+    let catNombres: { estado: string; sub: string } | null = null;
+    if (estadoId && subestadoId) {
+      const [estRes, subRes] = await Promise.all([
+        auth.sb.from("tipificacion_familias").select("id, nombre").eq("empresa_id", auth.empresaId).eq("id", estadoId).maybeSingle(),
+        auth.sb.from("tipificacion_estados").select("id, nombre, comportamiento, familia_id").eq("empresa_id", auth.empresaId).eq("id", subestadoId).maybeSingle(),
+      ]);
+      const estado = estRes.data as { id: string; nombre: string } | null;
+      const sub = subRes.data as { id: string; nombre: string; comportamiento: string | null; familia_id: string } | null;
+      if (!estado || !sub || sub.familia_id !== estadoId) return falla("Elegí un estado y sub-estado válidos");
+      const tt = tipoTicketDeComportamiento(sub.comportamiento);
+      if (!tt) return falla("Ese sub-estado no crea un ticket de Soporte");
+      tipoGestion = tt === "error" ? "Error" : "Cambio";
+      catNombres = { estado: estado.nombre, sub: sub.nombre };
+    } else {
+      tipoGestion = gestionDeTipoTicket(body.tipo_codigo);
+    }
     if (!tipoGestion) return falla("Elegí si es un error o un cambio");
     const descripcion = typeof body.descripcion === "string" ? body.descripcion.trim() : "";
 
@@ -139,6 +195,17 @@ export async function POST(request: Request) {
       conversationId,
     });
     if (!r.ok) return falla(r.mensaje, r.status);
+
+    // Modelo nuevo: se sobreescribe la tipificación con los nombres del catálogo
+    // (Estado/Sub-estado) + ids, para que se muestre y reporte igual que las de
+    // Gestión de clientes. El ticket ya quedó vinculado.
+    if (catNombres) {
+      await auth.sb
+        .from("tipificaciones")
+        .update({ tipo_gestion: catNombres.estado, resultado: catNombres.sub, familia_id: estadoId, estado_id: subestadoId })
+        .eq("empresa_id", auth.empresaId)
+        .eq("id", r.tipificacion_id);
+    }
 
     // El contacto del chat queda asociado a ese cliente si todavía no lo estaba:
     // la próxima vez se reconoce solo y aparece "Cliente →" en la conversación.

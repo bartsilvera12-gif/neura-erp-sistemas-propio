@@ -717,6 +717,96 @@ export default function TipificacionPage() {
                 </motion.div>
               ) : null}
             </AnimatePresence>
+
+        {/* ── Historial de tipificaciones ─────────────────────────────── */}
+        <section className={`overflow-hidden rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
+          <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <IconoTile icono={History} tono="indigo" tam="sm" />
+              <h2 className="text-[15px] font-bold text-slate-800">Historial de tipificaciones</h2>
+            </div>
+            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold tabular-nums text-indigo-700">
+              <CountUp to={tipificaciones.length} duration={0.5} />
+            </span>
+          </header>
+
+          {tipificaciones.length === 0 ? (
+            <div className="py-14 text-center text-sm text-slate-400">
+              {listado ? "No hay tipificaciones registradas para este cliente." : "Cargando…"}
+            </div>
+          ) : (
+            <ol className="divide-y divide-slate-100">
+              {tipificaciones.map((t) => {
+                const ui = TIPO_UI[t.tipo_gestion as TipoGestion] ?? TIPO_UI.Consulta;
+                const tt = TONOS[ui.tono];
+                const rt = TONOS[RESULTADO_TONO[t.resultado as ResultadoTipificacion] ?? "pizarra"];
+                const Icono = ui.icono;
+                return (
+                  <li
+                    key={t.id}
+                    id={`tip-${t.id}`}
+                    className={`grid gap-3 px-5 py-4 transition-colors md:grid-cols-[170px_minmax(0,1fr)] ${resaltada === t.id ? "bg-[#4FAEB2]/10" : "hover:bg-slate-50/60"}`}
+                  >
+                    <div className="flex items-start gap-3 md:block">
+                      <p className="text-[12px] tabular-nums text-slate-400">{formatFechaHora(t.fecha)}</p>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700">
+                        <Avatar nombre={t.usuario} tam={20} /> <span className="truncate">{t.usuario}</span>
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-bold ${tt.suave} ${tt.texto}`}>
+                          <Icono className="h-3.5 w-3.5" aria-hidden /> {t.tipo_gestion}
+                        </span>
+                        <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-bold ${rt.suave} ${rt.texto}`}>{t.resultado}</span>
+                      </div>
+                      <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-relaxed text-slate-700">{t.observacion}</p>
+
+                      {t.cita ? (
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-3">
+                          <p className="inline-flex items-center gap-2 text-[13px] font-semibold text-indigo-800">
+                            <GraduationCap className="h-4 w-4" aria-hidden />
+                            Capacitación agendada · {formatFechaHora(t.cita.inicio_at)}
+                            {t.cita.responsable ? <span className="font-medium text-indigo-600">· {t.cita.responsable}</span> : null}
+                          </p>
+                          <Link href="/dashboard/agenda" className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-semibold text-indigo-700 no-underline shadow-sm ring-1 ring-indigo-200 hover:bg-indigo-50">
+                            Ver en Agenda <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                      ) : null}
+
+                      {t.ticket ? (
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#4FAEB2]/25 bg-gradient-to-r from-[#4FAEB2]/[0.07] to-transparent px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-bold text-slate-800">
+                              Ticket {numeroTicket(t.ticket.numero)} <span className="font-medium text-slate-500">· {t.ticket.asunto}</span>
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-600">
+                              <span className="inline-flex items-center gap-1"><FolderKanban className="h-3.5 w-3.5 text-slate-400" aria-hidden />{t.ticket.proyecto_titulo ?? "—"}</span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="h-2 w-2 rounded-full" style={{ background: t.ticket.estado_color ?? "#94a3b8" }} aria-hidden />
+                                {t.ticket.estado_nombre}
+                              </span>
+                            </div>
+                          </div>
+                          {listado?.puede_soporte ? (
+                            <Link
+                              href={`/dashboard/soporte/tickets/${t.ticket.id}`}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-semibold text-[#2F6E71] no-underline shadow-sm ring-1 ring-[#4FAEB2]/30 hover:bg-[#4FAEB2]/10"
+                            >
+                              Ver ticket <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
+
           </div>
 
           {/* ── Resumen fijo ────────────────────────────────────────────── */}
@@ -836,95 +926,6 @@ export default function TipificacionPage() {
             </div>
           </aside>
         </form>
-
-        {/* ── Historial de tipificaciones ─────────────────────────────── */}
-        <section className={`mt-8 overflow-hidden rounded-2xl border border-slate-200/80 bg-white ${sombra}`}>
-          <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-            <div className="flex items-center gap-3">
-              <IconoTile icono={History} tono="indigo" tam="sm" />
-              <h2 className="text-[15px] font-bold text-slate-800">Historial de tipificaciones</h2>
-            </div>
-            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold tabular-nums text-indigo-700">
-              <CountUp to={tipificaciones.length} duration={0.5} />
-            </span>
-          </header>
-
-          {tipificaciones.length === 0 ? (
-            <div className="py-14 text-center text-sm text-slate-400">
-              {listado ? "No hay tipificaciones registradas para este cliente." : "Cargando…"}
-            </div>
-          ) : (
-            <ol className="divide-y divide-slate-100">
-              {tipificaciones.map((t) => {
-                const ui = TIPO_UI[t.tipo_gestion as TipoGestion] ?? TIPO_UI.Consulta;
-                const tt = TONOS[ui.tono];
-                const rt = TONOS[RESULTADO_TONO[t.resultado as ResultadoTipificacion] ?? "pizarra"];
-                const Icono = ui.icono;
-                return (
-                  <li
-                    key={t.id}
-                    id={`tip-${t.id}`}
-                    className={`grid gap-3 px-5 py-4 transition-colors md:grid-cols-[170px_minmax(0,1fr)] ${resaltada === t.id ? "bg-[#4FAEB2]/10" : "hover:bg-slate-50/60"}`}
-                  >
-                    <div className="flex items-start gap-3 md:block">
-                      <p className="text-[12px] tabular-nums text-slate-400">{formatFechaHora(t.fecha)}</p>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700">
-                        <Avatar nombre={t.usuario} tam={20} /> <span className="truncate">{t.usuario}</span>
-                      </p>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-bold ${tt.suave} ${tt.texto}`}>
-                          <Icono className="h-3.5 w-3.5" aria-hidden /> {t.tipo_gestion}
-                        </span>
-                        <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-bold ${rt.suave} ${rt.texto}`}>{t.resultado}</span>
-                      </div>
-                      <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-relaxed text-slate-700">{t.observacion}</p>
-
-                      {t.cita ? (
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-3">
-                          <p className="inline-flex items-center gap-2 text-[13px] font-semibold text-indigo-800">
-                            <GraduationCap className="h-4 w-4" aria-hidden />
-                            Capacitación agendada · {formatFechaHora(t.cita.inicio_at)}
-                            {t.cita.responsable ? <span className="font-medium text-indigo-600">· {t.cita.responsable}</span> : null}
-                          </p>
-                          <Link href="/dashboard/agenda" className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-semibold text-indigo-700 no-underline shadow-sm ring-1 ring-indigo-200 hover:bg-indigo-50">
-                            Ver en Agenda <ExternalLink className="h-3.5 w-3.5" />
-                          </Link>
-                        </div>
-                      ) : null}
-
-                      {t.ticket ? (
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#4FAEB2]/25 bg-gradient-to-r from-[#4FAEB2]/[0.07] to-transparent px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="text-[13px] font-bold text-slate-800">
-                              Ticket {numeroTicket(t.ticket.numero)} <span className="font-medium text-slate-500">· {t.ticket.asunto}</span>
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-600">
-                              <span className="inline-flex items-center gap-1"><FolderKanban className="h-3.5 w-3.5 text-slate-400" aria-hidden />{t.ticket.proyecto_titulo ?? "—"}</span>
-                              <span className="inline-flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full" style={{ background: t.ticket.estado_color ?? "#94a3b8" }} aria-hidden />
-                                {t.ticket.estado_nombre}
-                              </span>
-                            </div>
-                          </div>
-                          {listado?.puede_soporte ? (
-                            <Link
-                              href={`/dashboard/soporte/tickets/${t.ticket.id}`}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12.5px] font-semibold text-[#2F6E71] no-underline shadow-sm ring-1 ring-[#4FAEB2]/30 hover:bg-[#4FAEB2]/10"
-                            >
-                              Ver ticket <ExternalLink className="h-3.5 w-3.5" />
-                            </Link>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </section>
       </Pagina>
     </div>
   );

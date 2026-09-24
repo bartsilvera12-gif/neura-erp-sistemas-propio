@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeftRight,
@@ -37,8 +37,6 @@ import { getCliente, clienteNombre } from "@/lib/clientes/storage";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import type { Cliente } from "@/lib/clientes/types";
 import {
-  RESULTADOS_TIPIFICACION,
-  TIPOS_GESTION,
   type ResultadoTipificacion,
   type Tipificacion,
   type TipoGestion,
@@ -65,12 +63,6 @@ import {
 import { numeroTicket } from "@/lib/soporte/dominio";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
-
-/**
- * Tipos que crean un ticket de Soporte, con el tipo de ticket de cada uno. Su
- * resultado es siempre "Escalar" (lo fija el servidor).
- */
-const TIPO_TICKET: Partial<Record<TipoGestion, "error" | "cambio">> = { Error: "error", Cambio: "cambio" };
 
 /** Lo que devuelve `/api/soporte/carga-rapida` para armar el ticket. */
 type DatosSoporte = {
@@ -250,15 +242,14 @@ export default function TipificacionPage() {
   const [guardando, setGuardando] = useState(false);
   const [resaltada, setResaltada] = useState<string | null>(null);
 
-  const [form, setForm] = useState<{
-    tipo_gestion: TipoGestion;
-    resultado:    ResultadoTipificacion;
-    observacion:  string;
-  }>({
-    tipo_gestion: "Consulta",
-    resultado:    "Pendiente",
-    observacion:  "",
-  });
+  const [form, setForm] = useState<{ observacion: string }>({ observacion: "" });
+  // Catálogo configurable: Estado (top) → Sub-estados. La acción del sub-estado
+  // (comportamiento) es lo que dispara ticket/agenda.
+  type SubEstadoCat = { id: string; nombre: string; activo: boolean; comportamiento: string | null };
+  type EstadoCat = { id: string; nombre: string; activo: boolean; subestados: SubEstadoCat[] };
+  const [estadosCat, setEstadosCat] = useState<EstadoCat[]>([]);
+  const [estadoId, setEstadoId] = useState("");
+  const [subestadoId, setSubestadoId] = useState("");
   const [ticket, setTicket] = useState<DatosTicket>(TICKET_VACIO);
   const [archivos, setArchivos] = useState<File[]>([]);
   // Capacitación: agendar la sesión en Agenda desde acá mismo.
@@ -272,34 +263,44 @@ export default function TipificacionPage() {
 
   const [error, setError] = useState<string | null>(null);
 
-  const tipoTicket = TIPO_TICKET[form.tipo_gestion] ?? null;
+  // El sub-estado elegido y su acción (comportamiento) mandan el flujo especial.
+  const estadoElegido = estadosCat.find((e) => e.id === estadoId) ?? null;
+  const subEstadoElegido = estadoElegido?.subestados.find((s) => s.id === subestadoId) ?? null;
+  const compSub = subEstadoElegido?.comportamiento ?? "";
+  const tipoTicket = compSub === "ticket_error" ? "error" : compSub === "ticket_cambio" ? "cambio" : null;
   const esError = tipoTicket != null;
   const esCambio = tipoTicket === "cambio";
   // A quién va el ticket si se carga ahora (un error puede ir a guardia; un cambio, nunca).
   const asignacion = tipoTicket ? cat?.asignacion?.[tipoTicket] ?? null : null;
-  const esCapacitacion = form.tipo_gestion === "Capacitación";
+  const esCapacitacion = compSub === "capacitacion";
   // Quien da la capacitación: por defecto, quien la registra.
   const capacitador = agenda.responsable_id || listado?.usuario_actual.id || "";
   const capacitadorNombre = listado?.equipo.find((p) => p.id === capacitador)?.nombre ?? null;
   const inicioCapacitacionMs = agenda.inicio ? Date.parse(`${agenda.inicio}:00-03:00`) : NaN;
   const capacitacionEnHorario = rangoEnHorarioLaboral(inicioCapacitacionMs, inicioCapacitacionMs + agenda.duracion_min * 60_000);
 
-  // Para un PM el formulario arranca en Error. Sólo la primera vez, y sólo si
-  // nadie empezó a cargar otra cosa mientras llegaba el listado.
-  const tipoInicialAplicado = useRef(false);
   const cargarListado = useCallback(async () => {
     const res = await fetchWithSupabaseSession(`/api/clientes/${id}/tipificaciones`, { cache: "no-store" });
     const j = (await res.json().catch(() => null)) as { success?: boolean; data?: Listado; error?: string } | null;
     if (res.ok && j?.success && j.data) {
       setListado(j.data);
-      if (!tipoInicialAplicado.current) {
-        tipoInicialAplicado.current = true;
-        if (j.data.es_pm) {
-          setForm((f) => (f.tipo_gestion === "Consulta" && !f.observacion ? { ...f, tipo_gestion: "Error", resultado: "Escalar" } : f));
-        }
-      }
     } else setError(j?.error ?? "No se pudo cargar el historial de tipificaciones.");
   }, [id]);
+
+  // Catálogo de tipificaciones (Estado → Sub-estados) — solo lo activo.
+  const cargarCatalogo = useCallback(async () => {
+    const res = await fetchWithSupabaseSession("/api/configuracion/tipificaciones", { cache: "no-store" });
+    const j = (await res.json().catch(() => null)) as
+      | { success?: boolean; data?: { familias?: EstadoCat[] } }
+      | null;
+    if (res.ok && j?.success && Array.isArray(j.data?.familias)) {
+      setEstadosCat(
+        j.data.familias
+          .filter((e) => e.activo)
+          .map((e) => ({ ...e, subestados: (e.subestados ?? []).filter((s) => s.activo) }))
+      );
+    }
+  }, []);
 
   useEffect(() => {
     if (!id) { setNotFound(true); return; }
@@ -307,9 +308,9 @@ export default function TipificacionPage() {
       const c = await getCliente(id);
       if (!c) { setNotFound(true); return; }
       setCliente(c);
-      await cargarListado();
+      await Promise.all([cargarListado(), cargarCatalogo()]);
     })();
-  }, [id, cargarListado]);
+  }, [id, cargarListado, cargarCatalogo]);
 
   // Llegada desde un ticket (#tip-<id>): se resalta y se lleva a la vista.
   useEffect(() => {
@@ -350,17 +351,19 @@ export default function TipificacionPage() {
   const entrega = slaHoras != null ? vencimientoSla(Date.now(), slaHoras) : null;
   const proyectoElegido = proyectos?.find((p) => p.id === ticket.proyecto_id);
 
-  function elegirTipo(tipo: TipoGestion) {
+  function elegirEstado(nuevoEstadoId: string) {
     setError(null);
     setExito(null);
-    setForm((prev) => ({
-      ...prev,
-      tipo_gestion: tipo,
-      // Error y Cambio siempre escalan; al volver a otro tipo se restablece el valor habitual.
-      resultado: TIPO_TICKET[tipo] ? "Escalar" : TIPO_TICKET[prev.tipo_gestion] ? "Pendiente" : prev.resultado,
-    }));
-    // La clasificación es de cada tipo de ticket: al cambiar de tipo se vuelve a elegir.
-    if (TIPO_TICKET[tipo] !== TIPO_TICKET[form.tipo_gestion]) setTicket((p) => ({ ...p, clasificacion_codigo: "", prioridad_codigo: "normal" }));
+    setEstadoId(nuevoEstadoId);
+    setSubestadoId("");
+    setTicket((p) => ({ ...p, clasificacion_codigo: "", prioridad_codigo: "normal" }));
+  }
+  function elegirSubestado(nuevoSubId: string) {
+    setError(null);
+    setExito(null);
+    setSubestadoId(nuevoSubId);
+    // La clasificación es de cada tipo de ticket: al cambiar de sub-estado se re-elige.
+    setTicket((p) => ({ ...p, clasificacion_codigo: "", prioridad_codigo: "normal" }));
   }
 
   function setCampoTicket<K extends keyof DatosTicket>(k: K, v: DatosTicket[K]) {
@@ -380,11 +383,9 @@ export default function TipificacionPage() {
   }
 
   function reiniciar() {
-    setForm(
-      listado?.es_pm
-        ? { tipo_gestion: "Error", resultado: "Escalar", observacion: "" }
-        : { tipo_gestion: "Consulta", resultado: "Pendiente", observacion: "" }
-    );
+    setForm({ observacion: "" });
+    setEstadoId("");
+    setSubestadoId("");
     // Se conserva el proyecto si es el único del cliente.
     setTicket({ ...TICKET_VACIO, proyecto_id: proyectos?.length === 1 ? proyectos[0].id : "" });
     setArchivos([]);
@@ -397,6 +398,7 @@ export default function TipificacionPage() {
     setError(null);
     setExito(null);
 
+    if (!estadoId || !subestadoId) return setError("Elegí el estado y el sub-estado.");
     if (!form.observacion.trim()) return setError("La observación es obligatoria.");
 
     if (esCapacitacion && agendar && !agenda.inicio) return setError("Elegí fecha y hora de la capacitación, o desmarcá “Agendar”.");
@@ -419,8 +421,8 @@ export default function TipificacionPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tipo_gestion: form.tipo_gestion,
-          resultado: form.resultado,
+          estado_id: estadoId,
+          subestado_id: subestadoId,
           observacion: form.observacion.trim(),
           ...(esError ? { ticket } : {}),
           ...(esCapacitacion && agendar ? { agenda: { ...agenda, responsable_id: capacitador } } : {}),
@@ -476,7 +478,7 @@ export default function TipificacionPage() {
 
   const tipificaciones = listado?.tipificaciones ?? [];
   const puedeEnviar = !guardando && !!listado && (!esError || (listado.puede_soporte && !!cat && !!proyectos?.length));
-  const tipoUi = TIPO_UI[form.tipo_gestion];
+  const tipoUi = { icono: ClipboardPen, tono: "turquesa" as Tono };
 
   return (
     <div className="min-h-full bg-[radial-gradient(1200px_500px_at_0%_-10%,rgba(79,174,178,0.12),transparent_60%),radial-gradient(900px_420px_at_100%_0%,rgba(14,165,233,0.08),transparent_55%)] bg-slate-50/70">
@@ -540,36 +542,50 @@ export default function TipificacionPage() {
           {/* ── Columna principal ───────────────────────────────────────── */}
           <div className="min-w-0 space-y-6">
             <Seccion titulo="Nueva tipificación" detalle="¿Qué gestión se hizo con el cliente?" icono={ClipboardPen} tono="turquesa">
-              <Campo etiqueta="Tipo de gestión" requerido>
+              <Campo etiqueta="Estado" requerido>
                 <div className="max-w-md">
-                  <FancySelect
-                    ariaLabel="Tipo de gestión"
-                    value={form.tipo_gestion}
-                    onChange={(v) => elegirTipo(v as TipoGestion)}
-                    options={(listado?.es_pm
-                      ? [...TIPOS_GESTION.filter((t) => TIPO_TICKET[t]), ...TIPOS_GESTION.filter((t) => !TIPO_TICKET[t])]
-                      : TIPOS_GESTION
-                    ).map((t) => ({
-                      value: t,
-                      label: t,
-                      description: TIPO_TICKET[t] ? "Crea un ticket de Soporte" : undefined,
-                    }))}
-                  />
+                  {estadosCat.length === 0 ? (
+                    <p className="text-sm text-slate-500">
+                      No hay estados de tipificación cargados. Configuralos en Configuración → Tipificaciones.
+                    </p>
+                  ) : (
+                    <FancySelect
+                      ariaLabel="Estado"
+                      value={estadoId}
+                      onChange={elegirEstado}
+                      options={[
+                        { value: "", label: "Elegí un estado…" },
+                        ...estadosCat.map((e) => ({ value: e.id, label: e.nombre })),
+                      ]}
+                    />
+                  )}
                 </div>
               </Campo>
 
-              {/* Error y Cambio siempre escalan a Soporte: el resultado no se muestra (lo fija el servidor). */}
-              {esError ? null : (
-                <Campo etiqueta="Resultado" requerido>
-                  <div role="radiogroup" aria-label="Resultado" className="flex flex-wrap gap-2">
-                    {RESULTADOS_TIPIFICACION.map((r) => (
-                      <Pildora key={r} activa={form.resultado === r} tono={RESULTADO_TONO[r]} onClick={() => setForm((p) => ({ ...p, resultado: r }))}>
-                        {r}
-                      </Pildora>
-                    ))}
+              {estadoId ? (
+                <Campo etiqueta="Sub-estado" requerido>
+                  <div className="max-w-md">
+                    <FancySelect
+                      ariaLabel="Sub-estado"
+                      value={subestadoId}
+                      onChange={elegirSubestado}
+                      options={[
+                        { value: "", label: "Elegí un sub-estado…" },
+                        ...(estadoElegido?.subestados ?? []).map((s) => ({
+                          value: s.id,
+                          label: s.nombre,
+                          description:
+                            s.comportamiento === "ticket_error" || s.comportamiento === "ticket_cambio"
+                              ? "Crea un ticket de Soporte"
+                              : s.comportamiento === "capacitacion"
+                                ? "Agenda una capacitación"
+                                : undefined,
+                        })),
+                      ]}
+                    />
                   </div>
                 </Campo>
-              )}
+              ) : null}
 
               <Campo etiqueta="Observación" requerido>
                 <textarea
@@ -751,17 +767,17 @@ export default function TipificacionPage() {
                 <div className="mt-3 flex items-center gap-3">
                   <IconoTile icono={tipoUi.icono} tono={tipoUi.tono} />
                   <div>
-                    <p className="text-[16px] font-bold text-slate-900">{form.tipo_gestion}</p>
-                    <p className="text-[12.5px] text-slate-500">{esError ? "Se crea un ticket de Soporte" : "Tipificación del cliente"}</p>
+                    <p className="text-[16px] font-bold text-slate-900">{estadoElegido?.nombre ?? "Nueva tipificación"}</p>
+                    <p className="text-[12.5px] text-slate-500">{esError ? "Se crea un ticket de Soporte" : subEstadoElegido?.nombre ?? "Tipificación del cliente"}</p>
                   </div>
                 </div>
               </div>
 
               <div className="divide-y divide-slate-100 px-5">
                 <FilaResumen etiqueta="Cliente">{clienteNombre(cliente)}</FilaResumen>
-                {esError ? null : (
-                  <FilaResumen etiqueta="Resultado">
-                    <span className={`rounded-full px-2 py-0.5 text-[12px] ${TONOS[RESULTADO_TONO[form.resultado]].suave} ${TONOS[RESULTADO_TONO[form.resultado]].texto}`}>{form.resultado}</span>
+                {esError || !subEstadoElegido ? null : (
+                  <FilaResumen etiqueta="Sub-estado">
+                    <span className={`rounded-full px-2 py-0.5 text-[12px] ${TONOS.turquesa.suave} ${TONOS.turquesa.texto}`}>{subEstadoElegido.nombre}</span>
                   </FilaResumen>
                 )}
                 {esCapacitacion && agendar ? (
@@ -853,9 +869,9 @@ export default function TipificacionPage() {
           ) : (
             <ol className="divide-y divide-slate-100">
               {tipificaciones.map((t) => {
-                const ui = TIPO_UI[t.tipo_gestion] ?? TIPO_UI.Consulta;
+                const ui = TIPO_UI[t.tipo_gestion as TipoGestion] ?? TIPO_UI.Consulta;
                 const tt = TONOS[ui.tono];
-                const rt = TONOS[RESULTADO_TONO[t.resultado] ?? "pizarra"];
+                const rt = TONOS[RESULTADO_TONO[t.resultado as ResultadoTipificacion] ?? "pizarra"];
                 const Icono = ui.icono;
                 return (
                   <li

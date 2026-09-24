@@ -1,15 +1,14 @@
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import {
-  RESULTADOS_TIPIFICACION,
-  TIPOS_GESTION,
   type TicketDeTipificacion,
+  type TipoGestion,
 } from "@/lib/gestion-clientes/types";
 import { getUserAndEmpresa } from "@/lib/middleware/auth";
 import { TIPO_CITA_CAPACITACION, agendarCapacitacion, leerAgendaCapacitacion } from "@/lib/agenda/capacitacion";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { requireCargaSoporteApi } from "@/lib/soporte/soporte-auth";
 import { errorInesperado, falla, leerCatalogos, ok, personasDeEmpresa, personasPorId } from "@/lib/soporte/servidor";
-import { TIPO_TICKET_DE_GESTION, crearTipificacionConTicket } from "@/lib/soporte/tipificacion-ticket";
+import { crearTipificacionConTicket } from "@/lib/soporte/tipificacion-ticket";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -177,88 +176,112 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return falla("Datos inválidos");
 
-    const tipo = TIPOS_GESTION.find((t) => t === body.tipo_gestion);
-    if (!tipo) return falla("Tipo de gestión inválido");
     const observacion = typeof body.observacion === "string" ? body.observacion.trim().slice(0, 5000) : "";
     if (!observacion) return falla("La observación es obligatoria.");
 
-    // ---------------------------------------------------------------- normal
-    if (!TIPO_TICKET_DE_GESTION[tipo]) {
-      const resultado = RESULTADOS_TIPIFICACION.find((r) => r === body.resultado);
-      if (!resultado) return falla("Resultado inválido");
+    // Modelo por catálogo: Estado (tipificacion_familias) + Sub-estado
+    // (tipificacion_estados). El Sub-estado elegido puede tener una ACCIÓN
+    // (comportamiento) que crea un ticket o agenda una capacitación.
+    const estadoId = typeof body.estado_id === "string" ? body.estado_id.trim() : "";
+    const subestadoId = typeof body.subestado_id === "string" ? body.subestado_id.trim() : "";
+    if (!UUID.test(estadoId) || !UUID.test(subestadoId)) return falla("Elegí el estado y el sub-estado.");
 
-      // Capacitación con agenda: la cita se crea ANTES (valida horario y choque);
-      // si después la tipificación no se guarda, la cita se borra.
-      let citaId: string | null = null;
-      if (tipo === "Capacitación" && body.agenda) {
-        const equipo = await personasDeEmpresa(auth.empresa_id);
-        const leida = leerAgendaCapacitacion(body.agenda, equipo);
-        if (!leida.ok) return falla(leida.mensaje);
-        const cita = await agendarCapacitacion(sb, {
-          empresaId: auth.empresa_id,
-          clienteId,
-          clienteNombre,
-          agenda: leida.agenda,
-          observaciones: observacion,
-          creadoPor: usuario.id,
-        });
-        if (!cita.ok) return falla(cita.mensaje, cita.status);
-        citaId = cita.id;
+    const [estRes, subRes] = await Promise.all([
+      sb.from("tipificacion_familias").select("id, nombre").eq("empresa_id", auth.empresa_id).eq("id", estadoId).maybeSingle(),
+      sb.from("tipificacion_estados").select("id, nombre, comportamiento, familia_id").eq("empresa_id", auth.empresa_id).eq("id", subestadoId).maybeSingle(),
+    ]);
+    const estado = estRes.data as { id: string; nombre: string } | null;
+    const sub = subRes.data as { id: string; nombre: string; comportamiento: string | null; familia_id: string } | null;
+    if (!estado) return falla("El estado no existe.");
+    if (!sub || sub.familia_id !== estadoId) return falla("El sub-estado no corresponde al estado elegido.");
+
+    // El histórico muestra "Tipo/Resultado": guardamos Estado en tipo_gestion y
+    // Sub-estado en resultado; los ids quedan para la reportería.
+    const tipoGestionTxt = estado.nombre;
+    const resultadoTxt = sub.nombre;
+    const comportamiento = (sub.comportamiento ?? "").trim();
+
+    // ------------------------------------------ Sub-estado que crea ticket
+    if (comportamiento === "ticket_error" || comportamiento === "ticket_cambio") {
+      const soporte = await requireCargaSoporteApi(request);
+      if (!soporte.ok) {
+        return falla(soporte.status === 401 ? soporte.message : "Tu usuario no puede cargar tickets de Soporte.", soporte.status);
       }
+      if (soporte.empresaId !== auth.empresa_id) return falla("Empresa inconsistente", 403);
+      const datosTicket = body.ticket && typeof body.ticket === "object" ? (body.ticket as Record<string, unknown>) : null;
+      if (!datosTicket) return falla("Completá los datos del ticket de soporte.");
 
-      const { data, error } = await sb
+      // El motor de tickets espera "Error"/"Cambio" para elegir el tipo de ticket.
+      const tipoTicket: TipoGestion = comportamiento === "ticket_error" ? "Error" : "Cambio";
+      const r = await crearTipificacionConTicket(soporte, {
+        clienteId,
+        tipoGestion: tipoTicket,
+        observacion,
+        usuario,
+        authUser: { id: auth.user.id, email: auth.user.email ?? null },
+        datosTicket,
+        exigirProyecto: true,
+        origen: "tipificacion_cliente",
+      });
+      if (!r.ok) return falla(r.mensaje, r.status);
+      // La tipificación nace con tipo_gestion="Error"/"Cambio" y resultado="Escalar";
+      // se sobreescribe con los valores del catálogo (Estado/Sub-estado) + ids para
+      // que se muestre y reporte igual que el resto. El ticket ya quedó vinculado.
+      await sb
         .from("tipificaciones")
-        .insert({
-          empresa_id: auth.empresa_id,
-          cliente_id: clienteId,
-          usuario: usuario.nombre,
-          usuario_id: usuario.id,
-          tipo_gestion: tipo,
-          resultado,
-          observacion,
-        })
-        .select("id")
-        .single();
-      if (error || !data) {
-        if (citaId) await sb.from("agenda_citas").delete().eq("empresa_id", auth.empresa_id).eq("id", citaId);
-        return falla(error?.message ?? "Error al guardar la tipificación.");
-      }
-      if (citaId) {
-        await sb
-          .from("agenda_citas")
-          .update({ metadata: { origen: "tipificacion", tipificacion_id: data.id } })
-          .eq("empresa_id", auth.empresa_id)
-          .eq("id", citaId);
-      }
-      return ok({ tipificacion_id: data.id, ticket: null, cita_id: citaId });
+        .update({ tipo_gestion: tipoGestionTxt, resultado: resultadoTxt, familia_id: estadoId, estado_id: subestadoId })
+        .eq("empresa_id", auth.empresa_id)
+        .eq("id", r.tipificacion_id);
+      return ok({ tipificacion_id: r.tipificacion_id, ticket: { id: r.ticket_id, numero: r.numero } });
     }
 
-    // ------------------------------------------------------ Error / Cambio
-    const soporte = await requireCargaSoporteApi(request);
-    if (!soporte.ok) {
-      return falla(
-        soporte.status === 401 ? soporte.message : "Tu usuario no puede cargar tickets de Soporte.",
-        soporte.status
-      );
+    // ----------------------- Sub-estado que agenda capacitación (o normal)
+    // La cita se crea ANTES (valida horario y choque); si la tipificación no se
+    // guarda después, la cita se borra.
+    let citaId: string | null = null;
+    if (comportamiento === "capacitacion" && body.agenda) {
+      const equipo = await personasDeEmpresa(auth.empresa_id);
+      const leida = leerAgendaCapacitacion(body.agenda, equipo);
+      if (!leida.ok) return falla(leida.mensaje);
+      const cita = await agendarCapacitacion(sb, {
+        empresaId: auth.empresa_id,
+        clienteId,
+        clienteNombre,
+        agenda: leida.agenda,
+        observaciones: observacion,
+        creadoPor: usuario.id,
+      });
+      if (!cita.ok) return falla(cita.mensaje, cita.status);
+      citaId = cita.id;
     }
-    if (soporte.empresaId !== auth.empresa_id) return falla("Empresa inconsistente", 403);
 
-    const datosTicket = body.ticket && typeof body.ticket === "object" ? (body.ticket as Record<string, unknown>) : null;
-    if (!datosTicket) return falla("Completá los datos del ticket de soporte.");
-
-    const r = await crearTipificacionConTicket(soporte, {
-      clienteId,
-      tipoGestion: tipo,
-      observacion,
-      usuario,
-      authUser: { id: auth.user.id, email: auth.user.email ?? null },
-      datosTicket,
-      exigirProyecto: true,
-      origen: "tipificacion_cliente",
-    });
-    if (!r.ok) return falla(r.mensaje, r.status);
-
-    return ok({ tipificacion_id: r.tipificacion_id, ticket: { id: r.ticket_id, numero: r.numero } });
+    const { data, error } = await sb
+      .from("tipificaciones")
+      .insert({
+        empresa_id: auth.empresa_id,
+        cliente_id: clienteId,
+        usuario: usuario.nombre,
+        usuario_id: usuario.id,
+        tipo_gestion: tipoGestionTxt,
+        resultado: resultadoTxt,
+        observacion,
+        familia_id: estadoId,
+        estado_id: subestadoId,
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      if (citaId) await sb.from("agenda_citas").delete().eq("empresa_id", auth.empresa_id).eq("id", citaId);
+      return falla(error?.message ?? "Error al guardar la tipificación.");
+    }
+    if (citaId) {
+      await sb
+        .from("agenda_citas")
+        .update({ metadata: { origen: "tipificacion", tipificacion_id: data.id } })
+        .eq("empresa_id", auth.empresa_id)
+        .eq("id", citaId);
+    }
+    return ok({ tipificacion_id: data.id, ticket: null, cita_id: citaId });
   } catch (e) {
     return errorInesperado(e);
   }

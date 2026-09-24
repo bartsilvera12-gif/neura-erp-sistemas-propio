@@ -362,14 +362,14 @@ export function FancySelect({
                     >
                       <span className="min-w-0 flex-1">
                         <span
-                          className={`block truncate ${
+                          className={`block break-words ${
                             isSelected ? "font-semibold" : "font-medium"
                           }`}
                         >
                           {opt.label}
                         </span>
                         {opt.description ? (
-                          <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          <span className="mt-0.5 block break-words text-xs text-slate-500">
                             {opt.description}
                           </span>
                         ) : null}

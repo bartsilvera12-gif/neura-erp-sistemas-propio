@@ -14,7 +14,8 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { HistorialCompacto } from "@/app/dashboard/proyectos/components/HistorialCompacto";
 import {
   Blocks,
   Globe,
@@ -378,6 +379,48 @@ export default function DashboardEjecutivoClient() {
    * invierte. El texto va A→Z; el tiempo y la fecha arrancan de mayor a menor.
    */
   const [orden, setOrden] = useState<{ col: OrdenCol; dir: "asc" | "desc" } | null>(null);
+
+  // Desplegable inline por proyecto: al abrir se pide el historial (una sola vez)
+  // y se muestra compacto debajo de la fila, para tener el panorama sin abrir la ficha.
+  const [expandido, setExpandido] = useState<Set<string>>(new Set());
+  const [historias, setHistorias] = useState<Record<string, Record<string, unknown>[]>>({});
+  const [histCargando, setHistCargando] = useState<Set<string>>(new Set());
+
+  const cargarHistoria = useCallback(
+    async (id: string) => {
+      setHistCargando((prev) => new Set(prev).add(id));
+      try {
+        const r = await fetchWithSupabaseSession(`/api/proyectos/${id}/historial`, { cache: "no-store" });
+        const j = (await r.json().catch(() => null)) as
+          | { success?: boolean; data?: Record<string, unknown>[] }
+          | null;
+        setHistorias((prev) => ({ ...prev, [id]: Array.isArray(j?.data) ? j!.data! : [] }));
+      } catch {
+        setHistorias((prev) => ({ ...prev, [id]: [] }));
+      } finally {
+        setHistCargando((prev) => {
+          const n = new Set(prev);
+          n.delete(id);
+          return n;
+        });
+      }
+    },
+    []
+  );
+
+  const toggleExpandir = useCallback(
+    (id: string) => {
+      const abriendo = !expandido.has(id);
+      setExpandido((prev) => {
+        const n = new Set(prev);
+        if (n.has(id)) n.delete(id);
+        else n.add(id);
+        return n;
+      });
+      if (abriendo && !(id in historias) && !histCargando.has(id)) void cargarHistoria(id);
+    },
+    [expandido, historias, histCargando, cargarHistoria]
+  );
   /** Para saltar a la tabla al elegir un programador (las cards están abajo). */
   const tablaRef = useRef<HTMLDivElement>(null);
   const clickOrden = useCallback((col: OrdenCol) => {
@@ -660,17 +703,48 @@ export default function DashboardEjecutivoClient() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filasOrdenadas.map((c) => (
+                        {filasOrdenadas.map((c) => {
+                          const abierto = expandido.has(c.id);
+                          return (
+                          <Fragment key={c.id}>
                           <tr
-                            key={c.id}
-                            className={`border-b border-slate-50 text-[11px] last:border-0 ${
-                              c.entregado ? "opacity-55" : ""
-                            }`}
+                            className={`border-b border-slate-50 text-[11px] ${
+                              abierto ? "" : "last:border-0"
+                            } ${c.entregado ? "opacity-55" : ""}`}
                           >
-                            <td className="max-w-[150px] truncate py-1.5 pr-2 font-medium text-slate-700">
-                              <Link href={`/dashboard/proyectos?proyecto=${c.id}&from=tablero`} className="hover:underline" title={c.titulo}>
-                                {c.titulo}
-                              </Link>
+                            <td className="max-w-[180px] py-1.5 pr-2 font-medium text-slate-700">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandir(c.id)}
+                                  className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#3F8E91]"
+                                  aria-label={abierto ? "Ocultar historial" : "Ver historial"}
+                                  aria-expanded={abierto}
+                                  title={abierto ? "Ocultar historial" : "Ver historial"}
+                                >
+                                  <svg
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                    className={`transition-transform ${abierto ? "rotate-180" : ""}`}
+                                  >
+                                    <path d="m6 9 6 6 6-6" />
+                                  </svg>
+                                </button>
+                                <Link
+                                  href={`/dashboard/proyectos?proyecto=${c.id}&from=tablero`}
+                                  className="truncate hover:underline"
+                                  title={c.titulo}
+                                >
+                                  {c.titulo}
+                                </Link>
+                              </div>
                             </td>
                             <td className="max-w-[140px] truncate py-1.5 pr-2 text-slate-500" title={c.cliente}>
                               {c.cliente}
@@ -710,7 +784,27 @@ export default function DashboardEjecutivoClient() {
                               {fmtDur(c.tiempo_en_estado_ms)}
                             </td>
                           </tr>
-                        ))}
+                          {abierto ? (
+                            <tr className="border-b border-slate-50 last:border-0">
+                              <td colSpan={8} className="bg-slate-50/60 px-3 py-2">
+                                <div className="flex items-start gap-2">
+                                  <span className="mt-0.5 whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                    Historial
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    {histCargando.has(c.id) && !historias[c.id] ? (
+                                      <span className="text-[11px] text-slate-400">Cargando…</span>
+                                    ) : (
+                                      <HistorialCompacto eventos={historias[c.id] ?? []} />
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                          </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </TablaWrap>

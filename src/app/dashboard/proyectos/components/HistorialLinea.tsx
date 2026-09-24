@@ -106,7 +106,7 @@ function hashEstado(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return Math.abs(h);
 }
-function paletaEstado(key: string): PaletaEstado {
+export function paletaEstado(key: string): PaletaEstado {
   const k = key.trim().toLowerCase();
   if (!k) return PALETAS_ESTADO[0];
   return PALETAS_ESTADO[hashEstado(k) % PALETAS_ESTADO.length];

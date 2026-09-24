@@ -2468,18 +2468,19 @@ export default function ProyectoDetalleInner({
     }
   }
 
-  async function cambiarEstado(estadoId: string) {
+  // Devuelve el mensaje de error (string) o null si salió bien. El motivo sólo
+  // se manda al pausar; el servidor lo exige y crea el comentario de la pausa.
+  async function cambiarEstado(estadoId: string, motivo?: string): Promise<string | null> {
     const res = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/cambiar-estado`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estado_id: estadoId }),
+      body: JSON.stringify({ estado_id: estadoId, ...(motivo ? { motivo } : {}) }),
     });
-    const j = (await res.json()) as { success?: boolean; error?: string };
-    if (!res.ok || !j.success) setErr(j.error ?? "Error");
-    else {
-      patchProyectoLocal({ estado_id: estadoId });
-      scheduleReload();
-    }
+    const j = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+    if (!res.ok || !j?.success) return j?.error ?? "No se pudo cambiar el estado.";
+    patchProyectoLocal({ estado_id: estadoId });
+    scheduleReload();
+    return null;
   }
 
   // ¿El estado destino es de tipo "pausado"? (mismo criterio que el resto: por
@@ -2500,7 +2501,9 @@ export default function ProyectoDetalleInner({
       setPausaModal({ estadoId });
       return;
     }
-    void cambiarEstado(estadoId);
+    void cambiarEstado(estadoId).then((err) => {
+      if (err) setErr(err);
+    });
   }
 
   async function confirmarPausa() {
@@ -2513,25 +2516,13 @@ export default function ProyectoDetalleInner({
     setPausaGuardando(true);
     setPausaError(null);
     try {
-      // El comentario va a un canal que el que pausa pueda ver.
-      const canales = data?.comentarios_canales_visibles ?? [];
-      const canal = canales.includes("comercial")
-        ? "comercial"
-        : canales.includes("desarrollo")
-          ? "desarrollo"
-          : "comercial";
-      const resCom = await fetchWithSupabaseSession(`/api/proyectos/${projectId}/comentarios`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comentario: `⏸ Pausa: ${motivo}`, canal }),
-      });
-      const jCom = (await resCom.json().catch(() => null)) as { success?: boolean; error?: string } | null;
-      if (!resCom.ok || !jCom?.success) {
-        setPausaError(jCom?.error ?? "No se pudo guardar el comentario.");
+      // El servidor exige el motivo, aplica el cambio (historial) y crea el
+      // comentario de la pausa. Un solo llamado, sin poder saltearse el motivo.
+      const err = await cambiarEstado(pausaModal.estadoId, motivo);
+      if (err) {
+        setPausaError(err);
         return;
       }
-      // Recién con el motivo guardado se aplica el cambio de estado (historial).
-      await cambiarEstado(pausaModal.estadoId);
       setPausaModal(null);
       setPausaMotivo("");
     } catch (e) {

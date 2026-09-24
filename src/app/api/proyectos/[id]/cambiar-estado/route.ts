@@ -5,6 +5,7 @@ import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { cerrarSegmentoHistorialAbierto, insertHistorialCambioEstado } from "@/lib/proyectos/historial-actions";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { permisoQADe } from "@/lib/proyectos/qa-permisos";
+import { permisoComentariosDe } from "@/lib/proyectos/comentarios-permisos";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { patchAsignacionQa, qaDeLaEmpresa, resolverQaUnica } from "@/lib/proyectos/qa-asignacion";
 import { notificarEntradaQA } from "@/lib/proyectos/qa-notificaciones";
@@ -31,8 +32,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const body = (await request.json().catch(() => null)) as { estado_id?: string } | null;
+    const body = (await request.json().catch(() => null)) as
+      | { estado_id?: string; motivo?: string }
+      | null;
     const nuevoEstadoId = typeof body?.estado_id === "string" ? body.estado_id.trim() : "";
+    const motivoPausa = typeof body?.motivo === "string" ? body.motivo.trim() : "";
     if (!nuevoEstadoId) {
       return NextResponse.json(errorResponse("estado_id obligatorio"), { status: 400 });
     }
@@ -170,8 +174,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const estabaPausado = typeof cur.pausado_at === "string" && !!cur.pausado_at;
     const quedaPausado = esEstadoPausado({ tipo_sla: tipoSla });
 
+    // Motivo OBLIGATORIO al pausar, se resuelva desde donde se resuelva (ficha,
+    // kanban, Tareas del equipo o la app): la regla vive en el servidor para que
+    // ningún origen pueda saltearla. Queda en `pausa_motivo` y también como
+    // comentario del proyecto (más abajo, con el cambio ya confirmado).
+    const entraEnPausa = quedaPausado && !estabaPausado;
+    if (entraEnPausa && !motivoPausa) {
+      return NextResponse.json(
+        errorResponse("Para pausar el proyecto tenés que dejar el motivo de la pausa."),
+        { status: 400 }
+      );
+    }
+
     if (quedaPausado && !estabaPausado) {
       update.pausado_at = now;
+      update.pausa_motivo = motivoPausa;
     } else if (!quedaPausado && estabaPausado) {
       const previo = Number(cur.pausa_acumulada_ms ?? 0);
       const base = Number.isFinite(previo) && previo > 0 ? previo : 0;
@@ -242,6 +259,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       changedBy: auth.usuarioCatalogId,
       responsableTecnicoId: tecnicoSnapshot,
     });
+
+    // El motivo de la pausa queda también como comentario del proyecto (en un
+    // canal que el autor pueda ver). No bloqueante: el cambio ya está guardado.
+    if (entraEnPausa && motivoPausa) {
+      try {
+        const permisoCom = await permisoComentariosDe(sb, empresaId, auth.usuarioCatalogId, pid);
+        const canal = permisoCom.canales.includes("comercial")
+          ? "comercial"
+          : permisoCom.canales[0] ?? "comercial";
+        await sb.from("proyecto_comentarios").insert({
+          empresa_id: empresaId,
+          proyecto_id: pid,
+          usuario_id: auth.usuarioCatalogId,
+          comentario: `⏸ Pausa: ${motivoPausa}`,
+          canal,
+        });
+      } catch (e) {
+        console.error("[cambiar-estado] no se pudo registrar el comentario de pausa", e);
+      }
+    }
 
     // Aviso al comercial y al PM del proyecto. Va después del update por la
     // misma razón que el de QA: si falla, el movimiento ya está guardado y no

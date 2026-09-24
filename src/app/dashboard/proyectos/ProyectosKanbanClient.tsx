@@ -755,6 +755,12 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [movingProjectId, setMovingProjectId] = useState<string | null>(null);
+  // Popup obligatorio de motivo al mover una tarjeta a Pausado (mismo requisito
+  // que la ficha; el servidor igual lo exige). Guarda a dónde iba la tarjeta.
+  const [pausaKanban, setPausaKanban] = useState<{ proyectoId: string; estadoId: string } | null>(null);
+  const [pausaMotivoK, setPausaMotivoK] = useState("");
+  const [pausaGuardandoK, setPausaGuardandoK] = useState(false);
+  const [pausaErrorK, setPausaErrorK] = useState<string | null>(null);
   const [activeDragProjectId, setActiveDragProjectId] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
@@ -1081,7 +1087,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     [activeDragProjectId, proyectos]
   );
 
-  async function cambiarEstado(proyectoId: string, estadoId: string): Promise<boolean> {
+  async function cambiarEstado(proyectoId: string, estadoId: string, motivo?: string): Promise<boolean> {
     if (!estadoActivoIds.has(estadoId)) {
       setErr("No se puede mover a una columna inactiva.");
       return false;
@@ -1096,6 +1102,16 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
 
     const previousProjects = proyectos;
     const destino = estados.find((e) => e.id === estadoId);
+
+    // Mover a Pausado exige el motivo: se abre el popup y NO se mueve la tarjeta
+    // hasta que se confirme (con el motivo, que el servidor también valida).
+    if (destino?.codigo === "pausado" && !motivo) {
+      setPausaMotivoK("");
+      setPausaErrorK(null);
+      setPausaKanban({ proyectoId, estadoId });
+      return false;
+    }
+
     setErr(null);
     setMovingProjectId(proyectoId);
     setProyectos((prev) =>
@@ -1124,7 +1140,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
       const res = await fetchWithSupabaseSession(`/api/proyectos/${proyectoId}/cambiar-estado`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado_id: estadoId }),
+        body: JSON.stringify({ estado_id: estadoId, ...(motivo ? { motivo } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || !j.success) {
@@ -1156,6 +1172,28 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
    * ref deja pasar la ultima version con un callback que nunca cambia; mismo
    * patron que `loadRef`.
    */
+  async function confirmarPausaKanban() {
+    if (!pausaKanban || pausaGuardandoK) return;
+    const motivo = pausaMotivoK.trim();
+    if (!motivo) {
+      setPausaErrorK("Escribí el motivo de la pausa.");
+      return;
+    }
+    setPausaGuardandoK(true);
+    setPausaErrorK(null);
+    try {
+      const ok = await cambiarEstado(pausaKanban.proyectoId, pausaKanban.estadoId, motivo);
+      if (!ok) {
+        setPausaErrorK("No se pudo pausar. Probá de nuevo.");
+        return;
+      }
+      setPausaKanban(null);
+      setPausaMotivoK("");
+    } finally {
+      setPausaGuardandoK(false);
+    }
+  }
+
   const cambiarEstadoRef = useRef(cambiarEstado);
   useEffect(() => {
     cambiarEstadoRef.current = cambiarEstado;
@@ -1619,6 +1657,71 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           abrirDetalle(id);
         }}
       />
+
+      {pausaKanban ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Cerrar"
+            className="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+            onClick={() => { if (!pausaGuardandoK) setPausaKanban(null); }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl"
+          >
+            <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-amber-400/80 to-amber-300/40" />
+            <div className="flex items-start gap-3 border-b border-slate-100 px-5 pb-4 pt-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 ring-1 ring-amber-200">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-slate-900">Pausar proyecto</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Dejá acotado por qué se pausa. Queda como comentario y el cambio va al historial.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 px-5 py-4">
+              <label className="block text-xs font-medium text-slate-600">
+                Motivo de la pausa <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={pausaMotivoK}
+                onChange={(e) => { setPausaMotivoK(e.target.value); if (pausaErrorK) setPausaErrorK(null); }}
+                placeholder="Ej.: falta que el cliente mande el logo y los textos."
+                className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                disabled={pausaGuardandoK}
+              />
+              {pausaErrorK ? <p className="text-xs text-red-600">{pausaErrorK}</p> : null}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => { if (!pausaGuardandoK) setPausaKanban(null); }}
+                disabled={pausaGuardandoK}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarPausaKanban()}
+                disabled={pausaGuardandoK || !pausaMotivoK.trim()}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+              >
+                {pausaGuardandoK ? "Pausando…" : "Pausar proyecto"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

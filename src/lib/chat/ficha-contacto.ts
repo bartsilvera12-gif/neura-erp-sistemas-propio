@@ -73,6 +73,15 @@ export type FichaTipificacion = {
   comentario: string | null;
   fecha: string | null;
   por: string | null;
+  /** La conversación que se cerró así. */
+  conversation_id: string;
+  /** Ese cierre corresponde al chat abierto ahora, y no a otro del mismo contacto. */
+  es_de_esta_conversacion: boolean;
+  /**
+   * La conversación volvió a abrirse después de ese cierre: la tipificación quedó vieja y
+   * no describe lo que está pasando ahora.
+   */
+  reabierta: boolean;
 };
 
 export type FichaEvento = {
@@ -448,6 +457,9 @@ async function cargarHistorial(
   const usuarios = await nombresDeUsuarios(catalogSr, empresaId, [...usuarioIds]);
 
   const ultimoCierre = cierres[0] ?? null;
+  const convDelCierre = ultimoCierre
+    ? permitidas.find((c) => String(c.id) === String(ultimoCierre.conversation_id))
+    : undefined;
   const ultimaTipificacion: FichaTipificacion | null = ultimoCierre
     ? {
         estado: txt(ultimoCierre.closure_state_label),
@@ -455,6 +467,11 @@ async function cargarHistorial(
         comentario: txt(ultimoCierre.comment),
         fecha: txt(ultimoCierre.closed_at),
         por: usuarios.get(String(ultimoCierre.closed_by_usuario_id ?? "")) ?? null,
+        conversation_id: String(ultimoCierre.conversation_id),
+        es_de_esta_conversacion: String(ultimoCierre.conversation_id) === conversationIdActual,
+        // Si la conversación de ese cierre ya no está cerrada, es que volvió a abrirse: la
+        // tipificación es historia, no el estado de ahora.
+        reabierta: Boolean(convDelCierre && String(convDelCierre.status ?? "") !== "closed"),
       }
     : null;
 

@@ -169,7 +169,7 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
 
       {/* Última tipificación */}
       {ultima_tipificacion ? (
-        <Seccion titulo="Último estado">
+        <Seccion titulo="Último cierre">
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
             <p className="text-xs font-semibold text-slate-800">
               {ultima_tipificacion.estado ?? "—"}
@@ -179,11 +179,22 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
             </p>
             <p className="mt-0.5 text-[11px] text-slate-500">
               {fechaLarga(ultima_tipificacion.fecha)}
-              {ultima_tipificacion.por ? ` · ${ultima_tipificacion.por}` : ""}
+              {ultima_tipificacion.por ? ` · cerró ${ultima_tipificacion.por}` : ""}
             </p>
             {ultima_tipificacion.comentario ? (
               <p className="mt-1 text-[11px] leading-snug text-slate-600">
                 {ultima_tipificacion.comentario}
+              </p>
+            ) : null}
+            {/* Sin esta aclaración, una tipificación vieja se lee como el estado de ahora. */}
+            {ultima_tipificacion.reabierta ? (
+              <p className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-800">
+                La conversación se reabrió después de este cierre, así que no refleja lo que está
+                pasando ahora.
+              </p>
+            ) : !ultima_tipificacion.es_de_esta_conversacion ? (
+              <p className="mt-1.5 text-[10px] italic leading-snug text-slate-500">
+                Corresponde a otra conversación de este contacto.
               </p>
             ) : null}
           </div>

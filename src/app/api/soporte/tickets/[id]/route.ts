@@ -6,6 +6,7 @@ import {
   fechaObjetivoAIso,
   mensajeEstadoFinal,
   puedeEstarACargo,
+  qaSoporteHabilitado,
   requiereResponsable,
   slaDe,
   enFranjaDeGuardia,
@@ -222,7 +223,10 @@ export async function PATCH(request: Request, { params }: Params) {
     if ("estado_codigo" in body && body.estado_codigo !== actual.estado_codigo) {
       const hacia = cat.estados.find((e) => e.activo && e.codigo === body.estado_codigo);
       if (!hacia) return falla("Estado inválido");
-      if (!transicionPermitida(actual.estado_codigo, hacia.codigo, { guardia: enFranjaDeGuardia() })) {
+      // QA por-tenant: si la empresa desactivó "Listo para revisión" se permite
+      // resolver directo desde En proceso / Reabierto.
+      const qaHabilitado = qaSoporteHabilitado(cat.estados);
+      if (!transicionPermitida(actual.estado_codigo, hacia.codigo, { guardia: enFranjaDeGuardia(), qaHabilitado })) {
         const desde = cat.estados.find((e) => e.codigo === actual.estado_codigo)?.nombre ?? actual.estado_codigo;
         const final = mensajeEstadoFinal(actual, desde);
         if (final) return falla(final);

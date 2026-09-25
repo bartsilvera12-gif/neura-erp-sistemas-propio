@@ -163,14 +163,29 @@ export function enFranjaDeGuardia(ahora: number = Date.now()): boolean {
 export const ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS = ["resuelto", "cerrado"];
 
 /**
- * En horario de guardia no hay QA: un ticket en proceso (o reabierto) puede
- * pasar directo a Resuelto, sin "Listo para revisión".
+ * Sin QA, un ticket en proceso (o reabierto) puede pasar directo a Resuelto,
+ * sin "Listo para revisión". Pasa en dos casos: en horario de guardia, o cuando
+ * la empresa desactivó la revisión de QA en Soporte (estado `listo_revision`
+ * inactivo en su catálogo).
  */
 export const ESTADOS_RESOLUBLES_EN_GUARDIA = ["en_proceso", "reabierto"];
 
-export function transicionPermitida(desde: string, hacia: string, opciones: { guardia?: boolean } = {}): boolean {
+/**
+ * ¿La empresa usa revisión de QA en Soporte? Es por-tenant: se apaga
+ * desactivando el estado `listo_revision` en Configuración → Soporte. Con QA
+ * apagado, el dev pasa directo a Resuelto y no se ofrece "Listo para revisión".
+ */
+export function qaSoporteHabilitado(estados: { codigo: string; activo: boolean }[] | null | undefined): boolean {
+  return (estados ?? []).some((e) => e.codigo === "listo_revision" && e.activo);
+}
+
+export function transicionPermitida(desde: string, hacia: string, opciones: { guardia?: boolean; qaHabilitado?: boolean } = {}): boolean {
   if (desde === hacia) return false;
-  if (opciones.guardia && hacia === "resuelto" && ESTADOS_RESOLUBLES_EN_GUARDIA.includes(desde)) return true;
+  const sinQa = opciones.guardia === true || opciones.qaHabilitado === false;
+  // Sin QA: resolver directo desde En proceso / Reabierto.
+  if (sinQa && hacia === "resuelto" && ESTADOS_RESOLUBLES_EN_GUARDIA.includes(desde)) return true;
+  // Sin QA no se ofrece el paso por "Listo para revisión".
+  if (opciones.qaHabilitado === false && hacia === "listo_revision") return false;
   const reglas = TRANSICIONES[desde];
   if (!reglas) return true;
   if (!(hacia in TRANSICIONES)) return true;

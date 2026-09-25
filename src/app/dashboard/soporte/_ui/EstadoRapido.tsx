@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Hand, Loader2, Lock } from "lucide-react";
-import { TRANSICIONES, enFranjaDeGuardia, mensajeEstadoFinal, puedeEstarACargo, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
+import { TRANSICIONES, enFranjaDeGuardia, mensajeEstadoFinal, puedeEstarACargo, qaSoporteHabilitado, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte } from "./api";
 import { Aviso, Fase, TONO_AREA, oscurecer } from "./ui";
@@ -37,7 +37,10 @@ export default function EstadoRapido() {
 
   // En horario de guardia (sin QA) se puede resolver directo desde En proceso.
   const [guardia] = useState(() => enFranjaDeGuardia(Date.now()));
-  const destinos = catalogos.estados.filter((e) => e.activo && transicionPermitida(t.estado_codigo, e.codigo, { guardia }));
+  // Empresa con QA de Soporte apagado (estado "Listo para revisión" inactivo):
+  // el dev resuelve directo, sin pasar por revisión.
+  const qaHabilitado = qaSoporteHabilitado(catalogos.estados);
+  const destinos = catalogos.estados.filter((e) => e.activo && transicionPermitida(t.estado_codigo, e.codigo, { guardia, qaHabilitado }));
   const final = mensajeEstadoFinal(t, t.estado_nombre);
 
   useEffect(() => {
@@ -131,10 +134,13 @@ export default function EstadoRapido() {
               <li className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pasar a</li>
               {destinos.map((d) => {
                 const faltaResponsable = requiereResponsable(d) && !t.responsable_id;
+                const resuelveSinQa = (guardia || !qaHabilitado) && d.codigo === "resuelto" && t.estado_codigo !== "listo_revision";
                 const pista = faltaResponsable
                   ? "Primero elegí quién queda a cargo"
-                  : guardia && d.codigo === "resuelto" && t.estado_codigo !== "listo_revision"
-                    ? "Horario de guardia: se resuelve sin revisión de QA"
+                  : resuelveSinQa
+                    ? guardia
+                      ? "Horario de guardia: se resuelve sin revisión de QA"
+                      : "Se resuelve sin revisión de QA"
                     : PISTA[d.codigo];
                 return (
                   <li key={d.codigo}>

@@ -1,3 +1,5 @@
+import { TZ_PY } from "@/lib/format/hora-py";
+
 /**
  * Cuándo limpia cada servidor.
  *
@@ -41,15 +43,19 @@ export function proximaLimpieza(prog: ProgramacionLimpieza, ahora: Date): Date {
  * La hora como la lee alguien en Paraguay: 12 horas, AM/PM en mayúsculas y sin
  * cero adelante ("3:00 PM", "4:00 AM"). Se formatea con `en-US` a propósito:
  * `es-PY` devuelve "3:00 p. m.", que no es lo pedido.
+ *
+ * El huso sale de `TZ_PY` (offset fijo), NO de "America/Asuncion": una máquina
+ * con la tabla de husos vieja cree que Paraguay sigue moviendo el reloj y de
+ * abril a septiembre devuelve una hora menos. Ver `lib/format/hora-py`.
  */
 export function horaParaguay(d: Date): string {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Asuncion",
+    timeZone: TZ_PY,
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
   })
     .format(d)
-    .replace(/ | /g, " ")
+    .replace(/\u202f|\u00a0/g, " ")
     .toUpperCase();
 }

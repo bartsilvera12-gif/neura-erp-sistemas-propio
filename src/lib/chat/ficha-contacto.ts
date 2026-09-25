@@ -319,7 +319,9 @@ async function cargarProyectos(
         | undefined;
       return {
         id: String((p as Fila).id ?? ""),
-        nombre: txt((p as Fila).nombre) ?? "Sin nombre",
+        // La columna en `proyectos` es `titulo`, no `nombre`; leer `nombre` dejaba
+        // todos los proyectos como "Sin nombre" en la ficha.
+        nombre: txt((p as Fila).titulo) ?? "Sin nombre",
         archivado: Boolean((p as Fila).archivado),
         tipo: txt((p.proyecto_tipo as { nombre?: string } | null | undefined)?.nombre),
         estado: txt(estado?.nombre),

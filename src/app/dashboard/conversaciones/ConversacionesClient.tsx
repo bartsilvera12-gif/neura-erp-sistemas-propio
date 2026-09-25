@@ -105,6 +105,9 @@ import { puedeCargarSoporte } from "./SoporteTicketModal";
 // La ventana de Soporte sólo se descarga cuando alguien la abre.
 const SoporteTicketModal = dynamic(() => import("./SoporteTicketModal"), { ssr: false });
 
+// Igual que Soporte: la ficha del contacto no se descarga hasta que se abre.
+const FichaContactoDrawer = dynamic(() => import("./FichaContactoDrawer"), { ssr: false });
+
 type ChatMessage = {
   id: string;
   from_me: boolean;
@@ -1126,6 +1129,8 @@ export function ConversacionesClient({
   // Soporte desde el chat: PM o quien usa Soporte. Se consulta una vez al entrar.
   const [puedeSoporte, setPuedeSoporte] = useState(false);
   const [soporteModalOpen, setSoporteModalOpen] = useState(false);
+  /** Ficha lateral del contacto (cliente, proyectos, tipificación y recorrido). */
+  const [fichaAbierta, setFichaAbierta] = useState(false);
   /**
    * Las PM no usan el CRM: en la cabecera del chat ven sólo "Cliente →", que
    * abre la ficha en Gestión de clientes. `clienteDeChat` guarda, por
@@ -3977,7 +3982,14 @@ export function ConversacionesClient({
               ) : null}
             </div>
           ) : (
-            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
+              {fichaAbierta ? (
+                <FichaContactoDrawer
+                  conversationId={selectedId}
+                  abierto={fichaAbierta}
+                  alCerrar={() => setFichaAbierta(false)}
+                />
+              ) : null}
               <div className="px-4 py-3 border-b border-slate-200 bg-white shrink-0">
                 {selected ? (
                   (() => {
@@ -4030,17 +4042,36 @@ export function ConversacionesClient({
                             >
                               {contactInitial}
                             </span>
-                            <div className="min-w-0 leading-tight">
+                            <button
+                              type="button"
+                              onClick={() => setFichaAbierta(true)}
+                              title="Ver la ficha del contacto"
+                              className="min-w-0 rounded-lg px-1 py-0.5 text-left leading-tight transition-colors hover:bg-slate-100"
+                            >
                               <p className="truncate text-sm font-semibold text-slate-900 max-w-[min(100%,18rem)]">
                                 {contactDisplayName}
                               </p>
                               <p className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-slate-500">
                                 {contactPhoneFallback(selected.contact.phone_number, selected.contact.name)}
                               </p>
-                            </div>
+                            </button>
                           </div>
 
                           <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setFichaAbierta((v) => !v)}
+                              title="Ficha del contacto: cliente, proyectos y recorrido"
+                              aria-expanded={fichaAbierta}
+                              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors ${
+                                fichaAbierta
+                                  ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#3F8E91]"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+                              }`}
+                            >
+                              <UserRound className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              Ficha
+                            </button>
                             {vista !== "bot" ? (
                               <button
                                 type="button"

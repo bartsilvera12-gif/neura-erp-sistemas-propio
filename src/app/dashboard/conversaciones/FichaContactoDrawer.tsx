@@ -100,12 +100,12 @@ function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
         type="button"
         aria-label="Cerrar ficha"
         onClick={alCerrar}
-        className="absolute inset-0 z-20 cursor-default bg-slate-900/10"
+        className="ficha-telon absolute inset-0 z-20 cursor-default bg-slate-900/10"
       />
       <aside
         role="dialog"
         aria-label="Ficha del contacto"
-        className="absolute inset-y-0 right-0 z-30 flex w-1/2 min-w-[24rem] max-w-[92vw] flex-col border-l border-slate-200 bg-white shadow-2xl"
+        className="ficha-panel absolute inset-y-0 right-0 z-30 flex w-1/2 min-w-[24rem] max-w-[92vw] flex-col border-l border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-900">Ficha del contacto</h2>
@@ -397,8 +397,17 @@ const COLOR_EVENTO: Record<FichaEvento["tipo"], string> = {
  */
 function TablaRecorrido({ eventos }: { eventos: FichaEvento[] }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200">
-      <table className="w-full border-collapse text-left">
+    <div className="overflow-hidden rounded-xl border border-slate-200">
+      {/* `table-fixed` + anchos: sin esto, un nombre largo de usuario ensancha su columna,
+          empuja las de la derecha fuera del panel y parte el texto letra por letra. */}
+      <table className="w-full table-fixed border-collapse text-left">
+        <colgroup>
+          <col className="w-[22%]" />
+          <col className="w-[18%]" />
+          <col className="w-[22%]" />
+          <col className="w-[20%]" />
+          <col className="w-[18%]" />
+        </colgroup>
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50">
             <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -421,29 +430,45 @@ function TablaRecorrido({ eventos }: { eventos: FichaEvento[] }) {
         <tbody>
           {eventos.map((e) => (
             <tr key={e.id} className="border-b border-slate-100 last:border-b-0 align-top">
-              <td className="whitespace-nowrap px-2 py-1.5 text-[10px] tabular-nums text-slate-500">
-                {fechaLarga(e.fecha)}
+              <td
+                className="px-2 py-1.5 text-[10px] tabular-nums leading-tight text-slate-500"
+                title={fechaLarga(e.fecha)}
+              >
+                {fechaTabla(e.fecha)}
               </td>
               <td className="px-2 py-1.5 text-[10px] text-slate-500">
                 {e.linea ? (
-                  <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">
+                  <span
+                    className="block truncate rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5"
+                    title={e.linea}
+                  >
                     {e.linea}
                   </span>
                 ) : (
                   "—"
                 )}
               </td>
-              <td className="whitespace-nowrap px-2 py-1.5 text-[11px] font-medium text-slate-800">
-                <span className="inline-flex items-center gap-1.5">
+              <td className="px-2 py-1.5 text-[11px] font-medium text-slate-800">
+                <span className="flex items-center gap-1.5">
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${COLOR_EVENTO[e.tipo]}`}
                     aria-hidden
                   />
-                  {e.accion}
+                  <span className="truncate" title={e.accion}>
+                    {e.accion}
+                  </span>
                 </span>
               </td>
-              <td className="px-2 py-1.5 text-[10px] text-slate-600">{e.usuario ?? "—"}</td>
-              <td className="px-2 py-1.5 text-[10px] text-slate-600">{e.destino ?? "—"}</td>
+              <td className="px-2 py-1.5 text-[10px] text-slate-600">
+                <span className="block truncate" title={e.usuario ?? undefined}>
+                  {e.usuario ?? "—"}
+                </span>
+              </td>
+              <td className="px-2 py-1.5 text-[10px] text-slate-600">
+                <span className="block truncate" title={e.destino ?? undefined}>
+                  {e.destino ?? "—"}
+                </span>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -518,11 +543,26 @@ const FMT_LARGO = new Intl.DateTimeFormat("es-PY", {
   minute: "2-digit",
 });
 const FMT_CORTO = new Intl.DateTimeFormat("es-PY", { day: "2-digit", month: "2-digit", year: "2-digit" });
+/* En la tabla del recorrido la fecha compite por ancho con cuatro columnas más: va sin año y
+   con la hora en 24 h, y la fecha completa queda en el `title`. */
+const FMT_TABLA = new Intl.DateTimeFormat("es-PY", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
 
 function fechaLarga(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : FMT_LARGO.format(d);
+}
+
+function fechaTabla(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : FMT_TABLA.format(d);
 }
 
 function fechaCorta(iso: string | null): string {

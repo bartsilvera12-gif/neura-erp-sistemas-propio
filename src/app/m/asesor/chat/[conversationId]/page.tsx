@@ -584,6 +584,8 @@ const SoporteTicketModal = dynamic(() => import("@/app/dashboard/conversaciones/
   ssr: false,
 });
 
+const FichaContactoMovil = dynamic(() => import("./FichaContactoMovil"), { ssr: false });
+
 /**
  * `?s=1`: se abrió desde la lista de supervisión (cuenta sin agente de chat). Esos chats no
  * están asignados a un agente propio, así que las rutas de asesor responden 403; se usan las
@@ -617,6 +619,7 @@ export default function MAsesorChatPage() {
   // ── Soporte: cargar un ticket desde el chat (PM o usuario de Soporte, como en escritorio) ──
   const [puedeSoporte, setPuedeSoporte] = useState(false);
   const [soporteAbierto, setSoporteAbierto] = useState(false);
+  const [fichaAbierta, setFichaAbierta] = useState(false);
   useEffect(() => {
     let vivo = true;
     void puedeCargarSoporte().then((p) => vivo && setPuedeSoporte(p));
@@ -1494,10 +1497,15 @@ export default function MAsesorChatPage() {
         <button onClick={volver} aria-label="Volver" className="h-9 w-9 grid place-items-center rounded-full active:bg-white/15 text-lg">
           ‹
         </button>
-        <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => setFichaAbierta(true)}
+          aria-label="Ver la ficha del contacto"
+          className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left active:bg-white/15"
+        >
           <h1 className="truncate text-sm font-semibold leading-tight">{headerTitle}</h1>
           <p className="text-[11px] text-white/80 leading-tight truncate">{headerSub}</p>
-        </div>
+        </button>
         <button
           type="button"
           onClick={openTransfer}
@@ -1520,6 +1528,12 @@ export default function MAsesorChatPage() {
           </button>
         ) : null}
       </header>
+      {fichaAbierta ? (
+        <FichaContactoMovil
+          conversationId={conversationId}
+          alCerrar={() => setFichaAbierta(false)}
+        />
+      ) : null}
       {soporteAbierto ? (
         <SoporteTicketModal
           conversationId={conversationId}

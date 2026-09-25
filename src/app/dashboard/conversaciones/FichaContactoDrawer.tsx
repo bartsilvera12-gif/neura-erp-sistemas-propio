@@ -35,11 +35,76 @@ export default function FichaContactoDrawer({ conversationId, abierto, alCerrar 
   );
 }
 
+/** Ancho mínimo: por debajo de esto la tabla del recorrido deja de ser legible. */
+const ANCHO_MINIMO = 320;
+const CLAVE_ANCHO = "ficha-contacto.ancho";
+
 function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
   const [ficha, setFicha] = useState<FichaContacto | null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cache = useRef(new Map<string, FichaContacto>());
+  const panelRef = useRef<HTMLElement | null>(null);
+  /**
+   * `null` = todavía en el ancho por defecto (la mitad del chat). Se lee en el inicializador
+   * y no en un efecto para que el panel ya abra con el ancho guardado, sin parpadeo. Este
+   * componente se carga con `ssr: false`, así que `window` existe en el primer render.
+   */
+  const [ancho, setAncho] = useState<number | null>(() => {
+    try {
+      const guardado = Number(window.localStorage.getItem(CLAVE_ANCHO));
+      return Number.isFinite(guardado) && guardado >= ANCHO_MINIMO ? guardado : null;
+    } catch {
+      // localStorage puede estar bloqueado; se usa el ancho por defecto y listo.
+      return null;
+    }
+  });
+  const anchoRef = useRef<number | null>(ancho);
+
+  const empezarArrastre = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const panel = panelRef.current;
+    if (!panel) return;
+    // El borde derecho no se mueve durante el arrastre, así que alcanza con medirlo una vez.
+    const derecha = panel.getBoundingClientRect().right;
+    const maximo = window.innerWidth * 0.92;
+
+    const mover = (ev: PointerEvent) => {
+      const nuevo = Math.min(Math.max(derecha - ev.clientX, ANCHO_MINIMO), maximo);
+      anchoRef.current = nuevo;
+      setAncho(nuevo);
+    };
+    const soltar = () => {
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      try {
+        if (anchoRef.current != null) {
+          window.localStorage.setItem(CLAVE_ANCHO, String(Math.round(anchoRef.current)));
+        }
+      } catch {
+        // Si no se puede guardar, el ancho igual vale para esta sesión.
+      }
+    };
+
+    // Sin esto, arrastrar selecciona el texto del chat que va quedando debajo.
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  }, []);
+
+  /** Doble clic en el borde: vuelve al ancho por defecto. */
+  const resetearAncho = useCallback(() => {
+    anchoRef.current = null;
+    setAncho(null);
+    try {
+      window.localStorage.removeItem(CLAVE_ANCHO);
+    } catch {
+      // idem
+    }
+  }, []);
 
   useEffect(() => {
     if (!abierto || !conversationId) return;
@@ -103,10 +168,29 @@ function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
         className="ficha-telon absolute inset-0 z-20 cursor-default bg-slate-900/10"
       />
       <aside
+        ref={panelRef}
         role="dialog"
         aria-label="Ficha del contacto"
-        className="ficha-panel absolute inset-y-0 right-0 z-30 flex w-1/2 min-w-[24rem] max-w-[92vw] flex-col border-l border-slate-200 bg-white shadow-2xl"
+        style={ancho != null ? { width: ancho } : undefined}
+        className={`ficha-panel absolute inset-y-0 right-0 z-30 flex flex-col border-l border-slate-200 bg-white shadow-2xl ${
+          ancho != null ? "" : "w-1/2 min-w-[20rem] max-w-[92vw]"
+        }`}
       >
+        {/* Borde izquierdo arrastrable: la tabla del recorrido necesita más aire que el resto. */}
+        <div
+          onPointerDown={empezarArrastre}
+          onDoubleClick={resetearAncho}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ajustar el ancho de la ficha (doble clic para restablecer)"
+          title="Arrastrá para ensanchar · doble clic para restablecer"
+          className="group absolute inset-y-0 -left-1 z-10 flex w-2 cursor-col-resize items-center justify-center"
+        >
+          <span
+            aria-hidden
+            className="h-10 w-1 rounded-full bg-slate-300 opacity-0 transition-opacity group-hover:opacity-100"
+          />
+        </div>
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-900">Ficha del contacto</h2>
           <button

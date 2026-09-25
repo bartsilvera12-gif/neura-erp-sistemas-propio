@@ -419,10 +419,9 @@ async function cargarHistorial(
   if (permitidas.length === 0) return vacio;
   const idsPermitidos = permitidas.map((c) => String(c.id));
 
-  const [canales, colas, agentes, cierres, eventos] = await Promise.all([
+  const [canales, colas, cierres, eventos] = await Promise.all([
     catalogoPorId(supabase, empresaId, "chat_channels", "id, nombre, type", permitidas, "channel_id"),
     catalogoPorId(supabase, empresaId, "chat_queues", "id, nombre", permitidas, "queue_id"),
-    cargarAgentes(supabase, catalogSr, empresaId, permitidas),
     supabase
       .from("chat_conversation_closures")
       .select(
@@ -442,6 +441,22 @@ async function cargarHistorial(
       .limit(MAX_EVENTOS)
       .then((r) => (r.data ?? []) as Fila[], () => [] as Fila[]),
   ]);
+
+  // Los eventos mencionan agentes que no son el asignado actual: el que transfirió, el que
+  // lo tenía antes. Si no se piden acá, la columna Destino queda en "—" sin motivo.
+  const idsAgente = new Set<string>();
+  for (const c of permitidas) {
+    const a = txt(c.assigned_agent_id);
+    if (a) idsAgente.add(a);
+  }
+  for (const e of eventos) {
+    const p = (e.payload ?? {}) as Fila;
+    for (const clave of ["to_agent_id", "from_agent_id"] as const) {
+      const a = txt(p[clave]);
+      if (a) idsAgente.add(a);
+    }
+  }
+  const agentes = await cargarAgentes(supabase, catalogSr, empresaId, [...idsAgente]);
 
   const conversaciones: FichaConversacion[] = permitidas.map((c) => ({
     id: String(c.id),
@@ -674,11 +689,8 @@ async function cargarAgentes(
   supabase: AppSupabaseClient,
   catalogSr: AppSupabaseClient,
   empresaId: string,
-  filas: Fila[]
+  ids: string[]
 ): Promise<Map<string, string>> {
-  const ids = [
-    ...new Set(filas.map((f) => txt(f.assigned_agent_id)).filter((x): x is string => Boolean(x))),
-  ];
   if (ids.length === 0) return new Map();
   const { data } = await supabase
     .from("chat_agents")

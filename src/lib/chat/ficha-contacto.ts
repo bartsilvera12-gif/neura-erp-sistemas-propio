@@ -84,13 +84,23 @@ export type FichaTipificacion = {
   reabierta: boolean;
 };
 
+/**
+ * Una fila del recorrido. Las columnas son las mismas que usa cualquier operador para leer
+ * un historial de gestión: cuándo, por qué línea, qué pasó, quién lo hizo y a dónde fue.
+ */
 export type FichaEvento = {
   id: string;
   fecha: string;
-  /** Familia del evento, para el ícono y el color en la UI. */
+  /** Familia del evento, para el color de la fila. */
   tipo: "ingreso" | "asignado" | "tomado" | "transferido" | "cola" | "cerrado" | "sistema";
-  titulo: string;
-  detalle: string | null;
+  /** Qué pasó: Ingreso, Derivado, Tomado, Transferido, Cambio de cola, Finalizado… */
+  accion: string;
+  /** Canal por el que entró esa conversación. */
+  linea: string | null;
+  /** Quién lo hizo. "Automático" cuando lo resolvió el ruteo y no una persona. */
+  usuario: string | null;
+  /** A dónde fue: el agente, la cola, o la tipificación con la que se cerró. */
+  destino: string | null;
   conversation_id: string;
 };
 
@@ -479,6 +489,7 @@ async function cargarHistorial(
     conversaciones: permitidas,
     eventos,
     cierres,
+    canales,
     colas,
     agentes,
     usuarios,
@@ -499,16 +510,26 @@ function armarLineaTiempo(input: {
   conversaciones: Fila[];
   eventos: Fila[];
   cierres: Fila[];
+  canales: Map<string, Fila>;
   colas: Map<string, Fila>;
   agentes: Map<string, string>;
   usuarios: Map<string, string>;
 }): FichaEvento[] {
-  const { conversaciones, eventos, cierres, colas, agentes, usuarios } = input;
+  const { conversaciones, eventos, cierres, canales, colas, agentes, usuarios } = input;
   const out: FichaEvento[] = [];
 
   const nombreCola = (id: unknown) => txt(colas.get(String(id ?? ""))?.nombre);
   const nombreAgente = (id: unknown) => agentes.get(String(id ?? "")) ?? null;
   const nombreUsuario = (id: unknown) => usuarios.get(String(id ?? "")) ?? null;
+
+  // La "línea" de una fila es el canal de su conversación, así que se resuelve una vez.
+  const lineaPorConversacion = new Map<string, string | null>();
+  for (const c of conversaciones) {
+    const canal = canales.get(String(c.channel_id ?? ""));
+    lineaPorConversacion.set(String(c.id), txt(canal?.nombre) ?? txt(canal?.type));
+  }
+  const linea = (conversationId: unknown) =>
+    lineaPorConversacion.get(String(conversationId ?? "")) ?? null;
 
   for (const c of conversaciones) {
     const fecha = txt(c.created_at);
@@ -517,8 +538,10 @@ function armarLineaTiempo(input: {
       id: `ingreso:${String(c.id)}`,
       fecha,
       tipo: "ingreso",
-      titulo: "Ingresó la conversación",
-      detalle: nombreCola(c.queue_id) ? `Cola ${nombreCola(c.queue_id)}` : null,
+      accion: "Ingreso",
+      linea: linea(c.id),
+      usuario: null,
+      destino: nombreCola(c.queue_id),
       conversation_id: String(c.id),
     });
   }
@@ -530,44 +553,43 @@ function armarLineaTiempo(input: {
     const tipoEvento = String(e.event_type ?? "");
     const porQuien = nombreUsuario(p.by_usuario_id);
     const hacia = nombreAgente(p.to_agent_id);
-    const desde = nombreAgente(p.from_agent_id);
-    const base = { id: `ev:${String(e.id)}`, fecha, conversation_id: String(e.conversation_id) };
+    const base = {
+      id: `ev:${String(e.id)}`,
+      fecha,
+      conversation_id: String(e.conversation_id),
+      linea: linea(e.conversation_id),
+    };
 
     if (tipoEvento === "supervisor_assigned") {
       // `source` distingue el auto-servicio ("lo tomé yo") de la asignación a un tercero.
       const propio = String(p.source ?? "") === "assignConversationToMe";
-      if (propio) {
-        out.push({
-          ...base,
-          tipo: "tomado",
-          titulo: `Lo tomó ${porQuien ?? hacia ?? "un agente"}`,
-          detalle: nombreCola(e.queue_id) ? `Cola ${nombreCola(e.queue_id)}` : null,
-        });
-      } else {
-        out.push({
-          ...base,
-          tipo: "transferido",
-          titulo: `Transferido a ${hacia ?? "otro agente"}`,
-          detalle:
-            [porQuien ? `por ${porQuien}` : null, desde ? `desde ${desde}` : null]
-              .filter(Boolean)
-              .join(" · ") || null,
-        });
-      }
+      out.push(
+        propio
+          ? {
+              ...base,
+              tipo: "tomado",
+              accion: "Tomado",
+              usuario: porQuien ?? hacia,
+              destino: nombreCola(e.queue_id),
+            }
+          : {
+              ...base,
+              tipo: "transferido",
+              accion: "Transferido",
+              usuario: porQuien,
+              destino: hacia,
+            }
+      );
       continue;
     }
 
     if (tipoEvento === "queue_changed") {
-      const de = nombreCola(p.from_queue_id);
-      const a = nombreCola(p.to_queue_id) ?? nombreCola(e.queue_id);
       out.push({
         ...base,
         tipo: "cola",
-        titulo: a ? `Pasó a la cola ${a}` : "Cambió de cola",
-        detalle:
-          [de ? `desde ${de}` : null, porQuien ? `por ${porQuien}` : null]
-            .filter(Boolean)
-            .join(" · ") || null,
+        accion: "Cambio de cola",
+        usuario: porQuien,
+        destino: nombreCola(p.to_queue_id) ?? nombreCola(e.queue_id),
       });
       continue;
     }
@@ -576,11 +598,9 @@ function armarLineaTiempo(input: {
       out.push({
         ...base,
         tipo: "asignado",
-        titulo: `Asignado a ${hacia ?? "un agente"}`,
-        detalle:
-          tipoEvento === "same_advisor_route"
-            ? "Automático · mismo asesor de siempre"
-            : "Automático por cola",
+        accion: "Derivado",
+        usuario: tipoEvento === "same_advisor_route" ? "Mismo asesor" : "Automático",
+        destino: hacia,
       });
       continue;
     }
@@ -588,16 +608,22 @@ function armarLineaTiempo(input: {
     // El resto (sin cola, sin agente elegible, reasignaciones por demora) es ruido para el
     // asesor pero oro cuando hay que explicar por qué un chat quedó sin atender.
     const leyendas: Record<string, string> = {
-      no_queue: "No había cola para este canal",
-      no_eligible_agent: "Ningún agente disponible en la cola",
-      manual_queue_only: "Cola de toma manual: quedó esperando",
-      reassigned_initial_timeout: "Reasignado por demora en responder",
-      reassign_skipped_no_alternate: "Sin agente alternativo para reasignar",
-      reassign_skipped_max_iterations: "Se alcanzó el máximo de reasignaciones",
+      no_queue: "Sin cola para el canal",
+      no_eligible_agent: "Sin agente disponible",
+      manual_queue_only: "Espera toma manual",
+      reassigned_initial_timeout: "Reasignado por demora",
+      reassign_skipped_no_alternate: "Sin agente alternativo",
+      reassign_skipped_max_iterations: "Máximo de reasignaciones",
     };
     const leyenda = leyendas[tipoEvento];
     if (leyenda) {
-      out.push({ ...base, tipo: "sistema", titulo: leyenda, detalle: nombreCola(e.queue_id) });
+      out.push({
+        ...base,
+        tipo: "sistema",
+        accion: leyenda,
+        usuario: "Sistema",
+        destino: nombreCola(e.queue_id),
+      });
     }
   }
 
@@ -606,13 +632,15 @@ function armarLineaTiempo(input: {
     if (!fecha) continue;
     const estado = txt(c.closure_state_label);
     const sub = txt(c.closure_substate_label);
-    const por = nombreUsuario(c.closed_by_usuario_id);
     out.push({
       id: `cierre:${String(c.id)}`,
       fecha,
       tipo: "cerrado",
-      titulo: por ? `Finalizado por ${por}` : "Finalizado",
-      detalle: [estado, sub && sub !== "—" ? sub : null].filter(Boolean).join(" · ") || null,
+      accion: "Finalizado",
+      linea: linea(c.conversation_id),
+      usuario: nombreUsuario(c.closed_by_usuario_id),
+      // El destino de un cierre es la tipificación con la que quedó.
+      destino: [estado, sub && sub !== "—" ? sub : null].filter(Boolean).join(" · ") || null,
       conversation_id: String(c.conversation_id),
     });
   }

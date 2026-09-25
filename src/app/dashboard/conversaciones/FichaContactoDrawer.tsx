@@ -268,12 +268,8 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
 
       {/* Recorrido */}
       {linea_tiempo.length > 0 ? (
-        <Seccion titulo="Recorrido">
-          <ol className="flex flex-col">
-            {linea_tiempo.map((e, i) => (
-              <FilaEvento key={e.id} e={e} ultimo={i === linea_tiempo.length - 1} />
-            ))}
-          </ol>
+        <Seccion titulo="Flujo / Acciones">
+          <TablaRecorrido eventos={linea_tiempo} />
         </Seccion>
       ) : null}
 
@@ -383,6 +379,7 @@ function FilaConversacion({ c }: { c: FichaConversacion }) {
   );
 }
 
+/** Color del punto de la acción: hace legible de un vistazo qué tipo de paso fue cada fila. */
 const COLOR_EVENTO: Record<FichaEvento["tipo"], string> = {
   ingreso: "bg-slate-300",
   asignado: "bg-sky-400",
@@ -393,19 +390,65 @@ const COLOR_EVENTO: Record<FichaEvento["tipo"], string> = {
   sistema: "bg-slate-200",
 };
 
-function FilaEvento({ e, ultimo }: { e: FichaEvento; ultimo: boolean }) {
+/**
+ * El recorrido como tabla: Fecha, Línea, Acción, Usuario y Destino. Es el formato con el que
+ * se lee un historial de gestión — se compara fila contra fila en vertical — y no una lista
+ * de frases, donde hay que releer cada renglón entero para encontrar el dato.
+ */
+function TablaRecorrido({ eventos }: { eventos: FichaEvento[] }) {
   return (
-    <li className="flex gap-2.5">
-      <div className="flex flex-col items-center pt-1">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${COLOR_EVENTO[e.tipo]}`} aria-hidden />
-        {!ultimo ? <span className="w-px flex-1 bg-slate-200" aria-hidden /> : null}
-      </div>
-      <div className={ultimo ? "pb-0" : "pb-3"}>
-        <p className="text-[11px] font-medium leading-snug text-slate-800">{e.titulo}</p>
-        {e.detalle ? <p className="text-[10px] leading-snug text-slate-500">{e.detalle}</p> : null}
-        <p className="text-[10px] tabular-nums text-slate-400">{fechaLarga(e.fecha)}</p>
-      </div>
-    </li>
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full border-collapse text-left">
+        <thead>
+          <tr className="border-b border-slate-200 bg-slate-50">
+            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Fecha
+            </th>
+            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Línea
+            </th>
+            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Acción
+            </th>
+            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Usuario
+            </th>
+            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Destino
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {eventos.map((e) => (
+            <tr key={e.id} className="border-b border-slate-100 last:border-b-0 align-top">
+              <td className="whitespace-nowrap px-2 py-1.5 text-[10px] tabular-nums text-slate-500">
+                {fechaLarga(e.fecha)}
+              </td>
+              <td className="px-2 py-1.5 text-[10px] text-slate-500">
+                {e.linea ? (
+                  <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">
+                    {e.linea}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-[11px] font-medium text-slate-800">
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${COLOR_EVENTO[e.tipo]}`}
+                    aria-hidden
+                  />
+                  {e.accion}
+                </span>
+              </td>
+              <td className="px-2 py-1.5 text-[10px] text-slate-600">{e.usuario ?? "—"}</td>
+              <td className="px-2 py-1.5 text-[10px] text-slate-600">{e.destino ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

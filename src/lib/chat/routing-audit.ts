@@ -1,6 +1,8 @@
 import type { SupabaseAdmin } from "@/lib/chat/types";
 
 export type ChatRoutingEventType =
+  /** La conversación cambió de cola (p. ej. la pasaron a project manager). */
+  | "queue_changed"
   | "assigned_auto"
   | "manual_queue_only"
   | "no_queue"
@@ -11,6 +13,17 @@ export type ChatRoutingEventType =
   | "reassign_skipped_max_iterations"
   | "supervisor_assigned";
 
+/**
+ * Datos del evento. Además de lo propio de cada tipo, los eventos de asignación y de cambio
+ * de cola llevan el rastro de QUIÉN y DESDE DÓNDE, que es lo que permite reconstruir después
+ * la línea de tiempo del contacto ("lo tomó Fulano, lo transfirió Mengano a la cola X"):
+ *
+ *  - `by_usuario_id`: usuario que ejecutó la acción (null si la hizo el sistema).
+ *  - `from_agent_id` / `from_queue_id`: dónde estaba la conversación antes.
+ *  - `to_agent_id` / `to_queue_id`: dónde quedó.
+ *
+ * Es `jsonb` libre, así que agregar claves no rompe nada ya guardado.
+ */
 export type RoutingEventPayload = Record<string, unknown>;
 
 export async function insertChatRoutingEvent(

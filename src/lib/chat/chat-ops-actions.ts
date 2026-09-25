@@ -103,7 +103,7 @@ export async function assignConversationToAgent(
   conversationId: string,
   agentId: string
 ): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
   if (!conv) throw new Error("Conversación no encontrada");
   const agent = await loadAgentForEmpresa(supabase, empresa_id, agentId);
@@ -142,7 +142,14 @@ export async function assignConversationToAgent(
     conversation_id: conv.id,
     queue_id: agent.queue_id,
     event_type: "supervisor_assigned",
-    payload: { to_agent_id: agent.id, source: "assignConversationToAgent" },
+    payload: {
+      to_agent_id: agent.id,
+      to_queue_id: agent.queue_id ?? null,
+      from_agent_id: conv.assigned_agent_id ?? null,
+      from_queue_id: conv.queue_id ?? null,
+      by_usuario_id: usuario_id,
+      source: "assignConversationToAgent",
+    },
   });
 
   // Mensaje automático de DERIVACIÓN: si la conversación ENTRA a una cola distinta y esa cola
@@ -198,11 +205,13 @@ export async function assignConversationToAgent(
  * Cola de la conversación (no limpia asignación; el supervisor puede reasignar después).
  */
 export async function changeConversationQueue(conversationId: string, queueId: string): Promise<void> {
-  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const { supabase, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
   if (!conv) throw new Error("Conversación no encontrada");
   const queue = await loadQueueForEmpresa(supabase, empresa_id, queueId);
   if (!queue) throw new Error("Cola no encontrada");
+
+  const colaAnterior = conv.queue_id ?? null;
 
   const { error } = await supabase
     .from("chat_conversations")
@@ -214,6 +223,26 @@ export async function changeConversationQueue(conversationId: string, queueId: s
     .eq("empresa_id", empresa_id);
 
   if (error) throw new Error(error.message);
+
+  // Pasar un chat de una cola a otra (típico: comercial -> project manager) es un paso real
+  // del recorrido del contacto y antes no dejaba rastro: sólo se pisaba `queue_id`. Sin esto
+  // la línea de tiempo muestra un salto de agente sin explicación. Best-effort, igual que el
+  // resto de la auditoría: si falla, el cambio de cola ya se hizo y no se revierte.
+  if (colaAnterior !== queue.id) {
+    await insertChatRoutingEvent(supabase, {
+      empresa_id: empresa_id,
+      conversation_id: conv.id,
+      queue_id: queue.id,
+      event_type: "queue_changed",
+      payload: {
+        from_queue_id: colaAnterior,
+        to_queue_id: queue.id,
+        from_agent_id: conv.assigned_agent_id ?? null,
+        by_usuario_id: usuario_id,
+        source: "changeConversationQueue",
+      },
+    });
+  }
 }
 
 export async function changeConversationPriority(
@@ -323,7 +352,14 @@ export async function assignConversationToMe(conversationId: string): Promise<vo
     conversation_id: conv.id,
     queue_id: agent.queue_id as string,
     event_type: "supervisor_assigned",
-    payload: { to_agent_id: agent.id, source: "assignConversationToMe" },
+    payload: {
+      to_agent_id: agent.id,
+      to_queue_id: agent.queue_id ?? null,
+      from_agent_id: conv.assigned_agent_id ?? null,
+      from_queue_id: conv.queue_id ?? null,
+      by_usuario_id: usuario_id,
+      source: "assignConversationToMe",
+    },
   });
 }
 

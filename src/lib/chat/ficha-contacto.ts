@@ -660,8 +660,10 @@ function armarLineaTiempo(input: {
     });
   }
 
+  // Se ordena de más nuevo a más viejo para recortar por el tope quedándose con lo reciente,
+  // y recién después se da vuelta: en pantalla el recorrido se lee de principio a fin.
   out.sort((a, b) => b.fecha.localeCompare(a.fecha));
-  return out.slice(0, MAX_EVENTOS);
+  return out.slice(0, MAX_EVENTOS).reverse();
 }
 
 /** Lee un catálogo chico (canales, colas) solo para los ids que aparecen en las filas. */

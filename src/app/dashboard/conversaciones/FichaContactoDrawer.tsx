@@ -105,7 +105,7 @@ function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
       <aside
         role="dialog"
         aria-label="Ficha del contacto"
-        className="absolute inset-y-0 right-0 z-30 flex w-[24rem] max-w-[92vw] flex-col border-l border-slate-200 bg-white shadow-2xl"
+        className="absolute inset-y-0 right-0 z-30 flex w-1/2 min-w-[24rem] max-w-[92vw] flex-col border-l border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-900">Ficha del contacto</h2>
@@ -235,7 +235,7 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
               Este cliente no tiene proyectos.
             </p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
+            <ul className="grid gap-1.5 sm:grid-cols-2">
               {proyectos.map((p) => (
                 <FilaProyecto key={p.id} p={p} />
               ))}
@@ -279,14 +279,21 @@ function FilaProyecto({ p }: { p: FichaProyecto }) {
   return (
     <li
       className={`rounded-xl border px-3 py-2 ${
-        p.es_final ? "border-slate-200 bg-slate-50/60" : "border-slate-200 bg-white"
+        p.archivado || p.es_final ? "border-slate-200 bg-slate-50/60" : "border-slate-200 bg-white"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
         <p
-          className={`text-xs font-semibold ${p.es_final ? "text-slate-500" : "text-slate-900"}`}
+          className={`text-xs font-semibold ${
+            p.archivado || p.es_final ? "text-slate-500" : "text-slate-900"
+          }`}
         >
           {p.nombre}
+          {p.archivado ? (
+            <span className="ml-1.5 font-normal text-[10px] uppercase text-slate-400">
+              archivado
+            </span>
+          ) : null}
         </p>
         <Link
           href={`/dashboard/proyectos?proyecto=${p.id}`}
@@ -491,7 +498,7 @@ class LimiteDeError extends Component<
   render() {
     if (!this.state.rompio) return this.props.children;
     return (
-      <aside className="absolute inset-y-0 right-0 z-30 flex w-[24rem] max-w-[92vw] flex-col border-l border-slate-200 bg-white p-4 shadow-2xl">
+      <aside className="absolute inset-y-0 right-0 z-30 flex w-1/2 min-w-[24rem] max-w-[92vw] flex-col border-l border-slate-200 bg-white p-4 shadow-2xl">
         <p className="text-xs text-slate-600">No se pudo mostrar la ficha.</p>
         <button
           type="button"

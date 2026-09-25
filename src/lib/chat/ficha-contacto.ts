@@ -1,6 +1,7 @@
 import "server-only";
 import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 import { clienteDelContacto } from "@/lib/clientes/cliente-de-contacto";
+import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { nombrePreferido } from "@/lib/format/nombres";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
@@ -47,6 +48,8 @@ export type FichaProyecto = {
   estado_color: string | null;
   estado_desde: string | null;
   es_final: boolean;
+  /** Sacado de circulación. Se muestra igual, pero al final y apagado. */
+  archivado: boolean;
   project_manager: string | null;
   responsable_tecnico: string | null;
   fecha_ingreso: string | null;
@@ -176,7 +179,10 @@ export async function construirFichaContacto(input: {
     cargarHistorial(supabase, catalogSr, empresaId, usuarioId, contactId, conversationId),
   ]);
 
-  const proyectos = await cargarProyectos(request, empresaId, clienteRes?.id ?? null);
+  const proyectosRes = await cargarProyectos(request, empresaId, clienteRes?.id ?? null);
+  if (proyectosRes.error) {
+    notas.push("No se pudieron cargar los proyectos de este cliente.");
+  }
 
   if (historialRes.hayEventosViejos) {
     notas.push(
@@ -194,7 +200,7 @@ export async function construirFichaContacto(input: {
         creado_en: txt(contacto.created_at),
       },
       cliente: clienteRes,
-      proyectos,
+      proyectos: proyectosRes.lista,
       ultima_tipificacion: historialRes.ultimaTipificacion,
       conversaciones: historialRes.conversaciones,
       linea_tiempo: historialRes.lineaTiempo,
@@ -245,19 +251,20 @@ async function resolverCliente(
 
   const { data } = await supabase
     .from("clientes")
-    .select("id, nombre, empresa, razon_social, nombre_contacto, ruc, email, telefono, direccion, ciudad")
+    .select(
+      "id, tipo_cliente, nombre, empresa, razon_social, nombre_contacto, ruc, email, telefono, direccion, ciudad"
+    )
     .eq("empresa_id", empresaId)
     .eq("id", clienteId)
     .maybeSingle();
   const c = data as Fila | null;
   if (!c) return null;
 
-  const nombre =
-    txt(c.empresa) ?? txt(c.razon_social) ?? txt(c.nombre) ?? txt(c.nombre_contacto) ?? "Cliente";
-
   return {
     id: String(c.id),
-    nombre,
+    // El criterio vive en `display-name`: para una persona el cliente ES la persona, aunque
+    // tenga cargada una empresa. Resolverlo a mano acá mostraba el nombre equivocado.
+    nombre: nombreClienteDisplay(c),
     ruc: txt(c.ruc),
     email: txt(c.email),
     telefono: txt(c.telefono),
@@ -276,25 +283,33 @@ async function cargarProyectos(
   request: Request,
   empresaId: string,
   clienteId: string | null
-): Promise<FichaProyecto[] | null> {
-  if (!clienteId) return null;
+): Promise<{ lista: FichaProyecto[] | null; error: boolean }> {
+  if (!clienteId) return { lista: null, error: false };
 
   const auth = await requireProyectosApiAccess(request).catch(() => null);
-  if (!auth?.ok) return null;
+  if (!auth?.ok) return { lista: null, error: false };
   // El acceso se resolvió contra la empresa de la sesión; si no coincide, no se devuelve nada.
-  if (auth.empresaId !== empresaId) return null;
+  if (auth.empresaId !== empresaId) return { lista: null, error: false };
 
   try {
     const sb = await getChatServiceClientForEmpresa(empresaId);
-    const { data } = await sb
+    // `proyectos` no tiene borrado lógico: lo que sale de circulación se marca `archivado`.
+    // Se traen todos y los archivados quedan al final; filtrarlos escondería proyectos
+    // que el cliente efectivamente tuvo.
+    const { data, error } = await sb
       .from("proyectos")
       .select("*")
       .eq("empresa_id", empresaId)
       .eq("cliente_id", clienteId)
-      .is("deleted_at", null)
       .limit(100);
+    // Un error acá NO puede devolver una lista vacía: se leería como "este cliente no tiene
+    // proyectos", que es una mentira difícil de detectar.
+    if (error) {
+      console.error("[ficha-contacto] proyectos:", error.message);
+      return { lista: null, error: true };
+    }
     const filas = (data ?? []) as Fila[];
-    if (filas.length === 0) return [];
+    if (filas.length === 0) return { lista: [], error: false };
 
     const ricos = await enrichProyectosRows(sb, empresaId, filas);
     const proyectos: FichaProyecto[] = ricos.map((p) => {
@@ -305,6 +320,7 @@ async function cargarProyectos(
       return {
         id: String((p as Fila).id ?? ""),
         nombre: txt((p as Fila).nombre) ?? "Sin nombre",
+        archivado: Boolean((p as Fila).archivado),
         tipo: txt((p.proyecto_tipo as { nombre?: string } | null | undefined)?.nombre),
         estado: txt(estado?.nombre),
         estado_color: txt(estado?.color),
@@ -320,15 +336,19 @@ async function cargarProyectos(
       };
     });
 
-    // Activos primero; dentro de cada grupo, lo más nuevo arriba.
+    // En curso arriba, después los terminados y al fondo los archivados; dentro de cada
+    // grupo, lo más nuevo primero.
+    const peso = (p: FichaProyecto) => (p.archivado ? 2 : p.es_final ? 1 : 0);
     proyectos.sort((a, b) => {
-      if (a.es_final !== b.es_final) return a.es_final ? 1 : -1;
+      const d = peso(a) - peso(b);
+      if (d !== 0) return d;
       return String(b.fecha_ingreso ?? "").localeCompare(String(a.fecha_ingreso ?? ""));
     });
-    return proyectos;
-  } catch {
-    // Un problema leyendo proyectos no puede tumbar la ficha entera.
-    return null;
+    return { lista: proyectos, error: false };
+  } catch (e) {
+    // Un problema leyendo proyectos no puede tumbar la ficha entera, pero sí tiene que verse.
+    console.error("[ficha-contacto] proyectos:", e instanceof Error ? e.message : String(e));
+    return { lista: null, error: true };
   }
 }
 

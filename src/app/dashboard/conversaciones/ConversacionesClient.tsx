@@ -3702,7 +3702,14 @@ export function ConversacionesClient({
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+      <div className="relative flex flex-1 min-h-0 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+        {fichaAbierta && selectedId ? (
+          <FichaContactoDrawer
+            conversationId={selectedId}
+            abierto={fichaAbierta}
+            alCerrar={() => setFichaAbierta(false)}
+          />
+        ) : null}
         {/* Lista */}
         {!listColumnHidden ? (
         <div
@@ -3892,14 +3899,7 @@ export function ConversacionesClient({
               ) : null}
             </div>
           ) : (
-            <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
-              {fichaAbierta ? (
-                <FichaContactoDrawer
-                  conversationId={selectedId}
-                  abierto={fichaAbierta}
-                  alCerrar={() => setFichaAbierta(false)}
-                />
-              ) : null}
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-200 bg-white shrink-0">
                 {selected ? (
                   (() => {

@@ -67,7 +67,10 @@ function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
     if (!panel) return;
     // El borde derecho no se mueve durante el arrastre, así que alcanza con medirlo una vez.
     const derecha = panel.getBoundingClientRect().right;
-    const maximo = window.innerWidth * 0.92;
+    // El panel vive dentro del marco del inbox y ese marco recorta lo que se salga. Si se
+    // dejara crecer hasta el ancho de la ventana, la parte izquierda quedaría cortada.
+    const marco = panel.parentElement?.getBoundingClientRect().width ?? window.innerWidth;
+    const maximo = Math.max(ANCHO_MINIMO, marco);
 
     const mover = (ev: PointerEvent) => {
       const nuevo = Math.min(Math.max(derecha - ev.clientX, ANCHO_MINIMO), maximo);
@@ -481,32 +484,26 @@ const COLOR_EVENTO: Record<FichaEvento["tipo"], string> = {
  */
 function TablaRecorrido({ eventos }: { eventos: FichaEvento[] }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200">
-      {/* `table-fixed` + anchos: sin esto, un nombre largo de usuario ensancha su columna,
-          empuja las de la derecha fuera del panel y parte el texto letra por letra. */}
-      <table className="w-full table-fixed border-collapse text-left">
-        <colgroup>
-          <col className="w-[22%]" />
-          <col className="w-[18%]" />
-          <col className="w-[22%]" />
-          <col className="w-[20%]" />
-          <col className="w-[18%]" />
-        </colgroup>
+    // Antes la tabla repartía anchos por porcentaje y recortaba con puntos suspensivos: por
+    // ancha que fuera la ficha, los nombres largos nunca terminaban de verse. Ahora cada
+    // columna toma lo que necesita y, si no entra, la tabla se desplaza en horizontal.
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full border-collapse text-left">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50">
-            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <th className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Fecha
             </th>
-            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <th className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Línea
             </th>
-            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <th className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Acción
             </th>
-            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <th className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Usuario
             </th>
-            <th className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <th className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Destino
             </th>
           </tr>
@@ -515,43 +512,34 @@ function TablaRecorrido({ eventos }: { eventos: FichaEvento[] }) {
           {eventos.map((e) => (
             <tr key={e.id} className="border-b border-slate-100 last:border-b-0 align-top">
               <td
-                className="px-2 py-1.5 text-[10px] tabular-nums leading-tight text-slate-500"
+                className="whitespace-nowrap px-2 py-1.5 text-[10px] tabular-nums text-slate-500"
                 title={fechaLarga(e.fecha)}
               >
                 {fechaTabla(e.fecha)}
               </td>
-              <td className="px-2 py-1.5 text-[10px] text-slate-500">
+              <td className="whitespace-nowrap px-2 py-1.5 text-[10px] text-slate-500">
                 {e.linea ? (
-                  <span
-                    className="block truncate rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5"
-                    title={e.linea}
-                  >
+                  <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">
                     {e.linea}
                   </span>
                 ) : (
                   "—"
                 )}
               </td>
-              <td className="px-2 py-1.5 text-[11px] font-medium text-slate-800">
-                <span className="flex items-center gap-1.5">
+              <td className="whitespace-nowrap px-2 py-1.5 text-[11px] font-medium text-slate-800">
+                <span className="inline-flex items-center gap-1.5">
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${COLOR_EVENTO[e.tipo]}`}
                     aria-hidden
                   />
-                  <span className="truncate" title={e.accion}>
-                    {e.accion}
-                  </span>
+                  {e.accion}
                 </span>
               </td>
-              <td className="px-2 py-1.5 text-[10px] text-slate-600">
-                <span className="block truncate" title={e.usuario ?? undefined}>
-                  {e.usuario ?? "—"}
-                </span>
+              <td className="whitespace-nowrap px-2 py-1.5 text-[10px] text-slate-600">
+                {e.usuario ?? "—"}
               </td>
-              <td className="px-2 py-1.5 text-[10px] text-slate-600">
-                <span className="block truncate" title={e.destino ?? undefined}>
-                  {e.destino ?? "—"}
-                </span>
+              <td className="whitespace-nowrap px-2 py-1.5 text-[10px] text-slate-600">
+                {e.destino ?? "—"}
               </td>
             </tr>
           ))}

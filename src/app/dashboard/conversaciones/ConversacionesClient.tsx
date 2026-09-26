@@ -1597,10 +1597,10 @@ export function ConversacionesClient({
     const cid = selectedIdRef.current;
     if (!cid || file.size < 1) return;
     const isVideo = file.type.startsWith("video/");
-    // Videos hasta 64 MB: el servidor los comprime a <16 MB (720p) antes de mandar. Más grande
+    // Videos hasta 50 MB: el servidor los comprime a <16 MB (720p) antes de mandar. Más grande
     // que eso, mejor un enlace (la subida + compresión se vuelve poco confiable).
-    if (isVideo && file.size > 64 * 1024 * 1024) {
-      setSendError("El video es demasiado grande (máx 64 MB). Recortalo o compartí un enlace.");
+    if (isVideo && file.size > 50 * 1024 * 1024) {
+      setSendError("El video es demasiado grande (máx 50 MB). Recortalo o compartí un enlace.");
       return;
     }
     setSendError(null);

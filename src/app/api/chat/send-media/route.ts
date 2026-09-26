@@ -270,9 +270,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const maxBytes = 15 * 1024 * 1024;
+    const maxBytes = 50 * 1024 * 1024;
     if (file.size > maxBytes) {
-      return NextResponse.json({ ok: false, error: "Archivo demasiado grande (máx. 15 MB)" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Archivo demasiado grande (máx. 50 MB)" }, { status: 400 });
     }
 
     const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);

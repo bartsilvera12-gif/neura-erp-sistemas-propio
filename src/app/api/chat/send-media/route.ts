@@ -216,16 +216,50 @@ async function compressVideoUnder16MB(input: Buffer): Promise<Buffer> {
       return readFile(outPath);
     }
 
+    /**
+     * Plan B para casos raros donde el encode principal falla — típicamente
+     * porque el input trae algún filtro (rotación, pixel format exótico) que
+     * el `-vf scale` no digiere. Sin `-vf`, sin cálculo de bitrate, sólo CRF.
+     * Al ser más simple, cubre más formatos. Si esto también falla, el input
+     * está realmente roto o su codec no está instalado.
+     */
+    async function encodeSimple(): Promise<Buffer> {
+      const args = [
+        "-y", "-hide_banner", "-loglevel", "error",
+        "-i", inPath,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", `${AUDIO_K}k`, "-ac", "2",
+        "-movflags", "+faststart", outPath,
+      ];
+      await execFileAsync("ffmpeg", args, { timeout: 110000, maxBuffer: 1024 * 1024 * 64 });
+      return readFile(outPath);
+    }
+
     let videoK: number | null = null;
     if (duration > 0) {
       const totalK = (TARGET_BYTES * 8) / 1000 / duration; // kbps totales que entran en el target
       videoK = Math.max(350, Math.min(Math.round(totalK - AUDIO_K), 4000));
     }
 
-    let out = await encode(720, videoK);
+    let out: Buffer;
+    try {
+      out = await encode(720, videoK);
+    } catch (e1) {
+      // El encoder principal murió; probamos el simple antes de rendirnos.
+      console.warn("[send-media] compress primary encode falló, fallback simple", {
+        detail: e1 instanceof Error ? e1.message.slice(0, 300) : String(e1),
+      });
+      out = await encodeSimple();
+    }
     if (out.length > VIDEO_LIMIT_BYTES) {
       const k2 = duration > 0 ? Math.max(300, Math.round((videoK ?? 1200) * 0.65)) : 800;
-      out = await encode(480, k2);
+      try {
+        out = await encode(480, k2);
+      } catch (e2) {
+        console.warn("[send-media] compress 480p encode falló, mantenemos out del intento previo", {
+          detail: e2 instanceof Error ? e2.message.slice(0, 300) : String(e2),
+        });
+      }
     }
     if (out.length > VIDEO_LIMIT_BYTES) throw new Error("VIDEO_TOO_LONG");
     return out;

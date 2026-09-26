@@ -1,6 +1,9 @@
-# Agrega ffmpeg al entorno de build/runtime (Nixpacks/Coolify) para remuxear
-# notas de voz webm/opus -> ogg/opus antes de enviarlas por WhatsApp.
+# ffmpeg-full en vez de ffmpeg: el paquete base de nixpkgs se compila sin
+# HEVC/H.265 (y otros codecs con licencia), y los videos de iPhone vienen en
+# HEVC por default → el compresor de send-media fallaba con "no se pudo
+# comprimir" al no poder decodificar la entrada. ffmpeg-full incluye HEVC,
+# VP9, AV1, y demás. También cubre remuxear notas de voz webm/opus -> ogg/opus.
 # El token '...' preserva los paquetes autodetectados por Nixpacks (Node, etc.);
-# solo AGREGA ffmpeg, no reemplaza el setup de Node.
+# solo AGREGA ffmpeg-full, no reemplaza el setup de Node.
 [phases.setup]
-nixPkgs = ['...', 'ffmpeg']
+nixPkgs = ['...', 'ffmpeg-full']

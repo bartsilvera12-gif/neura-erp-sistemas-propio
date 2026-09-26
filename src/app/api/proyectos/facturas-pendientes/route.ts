@@ -3,14 +3,19 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 
-/** Estados de factura que NO son deuda (mismo criterio que Cobranzas). */
-const ESTADOS_NO_DEUDA = new Set(["pagado", "anulado", "corregida nc"]);
+/**
+ * Estados de factura que NO sirven para asociar a un proyecto: una factura
+ * anulada o corregida por NC ya no representa la venta. Las PAGADAS sí se
+ * incluyen: una venta al contado queda pagada (saldo 0) pero es la factura de
+ * esa venta, y en el tablero se muestra como "Al día".
+ */
+const ESTADOS_NO_ASOCIABLES = new Set(["anulado", "corregida nc"]);
 
 /**
- * Facturas pendientes de un cliente, para asociar una a un proyecto al crearlo
- * (o desde su ficha). "Pendiente" = tiene saldo por cobrar y no está anulada.
- * Se devuelve el saldo (lo realmente adeudado), que es lo que después muestra la
- * columna Deuda del tablero.
+ * Facturas de un cliente, para asociar una a un proyecto al crearlo (o desde su
+ * ficha). Incluye las pendientes (con saldo) y las ya pagadas (contado); excluye
+ * solo anuladas / corregidas por NC. Se devuelve el saldo, que es lo que después
+ * muestra la columna Deuda del tablero (0 = "Al día").
  */
 export async function GET(request: Request) {
   const auth = await requireProyectosApiAccess(request);
@@ -42,9 +47,7 @@ export async function GET(request: Request) {
     const pendientes = (data ?? [])
       .filter((f) => {
         const estado = String((f as { estado?: unknown }).estado ?? "").trim().toLowerCase();
-        if (ESTADOS_NO_DEUDA.has(estado)) return false;
-        const saldo = Number((f as { saldo?: unknown }).saldo ?? 0);
-        return Number.isFinite(saldo) && saldo > 0;
+        return !ESTADOS_NO_ASOCIABLES.has(estado);
       })
       .map((f) => {
         const row = f as Record<string, unknown>;

@@ -16,8 +16,9 @@ type FacturaPendiente = {
 
 /**
  * Selector de la factura de la venta que se asocia a un proyecto (una por
- * proyecto). Lista las facturas PENDIENTES del cliente elegido; el saldo que
- * muestra es lo que después aparece como Deuda del proyecto en el tablero.
+ * proyecto). Lista las facturas del cliente elegido —pendientes y pagadas
+ * (contado)—; el saldo que muestra es lo que después aparece como Deuda del
+ * proyecto en el tablero (0 = "Al día").
  *
  * Si el proyecto ya tiene una factura que dejó de estar pendiente (se pagó),
  * igual se conserva la selección para no perder el vínculo.
@@ -65,7 +66,7 @@ export function FacturaSelect({
     { value: "", label: "Sin factura asociada" },
     ...facturas.map((f) => ({
       value: f.id,
-      label: `${f.numero_factura || "s/n"} · debe ${fmt(f.saldo)}`,
+      label: `${f.numero_factura || "s/n"} · ${f.saldo > 0 ? `debe ${fmt(f.saldo)}` : "pagada"}`,
     })),
   ];
   // La factura ya asociada puede no estar entre las pendientes (se pagó): se

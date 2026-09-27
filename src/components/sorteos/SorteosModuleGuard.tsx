@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUser } from "@/lib/auth";
 import { getMisModulos } from "@/lib/empresas/actions";
 
 export default function SorteosModuleGuard({ children }: { children: React.ReactNode }) {
@@ -18,16 +19,15 @@ export default function SorteosModuleGuard({ children }: { children: React.React
           if (!cancel) router.replace("/");
           return;
         }
-        const { data: urows, error: errUsuario } = await supabase
-          .from("usuarios")
-          .select("rol")
-          .eq("email", session.user.email)
-          .limit(1);
-        if (errUsuario) {
+        // El rol se resuelve server-side (getCurrentUser → /api/usuarios/me): leer `usuarios`
+        // desde el navegador pegaba contra `zentra_erp` (404) y mandaba a todos al inicio.
+        let usuario: { rol?: string | null } | null = null;
+        try {
+          usuario = await getCurrentUser();
+        } catch {
           if (!cancel) router.replace("/");
           return;
         }
-        const usuario = urows?.[0] as { rol?: string } | undefined;
 
         if (usuario?.rol === "super_admin") {
           if (!cancel) setEstado("ok");

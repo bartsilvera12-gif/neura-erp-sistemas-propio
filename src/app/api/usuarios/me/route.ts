@@ -7,6 +7,13 @@ type UsuarioMeRow = {
   email: string | null;
   rol: string | null;
   es_project_manager: boolean | null;
+  empresa_id: string | null;
+  es_tecnico: boolean | null;
+  estado: string | null;
+  telefono: string | null;
+  fecha_nacimiento: string | null;
+  auth_user_id: string | null;
+  created_at: string | null;
 };
 
 function pickAuthMetadataName(authUser: { user_metadata?: Record<string, unknown> | null }): string | null {
@@ -37,7 +44,10 @@ export async function GET(request: Request) {
     if (catalogUsuario?.id) {
       const { data, error } = await supabaseSr
         .from("usuarios")
-        .select("nombre, email, rol, es_project_manager")
+        // `*` y no una lista: las columnas varían por tenant (27-sep-2026: `es_tecnico` existía
+        // en 2 de 72 schemas y `es_project_manager` en 4) y pedir una que falta hace fallar
+        // todo el request con 400. La respuesta de abajo solo expone los campos elegidos.
+        .select("*")
         .eq("id", catalogUsuario.id)
         .maybeSingle();
 
@@ -64,6 +74,16 @@ export async function GET(request: Request) {
         email,
         data_schema: dataSchema,
         es_project_manager: row?.es_project_manager === true,
+        // Campos de `getCurrentUser()` en el navegador (src/lib/auth.ts): el browser no
+        // conoce el schema del tenant (APP_DB_SCHEMA no es NEXT_PUBLIC) y leer `usuarios`
+        // directo daba 404 contra `zentra_erp`. Aditivos: el header no los usa.
+        empresa_id: row?.empresa_id ?? catalogUsuario?.empresa_id ?? null,
+        es_tecnico: row?.es_tecnico === true,
+        estado: row?.estado ?? null,
+        telefono: row?.telefono ?? null,
+        fecha_nacimiento: row?.fecha_nacimiento ?? null,
+        auth_user_id: row?.auth_user_id ?? null,
+        created_at: row?.created_at ?? null,
       },
     });
   } catch (err) {

@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
+import { getAuthUserForApiRoute, redactarMensajeDiagnostico } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 import { NextResponse } from "next/server";
@@ -63,6 +63,8 @@ export async function GET(request: Request) {
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error";
+    // Diagnóstico temporal (27-sep-2026): este 500 dispara el rebote a /login en la app nueva.
+    console.error("[module-access] 500", { msg: redactarMensajeDiagnostico(msg) });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

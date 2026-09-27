@@ -83,9 +83,15 @@ ENV HOSTNAME=0.0.0.0
 # (GET http://localhost:3000/... con curl/wget). node:22-slim no trae ninguno de los
 # dos, así que sin esto la imagen buildea y arranca, pero Coolify la marca "unhealthy"
 # y descarta el deploy aunque la app esté sirviendo bien.
+# ca-certificates: con --no-install-recommends curl queda SIN certificados raíz y cualquier
+# `curl https://...` falla con "(77) error setting certificate file". Las scheduled tasks de
+# Coolify (campanas-dispatch, cc-push-dispatch, facturacion-mensual) son justamente
+# `curl https://sistemas.neura.com.py/api/cron/...` dentro de este contenedor: sin esto
+# fallaron el 100% de las ejecuciones desde que la app pasó a este Dockerfile.
+# (Node no se ve afectado: trae sus propios certificados.)
 # Limpiamos apt lists para no engordar la capa.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg curl \
+    && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Usuario no-root (buena práctica; standalone no necesita root).

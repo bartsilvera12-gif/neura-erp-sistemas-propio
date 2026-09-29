@@ -86,6 +86,8 @@ type Data = {
   proyectos_periodo: (Data["criticos"][number] & {
     estado_id: string | null;
     tipo_id: string | null;
+    /** Tipo de proyecto (Web / SaaS-ERP / Mixto…) para la columna del tablero. */
+    tipo_nombre: string;
     responsable_tecnico_id: string | null;
     /** Asesor comercial responsable (columna del tablero). */
     asesor: string;
@@ -189,6 +191,7 @@ function mismaSel(a: Sel, b: Sel): boolean {
 type OrdenCol =
   | "titulo"
   | "cliente"
+  | "tipo_nombre"
   | "estado_nombre"
   | "tecnico"
   | "pm"
@@ -689,11 +692,12 @@ export default function DashboardEjecutivoClient() {
                   </p>
                 ) : (
                   <TablaWrap>
-                    <table className="w-full min-w-[860px] text-left">
+                    <table className="w-full min-w-[960px] text-left">
                       <thead>
                         <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wide text-slate-400">
                           {th("Proyecto", "titulo")}
                           {th("Cliente", "cliente")}
+                          {th("Tipo", "tipo_nombre")}
                           {th("Estado", "estado_nombre")}
                           {th("Técnico", "tecnico")}
                           {th("PM", "pm")}
@@ -750,6 +754,18 @@ export default function DashboardEjecutivoClient() {
                               {c.cliente}
                             </td>
                             <td className="py-1.5 pr-2">
+                              {c.tipo_nombre && c.tipo_nombre !== "—" ? (
+                                <span
+                                  className="inline-flex items-center whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600"
+                                  title={`Tipo de proyecto: ${c.tipo_nombre}`}
+                                >
+                                  {c.tipo_nombre}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 pr-2">
                               <EstadoPill nombre={c.estado_nombre} color={c.estado_color} />
                             </td>
                             <td className="max-w-[110px] truncate py-1.5 pr-2 text-slate-500">
@@ -786,7 +802,7 @@ export default function DashboardEjecutivoClient() {
                           </tr>
                           {abierto ? (
                             <tr className="border-b border-slate-50 last:border-0">
-                              <td colSpan={8} className="bg-slate-50/60 px-3 py-2">
+                              <td colSpan={9} className="bg-slate-50/60 px-3 py-2">
                                 <div className="flex items-start gap-2">
                                   <span className="mt-0.5 whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                                     Historial

@@ -150,6 +150,8 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       tiempo_en_estado_ms: p.tiempo_en_estado_ms,
       estado_id: p.estado_id,
       tipo_id: p.tipo_id,
+      // Tipo de proyecto (Web / SaaS-ERP / Mixto…) para la columna del tablero.
+      tipo_nombre: p.tipo_nombre,
       responsable_tecnico_id: p.responsable_tecnico_id,
       entregado: p.entregado,
       demorado: !p.entregado && p.estancado,

@@ -89,6 +89,8 @@ type Data = {
     /** Tipo de proyecto (Web / SaaS-ERP / Mixto…) para la columna del tablero. */
     tipo_nombre: string;
     responsable_tecnico_id: string | null;
+    /** PM del proyecto (para filtrar por las cards "Por PM"). */
+    project_manager_id: string | null;
     /** Asesor comercial responsable (columna del tablero). */
     asesor: string;
     /** El proyecto no tiene una factura asociada todavía. */
@@ -113,6 +115,14 @@ type Data = {
   demorados_total: number;
   por_tipo: { tipo_id: string; nombre: string; codigo: string | null; cantidad: number }[];
   tecnicos_resumen: {
+    usuario_id: string;
+    nombre: string;
+    total: number;
+    entregados: number;
+    en_proceso: number;
+    pausados: number;
+  }[];
+  pms_resumen: {
     usuario_id: string;
     nombre: string;
     total: number;
@@ -172,6 +182,7 @@ type Sel =
   | { kind: "estado"; id: string }
   | { kind: "demorado"; estadoId?: string }
   | { kind: "tecnico"; id: string }
+  | { kind: "pm"; id: string }
   | { kind: "tipo"; id: string }
   | null;
 
@@ -183,6 +194,7 @@ function mismaSel(a: Sel, b: Sel): boolean {
   if (a.kind === "estado" && b.kind === "estado") return a.id === b.id;
   if (a.kind === "demorado" && b.kind === "demorado") return a.estadoId === b.estadoId;
   if (a.kind === "tecnico" && b.kind === "tecnico") return a.id === b.id;
+  if (a.kind === "pm" && b.kind === "pm") return a.id === b.id;
   if (a.kind === "tipo" && b.kind === "tipo") return a.id === b.id;
   return false;
 }
@@ -351,6 +363,9 @@ export default function DashboardEjecutivoClient() {
     // que sigue en juego, no lo ya cerrado).
     if (sel.kind === "tecnico")
       return act.filter((p) => p.responsable_tecnico_id === sel.id && !p.entregado);
+    // Por PM: sus proyectos SIN los entregados (mismo criterio que programador).
+    if (sel.kind === "pm")
+      return act.filter((p) => p.project_manager_id === sel.id && !p.entregado);
     // demorado
     return act.filter((p) => p.demorado && (sel.estadoId ? p.estado_id === sel.estadoId : true));
   }, [data, sel]);
@@ -368,6 +383,10 @@ export default function DashboardEjecutivoClient() {
     if (sel.kind === "tecnico") {
       const n = data?.tecnicos_resumen.find((t) => t.usuario_id === sel.id)?.nombre;
       return n ? nombreCapitular(n) : "Programador";
+    }
+    if (sel.kind === "pm") {
+      const n = data?.pms_resumen.find((t) => t.usuario_id === sel.id)?.nombre;
+      return n ? nombreCapitular(n) : "PM";
     }
     if (sel.estadoId) {
       const n = data?.estados_periodo.find((e) => e.estado_id === sel.estadoId)?.nombre;
@@ -631,6 +650,69 @@ export default function DashboardEjecutivoClient() {
                               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${TONO.teal.circulo}`}
                             >
                               <UsersRound className={`h-4 w-4 ${TONO.teal.icono}`} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline gap-2">
+                                <span className="truncate text-[13px] font-semibold text-slate-800" title={nombre}>
+                                  {nombre}
+                                </span>
+                                <span className="text-lg font-bold leading-none text-slate-800">{t.total}</span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium">
+                                <span className="text-emerald-600">{t.entregados} entregados</span>
+                                <span className="text-slate-300">·</span>
+                                <span className="text-[#3F8E91]">{t.en_proceso} en proceso</span>
+                                <span className="text-slate-300">·</span>
+                                <span className="text-amber-600">{t.pausados} pausados</span>
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* Por PM — igual que "Por programador" pero agrupado por Project
+                Manager (activos + entregados del período, sin cancelados). Al
+                apretar uno se baja a la tabla ya filtrada por ese PM. */}
+            <Card>
+              <CardTitle>Por PM</CardTitle>
+              {data.pms_resumen.length === 0 ? (
+                <p className="text-sm text-slate-400">Sin PM con proyectos.</p>
+              ) : (
+                <div
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}
+                >
+                  {data.pms_resumen.map((t) => {
+                    const seleccionado = sel?.kind === "pm" && sel.id === t.usuario_id;
+                    const abrir = () => {
+                      toggleSel({ kind: "pm", id: t.usuario_id });
+                      tablaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    };
+                    const nombre = nombreCapitular(t.nombre);
+                    return (
+                      <div
+                        key={t.usuario_id}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={seleccionado}
+                        onClick={abrir}
+                        onKeyDown={(e) => e.key === "Enter" && abrir()}
+                      >
+                        <Card
+                          className={`cursor-pointer transition-shadow hover:shadow-md ${
+                            seleccionado ? "ring-2 ring-[#4FAEB2] ring-offset-1" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${TONO.violeta.circulo}`}
+                            >
+                              <UsersRound className={`h-4 w-4 ${TONO.violeta.icono}`} />
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-baseline gap-2">

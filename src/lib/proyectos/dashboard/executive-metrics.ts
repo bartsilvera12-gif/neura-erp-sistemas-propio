@@ -153,6 +153,8 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       // Tipo de proyecto (Web / SaaS-ERP / Mixto…) para la columna del tablero.
       tipo_nombre: p.tipo_nombre,
       responsable_tecnico_id: p.responsable_tecnico_id,
+      // PM del proyecto (para filtrar la tabla desde las cards "Por PM").
+      project_manager_id: p.project_manager_id,
       entregado: p.entregado,
       demorado: !p.entregado && p.estancado,
       buckets: p.entregado ? [] : bucketsDeProyecto(p),
@@ -232,6 +234,32 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     .filter((t) => t.nombre !== "—")
     .sort((a, b) => b.total - a.total);
 
+  // ---- Resumen por PM (mismo criterio que "Por programador") ----------------
+  // Cuántos proyectos tiene cada Project Manager en el período (activos +
+  // entregados, sin cancelados), con el mismo desglose entregados / en proceso /
+  // pausados. El PM del proyecto ya viene resuelto (el del proyecto, o el del
+  // cliente si no tiene uno propio).
+  const porPm = new Map<string, { total: number; entregados: number; pausados: number }>();
+  for (const p of proyectos) {
+    if (p.cancelado || !p.project_manager_id) continue;
+    const cur = porPm.get(p.project_manager_id) ?? { total: 0, entregados: 0, pausados: 0 };
+    cur.total += 1;
+    if (p.entregado) cur.entregados += 1;
+    else if (p.pausado) cur.pausados += 1;
+    porPm.set(p.project_manager_id, cur);
+  }
+  const pms_resumen = [...porPm.entries()]
+    .map(([usuario_id, c]) => ({
+      usuario_id,
+      nombre: ds.nombreUsuario(usuario_id),
+      total: c.total,
+      entregados: c.entregados,
+      pausados: c.pausados,
+      en_proceso: c.total - c.entregados - c.pausados,
+    }))
+    .filter((t) => t.nombre !== "—")
+    .sort((a, b) => b.total - a.total);
+
   // ---- H. Bloqueos por tipo -------------------------------------------------
   const bloqueados = activos.filter((p) => p.bloqueado);
   const porTipo = new Map<string, number>();
@@ -284,6 +312,7 @@ export function construirDashboardEjecutivo(ds: Dataset) {
     demorados_total,
     por_tipo,
     tecnicos_resumen,
+    pms_resumen,
     bloqueos_por_tipo,
     bloqueos_detalle,
     bloqueados_total: bloqueados.length,

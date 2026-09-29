@@ -619,6 +619,10 @@ export default function MAsesorChatPage() {
   // ── Soporte: cargar un ticket desde el chat (PM o usuario de Soporte, como en escritorio) ──
   const [puedeSoporte, setPuedeSoporte] = useState(false);
   const [soporteAbierto, setSoporteAbierto] = useState(false);
+  /** El campo de texto ocupa más de una línea: los adjuntos se pliegan en un "+". */
+  const [composerCrecido, setComposerCrecido] = useState(false);
+  /** El "+" está desplegado y se ven los tres botones. */
+  const [accionesAbiertas, setAccionesAbiertas] = useState(false);
   const [fichaAbierta, setFichaAbierta] = useState(false);
   useEffect(() => {
     let vivo = true;
@@ -742,13 +746,23 @@ export default function MAsesorChatPage() {
     }
   }, [messages, pending]);
 
-  // Autogrow del textarea (multilínea sin romper el layout).
+  // Autogrow del textarea (multilínea sin romper el layout). De paso avisa si el campo pasó
+  // de una línea: cuando crece, los tres botones de adjuntos se pliegan en un "+" para no
+  // comerle el ancho al texto.
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+    const alto = Math.min(el.scrollHeight, 128);
+    el.style.height = `${alto}px`;
+    setComposerCrecido(alto > 44);
   }, [text]);
+
+  // Al volver a una sola línea los botones se muestran de nuevo, así que el "+" desplegado
+  // deja de tener sentido.
+  useEffect(() => {
+    if (!composerCrecido) setAccionesAbiertas(false);
+  }, [composerCrecido]);
 
   // Soporte de grabación: gateamos SOLO por la existencia de MediaRecorder (presente en iOS 14.3+
   // y Android/Chrome). No exigimos `navigator.mediaDevices.getUserMedia` acá porque en iOS puede
@@ -1821,32 +1835,48 @@ export default function MAsesorChatPage() {
                   e.target.value = "";
                 }}
               />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="Adjuntar imagen o video"
-                className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-xl text-slate-500 active:bg-slate-100"
-              >
-                📎
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowEmoji((v) => !v)}
-                aria-label="Emojis"
-                className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-xl active:bg-slate-100"
-              >
-                😊
-              </button>
-              <button
-                type="button"
-                onClick={() => void openTpl()}
-                aria-label="Enviar plantilla / recontactar"
-                className={`shrink-0 h-10 w-10 grid place-items-center rounded-full text-lg active:scale-95 ${
-                  windowOpen === false ? "bg-amber-100 text-amber-700" : "text-slate-500 active:bg-slate-100"
-                }`}
-              >
-                📄
-              </button>
+              {/* Con el campo en una línea sobra lugar para los tres botones. En cuanto el
+                  texto crece, se pliegan en un "+": el ancho que ocupaban es justo el que le
+                  falta al mensaje que se está escribiendo. */}
+              {composerCrecido && !accionesAbiertas ? (
+                <button
+                  type="button"
+                  onClick={() => setAccionesAbiertas(true)}
+                  aria-label="Mostrar adjuntos, emojis y plantillas"
+                  className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-2xl leading-none text-slate-500 active:bg-slate-100"
+                >
+                  +
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Adjuntar imagen o video"
+                    className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-xl text-slate-500 active:bg-slate-100"
+                  >
+                    📎
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmoji((v) => !v)}
+                    aria-label="Emojis"
+                    className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-xl active:bg-slate-100"
+                  >
+                    😊
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openTpl()}
+                    aria-label="Enviar plantilla / recontactar"
+                    className={`shrink-0 h-10 w-10 grid place-items-center rounded-full text-lg active:scale-95 ${
+                      windowOpen === false ? "bg-amber-100 text-amber-700" : "text-slate-500 active:bg-slate-100"
+                    }`}
+                  >
+                    📄
+                  </button>
+                </>
+              )}
               <textarea
                 ref={taRef}
                 value={text}

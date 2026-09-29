@@ -619,9 +619,7 @@ export default function MAsesorChatPage() {
   // ── Soporte: cargar un ticket desde el chat (PM o usuario de Soporte, como en escritorio) ──
   const [puedeSoporte, setPuedeSoporte] = useState(false);
   const [soporteAbierto, setSoporteAbierto] = useState(false);
-  /** El campo de texto ocupa más de una línea: los adjuntos se pliegan en un "+". */
-  const [composerCrecido, setComposerCrecido] = useState(false);
-  /** El "+" está desplegado y se ven los tres botones. */
+  /** El "+" está desplegado y se ven adjuntar, emojis y plantillas. */
   const [accionesAbiertas, setAccionesAbiertas] = useState(false);
   const [fichaAbierta, setFichaAbierta] = useState(false);
   useEffect(() => {
@@ -746,23 +744,13 @@ export default function MAsesorChatPage() {
     }
   }, [messages, pending]);
 
-  // Autogrow del textarea (multilínea sin romper el layout). De paso avisa si el campo pasó
-  // de una línea: cuando crece, los tres botones de adjuntos se pliegan en un "+" para no
-  // comerle el ancho al texto.
+  // Autogrow del textarea (multilínea sin romper el layout).
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const alto = Math.min(el.scrollHeight, 128);
-    el.style.height = `${alto}px`;
-    setComposerCrecido(alto > 44);
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
   }, [text]);
-
-  // Al volver a una sola línea los botones se muestran de nuevo, así que el "+" desplegado
-  // deja de tener sentido.
-  useEffect(() => {
-    if (!composerCrecido) setAccionesAbiertas(false);
-  }, [composerCrecido]);
 
   // Soporte de grabación: gateamos SOLO por la existencia de MediaRecorder (presente en iOS 14.3+
   // y Android/Chrome). No exigimos `navigator.mediaDevices.getUserMedia` acá porque en iOS puede
@@ -1835,19 +1823,20 @@ export default function MAsesorChatPage() {
                   e.target.value = "";
                 }}
               />
-              {/* Con el campo en una línea sobra lugar para los tres botones. En cuanto el
-                  texto crece, se pliegan en un "+": el ancho que ocupaban es justo el que le
-                  falta al mensaje que se está escribiendo. */}
-              {composerCrecido && !accionesAbiertas ? (
-                <button
-                  type="button"
-                  onClick={() => setAccionesAbiertas(true)}
-                  aria-label="Mostrar adjuntos, emojis y plantillas"
-                  className="shrink-0 h-10 w-10 grid place-items-center rounded-full text-2xl leading-none text-slate-500 active:bg-slate-100"
-                >
-                  +
-                </button>
-              ) : (
+              {/* El "+" está siempre: el ancho de los tres botones es el que le falta al
+                  mensaje mientras se escribe, y quien adjunta algo lo hace de a ratos. */}
+              <button
+                type="button"
+                onClick={() => setAccionesAbiertas((v) => !v)}
+                aria-label={accionesAbiertas ? "Ocultar acciones" : "Adjuntar, emojis y plantillas"}
+                aria-expanded={accionesAbiertas}
+                className={`shrink-0 h-10 w-10 grid place-items-center rounded-full text-2xl leading-none transition-transform active:bg-slate-100 ${
+                  accionesAbiertas ? "rotate-45 text-slate-600" : "text-slate-500"
+                }`}
+              >
+                +
+              </button>
+              {accionesAbiertas ? (
                 <>
                   <button
                     type="button"
@@ -1876,7 +1865,7 @@ export default function MAsesorChatPage() {
                     📄
                   </button>
                 </>
-              )}
+              ) : null}
               <textarea
                 ref={taRef}
                 value={text}

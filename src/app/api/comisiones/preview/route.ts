@@ -24,6 +24,7 @@ import {
   type OverrideDecision,
 } from "@/lib/comisiones/comisionabilidad";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
+import { cargarDataset } from "@/lib/proyectos/dashboard/shared";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { isErpRolSupervisor, isErpRolVendedor } from "@/lib/usuarios/erp-rol-normalize";
@@ -855,6 +856,12 @@ export async function GET(request: Request) {
       return hist.some((h) => h.valida && h.fecha !== "" && fechaFac !== "" && h.fecha < fechaFac);
     };
 
+    type ACobrarProyecto = {
+      estado_nombre: string;
+      estado_color: string;
+      pm_nombre: string | null;
+      tiempo_en_estado_ms: number | null;
+    };
     type ACobrarItem = {
       cliente_id: string | null;
       cliente_label: string;
@@ -865,6 +872,8 @@ export async function GET(request: Request) {
       saldo_pendiente: number;
       moneda: "GS" | "USD";
       vendedor_usuario_id: string;
+      /** Proyecto asociado a la factura (estado, PM, tiempo en estado). null si no tiene. */
+      proyecto: ACobrarProyecto | null;
     };
     const aCobrarPorVendor = new Map<string, { items: ACobrarItem[]; total: number }>();
     for (const f of facturasSaldo) {
@@ -899,8 +908,45 @@ export async function GET(request: Request) {
         saldo_pendiente: roundMoney(saldo),
         moneda: String((f as { moneda?: unknown }).moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
         vendedor_usuario_id: vid,
+        proyecto: null,
       });
       agg.total += saldo;
+    }
+
+    // Enriquecer "A cobrar" con el proyecto asociado a cada factura (estado, PM y
+    // tiempo en el estado actual), como en el tablero de Proyectos. Se cruza por
+    // `proyectos.factura_id`. Reutiliza el mismo dataset del tablero (paridad
+    // exacta: reloj laboral, herencia de PM del cliente, fallback de columnas).
+    // Drift-safe: si el tenant no tiene proyectos, las columnas quedan vacías.
+    const facturaIdsACobrar = [...aCobrarPorVendor.values()].flatMap((a) => a.items.map((i) => i.factura_id));
+    if (facturaIdsACobrar.length > 0) {
+      try {
+        const dsProy = await cargarDataset(sb, empresaId, {
+          desde: null,
+          hasta: null,
+          tipoId: null,
+          estadoId: null,
+          tecnicoId: null,
+          pmId: null,
+        });
+        const proyPorFactura = new Map<string, ACobrarProyecto>();
+        for (const p of dsProy.proyectos) {
+          if (!p.factura_id) continue;
+          proyPorFactura.set(p.factura_id, {
+            estado_nombre: p.estado_nombre,
+            estado_color: p.estado_color,
+            pm_nombre: p.project_manager_id ? dsProy.nombreUsuario(p.project_manager_id) : null,
+            tiempo_en_estado_ms: p.tiempo_en_estado_ms,
+          });
+        }
+        for (const agg of aCobrarPorVendor.values()) {
+          for (const item of agg.items) {
+            item.proyecto = proyPorFactura.get(item.factura_id) ?? null;
+          }
+        }
+      } catch {
+        // Sin módulo Proyectos / tenant sin tablas: se devuelve sin enriquecer.
+      }
     }
     // Nombres de vendedores que tienen deuda pero quizá no tuvieron actividad en el período.
     const nombresACobrar = await cargarNombresUsuarios(catalog, [...aCobrarPorVendor.keys()]);

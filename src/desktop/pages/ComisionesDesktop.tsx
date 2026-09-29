@@ -113,6 +113,12 @@ type PreviewKpis = {
   alertas_sin_vendedor_facturas: number;
 };
 
+type ACobrarProyecto = {
+  estado_nombre: string;
+  estado_color: string;
+  pm_nombre: string | null;
+  tiempo_en_estado_ms: number | null;
+};
 type ACobrarFactura = {
   cliente_id: string | null;
   cliente_label: string;
@@ -123,6 +129,8 @@ type ACobrarFactura = {
   saldo_pendiente: number;
   moneda: "GS" | "USD";
   vendedor_usuario_id: string;
+  /** Proyecto asociado a la factura (estado, PM, tiempo en estado). null si no tiene. */
+  proyecto?: ACobrarProyecto | null;
 };
 
 type ACobrarVendedor = {
@@ -161,6 +169,15 @@ function formatDate(iso: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
+/** Tiempo en el estado, igual que el tablero de Proyectos (reloj laboral). */
+function fmtDur(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  const horas = ms / 3600_000;
+  if (horas < 1) return `${Math.max(0, Math.round(ms / 60_000))} min`;
+  if (horas < 10) return `${(Math.round(horas * 10) / 10).toString().replace(".", ",")} h`;
+  return `${Math.round(horas)} h`;
+}
+
 function currentMonthInputValue(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -179,14 +196,26 @@ function ACobrarTablaVendedor({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[620px] text-sm">
+      <table className="w-full min-w-[860px] text-sm">
         <thead className="border-b border-slate-200 bg-slate-50/70">
           <tr>
-            {["Cliente", "Factura", "Fecha", "Total", "Saldo a cobrar", ""].map((h, i) => (
+            {(
+              [
+                ["Cliente", "left"],
+                ["Factura", "left"],
+                ["Fecha", "left"],
+                ["Estado", "left"],
+                ["PM", "left"],
+                ["En estado", "right"],
+                ["Total", "right"],
+                ["Saldo a cobrar", "right"],
+                ["", "right"],
+              ] as [string, "left" | "right"][]
+            ).map(([h, align], i) => (
               <th
                 key={h || `col-${i}`}
                 className={`whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 ${
-                  i >= 3 ? "text-right" : "text-left"
+                  align === "right" ? "text-right" : "text-left"
                 }`}
               >
                 {h}
@@ -200,6 +229,27 @@ function ACobrarTablaVendedor({
               <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-800">{f.cliente_label}</td>
               <td className="whitespace-nowrap px-3 py-2 text-slate-500">{f.numero_factura ?? "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 text-slate-500">{formatDate(f.fecha)}</td>
+              <td className="whitespace-nowrap px-3 py-2">
+                {f.proyecto ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    style={{ backgroundColor: `${f.proyecto.estado_color}18`, color: f.proyecto.estado_color }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: f.proyecto.estado_color }} />
+                    {f.proyecto.estado_nombre}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-300" title="La factura no tiene un proyecto asociado">
+                    Sin proyecto
+                  </span>
+                )}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-500">
+                {f.proyecto?.pm_nombre ?? <span className="text-slate-300">—</span>}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">
+                {f.proyecto ? fmtDur(f.proyecto.tiempo_en_estado_ms) : <span className="text-slate-300">—</span>}
+              </td>
               <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">
                 ₲ {fmtMoney(f.monto_total)}
               </td>
@@ -222,7 +272,7 @@ function ACobrarTablaVendedor({
         </tbody>
         <tfoot className="border-t border-slate-200 bg-slate-50/70">
           <tr>
-            <td className="px-3 py-2 text-xs font-semibold text-slate-600" colSpan={4}>
+            <td className="px-3 py-2 text-xs font-semibold text-slate-600" colSpan={7}>
               {v.cantidad_facturas} factura{v.cantidad_facturas === 1 ? "" : "s"} comisionable{v.cantidad_facturas === 1 ? "" : "s"} con saldo
             </td>
             <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold tabular-nums text-amber-800">

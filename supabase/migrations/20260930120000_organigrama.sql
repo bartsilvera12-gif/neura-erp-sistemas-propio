@@ -60,3 +60,22 @@ COMMIT;
 
 -- Recargar el schema cache de PostgREST para que la tabla nueva sea visible por la API.
 SELECT pg_notify('pgrst', 'reload schema');
+
+-- =============================================================================
+-- Registro del módulo en el catálogo + habilitación por empresa.
+-- Sin esto, el ítem del menú queda OCULTO (resolveEffectiveModules exige que el
+-- módulo exista en neura.modulos y esté activo en empresa_modulos). Idempotente.
+-- =============================================================================
+INSERT INTO neura.modulos (nombre, slug, descripcion)
+SELECT 'Organigrama', 'organigrama', 'Estructura organizacional (árbol de cargos)'
+WHERE NOT EXISTS (SELECT 1 FROM neura.modulos WHERE slug = 'organigrama');
+
+INSERT INTO neura.empresa_modulos (empresa_id, modulo_id, activo)
+SELECT DISTINCT em.empresa_id, m.id, true
+FROM neura.empresa_modulos em
+CROSS JOIN neura.modulos m
+WHERE m.slug = 'organigrama'
+  AND NOT EXISTS (
+    SELECT 1 FROM neura.empresa_modulos em2
+    WHERE em2.empresa_id = em.empresa_id AND em2.modulo_id = m.id
+  );

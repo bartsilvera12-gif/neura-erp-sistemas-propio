@@ -486,8 +486,20 @@ export async function cargarDataset(
     const entregaMs = entregaRaw ? Date.parse(entregaRaw) : Number.NaN;
     const esFinal = estadoId ? idsFinal.has(estadoId) : false;
     const cancelado = esFinal && estadoId !== idEntregado;
+    // Reabierto: tenía una entrega registrada pero volvió a un estado ANTERIOR al
+    // de "Entregado" (p. ej. de Entregado a En desarrollo). Vuelve a estar en
+    // curso: no cuenta ni se atenúa como entregado, aunque conserve su fecha de
+    // entrega. Se detecta por sort_order del estado actual vs el de Entregado.
+    const entregadoSort = idEntregado ? estadoById.get(idEntregado)?.sort_order ?? null : null;
+    const estadoSort = estado?.sort_order ?? null;
+    const reabierto =
+      entregaRaw != null &&
+      estadoId !== idEntregado &&
+      estadoSort != null &&
+      entregadoSort != null &&
+      estadoSort < entregadoSort;
     const entregado =
-      !cancelado && ((Number.isFinite(entregaMs) && entregaMs <= refMs) || estadoId === idEntregado);
+      !cancelado && !reabierto && ((Number.isFinite(entregaMs) && entregaMs <= refMs) || estadoId === idEntregado);
 
     const fp = typeof row.fecha_prometida === "string" ? Date.parse(row.fecha_prometida) : Number.NaN;
     const diasRestantes = Number.isFinite(fp) ? Math.ceil((fp - refMs) / 86400000) : null;

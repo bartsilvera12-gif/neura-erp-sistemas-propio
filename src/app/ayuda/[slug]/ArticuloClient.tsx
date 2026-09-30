@@ -34,6 +34,59 @@ type ItemBuscable = Relacionado & { resumen: string | null; texto?: string };
 
 const TEAL_OSCURO = "#0B3A3D";
 
+/** MP4/WebM se reproducen en el navegador; el resto de los adjuntos se descarga. */
+function esVideo(adj: AyudaAdjunto): boolean {
+  return (adj.mime_type ?? "").startsWith("video/");
+}
+
+/**
+ * Video adjunto reproducido en la página. El enlace firmado se pide recién al
+ * montar (no viaja con el artículo) y dura horas, porque el navegador lo sigue
+ * usando mientras se reproduce.
+ */
+function VideoAdjunto({ slug, adjunto }: { slug: string; adjunto: AyudaAdjunto }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [fallo, setFallo] = useState(false);
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/ayuda/${encodeURIComponent(slug)}/adjuntos/${adjunto.id}`);
+        const j = await r.json();
+        if (cancelado) return;
+        if (r.ok && j?.success && j.data?.url) setUrl(j.data.url as string);
+        else setFallo(true);
+      } catch {
+        if (!cancelado) setFallo(true);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [slug, adjunto.id]);
+
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+      {url ? (
+        <video
+          src={url}
+          controls
+          playsInline
+          preload="metadata"
+          className="aspect-video w-full bg-black"
+        >
+          Tu navegador no puede reproducir este video.
+        </video>
+      ) : (
+        <div className="flex aspect-video w-full items-center justify-center text-sm text-slate-400">
+          {fallo ? "No se pudo cargar el video" : <Loader2 className="h-5 w-5 animate-spin" />}
+        </div>
+      )}
+    </figure>
+  );
+}
+
 export default function ArticuloClient({ slug }: { slug: string }) {
   const router = useRouter();
   const [articulo, setArticulo] = useState<AyudaArticulo | null>(null);
@@ -167,6 +220,9 @@ export default function ArticuloClient({ slug }: { slug: string }) {
     },
     [slug]
   );
+
+  const videos = useMemo(() => adjuntos.filter(esVideo), [adjuntos]);
+  const documentos = useMemo(() => adjuntos.filter((a) => !esVideo(a)), [adjuntos]);
 
   const tituloLista = useMemo(() => {
     if (origenLista === "otros") return "Otros artículos";
@@ -320,13 +376,21 @@ export default function ArticuloClient({ slug }: { slug: string }) {
               <ArticuloMarkdown>{articulo.contenido_md}</ArticuloMarkdown>
             </div>
 
-            {adjuntos.length > 0 ? (
+            {videos.length > 0 ? (
+              <section className="mt-6 space-y-4">
+                {videos.map((adj) => (
+                  <VideoAdjunto key={adj.id} slug={slug} adjunto={adj} />
+                ))}
+              </section>
+            ) : null}
+
+            {documentos.length > 0 ? (
               <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
                 <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Documentos adjuntos
                 </h2>
                 <ul className="mt-2 space-y-1.5">
-                  {adjuntos.map((adj) => (
+                  {documentos.map((adj) => (
                     <li key={adj.id}>
                       <button
                         type="button"

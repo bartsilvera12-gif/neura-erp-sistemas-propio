@@ -3,7 +3,11 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { requireAyudaApiAccess } from "@/lib/ayuda/ayuda-auth";
 import { listArticulos, puedeVerArticulo } from "@/lib/ayuda/ayuda";
-import { AYUDA_BUCKET, AYUDA_SIGNED_URL_TTL } from "@/lib/ayuda/ayuda-adjuntos-storage";
+import {
+  AYUDA_BUCKET,
+  AYUDA_SIGNED_URL_TTL,
+  AYUDA_VIDEO_SIGNED_URL_TTL,
+} from "@/lib/ayuda/ayuda-adjuntos-storage";
 
 export const runtime = "nodejs";
 
@@ -30,7 +34,7 @@ export async function GET(request: Request, context: RouteContext) {
 
     const { data, error } = await sb
       .from("ayuda_articulo_adjuntos")
-      .select("storage_bucket, storage_path, nombre")
+      .select("storage_bucket, storage_path, nombre, mime_type")
       .eq("empresa_id", auth.empresaId)
       .eq("articulo_id", articulo.id)
       .eq("id", adjuntoId)
@@ -38,13 +42,19 @@ export async function GET(request: Request, context: RouteContext) {
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
     if (!data) return NextResponse.json(errorResponse("Documento no encontrado"), { status: 404 });
 
-    const adjunto = data as { storage_bucket: string | null; storage_path: string; nombre: string };
+    const adjunto = data as {
+      storage_bucket: string | null;
+      storage_path: string;
+      nombre: string;
+      mime_type: string | null;
+    };
     const bucket = adjunto.storage_bucket || AYUDA_BUCKET;
+    const esVideo = !download && (adjunto.mime_type ?? "").startsWith("video/");
     const { data: signed, error: eSign } = await sb.storage
       .from(bucket)
       .createSignedUrl(
         adjunto.storage_path,
-        AYUDA_SIGNED_URL_TTL,
+        esVideo ? AYUDA_VIDEO_SIGNED_URL_TTL : AYUDA_SIGNED_URL_TTL,
         download ? { download: adjunto.nombre } : undefined
       );
     if (eSign) return NextResponse.json(errorResponse(eSign.message), { status: 400 });

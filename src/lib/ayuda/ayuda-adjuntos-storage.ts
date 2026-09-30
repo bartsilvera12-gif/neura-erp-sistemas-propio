@@ -14,6 +14,13 @@ export const AYUDA_ADJUNTO_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 /** Vigencia de los signed URL de vista previa / descarga. */
 export const AYUDA_SIGNED_URL_TTL = 60 * 10; // 10 minutos
 
+/**
+ * Los videos se reproducen en la página y el navegador pide trozos (Range) a
+ * medida que avanza: si el enlace vence a mitad de la reproducción —o tras una
+ * pausa— el video se corta. Por eso viven más que un enlace de descarga.
+ */
+export const AYUDA_VIDEO_SIGNED_URL_TTL = 60 * 60 * 4; // 4 horas
+
 /** Crea el bucket privado si todavía no existe (idempotente). */
 export async function ensureAyudaBucket(sb: AppSupabaseClient): Promise<void> {
   const { data, error } = await sb.storage.listBuckets();

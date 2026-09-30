@@ -10,8 +10,6 @@ import {
   FileText,
   Loader2,
   Search,
-  ThumbsDown,
-  ThumbsUp,
 } from "lucide-react";
 import ArticuloMarkdown from "@/components/ayuda/ArticuloMarkdown";
 import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
@@ -94,7 +92,6 @@ export default function ArticuloClient({ slug }: { slug: string }) {
   const [origenLista, setOrigenLista] = useState<"categoria" | "otros">("categoria");
   const [adjuntos, setAdjuntos] = useState<AyudaAdjunto[]>([]);
   const [descargando, setDescargando] = useState<string | null>(null);
-  const [miFeedback, setMiFeedback] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
@@ -120,7 +117,6 @@ export default function ArticuloClient({ slug }: { slug: string }) {
         setRelacionados((j.data.relacionados ?? []) as Relacionado[]);
         setOrigenLista((j.data.relacionados_origen ?? "categoria") as "categoria" | "otros");
         setAdjuntos((j.data.adjuntos ?? []) as AyudaAdjunto[]);
-        setMiFeedback(j.data.mi_feedback ?? null);
       } catch (e) {
         if (!cancelado) setError(e instanceof Error ? e.message : "Error de red");
       } finally {
@@ -184,24 +180,6 @@ export default function ArticuloClient({ slug }: { slug: string }) {
     document.addEventListener("mousedown", alClickear);
     return () => document.removeEventListener("mousedown", alClickear);
   }, []);
-
-  const votar = useCallback(
-    async (util: boolean) => {
-      const previo = miFeedback;
-      setMiFeedback(util);
-      try {
-        const r = await apiFetch(`/api/ayuda/${encodeURIComponent(slug)}/feedback`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ util }),
-        });
-        if (!r.ok) setMiFeedback(previo);
-      } catch {
-        setMiFeedback(previo);
-      }
-    },
-    [slug, miFeedback]
-  );
 
   const abrirAdjunto = useCallback(
     async (adj: AyudaAdjunto) => {
@@ -417,36 +395,10 @@ export default function ArticuloClient({ slug }: { slug: string }) {
               </section>
             ) : null}
 
-            <footer className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
-              <span className="text-xs text-slate-500">¿Te sirvió este artículo?</span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => void votar(true)}
-                  aria-pressed={miFeedback === true}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    miFeedback === true
-                      ? "border-[#4FAEB2] bg-[#4FAEB2]/12 text-[#2F6E71]"
-                      : "border-slate-200 text-slate-600 hover:border-[#4FAEB2]/60"
-                  }`}
-                >
-                  <ThumbsUp className="h-3.5 w-3.5" />
-                  Sí
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void votar(false)}
-                  aria-pressed={miFeedback === false}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    miFeedback === false
-                      ? "border-rose-300 bg-rose-50 text-rose-600"
-                      : "border-slate-200 text-slate-600 hover:border-rose-300"
-                  }`}
-                >
-                  <ThumbsDown className="h-3.5 w-3.5" />
-                  No
-                </button>
-              </div>
+            <footer className="mt-6 border-t border-slate-100 pt-4 text-center">
+              <p className="text-sm italic text-[#2F6E71]">
+                Cada proceso que dominás nos hace crecer a todos. Eso es Neura.
+              </p>
             </footer>
           </article>
         </div>

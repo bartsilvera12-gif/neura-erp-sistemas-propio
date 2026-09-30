@@ -192,6 +192,16 @@ export default function ConfiguracionPage() {
           </li>
           <li>
             <SettingsModuleCard
+              title="Organigrama"
+              subtitle="GLOBAL · EMPRESA"
+              description="Estructura de cargos de la empresa (quién reporta a quién). Se muestra en el módulo Organigrama."
+              icon={GitBranch}
+              badge={editorBadge}
+              href="/configuracion/organigrama"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
               title="Configuración Contable"
               subtitle="GLOBAL · CONTABILIDAD"
               description="Cuentas por defecto (IVA crédito, proveedores, caja, banco) para los asientos automáticos, y apertura/cierre de períodos contables."

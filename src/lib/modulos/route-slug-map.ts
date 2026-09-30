@@ -138,6 +138,7 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/cobranzas")) return "cobranzas";
   if (p.startsWith("/comisiones")) return "comisiones";
   if (p.startsWith("/configuracion")) return "configuracion";
+  if (p.startsWith("/organigrama")) return "organigrama";
   if (p.startsWith("/planes")) return "planes";
   if (p.startsWith("/gestion-clientes")) return "gestion-clientes";
   if (p.startsWith("/crm")) return "crm";

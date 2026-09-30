@@ -44,6 +44,7 @@ import {
   BarChart3,
   HandCoins,
   ServerCog,
+  Network,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -191,8 +192,10 @@ const MENU_STRUCTURE: MenuItem[] = [
     children: [
       { label: "Facturación", href: "/configuracion/facturacion" },
       { label: "Equipos y supervisión", href: "/configuracion/omnicanal-equipos" },
+      { label: "Organigrama", href: "/configuracion/organigrama" },
     ],
   },
+  { key: "organigrama", slug: "organigrama", label: "Organigrama", href: "/organigrama", icon: Network },
   { key: "planes", slug: "planes", label: "Planes", href: "/planes", icon: FileText },
   { key: "gestion-clientes", slug: "gestion-clientes", label: "Gestión Clientes", href: "/gestion-clientes", icon: Users },
   { key: "crm", slug: "crm", label: "CRM Funnel", href: "/crm", icon: Sparkles },
@@ -345,7 +348,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Marketing y Automatización",
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion"] },
+  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion", "organigrama"] },
 ];
 
 /**

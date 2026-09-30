@@ -99,15 +99,6 @@ export default function OrganigramaPage() {
             <p className="text-sm text-slate-500">Estructura organizacional de la empresa.</p>
           </div>
         </div>
-        {canEdit && (
-          <Link
-            href="/configuracion/organigrama"
-            className="inline-flex items-center gap-2 rounded-xl border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-3.5 py-2 text-sm font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/20"
-          >
-            <Settings className="h-4 w-4" />
-            Editar organigrama
-          </Link>
-        )}
       </header>
 
       {cargando ? (

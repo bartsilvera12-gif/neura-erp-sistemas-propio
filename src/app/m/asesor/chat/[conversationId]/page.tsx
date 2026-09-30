@@ -621,6 +621,12 @@ export default function MAsesorChatPage() {
   const [soporteAbierto, setSoporteAbierto] = useState(false);
   /** El "+" está desplegado y se ven adjuntar, emojis y plantillas. */
   const [accionesAbiertas, setAccionesAbiertas] = useState(false);
+  /** Anuncio de Meta del que nació esta conversación (Click-to-WhatsApp), si vino de uno. */
+  const [pauta, setPauta] = useState<{
+    source_url: string;
+    headline: string | null;
+    red: "instagram" | "facebook" | "no_identificado";
+  } | null>(null);
   const [fichaAbierta, setFichaAbierta] = useState(false);
   useEffect(() => {
     let vivo = true;
@@ -743,6 +749,39 @@ export default function MAsesorChatPage() {
       if (messages.length > 0) didInitialScrollRef.current = true;
     }
   }, [messages, pending]);
+
+  // De qué anuncio vino el contacto. Es lo primero que quiere saber un asesor comercial al
+  // abrir el chat: no es lo mismo atender a alguien que vio una promo que a uno que escribió
+  // por su cuenta. Degradación silenciosa: sin dato, sin chip.
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelado = false;
+    setPauta(null);
+    void (async () => {
+      try {
+        const res = await fetchWithSupabaseSession(
+          `/api/chat/conversation-attribution?conversation_id=${encodeURIComponent(conversationId)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok || cancelado) return;
+        const json = (await res.json()) as { data?: unknown };
+        const d = json?.data as
+          | { source_url?: string; headline?: string | null; red?: "instagram" | "facebook" | "no_identificado" }
+          | null;
+        if (cancelado || !d?.source_url) return;
+        setPauta({
+          source_url: d.source_url,
+          headline: d.headline ?? null,
+          red: d.red ?? "no_identificado",
+        });
+      } catch {
+        /* sin chip si falla */
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [conversationId]);
 
   // Autogrow del textarea (multilínea sin romper el layout).
   useEffect(() => {
@@ -1530,6 +1569,39 @@ export default function MAsesorChatPage() {
           </button>
         ) : null}
       </header>
+
+      {/* Franja bajo el encabezado: el chip abre la pauta en Facebook o Instagram. Va acá y no
+          dentro del encabezado porque ahí ya están Transferir y Soporte, y el titular del
+          anuncio necesita el ancho de una línea entera para leerse. */}
+      {pauta ? (
+        <a
+          href={pauta.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-[11px] font-semibold ${
+            pauta.red === "instagram"
+              ? "border-pink-100 bg-pink-50 text-pink-700"
+              : pauta.red === "facebook"
+                ? "border-blue-100 bg-blue-50 text-blue-700"
+                : "border-slate-200 bg-slate-50 text-slate-600"
+          }`}
+        >
+          <span className="shrink-0">
+            {pauta.red === "instagram"
+              ? "Pauta IG"
+              : pauta.red === "facebook"
+                ? "Pauta FB"
+                : "Pauta"}
+          </span>
+          {pauta.headline ? (
+            <span className="min-w-0 truncate font-normal opacity-80">{pauta.headline}</span>
+          ) : null}
+          <span aria-hidden className="ml-auto shrink-0">
+            ↗
+          </span>
+        </a>
+      ) : null}
+
       {fichaAbierta ? (
         <FichaContactoMovil
           conversationId={conversationId}

@@ -39,10 +39,16 @@ export async function POST(request: NextRequest) {
       body && typeof body === "object" && typeof (body as { conversation_id?: string }).conversation_id === "string"
         ? (body as { conversation_id: string }).conversation_id
         : null;
-    const message =
-      body && typeof body === "object" && typeof (body as { message?: string }).message === "string"
-        ? (body as { message: string }).message.trim()
-        : "";
+    // Acepta el texto en `message` (desktop/hook nuevo) o en `text` (apps mobile
+    // empaquetadas que todavía mandan el campo viejo). Así no dependemos de que
+    // cada app esté actualizada: el servidor entiende ambos.
+    const message = (() => {
+      if (!body || typeof body !== "object") return "";
+      const b = body as { message?: unknown; text?: unknown };
+      if (typeof b.message === "string") return b.message.trim();
+      if (typeof b.text === "string") return b.text.trim();
+      return "";
+    })();
     const senderTypeInput =
       body && typeof body === "object" && typeof (body as { sender_type?: string }).sender_type === "string"
         ? (body as { sender_type: string }).sender_type

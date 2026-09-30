@@ -103,8 +103,10 @@ export async function sendMobileMessage(opts: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         conversation_id: opts.conversationId,
-        message_type: "text",
-        text: opts.text,
+        // El endpoint /api/chat/send lee el texto del campo `message` (igual que
+        // el desktop). Antes se mandaba `text` y por eso el envío desde la app
+        // fallaba con "Se requiere conversation_id y message".
+        message: opts.text,
       }),
     });
     if (!res.ok) {

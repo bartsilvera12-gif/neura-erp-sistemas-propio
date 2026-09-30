@@ -97,7 +97,10 @@ async function resolverDesdeBearer(
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   if (!url || !anonKey) return null;
 
-  const { data, error } = await createClient(url, anonKey).auth.getUser(bearer);
+  // Sin autoRefreshToken: con las opciones por defecto el cliente deja un setInterval para siempre (fuga).
+  const { data, error } = await createClient(url, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  }).auth.getUser(bearer);
   if (error || !data.user?.id) return null;
 
   const usuario = await resolveUsuarioErpFromAuthUser(createServiceRoleClient(), data.user);

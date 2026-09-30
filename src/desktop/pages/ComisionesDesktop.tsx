@@ -206,7 +206,7 @@ function ACobrarTablaVendedor({
                 ["Fecha", "left"],
                 ["Estado", "left"],
                 ["PM", "left"],
-                ["En estado", "right"],
+                ["En estado", "left"],
                 ["Total", "right"],
                 ["Saldo a cobrar", "right"],
                 ["", "right"],
@@ -247,7 +247,7 @@ function ACobrarTablaVendedor({
               <td className="max-w-[190px] truncate px-3 py-2 text-slate-500" title={f.proyecto?.pm_nombre ?? undefined}>
                 {f.proyecto?.pm_nombre ?? <span className="text-slate-300">—</span>}
               </td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">
+              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-500">
                 {f.proyecto ? fmtDur(f.proyecto.tiempo_en_estado_ms) : <span className="text-slate-300">—</span>}
               </td>
               <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">

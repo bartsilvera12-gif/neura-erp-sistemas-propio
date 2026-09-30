@@ -226,7 +226,7 @@ function ACobrarTablaVendedor({
         <tbody className="divide-y divide-slate-100">
           {v.facturas.map((f) => (
             <tr key={f.factura_id} className="hover:bg-amber-50/40">
-              <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-800">{f.cliente_label}</td>
+              <td className="max-w-[240px] truncate px-3 py-2 font-medium text-slate-800" title={f.cliente_label}>{f.cliente_label}</td>
               <td className="whitespace-nowrap px-3 py-2 text-slate-500">{f.numero_factura ?? "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 text-slate-500">{formatDate(f.fecha)}</td>
               <td className="whitespace-nowrap px-3 py-2">
@@ -244,7 +244,7 @@ function ACobrarTablaVendedor({
                   </span>
                 )}
               </td>
-              <td className="whitespace-nowrap px-3 py-2 text-slate-500">
+              <td className="max-w-[190px] truncate px-3 py-2 text-slate-500" title={f.proyecto?.pm_nombre ?? undefined}>
                 {f.proyecto?.pm_nombre ?? <span className="text-slate-300">—</span>}
               </td>
               <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">

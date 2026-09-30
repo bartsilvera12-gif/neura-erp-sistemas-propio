@@ -33,7 +33,6 @@ import {
   Activity,
   Gauge,
   MessagesSquare,
-  TrendingUp,
   ScrollText,
   ListChecks,
   FolderKanban,
@@ -98,7 +97,6 @@ function adminEmpresasMatchesQuery(queryRaw: string): boolean {
 
 const MENU_STRUCTURE: MenuItem[] = [
   { key: "dashboard", slug: "dashboard", label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { key: "gerencia", slug: "gerencia", label: "Gerencia", href: "/dashboard/gerencia", icon: TrendingUp },
   { key: "reportes", slug: "reportes", label: "Reportes", href: "/reportes", icon: BarChart3 },
   {
     key: "conversaciones",
@@ -192,7 +190,6 @@ const MENU_STRUCTURE: MenuItem[] = [
     children: [
       { label: "Facturación", href: "/configuracion/facturacion" },
       { label: "Equipos y supervisión", href: "/configuracion/omnicanal-equipos" },
-      { label: "Organigrama", href: "/configuracion/organigrama" },
     ],
   },
   { key: "organigrama", slug: "organigrama", label: "Organigrama", href: "/organigrama", icon: Network },
@@ -317,7 +314,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
   {
     id: "inicio",
     title: "Inicio",
-    itemKeys: ["dashboard", "panel_control", "tableros", "chat_interno", "gerencia"],
+    itemKeys: ["dashboard", "panel_control", "tableros", "chat_interno", "organigrama"],
   },
   {
     id: "comercial",
@@ -348,7 +345,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Marketing y Automatización",
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion", "organigrama"] },
+  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion"] },
 ];
 
 /**

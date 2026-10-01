@@ -8,6 +8,9 @@ import { montosFacturaItemParaInsert, tasaIvaDesdeIvaTipo } from "@/lib/facturac
 import { descripcionLineaFacturaPorDefecto, parseFacturaPostTipo } from "@/lib/facturacion/factura-post-tipo";
 import { obtenerSiguienteNumeroFacturaEmpresa } from "@/lib/facturacion/factura-suscripcion-servidor";
 
+/** Ids por `.in(...)`: 50 uuids ≈ 2 KB de URL (mismo tope que en generar-facturas-mensuales). */
+const PAGOS_IN_CHUNK = 50;
+const PAGOS_TANDAS_EN_PARALELO = 6;
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,21 +50,33 @@ export async function GET(request: NextRequest) {
 
     const lastPagoByFactura = new Map<string, string>();
     if (ids.length > 0) {
-      const { data: pagosRows, error: pagosErr } = await supabase
-        .from("pagos")
-        .select("factura_id, fecha_pago")
-        .eq("empresa_id", auth.empresa_id)
-        .in("factura_id", ids);
+      // Por tandas: con todas las facturas en un solo `.in(...)` la URL pasaba los 30 KB. El gateway
+      // la rechaza (414) y, hasta el 1-oct-2026, además cortaba la conexión con Cloudflare y daba
+      // 520 a las demás peticiones en vuelo. Una tanda que falla no descarta las otras.
+      const tandas: string[][] = [];
+      for (let i = 0; i < ids.length; i += PAGOS_IN_CHUNK) tandas.push(ids.slice(i, i + PAGOS_IN_CHUNK));
 
-      if (!pagosErr && Array.isArray(pagosRows)) {
-        for (const p of pagosRows as { factura_id?: string; fecha_pago?: string }[]) {
-          const fid = typeof p.factura_id === "string" ? p.factura_id : "";
-          if (!fid) continue;
-          const raw = p.fecha_pago != null ? String(p.fecha_pago) : "";
-          const fp = raw.slice(0, 10);
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(fp)) continue;
-          const cur = lastPagoByFactura.get(fid);
-          if (!cur || fp > cur) lastPagoByFactura.set(fid, fp);
+      for (let i = 0; i < tandas.length; i += PAGOS_TANDAS_EN_PARALELO) {
+        const resultados = await Promise.all(
+          tandas.slice(i, i + PAGOS_TANDAS_EN_PARALELO).map((tanda) =>
+            supabase
+              .from("pagos")
+              .select("factura_id, fecha_pago")
+              .eq("empresa_id", auth.empresa_id)
+              .in("factura_id", tanda)
+          )
+        );
+        for (const { data: pagosRows, error: pagosErr } of resultados) {
+          if (pagosErr || !Array.isArray(pagosRows)) continue;
+          for (const p of pagosRows as { factura_id?: string; fecha_pago?: string }[]) {
+            const fid = typeof p.factura_id === "string" ? p.factura_id : "";
+            if (!fid) continue;
+            const raw = p.fecha_pago != null ? String(p.fecha_pago) : "";
+            const fp = raw.slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(fp)) continue;
+            const cur = lastPagoByFactura.get(fid);
+            if (!cur || fp > cur) lastPagoByFactura.set(fid, fp);
+          }
         }
       }
     }

@@ -2,6 +2,8 @@
 
 import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
 import { textoDeMensajeDeSistema, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
+import { wamidCitado } from "@/lib/chat/message-quote";
+import { wamidDeMensaje } from "@/lib/chat/message-reactions";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -1111,6 +1113,19 @@ export function ConversacionesClient({
   const [lightbox, setLightbox] = useState<{ url: string; nombre: string } | null>(null);
   const [msgMenu, setMsgMenu] = useState<string | null>(null); // id del mensaje con el menú (3 puntitos) abierto
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null); // mensaje que se está respondiendo (cita)
+
+  /**
+   * WAMID → mensaje, para resolver a qué responde un mensaje del cliente. WhatsApp manda
+   * sólo el id del mensaje citado; el texto hay que buscarlo entre los que ya tenemos.
+   */
+  const mensajePorWamid = useMemo(() => {
+    const m = new Map<string, ChatMessage>();
+    for (const msg of messages) {
+      const w = wamidDeMensaje(msg);
+      if (w) m.set(w, msg);
+    }
+    return m;
+  }, [messages]);
   const [opsQueues, setOpsQueues] = useState<ChatQueueListRow[]>([]);
   /**
    * A dónde se PUEDE transferir: todas las colas activas.
@@ -4474,10 +4489,23 @@ export function ConversacionesClient({
                           </div>
                           {/* Cita del mensaje respondido (si este mensaje es una respuesta). */}
                           {(() => {
-                            const rc = m.raw_payload?.reply_context as
+                            // Dos orígenes para lo mismo: `reply_context` es el resumen que
+                            // dejamos al responder nosotros; los mensajes del cliente sólo
+                            // traen el WAMID citado y hay que ir a buscar el mensaje.
+                            let rc = m.raw_payload?.reply_context as
                               | { preview?: string; from_me?: boolean }
                               | undefined;
-                            if (!rc || typeof rc !== "object") return null;
+                            if (!rc || typeof rc !== "object") {
+                              const citado = wamidCitado(m.raw_payload);
+                              if (!citado) return null;
+                              const original = mensajePorWamid.get(citado);
+                              // El mensaje citado puede ser más viejo que lo que está
+                              // cargado. Se avisa igual que hay una cita: mejor eso que una
+                              // respuesta suelta que no se entiende.
+                              rc = original
+                                ? { preview: messagePreview(original), from_me: original.from_me }
+                                : { preview: "Mensaje anterior", from_me: undefined };
+                            }
                             return (
                               <div
                                 className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 text-[12px] ${
@@ -4486,9 +4514,11 @@ export function ConversacionesClient({
                                     : "border-[#4FAEB2] bg-slate-50 text-slate-600"
                                 }`}
                               >
-                                <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                                  {rc.from_me ? "Vos" : "Cliente"}
-                                </span>
+                                {rc.from_me === undefined ? null : (
+                                  <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                                    {rc.from_me ? "Vos" : "Cliente"}
+                                  </span>
+                                )}
                                 <span className="line-clamp-2 break-words">{rc.preview ?? "Mensaje"}</span>
                               </div>
                             );

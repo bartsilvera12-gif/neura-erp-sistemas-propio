@@ -24,6 +24,7 @@ import {
 } from "@/lib/chat/message-erp-display";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import { agruparReacciones, EMOJIS_REACCION, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
+import { wamidCitado } from "@/lib/chat/message-quote";
 import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import { useAsesorInbox, type AsesorConv } from "@/shared/hooks/useAsesorInbox";
@@ -603,6 +604,18 @@ export default function MAsesorChatPage() {
   const router = useRouter();
 
   const [messages, setMessages] = useState<Msg[]>([]);
+  /**
+   * WAMID → mensaje, para resolver a qué responde un mensaje del cliente: WhatsApp manda
+   * sólo el id del mensaje citado y el texto hay que buscarlo entre los que ya tenemos.
+   */
+  const mensajePorWamid = useMemo(() => {
+    const idx = new Map<string, Msg>();
+    for (const msg of messages) {
+      const w = wamidDeMensaje(msg);
+      if (w) idx.set(w, msg);
+    }
+    return idx;
+  }, [messages]);
   const [pending, setPending] = useState<Pending[]>([]);
   const [title, setTitle] = useState("Chat");
   const [contactPhone, setContactPhone] = useState<string | null>(null);
@@ -1673,10 +1686,20 @@ export default function MAsesorChatPage() {
                   }`}
                 >
                   {(() => {
-                    const rc = m.raw_payload?.reply_context as
+                    // `reply_context` es el resumen que dejamos al responder nosotros; los
+                    // mensajes del cliente sólo traen el WAMID citado y hay que buscar el
+                    // mensaje entre los cargados.
+                    let rc = m.raw_payload?.reply_context as
                       | { preview?: string; from_me?: boolean }
                       | undefined;
-                    if (!rc || typeof rc !== "object") return null;
+                    if (!rc || typeof rc !== "object") {
+                      const citado = wamidCitado(m.raw_payload);
+                      if (!citado) return null;
+                      const original = mensajePorWamid.get(citado);
+                      rc = original
+                        ? { preview: previewOf(original), from_me: original.from_me }
+                        : { preview: "Mensaje anterior", from_me: undefined };
+                    }
                     return (
                       <div
                         className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 text-[12px] ${
@@ -1685,9 +1708,11 @@ export default function MAsesorChatPage() {
                             : "border-[#4FAEB2] bg-slate-50 text-slate-600"
                         }`}
                       >
-                        <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
-                          {rc.from_me ? "Vos" : "Cliente"}
-                        </span>
+                        {rc.from_me === undefined ? null : (
+                          <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                            {rc.from_me ? "Vos" : "Cliente"}
+                          </span>
+                        )}
                         <span className="line-clamp-2 break-words">{rc.preview ?? "Mensaje"}</span>
                       </div>
                     );

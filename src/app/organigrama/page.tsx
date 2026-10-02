@@ -99,7 +99,7 @@ function Caja({ nodo }: { nodo: Nodo }) {
       style={{ borderTop: `3px solid ${accent}` }}
     >
       <div
-        className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-bold text-slate-500"
+        className="flex aspect-square h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-bold text-slate-500"
         style={{ border: `2px solid ${accent}` }}
       >
         {nodo.foto_url ? (

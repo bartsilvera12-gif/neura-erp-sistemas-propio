@@ -4718,13 +4718,21 @@ export function ConversacionesClient({
                           ) : m.message_type === "contacts" ? (
                             <ContactCardsView message={m} fromMe={m.from_me} />
                           ) : (
-                            <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                            // "[reaction]" y "[revoke]" son rótulos internos del ERP; al
+                            // asesor hay que decirle qué pasó, no mostrarle el código.
+                            <p className="whitespace-pre-wrap break-words">
+                              {textoDeMensajeDeSistema(m.message_type) ??
+                                textoDeVistaPrevia(m.content) ??
+                                m.content}
+                            </p>
                           )}
                           <p
                             className={`text-[10px] mt-1 ${m.from_me ? "text-sky-100" : "text-slate-400"}`}
                           >
                             {formatTime(m.created_at)}
-                            {m.message_type !== "text" && ` · ${m.message_type}`}
+                            {m.message_type !== "text" && !textoDeMensajeDeSistema(m.message_type)
+                              ? ` · ${m.message_type}`
+                              : null}
                             {m.from_me ? (
                               <MessageDeliveryTicks status={m.whatsapp_delivery_status} />
                             ) : null}

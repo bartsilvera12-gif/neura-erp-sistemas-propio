@@ -27,6 +27,7 @@ import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/Proyec
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
+  PROYECTO_WEB_KEYS_OCULTAS,
   applyBriefFormToExisting,
   applySaasFormToExisting,
   coalesceBriefData,
@@ -3193,7 +3194,10 @@ export default function ProyectoDetalleInner({
 
             {esWeb ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                {PROYECTO_DATOS_BRIEF_FIELDS.map((f) => {
+                {/* La ficha muestra EXACTAMENTE los mismos campos web que el formulario
+                    de crear (marca, dominio, redes): se ocultan los demás con la lista
+                    compartida PROYECTO_WEB_KEYS_OCULTAS. El dato guardado no se toca. */}
+                {PROYECTO_DATOS_BRIEF_FIELDS.filter((f) => !PROYECTO_WEB_KEYS_OCULTAS.includes(f.key)).map((f) => {
                   // Rubro del negocio: buscador inteligente con lista canónica (antes texto libre).
                   if (f.key === "tipo_web") {
                     return (

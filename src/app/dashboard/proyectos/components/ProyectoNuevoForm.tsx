@@ -11,6 +11,7 @@ import {
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
+  PROYECTO_WEB_KEYS_OCULTAS,
   PROYECTO_FACTURACION_OPCIONES,
   applyBriefFormToExisting,
   applySaasFormToExisting,
@@ -482,23 +483,13 @@ export default function ProyectoNuevoForm({
               <h2 className="text-sm font-semibold text-slate-900">Datos del proyecto (web)</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {/* whatsapp_contacto se pide arriba, autocompletado. Y en el POPUP DE
-                  CREAR se dejan solo los esenciales: marca, dominio, tipo de web,
-                  redes y observaciones. El resto del brief (rubro, objetivo,
-                  secciones, colores, logo, referencias) NO se saca del sistema
-                  —sigue en el detalle— sólo se oculta acá para no abrumar al crear. */}
+              {/* whatsapp_contacto se pide arriba, autocompletado. Acá se dejan solo
+                  los esenciales (marca, dominio, redes). El resto del brief NO se
+                  saca del sistema —el dato sigue guardado— sólo se oculta de estas
+                  pantallas. Lista compartida con la ficha (PROYECTO_WEB_KEYS_OCULTAS)
+                  para que crear y ficha muestren EXACTAMENTE lo mismo. */}
               {PROYECTO_DATOS_BRIEF_FIELDS.filter(
-                (f) =>
-                  ![
-                    "whatsapp_contacto",
-                    "tipo_web",
-                    "rubro",
-                    "objetivo",
-                    "secciones",
-                    "estilo_colores",
-                    "logo_cliente",
-                    "referencias_urls",
-                  ].includes(f.key)
+                (f) => !PROYECTO_WEB_KEYS_OCULTAS.includes(f.key)
               ).map((f) => {
                 if (f.kind === "checkbox") {
                   return (

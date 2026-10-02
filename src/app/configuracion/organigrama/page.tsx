@@ -11,9 +11,37 @@ type Nodo = {
   nombre_persona: string | null;
   orden: number;
   color: string | null;
+  foto_url: string | null;
 };
 
 type FilaPlano = Nodo & { depth: number };
+
+/** Lee una imagen, la recorta/redimensiona a 160×160 (cover) y devuelve un data URL JPEG liviano. */
+async function fileToAvatarDataUrl(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = () => reject(new Error("No se pudo leer la imagen"));
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error("Imagen inválida"));
+    i.src = dataUrl;
+  });
+  const size = 160;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  const scale = Math.max(size / img.width, size / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
 
 const F_INPUT =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
@@ -79,6 +107,7 @@ export default function ConfigOrganigramaPage() {
   const [editTitulo, setEditTitulo] = useState("");
   const [editPersona, setEditPersona] = useState("");
   const [editParent, setEditParent] = useState<string>("");
+  const [editFoto, setEditFoto] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -136,6 +165,18 @@ export default function ConfigOrganigramaPage() {
     setEditTitulo(n.titulo);
     setEditPersona(n.nombre_persona ?? "");
     setEditParent(n.parent_id ?? "");
+    setEditFoto(n.foto_url ?? null);
+  }
+
+  async function onElegirFoto(file: File | null) {
+    if (!file) return;
+    setError(null);
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      setEditFoto(dataUrl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo procesar la imagen");
+    }
   }
 
   async function guardarEdicion() {
@@ -152,6 +193,7 @@ export default function ConfigOrganigramaPage() {
           titulo,
           nombre_persona: editPersona.trim() || null,
           parent_id: editParent || null,
+          foto_url: editFoto,
         }),
       });
       const json = await res.json();
@@ -265,6 +307,7 @@ export default function ConfigOrganigramaPage() {
               return (
                 <li key={f.id} className="py-2.5" style={{ paddingLeft: `${f.depth * 22}px` }}>
                   {enEdicion ? (
+                    <div className="space-y-3">
                     <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
                       <div>
                         <label className={F_LABEL}>Cargo</label>
@@ -299,14 +342,53 @@ export default function ConfigOrganigramaPage() {
                         </button>
                       </div>
                     </div>
+                    <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-2.5">
+                      <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-[#4FAEB2] bg-slate-100 text-slate-400">
+                        {editFoto ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={editFoto} alt="foto" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-lg">👤</span>
+                        )}
+                      </div>
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#4FAEB2]/30 bg-[#4FAEB2]/10 px-3 py-1.5 text-xs font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/20">
+                        {editFoto ? "Cambiar foto" : "Subir foto"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => onElegirFoto(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      {editFoto && (
+                        <button
+                          type="button"
+                          onClick={() => setEditFoto(null)}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                        >
+                          Quitar
+                        </button>
+                      )}
+                    </div>
+                    </div>
                   ) : (
                     <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        {f.foto_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={f.foto_url}
+                            alt=""
+                            className="h-8 w-8 shrink-0 rounded-full border border-[#4FAEB2]/40 object-cover"
+                          />
+                        ) : null}
+                        <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-900">{f.titulo}</p>
                         <p className="truncate text-[11px] text-slate-500">
                           {f.nombre_persona ? f.nombre_persona : <span className="italic text-slate-400">Sin asignar</span>}
                           {f.parent_id && byId.get(f.parent_id) ? ` · reporta a ${byId.get(f.parent_id)!.titulo}` : ""}
                         </p>
+                        </div>
                       </div>
                       {canEdit && (
                         <div className="flex shrink-0 gap-1.5">

@@ -12,7 +12,16 @@ type Nodo = {
   nombre_persona: string | null;
   orden: number;
   color: string | null;
+  foto_url: string | null;
 };
+
+function iniciales(nodo: { nombre_persona: string | null; titulo: string }): string {
+  const base = (nodo.nombre_persona || nodo.titulo || "").trim();
+  const parts = base.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
 
 type ArbolNodo = Nodo & { hijos: ArbolNodo[] };
 
@@ -36,6 +45,14 @@ function Caja({ nodo }: { nodo: ArbolNodo }) {
   const accent = nodo.color && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(nodo.color) ? nodo.color : "#4FAEB2";
   return (
     <div className="org-card" style={{ borderTopColor: accent }}>
+      <div className="org-avatar" style={{ borderColor: accent }}>
+        {nodo.foto_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={nodo.foto_url} alt={nodo.nombre_persona ?? nodo.titulo} />
+        ) : (
+          <span>{iniciales(nodo)}</span>
+        )}
+      </div>
       <span className="org-card-titulo">{nodo.titulo}</span>
       {nodo.nombre_persona ? <span className="org-card-persona">{nodo.nombre_persona}</span> : null}
     </div>
@@ -121,11 +138,13 @@ export default function OrganigramaPage() {
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
           <div className="org-tree-wrap">
-            <ul className="org-tree">
-              {arbol.map((r) => (
-                <Rama key={r.id} nodo={r} />
-              ))}
-            </ul>
+            <div className="org-tree">
+              <ul>
+                {arbol.map((r) => (
+                  <Rama key={r.id} nodo={r} />
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       )}
@@ -133,17 +152,29 @@ export default function OrganigramaPage() {
   );
 }
 
-/** Árbol de organigrama en CSS puro (cajas + conectores). Clases prefijadas org- para no colisionar. */
+/** Árbol de organigrama en CSS puro (cajas + conectores). Clases prefijadas org- para no colisionar.
+ *  Patrón canónico: wrapper .org-tree (div) + <ul> anidados con `position: relative`,
+ *  para que los conectores verticales (`ul ul::before`) anclen a cada grupo de hijos
+ *  en TODOS los niveles — incluido el caso de un único subordinado. */
 const ORG_CSS = `
 .org-tree-wrap { display: inline-block; min-width: 100%; }
-.org-tree, .org-tree ul { display: flex; justify-content: center; padding: 0; margin: 0; list-style: none; }
-.org-tree ul { padding-top: 22px; }
+.org-tree ul {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  padding-top: 24px;
+}
+.org-tree > ul { padding-top: 0; }
 .org-tree li {
   position: relative;
-  padding: 22px 10px 0;
+  padding: 24px 10px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  list-style: none;
 }
 .org-tree li::before, .org-tree li::after {
   content: "";
@@ -151,24 +182,27 @@ const ORG_CSS = `
   top: 0;
   right: 50%;
   width: 50%;
-  height: 22px;
+  height: 24px;
   border-top: 2px solid #cbd5e1;
 }
 .org-tree li::after { right: auto; left: 50%; border-left: 2px solid #cbd5e1; }
 .org-tree li:only-child::before, .org-tree li:only-child::after { display: none; }
-.org-tree li:only-child { padding-top: 22px; }
+/* Único subordinado: sin gap propio; el conector lo da el ul ul::before (24px). */
+.org-tree li:only-child { padding-top: 0; }
 .org-tree li:first-child::before, .org-tree li:last-child::after { border: 0 none; }
 .org-tree li:last-child::before { border-right: 2px solid #cbd5e1; border-radius: 0 6px 0 0; }
 .org-tree li:first-child::after { border-radius: 6px 0 0 0; }
-.org-tree > li { padding-top: 0; }
-.org-tree > li::before, .org-tree > li::after { display: none; }
+/* Raíz: sin conector hacia arriba. */
+.org-tree > ul > li { padding-top: 0; }
+.org-tree > ul > li::before, .org-tree > ul > li::after { display: none; }
+/* Conector vertical del padre hacia el grupo de hijos (todos los niveles). */
 .org-tree ul ul::before {
   content: "";
   position: absolute;
   top: 0;
   left: 50%;
   width: 0;
-  height: 22px;
+  height: 24px;
   border-left: 2px solid #cbd5e1;
 }
 .org-card {
@@ -177,15 +211,29 @@ const ORG_CSS = `
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  min-width: 150px;
+  min-width: 160px;
   max-width: 220px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border: 1px solid #e2e8f0;
   border-top: 3px solid #4FAEB2;
   border-radius: 12px;
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
+.org-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 9999px;
+  overflow: hidden;
+  border: 2px solid #4FAEB2;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.org-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.org-avatar span { font-size: 15px; font-weight: 700; color: #64748b; }
 .org-card-titulo { font-weight: 700; font-size: 13px; color: #0f172a; text-align: center; line-height: 1.25; }
 .org-card-persona { font-size: 11px; color: #64748b; text-align: center; }
 `;

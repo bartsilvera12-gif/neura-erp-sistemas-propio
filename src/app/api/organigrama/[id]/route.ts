@@ -3,10 +3,11 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
+import { normFotoUrl } from "../route";
 
 export const runtime = "nodejs";
 
-const SELECT_COLS = "id, empresa_id, parent_id, titulo, nombre_persona, orden, color, created_at, updated_at";
+const SELECT_COLS = "id, empresa_id, parent_id, titulo, nombre_persona, orden, color, foto_url, created_at, updated_at";
 
 function esAdmin(rol: string | null): boolean {
   const r = String(rol ?? "").trim();
@@ -48,6 +49,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       parent_id?: unknown;
       orden?: unknown;
       color?: unknown;
+      foto_url?: unknown;
     };
 
     const supabase = await getChatServiceClientForEmpresa(auth.empresaId);
@@ -63,6 +65,13 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     }
     if (body.color !== undefined) {
       patch.color = typeof body.color === "string" ? body.color.trim() || null : null;
+    }
+    if (body.foto_url !== undefined) {
+      try {
+        patch.foto_url = normFotoUrl(body.foto_url) ?? null;
+      } catch (e) {
+        return NextResponse.json(errorResponse(e instanceof Error ? e.message : "Foto inválida"), { status: 400 });
+      }
     }
     if (body.orden != null && Number.isFinite(Number(body.orden))) patch.orden = Number(body.orden);
 

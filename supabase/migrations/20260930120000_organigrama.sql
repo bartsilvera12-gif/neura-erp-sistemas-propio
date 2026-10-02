@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS neura.organigrama_nodos (
   usuario_id     uuid,
   orden          integer NOT NULL DEFAULT 0,
   color          text,
+  foto_url       text,
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT organigrama_nodos_no_self_parent CHECK (parent_id IS NULL OR parent_id <> id)

@@ -6,11 +6,27 @@ import { requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth
 
 export const runtime = "nodejs";
 
-const SELECT_COLS = "id, empresa_id, parent_id, titulo, nombre_persona, orden, color, created_at, updated_at";
+const SELECT_COLS = "id, empresa_id, parent_id, titulo, nombre_persona, orden, color, foto_url, created_at, updated_at";
 
 function esAdmin(rol: string | null): boolean {
   const r = String(rol ?? "").trim();
   return r === "super_admin" || esRolAdminEmpresaOGlobal(r);
+}
+
+/**
+ * Normaliza foto_url: acepta data URL de imagen (base64) o http(s).
+ * `undefined` = no vino en el body (no tocar); `null`/"" = quitar la foto.
+ * Lanza si el formato no es imagen o supera el tope de tamaño.
+ */
+export function normFotoUrl(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const ok = /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(s) || /^https?:\/\//i.test(s);
+  if (!ok) throw new Error("La foto debe ser una imagen válida.");
+  if (s.length > 1_200_000) throw new Error("La foto es muy pesada; reducí el tamaño.");
+  return s;
 }
 
 /** GET — todos los nodos del organigrama de la empresa (lista plana; el front arma el árbol). */
@@ -58,6 +74,7 @@ export async function POST(request: Request) {
       nombre_persona?: unknown;
       orden?: unknown;
       color?: unknown;
+      foto_url?: unknown;
     };
     const titulo = typeof body.titulo === "string" ? body.titulo.trim() : "";
     if (!titulo) return NextResponse.json(errorResponse("Indicá el cargo (título)"), { status: 400 });
@@ -66,6 +83,13 @@ export async function POST(request: Request) {
     const nombrePersona = typeof body.nombre_persona === "string" ? body.nombre_persona.trim() || null : null;
     const color = typeof body.color === "string" ? body.color.trim() || null : null;
     const orden = Number.isFinite(Number(body.orden)) ? Number(body.orden) : 0;
+    let fotoUrl: string | null;
+    try {
+      const f = normFotoUrl(body.foto_url);
+      fotoUrl = f === undefined ? null : f;
+    } catch (e) {
+      return NextResponse.json(errorResponse(e instanceof Error ? e.message : "Foto inválida"), { status: 400 });
+    }
 
     const supabase = await getChatServiceClientForEmpresa(auth.empresaId);
 
@@ -89,6 +113,7 @@ export async function POST(request: Request) {
         nombre_persona: nombrePersona,
         color,
         orden,
+        foto_url: fotoUrl,
       })
       .select(SELECT_COLS)
       .single();

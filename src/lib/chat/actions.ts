@@ -925,18 +925,32 @@ async function fetchChatConversationsUnsafe(
   const estadoUltimoPorConv: Record<string, string | null> = {};
   const idsNuestros = convIdList.filter((id) => clientTurnById[id] != null);
   if (idsNuestros.length > 0) {
-    const { data: msgRows, error: msgErr } = await supabase
-      .from("chat_messages")
-      .select("conversation_id, from_me, whatsapp_delivery_status, created_at")
-      .eq("empresa_id", empresa_id)
-      .in("conversation_id", idsNuestros)
-      .eq("from_me", true)
-      .order("created_at", { ascending: false })
-      .limit(Math.min(2000, idsNuestros.length * 5));
+    // En tandas de 100 chats: con todos los ids en un solo `.in(...)` la URL pasaba los 8 KB que
+    // acepta la API, volvía rechazada (414) y la lista quedaba sin tildes. Cada chat cae entero
+    // en una tanda, así que dentro de ella el primero sigue siendo el más nuevo.
+    const TANDA_TILDES = 100;
+    const tandasTildes: string[][] = [];
+    for (let i = 0; i < idsNuestros.length; i += TANDA_TILDES) {
+      tandasTildes.push(idsNuestros.slice(i, i + TANDA_TILDES));
+    }
+    const resultadosTildes = await Promise.all(
+      tandasTildes.map((tanda) =>
+        supabase
+          .from("chat_messages")
+          .select("conversation_id, from_me, whatsapp_delivery_status, created_at")
+          .eq("empresa_id", empresa_id)
+          .in("conversation_id", tanda)
+          .eq("from_me", true)
+          .order("created_at", { ascending: false })
+          .limit(Math.min(2000, tanda.length * 5))
+      )
+    );
+    const msgErr = resultadosTildes.find((r) => r.error)?.error ?? null;
+    const msgRows = resultadosTildes.flatMap((r) => r.data ?? []);
     if (msgErr) {
       console.warn("[fetchChatConversations] estado último mensaje:", msgErr.message);
     } else {
-      for (const r of (msgRows ?? []) as { conversation_id?: string; whatsapp_delivery_status?: string | null }[]) {
+      for (const r of msgRows as { conversation_id?: string; whatsapp_delivery_status?: string | null }[]) {
         const cid = String(r.conversation_id ?? "").trim();
         if (!cid || cid in estadoUltimoPorConv) continue; // el primero es el más nuevo
         estadoUltimoPorConv[cid] = r.whatsapp_delivery_status ?? null;

@@ -3348,23 +3348,9 @@ export default function ProyectoDetalleInner({
                     })}
                   </div>
                 </div>
-                <label className="block text-sm">
-                  <span className={labelCls}>Nombre de la empresa</span>
-                  <input
-                    className={inputCls}
-                    value={saasForm.empresa_nombre}
-                    onChange={(e) => updateSaasField("empresa_nombre", e.target.value)}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className={labelCls}>WhatsApp contacto</span>
-                  <input
-                    className={inputCls}
-                    placeholder="+595..."
-                    value={saasForm.whatsapp_contacto}
-                    onChange={(e) => updateSaasField("whatsapp_contacto", e.target.value)}
-                  />
-                </label>
+                {/* Nombre de la empresa, WhatsApp contacto y Observaciones se ocultan:
+                    no se piden al crear, así la ficha muestra lo mismo que el alta.
+                    El dato guardado no se toca. */}
                 <div className="block text-sm sm:col-span-2">
                   <span className={labelCls}>Módulos necesarios</span>
                   <div className="mt-1.5">
@@ -3376,15 +3362,6 @@ export default function ProyectoDetalleInner({
                     />
                   </div>
                 </div>
-                <label className="block text-sm sm:col-span-2">
-                  <span className={labelCls}>Observaciones</span>
-                  <textarea
-                    className={`${inputCls} min-h-[88px]`}
-                    rows={3}
-                    value={saasForm.observaciones}
-                    onChange={(e) => updateSaasField("observaciones", e.target.value)}
-                  />
-                </label>
               </div>
             ) : null}
 

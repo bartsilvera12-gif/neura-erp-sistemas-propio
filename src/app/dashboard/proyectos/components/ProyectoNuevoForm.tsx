@@ -189,6 +189,11 @@ export default function ProyectoNuevoForm({
       setErr("Indicá la situación de facturación del cliente.");
       return;
     }
+    // El dominio a usar es obligatorio en proyectos web y mixtos.
+    if (esWeb && !(brief.dominio_usar ?? "").trim()) {
+      setErr("Indicá el dominio a usar.");
+      return;
+    }
     setSaving(true);
     setErr(null);
     // Se aplican en cadena, no en if/else: el tipo mixto guarda ambos briefs.
@@ -531,7 +536,10 @@ export default function ProyectoNuevoForm({
                 }
                 return (
                   <label key={f.key} className="block text-sm sm:col-span-2">
-                    <span className={LABEL_CLS}>{f.label}</span>
+                    <span className={LABEL_CLS}>
+                      {f.label}
+                      {f.key === "dominio_usar" ? <span className="text-rose-500"> *</span> : null}
+                    </span>
                     <input
                       className={INPUT_CLS}
                       placeholder={f.placeholder}

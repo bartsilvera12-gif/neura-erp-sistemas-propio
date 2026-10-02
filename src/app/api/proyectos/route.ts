@@ -7,7 +7,7 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import { pmDelCliente } from "@/lib/proyectos/pm-sincronizacion";
 import { PROYECTO_SAAS_BRIEF_KEYS, esFacturacionValida } from "@/lib/proyectos/brief-data";
-import { tipoIncluyeSaas } from "@/lib/proyectos/tipos-proyecto";
+import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
@@ -296,6 +296,17 @@ export async function POST(request: Request) {
         if (!esFacturacionValida(fact)) {
           return NextResponse.json(
             errorResponse("Indicá la situación de facturación del cliente"),
+            { status: 400 }
+          );
+        }
+      }
+      // El dominio a usar es obligatorio en proyectos web y mixtos. Se valida en
+      // el servidor porque el POST se puede llamar directo (no solo desde el form).
+      if (tipoIncluyeWeb(codigoTipo)) {
+        const dom = (brief_data as Record<string, unknown>).dominio_usar;
+        if (typeof dom !== "string" || !dom.trim()) {
+          return NextResponse.json(
+            errorResponse("Indicá el dominio a usar (proyecto web)."),
             { status: 400 }
           );
         }

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
+import { FechaSelect } from "@/components/ui/FechaSelect";
 import { apiSoporte } from "./_ui/api";
 import { Aviso, Encabezado, Esqueleto, IconoTile, PALETA_TIPOS, Pagina, TONOS, Tarjeta, TarjetaViva, Vacio, claseBoton, type Tono } from "./_ui/ui";
 
@@ -33,6 +34,10 @@ const GraficoEstados = dynamic(() => import("./_ui/GraficosDashboard").then((m) 
 const GraficoTipos = dynamic(() => import("./_ui/GraficosDashboard").then((m) => m.GraficoTipos), {
   ssr: false,
   loading: () => <Esqueleto className="h-full w-full rounded-full" />,
+});
+const GraficoHoras = dynamic(() => import("./_ui/GraficosDashboard").then((m) => m.GraficoHoras), {
+  ssr: false,
+  loading: () => <Esqueleto className="h-full w-full rounded-xl" />,
 });
 
 type Dashboard = {
@@ -71,6 +76,17 @@ const PERIODOS = [
 // El último dashboard pedido, por período: volver a la pantalla la pinta al
 // instante con lo que había, y se actualiza en silencio.
 const recordado = new Map<string, Dashboard>();
+
+type PorHora = { desde: string | null; hasta: string | null; total: number; horas: { hora: number; total: number }[] };
+
+const primeroDelMes = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+};
+const hoyISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 function Variacion({ valor, malo }: { valor: number | null | undefined; malo?: boolean }) {
   if (valor == null) return <span className="text-[11px] text-slate-400">sin comparación</span>;
@@ -127,6 +143,27 @@ export default function SoporteDashboardPage() {
   }, [dias]);
 
   const totalTipos = datos?.por_tipo.reduce((s, t) => s + t.cantidad, 0) ?? 0;
+
+  // Card "Tickets por hora del día": rango de fechas propio.
+  const [desdeHora, setDesdeHora] = useState(primeroDelMes);
+  const [hastaHora, setHastaHora] = useState(hoyISO);
+  const [porHora, setPorHora] = useState<PorHora | null>(null);
+  const [cargandoHoras, setCargandoHoras] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    setCargandoHoras(true);
+    apiSoporte<PorHora>(`/api/soporte/dashboard/por-hora?desde=${desdeHora}&hasta=${hastaHora}`)
+      .then((d) => vivo && setPorHora(d))
+      .catch(() => vivo && setPorHora(null))
+      .finally(() => vivo && setCargandoHoras(false));
+    return () => {
+      vivo = false;
+    };
+  }, [desdeHora, hastaHora]);
+  const horaPico = porHora?.horas.reduce<{ hora: number; total: number } | null>(
+    (best, h) => (h.total > (best?.total ?? 0) ? h : best),
+    null
+  );
 
   return (
     <Pagina>
@@ -244,6 +281,59 @@ export default function SoporteDashboardPage() {
             )}
           </Tarjeta>
         </div>
+
+        {/* Tickets cargados por hora del día (rango de fechas propio) */}
+        <Tarjeta
+          titulo="Tickets por hora del día"
+          icono={BarChart3}
+          tono="turquesa"
+          accion={
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                Desde
+                <FechaSelect
+                  value={desdeHora}
+                  onChange={(e) => setDesdeHora(e.target.value)}
+                  max={hastaHora}
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                Hasta
+                <FechaSelect
+                  value={hastaHora}
+                  onChange={(e) => setHastaHora(e.target.value)}
+                  min={desdeHora}
+                  max={hoyISO()}
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                />
+              </label>
+            </div>
+          }
+        >
+          <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+            <span>{porHora ? `${porHora.total} ticket${porHora.total === 1 ? "" : "s"} cargado${porHora.total === 1 ? "" : "s"} en el período` : ""}</span>
+            {horaPico && horaPico.total > 0 ? (
+              <span>
+                Pico:{" "}
+                <span className="font-semibold text-slate-700">
+                  {String(horaPico.hora).padStart(2, "0")}:00–{String(horaPico.hora).padStart(2, "0")}:59
+                </span>{" "}
+                ({horaPico.total})
+              </span>
+            ) : null}
+          </div>
+          <div className="h-72">
+            {cargandoHoras && !porHora ? (
+              <Esqueleto className="h-full w-full rounded-xl" />
+            ) : !porHora || porHora.total === 0 ? (
+              <Vacio titulo="Sin tickets en el período" icono={Ticket} />
+            ) : (
+              <GraficoHoras datos={porHora.horas} />
+            )}
+          </div>
+          <p className="mt-2 text-right text-[11px] text-slate-400">Hora de Paraguay</p>
+        </Tarjeta>
       </div>
     </Pagina>
   );

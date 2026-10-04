@@ -98,21 +98,23 @@ export async function GET(request: Request) {
     let porSistema: { nombre: string; cantidad: number }[] = [];
     // Dos cortes SEPARADOS: Top clientes (por tickets) y Tickets por programador
     // (el responsable_tecnico del proyecto al que pertenece cada ticket).
-    type ItemTicketOut = { id: string; numero: number | null; tipo: string };
+    type ItemTicketOut = { id: string; numero: number | null; proyecto: string; tipo: string };
     let topClientes: { cliente: string; tickets: number; items: ItemTicketOut[] }[] = [];
     let porProgramador: { programador: string; tickets: number; items: ItemTicketOut[] }[] = [];
     try {
       const [tiposRes, proysRes] = await Promise.all([
         auth.sb.from("proyecto_tipos").select("id, nombre").eq("empresa_id", auth.empresaId),
-        auth.sb.from("proyectos").select("id, tipo_id, responsable_tecnico_id").eq("empresa_id", auth.empresaId).limit(5000),
+        auth.sb.from("proyectos").select("id, tipo_id, responsable_tecnico_id, titulo").eq("empresa_id", auth.empresaId).limit(5000),
       ]);
       const nombreTipo = new Map<string, string>();
       for (const tp of (tiposRes.data ?? []) as { id: string; nombre: string }[]) nombreTipo.set(tp.id, tp.nombre);
       const tipoDeProyecto = new Map<string, string | null>();
       const tecnicoDeProyecto = new Map<string, string | null>();
-      for (const p of (proysRes.data ?? []) as { id: string; tipo_id: string | null; responsable_tecnico_id: string | null }[]) {
+      const tituloDeProyecto = new Map<string, string>();
+      for (const p of (proysRes.data ?? []) as { id: string; tipo_id: string | null; responsable_tecnico_id: string | null; titulo: string | null }[]) {
         tipoDeProyecto.set(p.id, p.tipo_id);
         tecnicoDeProyecto.set(p.id, p.responsable_tecnico_id);
+        tituloDeProyecto.set(p.id, (p.titulo ?? "").trim() || "—");
       }
 
       // --- por tipo de sistema ---
@@ -127,7 +129,7 @@ export async function GET(request: Request) {
       }
 
       // Cada ticket: su nº, tipo y id (para listar al desplegar y poder abrirlo).
-      type ItemTicket = { id: string; numero: number | null; tipo: string };
+      type ItemTicket = { id: string; numero: number | null; proyecto: string; tipo: string };
       const porDesc = (a: ItemTicket, b: ItemTicket) => (b.numero ?? 0) - (a.numero ?? 0);
 
       // --- (1) Top clientes por tickets ---
@@ -135,7 +137,12 @@ export async function GET(request: Request) {
       // --- (2) Tickets por programador (del proyecto del ticket) ---
       const porTec = new Map<string | null, ItemTicket[]>();
       for (const t of actuales) {
-        const item: ItemTicket = { id: t.id, numero: t.numero ?? null, tipo: etiquetaTipo(cat, t.tipo_codigo, t.clasificacion_codigo) };
+        const item: ItemTicket = {
+          id: t.id,
+          numero: t.numero ?? null,
+          proyecto: t.proyecto_id ? tituloDeProyecto.get(t.proyecto_id) ?? "—" : "—",
+          tipo: etiquetaTipo(cat, t.tipo_codigo, t.clasificacion_codigo),
+        };
         if (t.cliente_id) {
           const arr = porCliente.get(t.cliente_id) ?? [];
           arr.push(item);

@@ -55,7 +55,7 @@ type Dashboard = {
   por_programador: { programador: string; tickets: number; items: ItemTicket[] }[];
 };
 
-type ItemTicket = { id: string; numero: number | null; tipo: string };
+type ItemTicket = { id: string; numero: number | null; proyecto: string; tipo: string };
 
 const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
   { clave: "total", etiqueta: "Total de tickets", icono: Ticket, tono: "turquesa", href: "/dashboard/soporte/tickets" },
@@ -108,10 +108,11 @@ function ItemsTickets({ items }: { items: ItemTicket[] }) {
           key={it.id}
           href={`/dashboard/soporte/tickets/${it.id}`}
           prefetch
-          className="flex items-center justify-between gap-3 px-4 py-2 text-[12px] no-underline transition hover:bg-[#4FAEB2]/5"
+          className="flex items-center gap-3 px-4 py-2 text-[12px] no-underline transition hover:bg-[#4FAEB2]/5"
         >
-          <span className="font-mono font-semibold text-slate-700">{it.numero != null ? numeroTicket(it.numero) : "#—"}</span>
-          <span className="truncate text-slate-500">{it.tipo}</span>
+          <span className="w-[56px] shrink-0 font-mono font-semibold text-slate-700">{it.numero != null ? numeroTicket(it.numero) : "#—"}</span>
+          <span className="min-w-0 flex-1 truncate text-slate-600" title={it.proyecto}>{it.proyecto}</span>
+          <span className="shrink-0 text-right text-slate-500">{it.tipo}</span>
         </Link>
       ))}
     </div>

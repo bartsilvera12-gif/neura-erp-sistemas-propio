@@ -3,11 +3,12 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import {
   AlarmClock,
   BarChart3,
   CheckCircle2,
+  ChevronDown,
   Code2,
   FlaskConical,
   Headphones,
@@ -26,6 +27,7 @@ import {
 import CountUp from "@/components/reactbits/CountUp";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { FechaSelect } from "@/components/ui/FechaSelect";
+import { numeroTicket } from "@/lib/soporte/dominio";
 import { apiSoporte } from "./_ui/api";
 import { Aviso, Encabezado, Esqueleto, IconoTile, PALETA_TIPOS, Pagina, TONOS, Tarjeta, TarjetaViva, Vacio, claseBoton, type Tono } from "./_ui/ui";
 
@@ -49,9 +51,11 @@ type Dashboard = {
   por_estado: { codigo: string; nombre: string; color: string; cantidad: number }[];
   por_tipo: { nombre: string; cantidad: number }[];
   por_sistema: { nombre: string; cantidad: number }[];
-  top_clientes: { cliente: string; tickets: number }[];
-  por_programador: { programador: string; tickets: number }[];
+  top_clientes: { cliente: string; tickets: number; items: ItemTicket[] }[];
+  por_programador: { programador: string; tickets: number; items: ItemTicket[] }[];
 };
+
+type ItemTicket = { id: string; numero: number | null; tipo: string };
 
 const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
   { clave: "total", etiqueta: "Total de tickets", icono: Ticket, tono: "turquesa", href: "/dashboard/soporte/tickets" },
@@ -93,6 +97,27 @@ const hoyISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+/** Tickets de un cliente/programador: chips "#nº · tipo" que abren el ticket. */
+function ItemsTickets({ items }: { items: ItemTicket[] }) {
+  if (!items || items.length === 0) return <p className="px-3 py-2.5 text-[12px] text-slate-400">Sin tickets.</p>;
+  return (
+    <div className="flex flex-wrap gap-1.5 px-3 py-2.5">
+      {items.map((it) => (
+        <Link
+          key={it.id}
+          href={`/dashboard/soporte/tickets/${it.id}`}
+          prefetch
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] no-underline transition hover:border-[#4FAEB2]/50 hover:bg-[#4FAEB2]/5"
+        >
+          <span className="font-mono font-semibold text-slate-700">{it.numero != null ? numeroTicket(it.numero) : "#—"}</span>
+          <span className="text-slate-300">·</span>
+          <span className="text-slate-500">{it.tipo}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 function Variacion({ valor, malo }: { valor: number | null | undefined; malo?: boolean }) {
   if (valor == null) return <span className="text-[11px] text-slate-400">sin comparación</span>;
@@ -151,6 +176,17 @@ export default function SoporteDashboardPage() {
   const totalTipos = datos?.por_tipo.reduce((s, t) => s + t.cantidad, 0) ?? 0;
   const totalSistema = datos?.por_sistema?.reduce((s, t) => s + t.cantidad, 0) ?? 0;
   const totalProg = datos?.por_programador?.reduce((s, t) => s + t.tickets, 0) ?? 0;
+
+  // Drill-down: filas desplegables en Top clientes y Tickets por programador.
+  const [cliAbierto, setCliAbierto] = useState<Set<number>>(new Set());
+  const [progAbierto, setProgAbierto] = useState<Set<number>>(new Set());
+  const toggle = (set: Dispatch<SetStateAction<Set<number>>>, i: number) =>
+    set((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
 
   // Card "Tickets por hora del día": rango de fechas propio.
   const [desdeHora, setDesdeHora] = useState(primeroDelMes);
@@ -343,13 +379,28 @@ export default function SoporteDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {datos.top_clientes.map((c, i) => (
-                      <tr key={`${c.cliente}-${i}`} className="hover:bg-amber-50/40">
-                        <td className="px-5 py-2.5 text-[12px] font-bold tabular-nums text-slate-400">{i + 1}</td>
-                        <td className="max-w-[260px] truncate px-3 py-2.5 font-medium text-slate-800" title={c.cliente}>{c.cliente}</td>
-                        <td className="px-5 py-2.5 text-right"><span className="font-bold tabular-nums text-slate-800">{c.tickets}</span></td>
-                      </tr>
-                    ))}
+                    {datos.top_clientes.map((c, i) => {
+                      const abierto = cliAbierto.has(i);
+                      return (
+                        <Fragment key={`${c.cliente}-${i}`}>
+                          <tr onClick={() => toggle(setCliAbierto, i)} className="cursor-pointer hover:bg-amber-50/40">
+                            <td className="px-5 py-2.5 text-[12px] font-bold tabular-nums text-slate-400">{i + 1}</td>
+                            <td className="max-w-[260px] px-3 py-2.5 font-medium text-slate-800">
+                              <span className="flex items-center gap-1.5">
+                                <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} aria-hidden />
+                                <span className="truncate" title={c.cliente}>{c.cliente}</span>
+                              </span>
+                            </td>
+                            <td className="px-5 py-2.5 text-right"><span className="font-bold tabular-nums text-slate-800">{c.tickets}</span></td>
+                          </tr>
+                          {abierto ? (
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={3} className="p-0"><ItemsTickets items={c.items} /></td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -368,20 +419,25 @@ export default function SoporteDashboardPage() {
                   const pct = Math.round((p.tickets / totalProg) * 100);
                   const color = PALETA_TIPOS[i % PALETA_TIPOS.length];
                   const sinProg = p.programador === "Sin programador";
+                  const abierto = progAbierto.has(i);
                   return (
                     <li key={`${p.programador}-${i}`}>
-                      <div className="flex items-center justify-between gap-3 text-[13px]">
-                        <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: sinProg ? "#cbd5e1" : color }} aria-hidden />
-                          <span className={`truncate ${sinProg ? "text-slate-400" : ""}`} title={p.programador}>{p.programador}</span>
-                        </span>
-                        <span className="shrink-0 tabular-nums text-slate-500">
-                          <span className="font-bold text-slate-800">{p.tickets}</span> · {pct}%
-                        </span>
-                      </div>
-                      <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: sinProg ? "#cbd5e1" : color }} />
-                      </div>
+                      <button type="button" onClick={() => toggle(setProgAbierto, i)} className="w-full text-left">
+                        <div className="flex items-center justify-between gap-3 text-[13px]">
+                          <span className="flex min-w-0 items-center gap-1.5 font-medium text-slate-700">
+                            <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} aria-hidden />
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: sinProg ? "#cbd5e1" : color }} aria-hidden />
+                            <span className={`truncate ${sinProg ? "text-slate-400" : ""}`} title={p.programador}>{p.programador}</span>
+                          </span>
+                          <span className="shrink-0 tabular-nums text-slate-500">
+                            <span className="font-bold text-slate-800">{p.tickets}</span> · {pct}%
+                          </span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: sinProg ? "#cbd5e1" : color }} />
+                        </div>
+                      </button>
+                      {abierto ? <div className="mt-1.5 rounded-xl bg-slate-50/60">{<ItemsTickets items={p.items} />}</div> : null}
                     </li>
                   );
                 })}

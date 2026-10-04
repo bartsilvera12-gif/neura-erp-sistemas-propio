@@ -98,8 +98,9 @@ export async function GET(request: Request) {
     let porSistema: { nombre: string; cantidad: number }[] = [];
     // Dos cortes SEPARADOS: Top clientes (por tickets) y Tickets por programador
     // (el responsable_tecnico del proyecto al que pertenece cada ticket).
-    let topClientes: { cliente: string; tickets: number }[] = [];
-    let porProgramador: { programador: string; tickets: number }[] = [];
+    type ItemTicketOut = { id: string; numero: number | null; tipo: string };
+    let topClientes: { cliente: string; tickets: number; items: ItemTicketOut[] }[] = [];
+    let porProgramador: { programador: string; tickets: number; items: ItemTicketOut[] }[] = [];
     try {
       const [tiposRes, proysRes] = await Promise.all([
         auth.sb.from("proyecto_tipos").select("id, nombre").eq("empresa_id", auth.empresaId),
@@ -125,24 +126,35 @@ export async function GET(request: Request) {
         porSistema = [...sistemas.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })).sort((a, b) => b.cantidad - a.cantidad);
       }
 
+      // Cada ticket: su nº, tipo y id (para listar al desplegar y poder abrirlo).
+      type ItemTicket = { id: string; numero: number | null; tipo: string };
+      const porDesc = (a: ItemTicket, b: ItemTicket) => (b.numero ?? 0) - (a.numero ?? 0);
+
       // --- (1) Top clientes por tickets ---
-      const porCliente = new Map<string, number>();
+      const porCliente = new Map<string, ItemTicket[]>();
       // --- (2) Tickets por programador (del proyecto del ticket) ---
-      const porTec = new Map<string | null, number>();
+      const porTec = new Map<string | null, ItemTicket[]>();
       for (const t of actuales) {
-        if (t.cliente_id) porCliente.set(t.cliente_id, (porCliente.get(t.cliente_id) ?? 0) + 1);
+        const item: ItemTicket = { id: t.id, numero: t.numero ?? null, tipo: etiquetaTipo(cat, t.tipo_codigo, t.clasificacion_codigo) };
+        if (t.cliente_id) {
+          const arr = porCliente.get(t.cliente_id) ?? [];
+          arr.push(item);
+          porCliente.set(t.cliente_id, arr);
+        }
         const tecId = t.proyecto_id ? tecnicoDeProyecto.get(t.proyecto_id) ?? null : null;
-        porTec.set(tecId, (porTec.get(tecId) ?? 0) + 1);
+        const arr2 = porTec.get(tecId) ?? [];
+        arr2.push(item);
+        porTec.set(tecId, arr2);
       }
 
-      const top = [...porCliente.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+      const top = [...porCliente.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 10);
       const clientes = await clientesDeEmpresa(auth.sb, auth.empresaId);
       const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre]));
-      topClientes = top.map(([cid, tickets]) => ({ cliente: nombreCliente.get(cid) ?? "Cliente", tickets }));
+      topClientes = top.map(([cid, items]) => ({ cliente: nombreCliente.get(cid) ?? "Cliente", tickets: items.length, items: [...items].sort(porDesc) }));
 
       const personas = await personasPorId([...porTec.keys()].filter((x): x is string => !!x));
       porProgramador = [...porTec.entries()]
-        .map(([tecId, tickets]) => ({ programador: tecId ? personas.get(tecId)?.nombre ?? "—" : "Sin programador", tickets }))
+        .map(([tecId, items]) => ({ programador: tecId ? personas.get(tecId)?.nombre ?? "—" : "Sin programador", tickets: items.length, items: [...items].sort(porDesc) }))
         .sort((a, b) => b.tickets - a.tickets);
     } catch {
       porSistema = [];

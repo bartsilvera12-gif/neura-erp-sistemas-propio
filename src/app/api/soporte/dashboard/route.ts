@@ -70,7 +70,35 @@ export async function GET(request: Request) {
     }
     const porTipo = [...tipos.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })).sort((a, b) => b.cantidad - a.cantidad);
 
-    return ok({ dias, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo });
+    // Tickets por TIPO DE SISTEMA: cada ticket es sobre un proyecto concreto, y
+    // el proyecto tiene UN tipo (Web / SaaS-ERP / Mixto). Así se atribuye por
+    // ticket —un cliente con 2 suscripciones reparte bien sus tickets—, sin
+    // depender del "tipo de cliente" (ambiguo). Drift-safe: si el tenant no
+    // tiene proyectos/tipos, queda vacío.
+    let porSistema: { nombre: string; cantidad: number }[] = [];
+    try {
+      const [tiposRes, proysRes] = await Promise.all([
+        auth.sb.from("proyecto_tipos").select("id, nombre").eq("empresa_id", auth.empresaId),
+        auth.sb.from("proyectos").select("id, tipo_id").eq("empresa_id", auth.empresaId).limit(5000),
+      ]);
+      const nombreTipo = new Map<string, string>();
+      for (const tp of (tiposRes.data ?? []) as { id: string; nombre: string }[]) nombreTipo.set(tp.id, tp.nombre);
+      if (nombreTipo.size > 0) {
+        const tipoDeProyecto = new Map<string, string | null>();
+        for (const p of (proysRes.data ?? []) as { id: string; tipo_id: string | null }[]) tipoDeProyecto.set(p.id, p.tipo_id);
+        const sistemas = new Map<string, number>();
+        for (const t of actuales) {
+          const tipoId = t.proyecto_id ? tipoDeProyecto.get(t.proyecto_id) ?? null : null;
+          const nombre = (tipoId && nombreTipo.get(tipoId)) || "Sin sistema asociado";
+          sistemas.set(nombre, (sistemas.get(nombre) ?? 0) + 1);
+        }
+        porSistema = [...sistemas.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })).sort((a, b) => b.cantidad - a.cantidad);
+      }
+    } catch {
+      porSistema = [];
+    }
+
+    return ok({ dias, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo, por_sistema: porSistema });
   } catch (e) {
     return errorInesperado(e);
   }

@@ -12,6 +12,7 @@ import {
   FlaskConical,
   Headphones,
   Inbox,
+  Layers,
   ListChecks,
   Lock,
   MessageSquareWarning,
@@ -46,6 +47,7 @@ type Dashboard = {
   variacion: Record<string, number | null>;
   por_estado: { codigo: string; nombre: string; color: string; cantidad: number }[];
   por_tipo: { nombre: string; cantidad: number }[];
+  por_sistema: { nombre: string; cantidad: number }[];
 };
 
 const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
@@ -143,6 +145,7 @@ export default function SoporteDashboardPage() {
   }, [dias]);
 
   const totalTipos = datos?.por_tipo.reduce((s, t) => s + t.cantidad, 0) ?? 0;
+  const totalSistema = datos?.por_sistema?.reduce((s, t) => s + t.cantidad, 0) ?? 0;
 
   // Card "Tickets por hora del día": rango de fechas propio.
   const [desdeHora, setDesdeHora] = useState(primeroDelMes);
@@ -281,6 +284,40 @@ export default function SoporteDashboardPage() {
             )}
           </Tarjeta>
         </div>
+
+        {/* Tickets por tipo de sistema: via el proyecto del ticket (Web / SaaS-ERP /
+            Mixto). Por ticket, no por cliente: resuelve el caso de un cliente con
+            varias suscripciones. Respeta el período de arriba. */}
+        <Tarjeta titulo="Tickets por tipo de sistema" icono={Layers} tono="celeste">
+          {!datos ? (
+            <Esqueleto className="h-40 w-full rounded-xl" />
+          ) : totalSistema === 0 ? (
+            <Vacio titulo="Sin tickets en el período" icono={Layers} tono="celeste" />
+          ) : (
+            <ul className="space-y-3">
+              {datos.por_sistema.map((s, i) => {
+                const pct = Math.round((s.cantidad / totalSistema) * 100);
+                const color = PALETA_TIPOS[i % PALETA_TIPOS.length];
+                return (
+                  <li key={s.nombre}>
+                    <div className="flex items-center justify-between gap-3 text-[13px]">
+                      <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+                        <span className="truncate">{s.nombre}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-slate-500">
+                        <span className="font-bold text-slate-800">{s.cantidad}</span> · {pct}%
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Tarjeta>
 
         {/* Tickets cargados por hora del día (rango de fechas propio) */}
         <Tarjeta

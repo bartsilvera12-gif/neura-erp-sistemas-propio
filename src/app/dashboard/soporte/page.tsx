@@ -19,6 +19,7 @@ import {
   PieChart as IconoTorta,
   Plus,
   Ticket,
+  Trophy,
   UserRoundCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -48,6 +49,7 @@ type Dashboard = {
   por_estado: { codigo: string; nombre: string; color: string; cantidad: number }[];
   por_tipo: { nombre: string; cantidad: number }[];
   por_sistema: { nombre: string; cantidad: number }[];
+  top_clientes: { cliente: string; tickets: number; programador: string }[];
 };
 
 const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
@@ -316,6 +318,40 @@ export default function SoporteDashboardPage() {
                 );
               })}
             </ul>
+          )}
+        </Tarjeta>
+
+        {/* Top clientes del período (por tickets) + programador del proyecto */}
+        <Tarjeta titulo="Top clientes por tickets" icono={Trophy} tono="ambar" padding="p-0">
+          {!datos ? (
+            <div className="p-5"><Esqueleto className="h-48 w-full rounded-xl" /></div>
+          ) : (datos.top_clientes?.length ?? 0) === 0 ? (
+            <div className="p-5"><Vacio titulo="Sin tickets en el período" icono={Trophy} tono="ambar" /></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50/70 text-[10px] uppercase tracking-wide text-slate-400">
+                  <tr>
+                    <th className="px-5 py-2.5 text-left font-semibold">#</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Cliente</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Programador</th>
+                    <th className="px-5 py-2.5 text-right font-semibold">Tickets</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {datos.top_clientes.map((c, i) => (
+                    <tr key={`${c.cliente}-${i}`} className="hover:bg-amber-50/40">
+                      <td className="px-5 py-2.5 text-[12px] font-bold tabular-nums text-slate-400">{i + 1}</td>
+                      <td className="max-w-[240px] truncate px-3 py-2.5 font-medium text-slate-800" title={c.cliente}>{c.cliente}</td>
+                      <td className="max-w-[200px] truncate px-3 py-2.5 text-slate-500" title={c.programador}>
+                        {c.programador === "Sin programador" ? <span className="text-slate-300">Sin programador</span> : c.programador}
+                      </td>
+                      <td className="px-5 py-2.5 text-right"><span className="font-bold tabular-nums text-slate-800">{c.tickets}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Tarjeta>
 

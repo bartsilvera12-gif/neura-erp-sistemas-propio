@@ -1,6 +1,6 @@
 import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
 import { calcularSla, etiquetaTipo, type TicketFila } from "@/lib/soporte/dominio";
-import { errorInesperado, leerCatalogos, ok, sinPermiso } from "@/lib/soporte/servidor";
+import { clientesDeEmpresa, errorInesperado, leerCatalogos, ok, personasPorId, sinPermiso } from "@/lib/soporte/servidor";
 import { ticketsParaAgregar } from "@/lib/soporte/agregados-servidor";
 
 const DIA_MS = 86_400_000;
@@ -76,16 +76,25 @@ export async function GET(request: Request) {
     // depender del "tipo de cliente" (ambiguo). Drift-safe: si el tenant no
     // tiene proyectos/tipos, queda vacío.
     let porSistema: { nombre: string; cantidad: number }[] = [];
+    // Top clientes del período (por tickets) + el programador del proyecto de
+    // esos tickets. Por ticket → proyecto → responsable_tecnico.
+    let topClientes: { cliente: string; tickets: number; programador: string }[] = [];
     try {
       const [tiposRes, proysRes] = await Promise.all([
         auth.sb.from("proyecto_tipos").select("id, nombre").eq("empresa_id", auth.empresaId),
-        auth.sb.from("proyectos").select("id, tipo_id").eq("empresa_id", auth.empresaId).limit(5000),
+        auth.sb.from("proyectos").select("id, tipo_id, responsable_tecnico_id").eq("empresa_id", auth.empresaId).limit(5000),
       ]);
       const nombreTipo = new Map<string, string>();
       for (const tp of (tiposRes.data ?? []) as { id: string; nombre: string }[]) nombreTipo.set(tp.id, tp.nombre);
+      const tipoDeProyecto = new Map<string, string | null>();
+      const tecnicoDeProyecto = new Map<string, string | null>();
+      for (const p of (proysRes.data ?? []) as { id: string; tipo_id: string | null; responsable_tecnico_id: string | null }[]) {
+        tipoDeProyecto.set(p.id, p.tipo_id);
+        tecnicoDeProyecto.set(p.id, p.responsable_tecnico_id);
+      }
+
+      // --- por tipo de sistema ---
       if (nombreTipo.size > 0) {
-        const tipoDeProyecto = new Map<string, string | null>();
-        for (const p of (proysRes.data ?? []) as { id: string; tipo_id: string | null }[]) tipoDeProyecto.set(p.id, p.tipo_id);
         const sistemas = new Map<string, number>();
         for (const t of actuales) {
           const tipoId = t.proyecto_id ? tipoDeProyecto.get(t.proyecto_id) ?? null : null;
@@ -94,11 +103,43 @@ export async function GET(request: Request) {
         }
         porSistema = [...sistemas.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })).sort((a, b) => b.cantidad - a.cantidad);
       }
+
+      // --- top clientes + programador ---
+      const porCliente = new Map<string, { tickets: number; tecnicos: Map<string, number> }>();
+      for (const t of actuales) {
+        const cid = t.cliente_id;
+        if (!cid) continue;
+        let agg = porCliente.get(cid);
+        if (!agg) {
+          agg = { tickets: 0, tecnicos: new Map() };
+          porCliente.set(cid, agg);
+        }
+        agg.tickets += 1;
+        const tecId = t.proyecto_id ? tecnicoDeProyecto.get(t.proyecto_id) ?? null : null;
+        if (tecId) agg.tecnicos.set(tecId, (agg.tecnicos.get(tecId) ?? 0) + 1);
+      }
+      const top = [...porCliente.entries()].sort((a, b) => b[1].tickets - a[1].tickets).slice(0, 10);
+      const clientes = await clientesDeEmpresa(auth.sb, auth.empresaId);
+      const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre]));
+      const tecnicoIds = top.flatMap(([, agg]) => [...agg.tecnicos.keys()]);
+      const personas = await personasPorId(tecnicoIds);
+      topClientes = top.map(([cid, agg]) => {
+        // Programador principal = el del proyecto con más tickets de ese cliente;
+        // si hay varios distintos, se indica "+N".
+        const ordenados = [...agg.tecnicos.entries()].sort((a, b) => b[1] - a[1]);
+        let programador = "Sin programador";
+        if (ordenados.length > 0) {
+          const principal = personas.get(ordenados[0][0])?.nombre ?? "—";
+          programador = ordenados.length > 1 ? `${principal} +${ordenados.length - 1}` : principal;
+        }
+        return { cliente: nombreCliente.get(cid) ?? "Cliente", tickets: agg.tickets, programador };
+      });
     } catch {
       porSistema = [];
+      topClientes = [];
     }
 
-    return ok({ dias, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo, por_sistema: porSistema });
+    return ok({ dias, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo, por_sistema: porSistema, top_clientes: topClientes });
   } catch (e) {
     return errorInesperado(e);
   }

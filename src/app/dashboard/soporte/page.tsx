@@ -98,21 +98,20 @@ const hoyISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-/** Tickets de un cliente/programador: chips "#nº · tipo" que abren el ticket. */
+/** Tickets de un cliente/programador: una fila por ticket (#nº · tipo), clickeable. */
 function ItemsTickets({ items }: { items: ItemTicket[] }) {
-  if (!items || items.length === 0) return <p className="px-3 py-2.5 text-[12px] text-slate-400">Sin tickets.</p>;
+  if (!items || items.length === 0) return <p className="px-4 py-2.5 text-[12px] text-slate-400">Sin tickets.</p>;
   return (
-    <div className="flex flex-wrap gap-1.5 px-3 py-2.5">
+    <div className="divide-y divide-slate-100">
       {items.map((it) => (
         <Link
           key={it.id}
           href={`/dashboard/soporte/tickets/${it.id}`}
           prefetch
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] no-underline transition hover:border-[#4FAEB2]/50 hover:bg-[#4FAEB2]/5"
+          className="flex items-center justify-between gap-3 px-4 py-2 text-[12px] no-underline transition hover:bg-[#4FAEB2]/5"
         >
           <span className="font-mono font-semibold text-slate-700">{it.numero != null ? numeroTicket(it.numero) : "#—"}</span>
-          <span className="text-slate-300">·</span>
-          <span className="text-slate-500">{it.tipo}</span>
+          <span className="truncate text-slate-500">{it.tipo}</span>
         </Link>
       ))}
     </div>

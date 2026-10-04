@@ -100,29 +100,43 @@ const hoyISO = () => {
 
 /**
  * Tickets de un cliente/programador: una fila por ticket, clickeable.
- * En la vista del programador (`conCliente`) suma la columna Cliente y permite
- * ordenar por N° o por Cliente (agrupa los tickets del mismo cliente).
+ * En la vista del programador (`conCliente`) suma la columna Cliente y encabezados
+ * clickeables: tocás "Cliente" (o cualquier columna) y ordena por eso.
  */
+type CampoOrden = "numero" | "cliente" | "proyecto" | "tipo";
 function ItemsTickets({ items, conCliente = false }: { items: ItemTicket[]; conCliente?: boolean }) {
-  const [orden, setOrden] = useState<"numero" | "cliente">("numero");
+  const [orden, setOrden] = useState<CampoOrden>("numero");
   const ordenados = useMemo(() => {
     const arr = [...items];
-    if (conCliente && orden === "cliente") {
-      arr.sort((a, b) => a.cliente.localeCompare(b.cliente, "es") || (b.numero ?? 0) - (a.numero ?? 0));
-    } else {
-      arr.sort((a, b) => (b.numero ?? 0) - (a.numero ?? 0));
-    }
+    const porNum = (a: ItemTicket, b: ItemTicket) => (b.numero ?? 0) - (a.numero ?? 0);
+    if (orden === "cliente") arr.sort((a, b) => a.cliente.localeCompare(b.cliente, "es") || porNum(a, b));
+    else if (orden === "proyecto") arr.sort((a, b) => a.proyecto.localeCompare(b.proyecto, "es") || porNum(a, b));
+    else if (orden === "tipo") arr.sort((a, b) => a.tipo.localeCompare(b.tipo, "es") || porNum(a, b));
+    else arr.sort(porNum);
     return arr;
-  }, [items, orden, conCliente]);
+  }, [items, orden]);
 
   if (!items || items.length === 0) return <p className="px-4 py-2.5 text-[12px] text-slate-400">Sin tickets.</p>;
+
+  const th = (campo: CampoOrden, label: string, extra: string) => (
+    <button
+      type="button"
+      onClick={() => setOrden(campo)}
+      className={`${extra} text-[10px] font-semibold uppercase tracking-wide transition ${orden === campo ? "text-[#2F6E71]" : "text-slate-400 hover:text-slate-600"}`}
+    >
+      {label}
+      {orden === campo ? " ↓" : ""}
+    </button>
+  );
+
   return (
     <div>
       {conCliente ? (
-        <div className="flex items-center justify-end gap-1 px-4 py-1.5 text-[11px]">
-          <span className="mr-1 text-slate-400">Ordenar:</span>
-          <button type="button" onClick={() => setOrden("numero")} className={`rounded px-1.5 py-0.5 font-medium transition ${orden === "numero" ? "bg-[#4FAEB2]/15 text-[#2F6E71]" : "text-slate-500 hover:bg-slate-100"}`}>N°</button>
-          <button type="button" onClick={() => setOrden("cliente")} className={`rounded px-1.5 py-0.5 font-medium transition ${orden === "cliente" ? "bg-[#4FAEB2]/15 text-[#2F6E71]" : "text-slate-500 hover:bg-slate-100"}`}>Cliente</button>
+        <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-1.5">
+          {th("numero", "N°", "w-[52px] shrink-0 text-left")}
+          {th("cliente", "Cliente", "min-w-0 flex-1 truncate text-left")}
+          {th("proyecto", "Proyecto", "min-w-0 flex-1 truncate text-left")}
+          {th("tipo", "Tipo", "shrink-0 text-right")}
         </div>
       ) : null}
       <div className="divide-y divide-slate-100">

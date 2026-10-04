@@ -49,7 +49,8 @@ type Dashboard = {
   por_estado: { codigo: string; nombre: string; color: string; cantidad: number }[];
   por_tipo: { nombre: string; cantidad: number }[];
   por_sistema: { nombre: string; cantidad: number }[];
-  top_clientes: { cliente: string; tickets: number; programador: string }[];
+  top_clientes: { cliente: string; tickets: number }[];
+  por_programador: { programador: string; tickets: number }[];
 };
 
 const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
@@ -148,6 +149,7 @@ export default function SoporteDashboardPage() {
 
   const totalTipos = datos?.por_tipo.reduce((s, t) => s + t.cantidad, 0) ?? 0;
   const totalSistema = datos?.por_sistema?.reduce((s, t) => s + t.cantidad, 0) ?? 0;
+  const totalProg = datos?.por_programador?.reduce((s, t) => s + t.tickets, 0) ?? 0;
 
   // Card "Tickets por hora del día": rango de fechas propio.
   const [desdeHora, setDesdeHora] = useState(primeroDelMes);
@@ -321,39 +323,71 @@ export default function SoporteDashboardPage() {
           )}
         </Tarjeta>
 
-        {/* Top clientes del período (por tickets) + programador del proyecto */}
-        <Tarjeta titulo="Top clientes por tickets" icono={Trophy} tono="ambar" padding="p-0">
-          {!datos ? (
-            <div className="p-5"><Esqueleto className="h-48 w-full rounded-xl" /></div>
-          ) : (datos.top_clientes?.length ?? 0) === 0 ? (
-            <div className="p-5"><Vacio titulo="Sin tickets en el período" icono={Trophy} tono="ambar" /></div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-sm">
-                <thead className="border-b border-slate-100 bg-slate-50/70 text-[10px] uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="px-5 py-2.5 text-left font-semibold">#</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Cliente</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Programador</th>
-                    <th className="px-5 py-2.5 text-right font-semibold">Tickets</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {datos.top_clientes.map((c, i) => (
-                    <tr key={`${c.cliente}-${i}`} className="hover:bg-amber-50/40">
-                      <td className="px-5 py-2.5 text-[12px] font-bold tabular-nums text-slate-400">{i + 1}</td>
-                      <td className="max-w-[240px] truncate px-3 py-2.5 font-medium text-slate-800" title={c.cliente}>{c.cliente}</td>
-                      <td className="max-w-[200px] truncate px-3 py-2.5 text-slate-500" title={c.programador}>
-                        {c.programador === "Sin programador" ? <span className="text-slate-300">Sin programador</span> : c.programador}
-                      </td>
-                      <td className="px-5 py-2.5 text-right"><span className="font-bold tabular-nums text-slate-800">{c.tickets}</span></td>
+        {/* Dos cortes SEPARADOS: Top clientes y Tickets por programador */}
+        <div className="grid gap-5 lg:grid-cols-2">
+          {/* (1) Top clientes por tickets del período */}
+          <Tarjeta titulo="Top clientes por tickets" icono={Trophy} tono="ambar" padding="p-0">
+            {!datos ? (
+              <div className="p-5"><Esqueleto className="h-48 w-full rounded-xl" /></div>
+            ) : (datos.top_clientes?.length ?? 0) === 0 ? (
+              <div className="p-5"><Vacio titulo="Sin tickets en el período" icono={Trophy} tono="ambar" /></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-slate-100 bg-slate-50/70 text-[10px] uppercase tracking-wide text-slate-400">
+                    <tr>
+                      <th className="px-5 py-2.5 text-left font-semibold">#</th>
+                      <th className="px-3 py-2.5 text-left font-semibold">Cliente</th>
+                      <th className="px-5 py-2.5 text-right font-semibold">Tickets</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Tarjeta>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {datos.top_clientes.map((c, i) => (
+                      <tr key={`${c.cliente}-${i}`} className="hover:bg-amber-50/40">
+                        <td className="px-5 py-2.5 text-[12px] font-bold tabular-nums text-slate-400">{i + 1}</td>
+                        <td className="max-w-[260px] truncate px-3 py-2.5 font-medium text-slate-800" title={c.cliente}>{c.cliente}</td>
+                        <td className="px-5 py-2.5 text-right"><span className="font-bold tabular-nums text-slate-800">{c.tickets}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Tarjeta>
+
+          {/* (2) Tickets por programador (del proyecto del ticket) */}
+          <Tarjeta titulo="Tickets por programador" icono={Code2} tono="celeste">
+            {!datos ? (
+              <Esqueleto className="h-48 w-full rounded-xl" />
+            ) : totalProg === 0 ? (
+              <Vacio titulo="Sin tickets en el período" icono={Code2} tono="celeste" />
+            ) : (
+              <ul className="space-y-3">
+                {datos.por_programador.map((p, i) => {
+                  const pct = Math.round((p.tickets / totalProg) * 100);
+                  const color = PALETA_TIPOS[i % PALETA_TIPOS.length];
+                  const sinProg = p.programador === "Sin programador";
+                  return (
+                    <li key={`${p.programador}-${i}`}>
+                      <div className="flex items-center justify-between gap-3 text-[13px]">
+                        <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: sinProg ? "#cbd5e1" : color }} aria-hidden />
+                          <span className={`truncate ${sinProg ? "text-slate-400" : ""}`} title={p.programador}>{p.programador}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-slate-500">
+                          <span className="font-bold text-slate-800">{p.tickets}</span> · {pct}%
+                        </span>
+                      </div>
+                      <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: sinProg ? "#cbd5e1" : color }} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Tarjeta>
+        </div>
 
         {/* Tickets cargados por hora del día (rango de fechas propio) */}
         <Tarjeta

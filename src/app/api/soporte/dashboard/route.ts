@@ -76,9 +76,10 @@ export async function GET(request: Request) {
     // depender del "tipo de cliente" (ambiguo). Drift-safe: si el tenant no
     // tiene proyectos/tipos, queda vacío.
     let porSistema: { nombre: string; cantidad: number }[] = [];
-    // Top clientes del período (por tickets) + el programador del proyecto de
-    // esos tickets. Por ticket → proyecto → responsable_tecnico.
-    let topClientes: { cliente: string; tickets: number; programador: string }[] = [];
+    // Dos cortes SEPARADOS: Top clientes (por tickets) y Tickets por programador
+    // (el responsable_tecnico del proyecto al que pertenece cada ticket).
+    let topClientes: { cliente: string; tickets: number }[] = [];
+    let porProgramador: { programador: string; tickets: number }[] = [];
     try {
       const [tiposRes, proysRes] = await Promise.all([
         auth.sb.from("proyecto_tipos").select("id, nombre").eq("empresa_id", auth.empresaId),
@@ -104,42 +105,32 @@ export async function GET(request: Request) {
         porSistema = [...sistemas.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })).sort((a, b) => b.cantidad - a.cantidad);
       }
 
-      // --- top clientes + programador ---
-      const porCliente = new Map<string, { tickets: number; tecnicos: Map<string, number> }>();
+      // --- (1) Top clientes por tickets ---
+      const porCliente = new Map<string, number>();
+      // --- (2) Tickets por programador (del proyecto del ticket) ---
+      const porTec = new Map<string | null, number>();
       for (const t of actuales) {
-        const cid = t.cliente_id;
-        if (!cid) continue;
-        let agg = porCliente.get(cid);
-        if (!agg) {
-          agg = { tickets: 0, tecnicos: new Map() };
-          porCliente.set(cid, agg);
-        }
-        agg.tickets += 1;
+        if (t.cliente_id) porCliente.set(t.cliente_id, (porCliente.get(t.cliente_id) ?? 0) + 1);
         const tecId = t.proyecto_id ? tecnicoDeProyecto.get(t.proyecto_id) ?? null : null;
-        if (tecId) agg.tecnicos.set(tecId, (agg.tecnicos.get(tecId) ?? 0) + 1);
+        porTec.set(tecId, (porTec.get(tecId) ?? 0) + 1);
       }
-      const top = [...porCliente.entries()].sort((a, b) => b[1].tickets - a[1].tickets).slice(0, 10);
+
+      const top = [...porCliente.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
       const clientes = await clientesDeEmpresa(auth.sb, auth.empresaId);
       const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre]));
-      const tecnicoIds = top.flatMap(([, agg]) => [...agg.tecnicos.keys()]);
-      const personas = await personasPorId(tecnicoIds);
-      topClientes = top.map(([cid, agg]) => {
-        // Programador principal = el del proyecto con más tickets de ese cliente;
-        // si hay varios distintos, se indica "+N".
-        const ordenados = [...agg.tecnicos.entries()].sort((a, b) => b[1] - a[1]);
-        let programador = "Sin programador";
-        if (ordenados.length > 0) {
-          const principal = personas.get(ordenados[0][0])?.nombre ?? "—";
-          programador = ordenados.length > 1 ? `${principal} +${ordenados.length - 1}` : principal;
-        }
-        return { cliente: nombreCliente.get(cid) ?? "Cliente", tickets: agg.tickets, programador };
-      });
+      topClientes = top.map(([cid, tickets]) => ({ cliente: nombreCliente.get(cid) ?? "Cliente", tickets }));
+
+      const personas = await personasPorId([...porTec.keys()].filter((x): x is string => !!x));
+      porProgramador = [...porTec.entries()]
+        .map(([tecId, tickets]) => ({ programador: tecId ? personas.get(tecId)?.nombre ?? "—" : "Sin programador", tickets }))
+        .sort((a, b) => b.tickets - a.tickets);
     } catch {
       porSistema = [];
       topClientes = [];
+      porProgramador = [];
     }
 
-    return ok({ dias, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo, por_sistema: porSistema, top_clientes: topClientes });
+    return ok({ dias, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo, por_sistema: porSistema, top_clientes: topClientes, por_programador: porProgramador });
   } catch (e) {
     return errorInesperado(e);
   }

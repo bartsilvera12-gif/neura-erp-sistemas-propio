@@ -72,6 +72,7 @@ const ACCESOS: { titulo: string; detalle: string; href: string; icono: LucideIco
 ];
 
 const PERIODOS = [
+  { value: "mes", label: "Mes actual" },
   { value: "7", label: "Últimos 7 días" },
   { value: "30", label: "Últimos 30 días" },
   { value: "90", label: "Últimos 90 días" },
@@ -111,8 +112,8 @@ function Variacion({ valor, malo }: { valor: number | null | undefined; malo?: b
  * accesos rápidos cubren lo que se hace todos los días sin pasar por el menú.
  */
 export default function SoporteDashboardPage() {
-  const [dias, setDias] = useState("30");
-  const [datos, setDatos] = useState<Dashboard | null>(() => recordado.get("30") ?? null);
+  const [dias, setDias] = useState("mes");
+  const [datos, setDatos] = useState<Dashboard | null>(() => recordado.get("mes") ?? null);
   const [error, setError] = useState<string | null>(null);
 
   // PM, QA y Desarrollo no ven el Dashboard: van directo a los tickets.

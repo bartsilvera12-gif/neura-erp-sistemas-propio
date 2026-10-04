@@ -2,8 +2,17 @@ import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
 import { calcularSla, etiquetaTipo, type TicketFila } from "@/lib/soporte/dominio";
 import { clientesDeEmpresa, errorInesperado, leerCatalogos, ok, personasPorId, sinPermiso } from "@/lib/soporte/servidor";
 import { ticketsParaAgregar } from "@/lib/soporte/agregados-servidor";
+import { TZ_PY } from "@/lib/format/hora-py";
 
 const DIA_MS = 86_400_000;
+
+/** Instante (ms) del 1° del mes en curso, 00:00 hora de Paraguay. */
+function inicioMesPy(ahora: number): number {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit" }).formatToParts(new Date(ahora));
+  const y = p.find((x) => x.type === "year")?.value ?? "1970";
+  const m = p.find((x) => x.type === "month")?.value ?? "01";
+  return Date.parse(`${y}-${m}-01T00:00:00-03:00`);
+}
 
 /**
  * GET /api/soporte/dashboard?dias=30
@@ -17,21 +26,32 @@ export async function GET(request: Request) {
   if (!auth.ok) return sinPermiso(auth);
   if (!auth.veDashboard) return sinPermiso({ ok: false, status: 403, message: "El Dashboard de Soporte no está habilitado para tu usuario" });
   try {
-    const dias = Math.max(0, Math.min(365, Number(new URL(request.url).searchParams.get("dias") ?? "30") || 0));
+    const periodo = new URL(request.url).searchParams.get("dias") ?? "30";
     const cat = await leerCatalogos(auth.sb, auth.empresaId);
     const todos = await ticketsParaAgregar(auth.sb, auth.empresaId);
 
     const ahora = Date.now();
     const ahoraIso = new Date(ahora).toISOString();
-    const inicio = dias ? ahora - dias * DIA_MS : null;
-    const inicioPrevio = dias ? ahora - 2 * dias * DIA_MS : null;
+    // "mes" = mes calendario en curso (sin comparación, es parcial). El resto son
+    // ventanas móviles de N días (con comparación contra el período anterior).
+    let inicio: number | null;
+    let inicioPrevio: number | null;
+    let dias = 0;
+    if (periodo === "mes") {
+      inicio = inicioMesPy(ahora);
+      inicioPrevio = null;
+    } else {
+      dias = Math.max(0, Math.min(365, Number(periodo) || 0));
+      inicio = dias ? ahora - dias * DIA_MS : null;
+      inicioPrevio = dias ? ahora - 2 * dias * DIA_MS : null;
+    }
 
     const enRango = (t: TicketFila, desde: number | null, hasta: number) => {
       const c = Date.parse(t.created_at);
       return (desde == null || c >= desde) && c < hasta;
     };
     const actuales = todos.filter((t) => enRango(t, inicio, ahora + 1));
-    const previos = inicio != null ? todos.filter((t) => enRango(t, inicioPrevio, inicio)) : [];
+    const previos = inicioPrevio != null && inicio != null ? todos.filter((t) => enRango(t, inicioPrevio, inicio)) : [];
 
     const kpis = (lista: TicketFila[]) => {
       const cuenta = (...codigos: string[]) => lista.filter((t) => codigos.includes(t.estado_codigo)).length;
@@ -47,7 +67,7 @@ export async function GET(request: Request) {
       };
     };
     const kActual = kpis(actuales);
-    const kPrevio = inicio != null ? kpis(previos) : null;
+    const kPrevio = inicioPrevio != null && inicio != null ? kpis(previos) : null;
     const variacion: Record<string, number | null> = {};
     for (const k of Object.keys(kActual) as (keyof typeof kActual)[]) {
       const antes = kPrevio?.[k];

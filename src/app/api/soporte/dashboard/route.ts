@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     let porSistema: { nombre: string; cantidad: number }[] = [];
     // Dos cortes SEPARADOS: Top clientes (por tickets) y Tickets por programador
     // (el responsable_tecnico del proyecto al que pertenece cada ticket).
-    type ItemTicketOut = { id: string; numero: number | null; proyecto: string; tipo: string };
+    type ItemTicketOut = { id: string; numero: number | null; cliente: string; proyecto: string; tipo: string };
     let topClientes: { cliente: string; tickets: number; items: ItemTicketOut[] }[] = [];
     let porProgramador: { programador: string; tickets: number; items: ItemTicketOut[] }[] = [];
     try {
@@ -128,9 +128,11 @@ export async function GET(request: Request) {
         porSistema = [...sistemas.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })).sort((a, b) => b.cantidad - a.cantidad);
       }
 
-      // Cada ticket: su nº, tipo y id (para listar al desplegar y poder abrirlo).
-      type ItemTicket = { id: string; numero: number | null; proyecto: string; tipo: string };
+      // Cada ticket: su nº, cliente, proyecto, tipo e id (para listar al desplegar).
+      type ItemTicket = { id: string; numero: number | null; cliente: string; proyecto: string; tipo: string };
       const porDesc = (a: ItemTicket, b: ItemTicket) => (b.numero ?? 0) - (a.numero ?? 0);
+      const clientes = await clientesDeEmpresa(auth.sb, auth.empresaId);
+      const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre]));
 
       // --- (1) Top clientes por tickets ---
       const porCliente = new Map<string, ItemTicket[]>();
@@ -140,6 +142,7 @@ export async function GET(request: Request) {
         const item: ItemTicket = {
           id: t.id,
           numero: t.numero ?? null,
+          cliente: t.cliente_id ? nombreCliente.get(t.cliente_id) ?? "—" : "—",
           proyecto: t.proyecto_id ? tituloDeProyecto.get(t.proyecto_id) ?? "—" : "—",
           tipo: etiquetaTipo(cat, t.tipo_codigo, t.clasificacion_codigo),
         };
@@ -155,8 +158,6 @@ export async function GET(request: Request) {
       }
 
       const top = [...porCliente.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 10);
-      const clientes = await clientesDeEmpresa(auth.sb, auth.empresaId);
-      const nombreCliente = new Map(clientes.map((c) => [c.id, c.nombre]));
       topClientes = top.map(([cid, items]) => ({ cliente: nombreCliente.get(cid) ?? "Cliente", tickets: items.length, items: [...items].sort(porDesc) }));
 
       const personas = await personasPorId([...porTec.keys()].filter((x): x is string => !!x));

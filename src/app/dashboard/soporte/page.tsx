@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   AlarmClock,
   BarChart3,
@@ -55,7 +55,7 @@ type Dashboard = {
   por_programador: { programador: string; tickets: number; items: ItemTicket[] }[];
 };
 
-type ItemTicket = { id: string; numero: number | null; proyecto: string; tipo: string };
+type ItemTicket = { id: string; numero: number | null; cliente: string; proyecto: string; tipo: string };
 
 const KPIS: { clave: string; etiqueta: string; icono: LucideIcon; tono: Tono; malo?: boolean; href: string }[] = [
   { clave: "total", etiqueta: "Total de tickets", icono: Ticket, tono: "turquesa", href: "/dashboard/soporte/tickets" },
@@ -98,23 +98,48 @@ const hoyISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-/** Tickets de un cliente/programador: una fila por ticket (#nº · tipo), clickeable. */
-function ItemsTickets({ items }: { items: ItemTicket[] }) {
+/**
+ * Tickets de un cliente/programador: una fila por ticket, clickeable.
+ * En la vista del programador (`conCliente`) suma la columna Cliente y permite
+ * ordenar por N° o por Cliente (agrupa los tickets del mismo cliente).
+ */
+function ItemsTickets({ items, conCliente = false }: { items: ItemTicket[]; conCliente?: boolean }) {
+  const [orden, setOrden] = useState<"numero" | "cliente">("numero");
+  const ordenados = useMemo(() => {
+    const arr = [...items];
+    if (conCliente && orden === "cliente") {
+      arr.sort((a, b) => a.cliente.localeCompare(b.cliente, "es") || (b.numero ?? 0) - (a.numero ?? 0));
+    } else {
+      arr.sort((a, b) => (b.numero ?? 0) - (a.numero ?? 0));
+    }
+    return arr;
+  }, [items, orden, conCliente]);
+
   if (!items || items.length === 0) return <p className="px-4 py-2.5 text-[12px] text-slate-400">Sin tickets.</p>;
   return (
-    <div className="divide-y divide-slate-100">
-      {items.map((it) => (
-        <Link
-          key={it.id}
-          href={`/dashboard/soporte/tickets/${it.id}`}
-          prefetch
-          className="flex items-center gap-3 px-4 py-2 text-[12px] no-underline transition hover:bg-[#4FAEB2]/5"
-        >
-          <span className="w-[56px] shrink-0 font-mono font-semibold text-slate-700">{it.numero != null ? numeroTicket(it.numero) : "#—"}</span>
-          <span className="min-w-0 flex-1 truncate text-slate-600" title={it.proyecto}>{it.proyecto}</span>
-          <span className="shrink-0 text-right text-slate-500">{it.tipo}</span>
-        </Link>
-      ))}
+    <div>
+      {conCliente ? (
+        <div className="flex items-center justify-end gap-1 px-4 py-1.5 text-[11px]">
+          <span className="mr-1 text-slate-400">Ordenar:</span>
+          <button type="button" onClick={() => setOrden("numero")} className={`rounded px-1.5 py-0.5 font-medium transition ${orden === "numero" ? "bg-[#4FAEB2]/15 text-[#2F6E71]" : "text-slate-500 hover:bg-slate-100"}`}>N°</button>
+          <button type="button" onClick={() => setOrden("cliente")} className={`rounded px-1.5 py-0.5 font-medium transition ${orden === "cliente" ? "bg-[#4FAEB2]/15 text-[#2F6E71]" : "text-slate-500 hover:bg-slate-100"}`}>Cliente</button>
+        </div>
+      ) : null}
+      <div className="divide-y divide-slate-100">
+        {ordenados.map((it) => (
+          <Link
+            key={it.id}
+            href={`/dashboard/soporte/tickets/${it.id}`}
+            prefetch
+            className="flex items-center gap-3 px-4 py-2 text-[12px] no-underline transition hover:bg-[#4FAEB2]/5"
+          >
+            <span className="w-[52px] shrink-0 font-mono font-semibold text-slate-700">{it.numero != null ? numeroTicket(it.numero) : "#—"}</span>
+            {conCliente ? <span className="min-w-0 flex-1 truncate font-medium text-slate-700" title={it.cliente}>{it.cliente}</span> : null}
+            <span className="min-w-0 flex-1 truncate text-slate-500" title={it.proyecto}>{it.proyecto}</span>
+            <span className="shrink-0 text-right text-slate-500">{it.tipo}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
@@ -437,7 +462,7 @@ export default function SoporteDashboardPage() {
                           <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: sinProg ? "#cbd5e1" : color }} />
                         </div>
                       </button>
-                      {abierto ? <div className="mt-1.5 rounded-xl bg-slate-50/60">{<ItemsTickets items={p.items} />}</div> : null}
+                      {abierto ? <div className="mt-1.5 rounded-xl bg-slate-50/60">{<ItemsTickets items={p.items} conCliente />}</div> : null}
                     </li>
                   );
                 })}

@@ -60,6 +60,28 @@ function calcularLayout(nodos: Nodo[]): Layout | null {
     const nd = g.node(n.id);
     pos.set(n.id, { x: nd.x, y: nd.y });
   }
+
+  // Si hay varios directivos arriba (raíces sin jefes), dagre los manda a los extremos
+  // porque los subárboles de abajo son asimétricos. Los reubico JUNTOS y CENTRADOS sobre
+  // el conjunto de la empresa (centro de sus hijos directos), para que no quede espatarrado.
+  const raices = nodos.filter((n) => jefesOf.get(n.id)!.length === 0).map((n) => n.id);
+  if (raices.length > 1) {
+    const raizSet = new Set(raices);
+    const hijos = nodos.filter((n) => jefesOf.get(n.id)!.some((j) => raizSet.has(j)));
+    if (hijos.length) {
+      const hxs = hijos.map((h) => pos.get(h.id)!.x);
+      const centro = (Math.min(...hxs) + Math.max(...hxs)) / 2;
+      const NODESEP = 30;
+      const totalW = raices.length * NODE_W + (raices.length - 1) * NODESEP;
+      const ordenadas = [...raices].sort((a, b) => pos.get(a)!.x - pos.get(b)!.x);
+      let x = centro - totalW / 2 + NODE_W / 2;
+      for (const r of ordenadas) {
+        pos.set(r, { x, y: pos.get(r)!.y });
+        x += NODE_W + NODESEP;
+      }
+    }
+  }
+
   const graph = g.graph();
 
   // Conectores: agrupo los nodos por su conjunto de jefes → barra compartida.

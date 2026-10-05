@@ -17,8 +17,8 @@ type Nodo = {
   jefes_extra: string[];
 };
 
-const NODE_W = 190;
-const NODE_H = 96;
+const NODE_W = 224;
+const NODE_H = 118;
 
 function iniciales(n: { nombre_persona: string | null; titulo: string }): string {
   const base = (n.nombre_persona || n.titulo || "").trim();
@@ -73,7 +73,12 @@ function calcularLayout(nodos: Nodo[]): Layout | null {
       const centro = (Math.min(...hxs) + Math.max(...hxs)) / 2;
       const NODESEP = 30;
       const totalW = raices.length * NODE_W + (raices.length - 1) * NODESEP;
-      const ordenadas = [...raices].sort((a, b) => pos.get(a)!.x - pos.get(b)!.x);
+      const ordenadas = [...raices].sort((a, b) => {
+        const oa = byId.get(a)?.orden ?? 0;
+        const ob = byId.get(b)?.orden ?? 0;
+        if (oa !== ob) return oa - ob;
+        return pos.get(a)!.x - pos.get(b)!.x;
+      });
       let x = centro - totalW / 2 + NODE_W / 2;
       for (const r of ordenadas) {
         pos.set(r, { x, y: pos.get(r)!.y });
@@ -121,7 +126,7 @@ function Caja({ nodo }: { nodo: Nodo }) {
       style={{ borderTop: `3px solid ${accent}` }}
     >
       <div
-        className="flex aspect-square h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-bold text-slate-500"
+        className="flex aspect-square h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-base font-bold text-slate-500"
         style={{ border: `2px solid ${accent}` }}
       >
         {nodo.foto_url ? (
@@ -131,8 +136,8 @@ function Caja({ nodo }: { nodo: Nodo }) {
           <span>{iniciales(nodo)}</span>
         )}
       </div>
-      <span className="text-[13px] font-bold leading-tight text-slate-900">{nodo.titulo}</span>
-      {nodo.nombre_persona ? <span className="text-[11px] leading-tight text-slate-500">{nodo.nombre_persona}</span> : null}
+      <span className="text-balance text-[14px] font-bold leading-tight text-slate-900">{nodo.titulo}</span>
+      {nodo.nombre_persona ? <span className="text-[12px] leading-tight text-slate-500">{nodo.nombre_persona}</span> : null}
     </div>
   );
 }

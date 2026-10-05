@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, Search, X, ChevronRight, ExternalLink } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { TZ_PY } from "@/lib/format/hora-py";
@@ -544,13 +545,16 @@ export default function CobranzasClient() {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Seguimiento Cobranzas</h1>
           <p className="mt-1 text-sm text-slate-500">Clientes con deuda y tramos de mora{data?.hoy ? ` · al ${fmtDate(data.hoy)}` : ""}.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportExcelButton url="/api/cobranzas/export" label="Exportar Excel" className="!py-2 !text-xs !rounded-xl" />
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* KPIs GLOBALES (tipo + búsqueda). La pestaña de tramo filtra solo la tabla, no estas tarjetas. */}

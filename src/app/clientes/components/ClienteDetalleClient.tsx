@@ -2893,6 +2893,14 @@ export default function ClienteDetalleClient({
                 const vencElegido =
                   override ? override : formSusc.periodo_factura === "siguiente" ? vencSiguiente : vencActual;
                 const yaVencio = !override && formSusc.periodo_factura === "actual" && vencActual < hoy;
+                // Fecha de EMISIÓN real: cae en el mes del período facturado (hoy si es el
+                // mes corriente; día 01 si es a futuro). Una cuota de un mes futuro no puede
+                // nacer con fecha de hoy o SIFEN la rechaza al emitir el DTE ese mes.
+                const ymActual = hoy.slice(0, 7);
+                const [hY, hM] = ymActual.split("-").map(Number);
+                const ymSiguiente = `${hM === 12 ? hY + 1 : hY}-${String(hM === 12 ? 1 : hM + 1).padStart(2, "0")}`;
+                const periodoSel = override ? override.slice(0, 7) : formSusc.periodo_factura === "siguiente" ? ymSiguiente : ymActual;
+                const emisionElegida = periodoSel === ymActual ? hoy : `${periodoSel}-01`;
                 return (
                   <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-3">
                     <label className="flex items-center gap-2">
@@ -2908,7 +2916,7 @@ export default function ClienteDetalleClient({
                       <p className="text-[11px] text-slate-500">Solo se crea la suscripción. No se genera ninguna factura ahora.</p>
                     ) : (
                       <div className="space-y-2">
-                        <p className="text-[11px] text-slate-500">Elegí qué período facturar. La emisión siempre es hoy ({formatFecha(hoy)}).</p>
+                        <p className="text-[11px] text-slate-500">Elegí qué período facturar. La factura se emite dentro de ese mismo mes: hoy si es el período actual, o el día 01 si es a futuro.</p>
 
                         <label className="flex items-start gap-2 cursor-pointer">
                           <input
@@ -2960,7 +2968,7 @@ export default function ClienteDetalleClient({
                         </label>
 
                         <div className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-600">
-                          Se generará: emisión <strong>{formatFecha(hoy)}</strong> · vencimiento <strong>{formatFecha(vencElegido)}</strong>
+                          Se generará: emisión <strong>{formatFecha(emisionElegida)}</strong> · vencimiento <strong>{formatFecha(vencElegido)}</strong>
                         </div>
 
                         {yaVencio && (

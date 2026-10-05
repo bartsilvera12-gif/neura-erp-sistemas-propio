@@ -80,3 +80,41 @@ WHERE m.slug = 'organigrama'
     SELECT 1 FROM neura.empresa_modulos em2
     WHERE em2.empresa_id = em.empresa_id AND em2.modulo_id = m.id
   );
+
+-- =============================================================================
+-- Doble jefatura: co-jefes (jefes adicionales al parent_id). Idempotente.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS neura.organigrama_nodo_jefes (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id uuid NOT NULL,
+  nodo_id    uuid NOT NULL REFERENCES neura.organigrama_nodos(id) ON DELETE CASCADE,
+  jefe_id    uuid NOT NULL REFERENCES neura.organigrama_nodos(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT organigrama_nodo_jefes_uniq UNIQUE (nodo_id, jefe_id),
+  CONSTRAINT organigrama_nodo_jefes_no_self CHECK (nodo_id <> jefe_id)
+);
+CREATE INDEX IF NOT EXISTS ix_org_nodo_jefes_nodo ON neura.organigrama_nodo_jefes(nodo_id);
+CREATE INDEX IF NOT EXISTS ix_org_nodo_jefes_jefe ON neura.organigrama_nodo_jefes(jefe_id);
+CREATE INDEX IF NOT EXISTS ix_org_nodo_jefes_emp  ON neura.organigrama_nodo_jefes(empresa_id);
+
+ALTER TABLE neura.organigrama_nodo_jefes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS org_nodo_jefes_select ON neura.organigrama_nodo_jefes;
+DROP POLICY IF EXISTS org_nodo_jefes_insert ON neura.organigrama_nodo_jefes;
+DROP POLICY IF EXISTS org_nodo_jefes_update ON neura.organigrama_nodo_jefes;
+DROP POLICY IF EXISTS org_nodo_jefes_delete ON neura.organigrama_nodo_jefes;
+CREATE POLICY org_nodo_jefes_select ON neura.organigrama_nodo_jefes FOR SELECT USING (neura.puede_acceder_empresa(empresa_id));
+CREATE POLICY org_nodo_jefes_insert ON neura.organigrama_nodo_jefes FOR INSERT WITH CHECK (neura.puede_acceder_empresa(empresa_id));
+CREATE POLICY org_nodo_jefes_update ON neura.organigrama_nodo_jefes FOR UPDATE USING (neura.puede_acceder_empresa(empresa_id)) WITH CHECK (neura.puede_acceder_empresa(empresa_id));
+CREATE POLICY org_nodo_jefes_delete ON neura.organigrama_nodo_jefes FOR DELETE USING (neura.puede_acceder_empresa(empresa_id));
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON neura.organigrama_nodo_jefes TO authenticated';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON neura.organigrama_nodo_jefes TO service_role';
+  END IF;
+END $$;
+
+SELECT pg_notify('pgrst', 'reload schema');

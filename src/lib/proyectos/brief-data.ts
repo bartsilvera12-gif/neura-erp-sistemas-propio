@@ -44,6 +44,24 @@ export const PROYECTO_DATOS_BRIEF_FIELDS: BriefFieldDef[] = [
   { kind: "text", key: "referencias_urls", label: "Referencias de páginas" },
 ];
 
+/**
+ * Campos del brief WEB que NO se muestran en las pantallas de carga/edición
+ * simples: ni en el formulario de CREAR ni en la ficha de Datos. Se ocultan para
+ * que la ficha muestre EXACTAMENTE lo mismo que al crear (marca, dominio y
+ * redes). El dato igual se conserva en `brief_data`: esto solo afecta el render,
+ * no borra nada. Única fuente de verdad para ambas pantallas.
+ */
+export const PROYECTO_WEB_KEYS_OCULTAS: readonly string[] = [
+  "whatsapp_contacto",
+  "tipo_web",
+  "rubro",
+  "objetivo",
+  "secciones",
+  "estilo_colores",
+  "logo_cliente",
+  "referencias_urls",
+];
+
 export const PROYECTO_SAAS_BRIEF_KEYS = {
   empresaNombre: "saas_empresa_nombre",
   whatsappContacto: "saas_whatsapp_contacto",

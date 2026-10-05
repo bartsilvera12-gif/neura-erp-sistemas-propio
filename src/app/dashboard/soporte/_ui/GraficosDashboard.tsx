@@ -50,6 +50,33 @@ export function GraficoEstados({ datos }: { datos: { codigo: string; nombre: str
   );
 }
 
+export function GraficoHoras({ datos }: { datos: { hora: number; total: number }[] }) {
+  const data = datos.map((h) => ({ ...h, label: String(h.hora).padStart(2, "0") }));
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 20, right: 8, left: -18, bottom: 0 }}>
+        <defs>
+          <linearGradient id="g-horas" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4FAEB2" stopOpacity={1} />
+            <stop offset="100%" stopColor="#4FAEB2" stopOpacity={0.5} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} stroke="#eef2f7" strokeDasharray="4 4" />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 10, fill: "#64748b" }}
+          tickLine={false}
+          axisLine={{ stroke: "#e2e8f0" }}
+          interval={1}
+        />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+        <Tooltip cursor={{ fill: "rgba(79,174,178,0.06)" }} {...TOOLTIP} formatter={(v) => [v, "Tickets"]} labelFormatter={(l) => `${l}:00 – ${l}:59`} />
+        <Bar dataKey="total" fill="url(#g-horas)" radius={[6, 6, 2, 2]} maxBarSize={30} animationDuration={600} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function GraficoTipos({ datos }: { datos: { nombre: string; cantidad: number }[] }) {
   return (
     <ResponsiveContainer width="100%" height="100%">

@@ -38,6 +38,7 @@ type Agg = {
   cobrado_mes: number; // caja de suscripciones este mes (1 → hoy), cualquier mes de emisión
   cobrado_mes_ant: number; // caja mismo tramo del mes anterior (1 → mismo día) para la tendencia
   por_cobrar_total: number; // deuda total: saldo de TODAS las cuotas impagas, cualquier mes
+  por_cobrar_exigible: number; // de esa deuda, lo exigible al mes: vencido + lo que vence este mes (excluye cuotas de meses futuros ya emitidas)
   cuotas_impagas: number; // cantidad de cuotas con saldo pendiente (cualquier mes)
 };
 const emptyAgg = (): Agg => ({
@@ -47,6 +48,7 @@ const emptyAgg = (): Agg => ({
   cobrado_mes: 0,
   cobrado_mes_ant: 0,
   por_cobrar_total: 0,
+  por_cobrar_exigible: 0,
   cuotas_impagas: 0,
 });
 
@@ -99,12 +101,12 @@ export async function GET(request: NextRequest) {
     // 3) Facturas de suscripción con SALDO pendiente, de CUALQUIER período → deuda total (completa).
     const { data: factDeudaData } = await supabase
       .from("facturas")
-      .select("suscripcion_id, cliente_id, saldo, estado")
+      .select("suscripcion_id, cliente_id, saldo, estado, fecha_vencimiento")
       .eq("empresa_id", empresaId)
       .eq("tipo", "suscripcion")
       .gt("saldo", 0);
     const factDeuda = (factDeudaData ?? []) as {
-      suscripcion_id: string | null; cliente_id: string | null; saldo: number | null; estado: string | null;
+      suscripcion_id: string | null; cliente_id: string | null; saldo: number | null; estado: string | null; fecha_vencimiento: string | null;
     }[];
 
     // 4) Pagos de suscripción (caja): este mes (1→hoy) y mismo tramo del mes anterior (1→mismo día).
@@ -252,6 +254,10 @@ export async function GET(request: NextRequest) {
       const tipo = tipoDeFactura(f.suscripcion_id, f.cliente_id);
       addAgg(tipo, "por_cobrar_total", saldo);
       addAgg(tipo, "cuotas_impagas", 1);
+      // Exigible al mes: vencido o vence este mes (excluye cuotas de meses FUTUROS ya emitidas).
+      // Mismo criterio que Seguimiento Cobranzas (no adelantar la cuota del próximo mes).
+      const vencYm = String(f.fecha_vencimiento ?? "").slice(0, 7);
+      if (!vencYm || vencYm <= ym) addAgg(tipo, "por_cobrar_exigible", saldo);
       if (f.suscripcion_id) adeudadoBySub.set(String(f.suscripcion_id), (adeudadoBySub.get(String(f.suscripcion_id)) ?? 0) + saldo);
     }
     // Pagos de suscripción (caja) → cobrado del mes por tipo (cualquier mes de emisión).

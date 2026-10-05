@@ -27,6 +27,7 @@ import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/Proyec
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
+  PROYECTO_WEB_KEYS_OCULTAS,
   applyBriefFormToExisting,
   applySaasFormToExisting,
   coalesceBriefData,
@@ -3193,7 +3194,10 @@ export default function ProyectoDetalleInner({
 
             {esWeb ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                {PROYECTO_DATOS_BRIEF_FIELDS.map((f) => {
+                {/* La ficha muestra EXACTAMENTE los mismos campos web que el formulario
+                    de crear (marca, dominio, redes): se ocultan los demás con la lista
+                    compartida PROYECTO_WEB_KEYS_OCULTAS. El dato guardado no se toca. */}
+                {PROYECTO_DATOS_BRIEF_FIELDS.filter((f) => !PROYECTO_WEB_KEYS_OCULTAS.includes(f.key)).map((f) => {
                   // Rubro del negocio: buscador inteligente con lista canónica (antes texto libre).
                   if (f.key === "tipo_web") {
                     return (
@@ -3344,23 +3348,9 @@ export default function ProyectoDetalleInner({
                     })}
                   </div>
                 </div>
-                <label className="block text-sm">
-                  <span className={labelCls}>Nombre de la empresa</span>
-                  <input
-                    className={inputCls}
-                    value={saasForm.empresa_nombre}
-                    onChange={(e) => updateSaasField("empresa_nombre", e.target.value)}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className={labelCls}>WhatsApp contacto</span>
-                  <input
-                    className={inputCls}
-                    placeholder="+595..."
-                    value={saasForm.whatsapp_contacto}
-                    onChange={(e) => updateSaasField("whatsapp_contacto", e.target.value)}
-                  />
-                </label>
+                {/* Nombre de la empresa, WhatsApp contacto y Observaciones se ocultan:
+                    no se piden al crear, así la ficha muestra lo mismo que el alta.
+                    El dato guardado no se toca. */}
                 <div className="block text-sm sm:col-span-2">
                   <span className={labelCls}>Módulos necesarios</span>
                   <div className="mt-1.5">
@@ -3372,15 +3362,6 @@ export default function ProyectoDetalleInner({
                     />
                   </div>
                 </div>
-                <label className="block text-sm sm:col-span-2">
-                  <span className={labelCls}>Observaciones</span>
-                  <textarea
-                    className={`${inputCls} min-h-[88px]`}
-                    rows={3}
-                    value={saasForm.observaciones}
-                    onChange={(e) => updateSaasField("observaciones", e.target.value)}
-                  />
-                </label>
               </div>
             ) : null}
 

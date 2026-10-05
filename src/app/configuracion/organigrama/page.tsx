@@ -12,6 +12,7 @@ type Nodo = {
   orden: number;
   color: string | null;
   foto_url: string | null;
+  jefes_extra: string[];
 };
 
 type FilaPlano = Nodo & { depth: number };
@@ -108,6 +109,8 @@ export default function ConfigOrganigramaPage() {
   const [editPersona, setEditPersona] = useState("");
   const [editParent, setEditParent] = useState<string>("");
   const [editFoto, setEditFoto] = useState<string | null>(null);
+  const [editJefesExtra, setEditJefesExtra] = useState<string[]>([]);
+  const [coJefeQuery, setCoJefeQuery] = useState("");
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -166,6 +169,8 @@ export default function ConfigOrganigramaPage() {
     setEditPersona(n.nombre_persona ?? "");
     setEditParent(n.parent_id ?? "");
     setEditFoto(n.foto_url ?? null);
+    setEditJefesExtra(Array.isArray(n.jefes_extra) ? n.jefes_extra : []);
+    setCoJefeQuery("");
   }
 
   async function onElegirFoto(file: File | null) {
@@ -194,6 +199,7 @@ export default function ConfigOrganigramaPage() {
           nombre_persona: editPersona.trim() || null,
           parent_id: editParent || null,
           foto_url: editFoto,
+          jefes_extra: editJefesExtra.filter((j) => j !== (editParent || "")),
         }),
       });
       const json = await res.json();
@@ -370,6 +376,68 @@ export default function ConfigOrganigramaPage() {
                         </button>
                       )}
                     </div>
+                    {(() => {
+                      const candidatos = nodos.filter((n) => !excluir.has(n.id) && n.id !== (editParent || ""));
+                      const q = coJefeQuery.trim().toLowerCase();
+                      const norm = (s: string) => s.toLowerCase();
+                      const visibles = candidatos
+                        .filter(
+                          (o) =>
+                            !q ||
+                            norm(o.titulo).includes(q) ||
+                            (o.nombre_persona ? norm(o.nombre_persona).includes(q) : false) ||
+                            editJefesExtra.includes(o.id)
+                        )
+                        .sort((a, b) => {
+                          const ca = editJefesExtra.includes(a.id) ? 0 : 1;
+                          const cb = editJefesExtra.includes(b.id) ? 0 : 1;
+                          return ca - cb || a.titulo.localeCompare(b.titulo);
+                        });
+                      return (
+                        <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5">
+                          <label className={F_LABEL}>También reporta a (doble jefatura)</label>
+                          {candidatos.length === 0 ? (
+                            <p className="mt-1 text-xs text-slate-400">No hay otros cargos para elegir.</p>
+                          ) : (
+                            <>
+                              <input
+                                className={`${F_INPUT} mt-1`}
+                                placeholder="Buscar jefe…"
+                                value={coJefeQuery}
+                                onChange={(e) => setCoJefeQuery(e.target.value)}
+                              />
+                              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+                                {visibles.length === 0 ? (
+                                  <p className="text-xs text-slate-400">Sin resultados para “{coJefeQuery}”.</p>
+                                ) : (
+                                  visibles.map((o) => (
+                                    <label key={o.id} className="flex items-center gap-2 text-sm text-slate-700">
+                                      <input
+                                        type="checkbox"
+                                        className="h-3.5 w-3.5 accent-[#4FAEB2]"
+                                        checked={editJefesExtra.includes(o.id)}
+                                        onChange={(e) =>
+                                          setEditJefesExtra((prev) =>
+                                            e.target.checked ? [...prev, o.id] : prev.filter((x) => x !== o.id)
+                                          )
+                                        }
+                                      />
+                                      <span className="truncate">
+                                        {o.titulo}
+                                        {o.nombre_persona ? ` · ${o.nombre_persona}` : ""}
+                                      </span>
+                                    </label>
+                                  ))
+                                )}
+                              </div>
+                            </>
+                          )}
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Marcá otros jefes si este cargo reporta a más de uno (ej. un equipo bajo 2 jefes).
+                          </p>
+                        </div>
+                      );
+                    })()}
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-3">
@@ -387,6 +455,9 @@ export default function ConfigOrganigramaPage() {
                         <p className="truncate text-[11px] text-slate-500">
                           {f.nombre_persona ? f.nombre_persona : <span className="italic text-slate-400">Sin asignar</span>}
                           {f.parent_id && byId.get(f.parent_id) ? ` · reporta a ${byId.get(f.parent_id)!.titulo}` : ""}
+                          {f.jefes_extra?.length
+                            ? ` · también: ${f.jefes_extra.map((id) => byId.get(id)?.titulo).filter(Boolean).join(", ")}`
+                            : ""}
                         </p>
                         </div>
                       </div>

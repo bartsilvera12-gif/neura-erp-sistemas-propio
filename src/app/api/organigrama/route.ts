@@ -3,6 +3,7 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
+import { fetchJefesExtra, syncJefesExtra } from "@/lib/organigrama/jefes-service";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,13 @@ export async function GET(request: Request) {
       return NextResponse.json(errorResponse(error.message), { status: 400 });
     }
 
-    return NextResponse.json(successResponse({ nodos: data ?? [], meta: { can_edit: esAdmin(auth.rol) } }));
+    const jefesMap = await fetchJefesExtra(supabase, auth.empresaId).catch(() => new Map<string, string[]>());
+    const nodos = (data ?? []).map((n: Record<string, unknown>) => ({
+      ...n,
+      jefes_extra: jefesMap.get(String(n.id)) ?? [],
+    }));
+
+    return NextResponse.json(successResponse({ nodos, meta: { can_edit: esAdmin(auth.rol) } }));
   } catch (e) {
     const message = e instanceof Error ? e.message : "No se pudo cargar el organigrama";
     return NextResponse.json(errorResponse(message), { status: 500 });
@@ -119,7 +126,20 @@ export async function POST(request: Request) {
       .single();
 
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
-    return NextResponse.json(successResponse({ nodo: data }), { status: 201 });
+
+    // Co-jefes (doble jefatura), si vinieron.
+    if ((body as { jefes_extra?: unknown }).jefes_extra !== undefined) {
+      const r = await syncJefesExtra(
+        supabase,
+        auth.empresaId,
+        String((data as { id: string }).id),
+        parentId,
+        (body as { jefes_extra?: unknown }).jefes_extra
+      );
+      if (!r.ok) return NextResponse.json(errorResponse(r.message), { status: r.status });
+    }
+
+    return NextResponse.json(successResponse({ nodo: { ...data, jefes_extra: [] } }), { status: 201 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "No se pudo crear el cargo";
     return NextResponse.json(errorResponse(message), { status: 400 });

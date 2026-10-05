@@ -12,6 +12,7 @@ type Agg = {
   cobrado_mes: number; // CAJA de suscripciones este mes (cualquier mes de emisión)
   cobrado_mes_ant: number; // caja mismo tramo del mes anterior (tendencia)
   por_cobrar_total: number; // DEUDA total: todas las cuotas impagas, de cualquier mes
+  por_cobrar_exigible: number; // de esa deuda, lo exigible al mes (vencido + vence este mes)
   cuotas_impagas: number; // cantidad de cuotas con saldo pendiente
 };
 type TipoAgg = Agg & { label: string };
@@ -22,6 +23,7 @@ const emptyAgg = (): Agg => ({
   cobrado_mes: 0,
   cobrado_mes_ant: 0,
   por_cobrar_total: 0,
+  por_cobrar_exigible: 0,
   cuotas_impagas: 0,
 });
 
@@ -257,6 +259,7 @@ export default function ReporteSuscripcionesPage() {
   const facturasCount = agg.facturas_mes;
   const cobradoMes = agg.cobrado_mes;
   const porCobrarTotal = agg.por_cobrar_total;
+  const porCobrarExigible = agg.por_cobrar_exigible;
   const cuotasImpagas = agg.cuotas_impagas;
   const pctCobrado = facturadoDelMes > 0 ? Math.round((cobradoMes / facturadoDelMes) * 100) : 0;
   const deltaEmitido = agg.facturado_mes_ant > 0 ? ((facturadoDelMes - agg.facturado_mes_ant) / agg.facturado_mes_ant) * 100 : facturadoDelMes > 0 ? 100 : 0;
@@ -386,6 +389,15 @@ export default function ReporteSuscripcionesPage() {
             <span className={LBL}>Por cobrar · Total</span>
             <div className="mt-3 text-[28px] font-extrabold leading-none tracking-tight tabular-nums text-amber-700">Gs. {fmtGs(porCobrarTotal)}</div>
             <div className="mt-2 text-[11px] text-slate-400">{cuotasImpagas} cuota{cuotasImpagas === 1 ? "" : "s"} impaga{cuotasImpagas === 1 ? "" : "s"}</div>
+            <div className="mt-3 flex items-baseline gap-1.5 border-t border-slate-100 pt-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Exigible al mes</span>
+              <span className="text-[15px] font-bold tabular-nums text-slate-700">Gs. {fmtGs(porCobrarExigible)}</span>
+            </div>
+            {porCobrarTotal > porCobrarExigible ? (
+              <div className="mt-1 text-[10.5px] text-slate-400">
+                + Gs. {fmtGs(porCobrarTotal - porCobrarExigible)} adelantado (cuotas de meses futuros ya emitidas)
+              </div>
+            ) : null}
           </div>
           <div className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
             Toda la deuda de suscripciones — de cualquier mes, no solo el actual.

@@ -4,6 +4,7 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
 import { normFotoUrl } from "../route";
+import { syncJefesExtra } from "@/lib/organigrama/jefes-service";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       orden?: unknown;
       color?: unknown;
       foto_url?: unknown;
+      jefes_extra?: unknown;
     };
 
     const supabase = await getChatServiceClientForEmpresa(auth.empresaId);
@@ -107,6 +109,14 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
     if (!data) return NextResponse.json(errorResponse("Cargo no encontrado"), { status: 404 });
+
+    // Co-jefes (doble jefatura), si vinieron en el body.
+    if (body.jefes_extra !== undefined) {
+      const parentFinal = (data as { parent_id: string | null }).parent_id ?? null;
+      const r = await syncJefesExtra(supabase, auth.empresaId, id, parentFinal, body.jefes_extra);
+      if (!r.ok) return NextResponse.json(errorResponse(r.message), { status: r.status });
+    }
+
     return NextResponse.json(successResponse({ nodo: data }));
   } catch (e) {
     const message = e instanceof Error ? e.message : "No se pudo actualizar el cargo";

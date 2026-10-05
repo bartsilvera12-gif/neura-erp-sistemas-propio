@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, Search, X, ChevronRight, ExternalLink, Phone, Copy, Check } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { TZ_PY } from "@/lib/format/hora-py";
@@ -133,11 +134,11 @@ function makeRow(c: ClienteCobranza, servs: ServicioCobranza[], tipoFiltro: stri
 type SortKey = "cliente" | "tipo" | "monto" | "total" | "cuotas" | "tramo" | "ultimo" | "prox" | "promesa" | "mensaje";
 
 /** Columnas de la tabla; `key=null` = no ordenable. `kind` define el orden por defecto al clickear. */
-const COLUMNAS: { h: string; right: boolean; key: SortKey | null; kind: "str" | "num" | "date" | null }[] = [
+const COLUMNAS: { h: string; right: boolean; key: SortKey | null; kind: "str" | "num" | "date" | null; hint?: string }[] = [
   { h: "Cliente", right: false, key: "cliente", kind: "str" },
   { h: "Tipo", right: false, key: "tipo", kind: "str" },
   { h: "Monto mensual", right: true, key: "monto", kind: "num" },
-  { h: "Total adeudado", right: true, key: "total", kind: "num" },
+  { h: "Total adeudado", right: true, key: "total", kind: "num", hint: "Deuda emitida impaga: incluye cuotas vencidas + cuotas por vencer (no solo lo en mora)" },
   { h: "Cuotas venc.", right: true, key: "cuotas", kind: "num" },
   { h: "Tramo", right: false, key: "tramo", kind: "num" },
   { h: "Mensaje del mes", right: false, key: "mensaje", kind: "date" },
@@ -237,12 +238,15 @@ function Kpi({
   accent,
   onClick,
   active,
+  hint,
 }: {
   label: string;
   value: string | number;
   accent?: "featured" | "danger" | "warning";
   onClick?: () => void;
   active?: boolean;
+  /** Aclaración corta bajo el valor (y tooltip). */
+  hint?: string;
 }) {
   const valueCls =
     accent === "featured" ? "text-[#3F8E91]" : accent === "danger" ? "text-rose-700" : accent === "warning" ? "text-amber-700" : "text-slate-900";
@@ -252,6 +256,7 @@ function Kpi({
       onClick={onClick}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
+      title={hint}
       onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick!(); } } : undefined}
       className={`rounded-2xl border bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
         clickable ? "cursor-pointer transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/30" : ""
@@ -262,6 +267,7 @@ function Kpi({
         {clickable ? <span className="ml-1 text-[#4FAEB2]">{active ? "· filtrando" : "· filtrar"}</span> : null}
       </p>
       <p className={`mt-1.5 text-xl font-semibold tabular-nums tracking-tight sm:text-2xl ${valueCls}`}>{value}</p>
+      {hint ? <p className="mt-0.5 text-[10px] leading-tight text-slate-400">{hint}</p> : null}
     </div>
   );
 }
@@ -511,23 +517,27 @@ export default function CobranzasClient() {
     return acc;
   }, [baseRows]);
 
-  /** KPIs recalculados sobre lo filtrado (tipo + búsqueda + tramo + promesa). */
+  /**
+   * KPIs GLOBALES: panorama fijo sobre tipo + búsqueda (NO dependen de la pestaña de tramo).
+   * La pestaña filtra solo la TABLA. Así las tarjetas de Tramo coinciden con las pestañas y el
+   * "Total adeudado" muestra la deuda emitida completa, no solo el tramo elegido.
+   */
   const kpis = useMemo(() => {
     const porTramo = { por_vencer: 0, tramo_1: 0, tramo_2: 0, tramo_3: 0 } as Record<string, number>;
     let totalAdeudado = 0;
     let cuotasVenc = 0;
-    for (const r of rows) {
+    for (const r of baseRows) {
       totalAdeudado += r.total_adeudado;
       cuotasVenc += r.cuotas_vencidas;
       porTramo[r.tramo] = (porTramo[r.tramo] ?? 0) + 1;
     }
     return {
       total_adeudado: Math.round(totalAdeudado),
-      clientes_con_deuda: rows.length,
+      clientes_con_deuda: baseRows.filter((r) => r.total_adeudado > 0).length,
       cuotas_vencidas: cuotasVenc,
       por_tramo: porTramo,
     };
-  }, [rows]);
+  }, [baseRows]);
 
   if (loading) {
     return (
@@ -573,18 +583,26 @@ export default function CobranzasClient() {
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Seguimiento Cobranzas</h1>
           <p className="mt-1 text-sm text-slate-500">Clientes con deuda y tramos de mora{data?.hoy ? ` · al ${fmtDate(data.hoy)}` : ""}.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportExcelButton url="/api/cobranzas/export" label="Exportar Excel" className="!py-2 !text-xs !rounded-xl" />
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+          </button>
+        </div>
       </div>
 
-      {/* KPIs (reaccionan a tipo + tramo + búsqueda) */}
+      {/* KPIs GLOBALES (tipo + búsqueda). La pestaña de tramo filtra solo la tabla, no estas tarjetas. */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Total adeudado" value={fmtMoney(kpis.total_adeudado)} accent="danger" />
+        <Kpi
+          label="Total adeudado"
+          value={fmtMoney(kpis.total_adeudado)}
+          accent="danger"
+          hint="Deuda emitida impaga (vencido + por vencer)"
+        />
         <Kpi label="Clientes con deuda" value={kpis.clientes_con_deuda} accent="featured" />
         <Kpi label="Cuotas vencidas" value={kpis.cuotas_vencidas} />
         <Kpi
@@ -686,7 +704,7 @@ export default function CobranzasClient() {
                             type="button"
                             onClick={() => toggleSort(col.key!, col.kind)}
                             className="inline-flex cursor-pointer items-center gap-1 uppercase tracking-[0.08em] transition-colors hover:text-[#3F8E91]"
-                            title="Ordenar por esta columna"
+                            title={col.hint ?? "Ordenar por esta columna"}
                           >
                             {col.h}
                             <span className={`text-[9px] leading-none ${active ? "opacity-100" : "opacity-25"}`}>

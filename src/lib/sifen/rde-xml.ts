@@ -309,6 +309,37 @@ function vigenciaIso(dateYmd: string): string {
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
+/** Cantidad de días del mes `mes1` (1-based) del año `anio`. */
+function diasDelMes(anio: number, mes1: number): number {
+  return new Date(anio, mes1, 0).getDate();
+}
+
+/**
+ * Ventana legal de cierre de mes (validada con contaduría): hasta el día 3 (calendario) del
+ * mes se puede emitir un DTE con fecha del mes INMEDIATO anterior, SOLO si esa fecha cae en
+ * los últimos días de ese mes (operaciones de cierre). En ese caso dFeEmiDE y el CDC usan la
+ * fecha comercial backfechada, no hoy, para que el DE caiga en el período correcto.
+ */
+const GRACE_EMISION_DIA_MAX = 3; // se puede emitir backfechado hasta el día 3 del mes
+const GRACE_ULTIMOS_DIAS_MES = 3; // solo los últimos 3 días del mes anterior
+function fechaEnVentanaGraciaCierreMes(docFechaYmd: string, emiYmd: string): boolean {
+  const f = /^(\d{4})-(\d{2})-(\d{2})$/.exec(docFechaYmd);
+  const e = /^(\d{4})-(\d{2})-(\d{2})$/.exec(emiYmd);
+  if (!f || !e) return false;
+  const fy = Number(f[1]);
+  const fm = Number(f[2]);
+  const fd = Number(f[3]);
+  const em = Number(e[2]);
+  const ey = Number(e[1]);
+  const ed = Number(e[3]);
+  if (ed > GRACE_EMISION_DIA_MAX) return false;
+  const pm = em === 1 ? 12 : em - 1; // mes inmediato anterior a hoy
+  const py = em === 1 ? ey - 1 : ey;
+  if (fy !== py || fm !== pm) return false;
+  const ultimo = diasDelMes(py, pm);
+  return fd >= ultimo - (GRACE_ULTIMOS_DIAS_MES - 1);
+}
+
 /**
  * Construye el XML rDE oficial (factura electrónica) listo para firmar el nodo `DE`.
  */
@@ -355,19 +386,28 @@ export function buildOfficialRdeFacturaElectronicaXml(
   const refFirma = new Date(ahora.getTime() - SIFEN_FIRMA_SKEW_MS);
   const { ymd: emiYmd, hms: emiHms } = wallYmdAndHmsInSifenTz(refFirma);
 
-  // Guardarraíl de período fiscal: solo se emite dentro del MISMO mes que la fecha
-  // comercial de la factura. Cruzar de mes movería el DE a otro período de IVA.
+  /**
+   * Ventana legal de cierre de mes: si la fecha comercial es de los últimos días del mes
+   * anterior y hoy es día ≤ 3, la emisión electrónica usa ESA fecha (no hoy), para que el DE
+   * caiga en el período correcto. Fuera de la ventana, rige el guardarraíl de mismo-mes.
+   */
+  const docFechaNorm = String(documento.fecha).trim().slice(0, 10);
+  const graciaCierreMes = fechaEnVentanaGraciaCierreMes(docFechaNorm, emiYmd);
+  const effectiveEmiYmd = graciaCierreMes ? docFechaNorm : emiYmd;
+
+  // Guardarraíl de período fiscal: salvo la ventana de cierre (arriba), el DE debe caer en el
+  // mismo mes que la fecha comercial. Cruzar de mes movería el DE a otro período de IVA.
   {
-    const fYm = /^(\d{4})-(\d{2})/.exec(String(documento.fecha).trim());
-    const eYm = /^(\d{4})-(\d{2})/.exec(emiYmd);
+    const fYm = /^(\d{4})-(\d{2})/.exec(docFechaNorm);
+    const eYm = /^(\d{4})-(\d{2})/.exec(effectiveEmiYmd);
     if (fYm && eYm && (fYm[1] !== eYm[1] || fYm[2] !== eYm[2])) {
       throw new Error(
-        `No se puede emitir a SET: la factura es del período ${fYm[1]}-${fYm[2]} y hoy es ${eYm[1]}-${eYm[2]}. La emisión electrónica debe caer en el mismo mes que la factura. Anulá y re-facturá en el mes actual.`
+        `No se puede emitir a SET: la factura es del período ${fYm[1]}-${fYm[2]} y hoy es ${eYm[1]}-${eYm[2]}. Solo se puede emitir con fecha del mes anterior hasta el día ${GRACE_EMISION_DIA_MAX} y para los últimos ${GRACE_ULTIMOS_DIAS_MES} días de ese mes. Corregí la fecha o re-facturá en el mes actual.`
       );
     }
   }
 
-  const fechaCdc = fechaEmisionCdc(emiYmd);
+  const fechaCdc = fechaEmisionCdc(effectiveEmiYmd);
   /** Debe coincidir con `gEmis.iTipCont` y entrar en el CDC antes de la fecha (SET / TIPS). */
   const iTipContEmi = iTipContCodigo(emisor.razon_social);
 
@@ -395,7 +435,7 @@ export function buildOfficialRdeFacturaElectronicaXml(
     dCodSeg,
   });
 
-  const dFeEmiDE = `${emiYmd}T${emiHms}`;
+  const dFeEmiDE = `${effectiveEmiYmd}T${emiHms}`;
   const dFecFirma = dFeEmiDE;
 
   const dFeIniT = vigenciaIso(opts.timbradoFechaInicio);

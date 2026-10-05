@@ -104,14 +104,47 @@ export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
   const nextY = m === 12 ? y + 1 : y;
   const mesSiguiente = `${nextY}-${String(nextM).padStart(2, "0")}`;
 
+  // Vencimiento según el modo elegido.
+  const diaVencCfg = Math.min(Math.max(1, Number(sRow.dia_vencimiento) || 10), 31);
+  let fechaVenc: string;
+  if (vencCfg.modo === "override") {
+    const ov = toCalendarDateStr(vencCfg.vencimientoOverride);
+    fechaVenc = /^\d{4}-\d{2}-\d{2}$/.test(ov) ? ov : fechaVencimientoSuscripcion(hoy, diaVencCfg);
+  } else if (vencCfg.modo === "actual" || vencCfg.modo === "siguiente") {
+    fechaVenc = vencimientoPeriodo(hoy, diaVencCfg, vencCfg.modo);
+  } else {
+    fechaVenc = fechaVencimientoSuscripcion(hoy, diaVencCfg);
+  }
+
+  // Período (YYYY-MM) que corresponde a ESTA cuota: "siguiente" = mes que viene;
+  // "override" lo toma del mes del vencimiento elegido; el resto = mes corriente.
+  let periodoFacturado: string;
+  if (vencCfg.modo === "siguiente") {
+    periodoFacturado = mesSiguiente;
+  } else if (vencCfg.modo === "override") {
+    const vencYm = fechaVenc.slice(0, 7);
+    periodoFacturado = /^\d{4}-\d{2}$/.test(vencYm) ? vencYm : mesActual;
+  } else {
+    periodoFacturado = mesActual;
+  }
+  // CLAVE SIFEN: el DTE solo se puede emitir si mes(facturas.fecha) == mes actual.
+  // Una cuota de un mes FUTURO debe nacer con fecha de ESE mes (día 01), nunca de hoy;
+  // si es el mes corriente, se emite hoy. Así la factura electrónica no se traba después.
+  const fechaEmision = periodoFacturado === mesActual ? hoy : `${periodoFacturado}-01`;
+  const [pY, pM] = periodoFacturado.split("-").map(Number);
+  const periodoStart = `${periodoFacturado}-01`;
+  const periodoEnd = `${pM === 12 ? pY + 1 : pY}-${String(pM === 12 ? 1 : pM + 1).padStart(2, "0")}-01`;
+
+  // Idempotencia: no duplicar la cuota de ESE período (incluye la que generaría el
+  // cron mensual, que nace con fecha = día 01 del período).
   const { data: existentes } = await supabase
     .from("facturas")
     .select("id")
     .eq("cliente_id", sRow.cliente_id)
     .eq("suscripcion_id", sRow.id)
     .eq("empresa_id", empresaId)
-    .gte("fecha", `${mesActual}-01`)
-    .lt("fecha", `${mesSiguiente}-01`)
+    .gte("fecha", periodoStart)
+    .lt("fecha", periodoEnd)
     .limit(1);
 
   if (existentes && existentes.length > 0) return;
@@ -132,16 +165,6 @@ export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
     return;
   }
   const moneda = sRow.moneda === "USD" ? "USD" : "GS";
-  const diaVencCfg = Math.min(Math.max(1, Number(sRow.dia_vencimiento) || 10), 31);
-  let fechaVenc: string;
-  if (vencCfg.modo === "override") {
-    const ov = toCalendarDateStr(vencCfg.vencimientoOverride);
-    fechaVenc = /^\d{4}-\d{2}-\d{2}$/.test(ov) ? ov : fechaVencimientoSuscripcion(hoy, diaVencCfg);
-  } else if (vencCfg.modo === "actual" || vencCfg.modo === "siguiente") {
-    fechaVenc = vencimientoPeriodo(hoy, diaVencCfg, vencCfg.modo);
-  } else {
-    fechaVenc = fechaVencimientoSuscripcion(hoy, diaVencCfg);
-  }
 
   const { data: factura, error: errFact } = await supabase
     .from("facturas")
@@ -150,8 +173,9 @@ export async function crearFacturaInicialSuscripcionSiCorresponde(opts: {
       cliente_id: sRow.cliente_id,
       suscripcion_id: sRow.id,
       numero_factura: numeroFactura,
-      fecha: hoy,
+      fecha: fechaEmision,
       fecha_vencimiento: fechaVenc,
+      periodo_facturado: periodoFacturado,
       monto,
       saldo: monto,
       estado: "Pendiente",

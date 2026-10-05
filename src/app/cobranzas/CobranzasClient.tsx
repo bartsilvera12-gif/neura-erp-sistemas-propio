@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { RefreshCw, Search, X, ChevronRight, ExternalLink } from "lucide-react";
+import { RefreshCw, Search, X, ChevronRight, ExternalLink, Phone, Copy, Check } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 import { FechaSelect } from "@/components/ui/FechaSelect";
@@ -67,7 +67,7 @@ type ServicioDetalle = ServicioCobranza & {
 };
 type DetallePayload = {
   puede_registrar?: boolean;
-  cliente: { cliente_id: string; cliente_label: string; tipo: string; plan: string | null; monto_mensual: number | null; alta: string | null; mensaje_mes_enviado?: boolean; mensaje_mes_fecha?: string | null };
+  cliente: { cliente_id: string; cliente_label: string; tipo: string; plan: string | null; monto_mensual: number | null; alta: string | null; telefono?: string | null; mensaje_mes_enviado?: boolean; mensaje_mes_fecha?: string | null };
   total_deuda: number;
   cuotas_vencidas: number;
   tramo: TramoKey;
@@ -287,6 +287,44 @@ export default function CobranzasClient() {
   const [promesaOpen, setPromesaOpen] = useState(false);
   const [promesaBusy, setPromesaBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [telCopiado, setTelCopiado] = useState(false);
+
+  const copiarTelefono = useCallback(async (tel: string) => {
+    try {
+      await navigator.clipboard.writeText(tel);
+    } catch {
+      // Fallback para contextos sin permiso de portapapeles
+      const ta = document.createElement("textarea");
+      ta.value = tel;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch { /* noop */ }
+      document.body.removeChild(ta);
+    }
+    setTelCopiado(true);
+    setToast("Teléfono copiado");
+    window.setTimeout(() => setTelCopiado(false), 1500);
+  }, []);
+
+  // Scroll horizontal de la tabla arrastrando con el mouse (click + mover).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({ down: false, startX: 0, startLeft: 0 });
+  const onDragStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el || e.button !== 0) return;
+    dragRef.current = { down: true, startX: e.clientX, startLeft: el.scrollLeft };
+  }, []);
+  const onDragMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const d = dragRef.current;
+    if (!el || !d.down) return;
+    el.scrollLeft = d.startLeft - (e.clientX - d.startX);
+  }, []);
+  const onDragEnd = useCallback(() => {
+    dragRef.current.down = false;
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -621,10 +659,18 @@ export default function CobranzasClient() {
           No hay clientes con deuda para este filtro.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <div className="overflow-x-auto">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div
+            ref={scrollRef}
+            onPointerDown={onDragStart}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onPointerLeave={onDragEnd}
+            className="cursor-grab select-none overflow-x-auto active:cursor-grabbing"
+            title="Arrastrá para ver más columnas"
+          >
             <table className="w-full min-w-[1040px] text-left text-sm">
-              <thead className="bg-slate-50/80">
+              <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
                   {COLUMNAS.map((col) => {
                     const active = col.key != null && sort?.key === col.key;
@@ -639,7 +685,7 @@ export default function CobranzasClient() {
                           <button
                             type="button"
                             onClick={() => toggleSort(col.key!, col.kind)}
-                            className="inline-flex items-center gap-1 uppercase tracking-[0.08em] transition-colors hover:text-[#3F8E91]"
+                            className="inline-flex cursor-pointer items-center gap-1 uppercase tracking-[0.08em] transition-colors hover:text-[#3F8E91]"
                             title="Ordenar por esta columna"
                           >
                             {col.h}
@@ -690,7 +736,7 @@ export default function CobranzasClient() {
                       <button
                         type="button"
                         onClick={() => void openDetalle(r.c.cliente_id)}
-                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
+                        className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91]"
                       >
                         Ver detalle <ChevronRight className="h-3.5 w-3.5" />
                       </button>
@@ -723,31 +769,82 @@ export default function CobranzasClient() {
               <p className="mt-6 text-sm text-rose-600">No se pudo cargar el detalle.</p>
             ) : (
               <div className="mt-4 space-y-5">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                  <Link
-                    href={`/gestion-clientes?cliente=${encodeURIComponent(detalle.cliente.cliente_id)}`}
-                    className="group inline-flex items-center gap-1.5 text-base font-semibold text-slate-900 hover:text-[#3F8E91] hover:underline"
-                    title="Abrir en Gestión de clientes"
-                  >
-                    {detalle.cliente.cliente_label}
-                    <ExternalLink className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-[#3F8E91]" />
-                  </Link>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                    <span>Tipo: <b className="text-slate-800">{detalle.cliente.tipo}</b></span>
-                    <span>Plan: <b className="text-slate-800">{detalle.cliente.plan ?? "—"}</b></span>
-                    <span>Monto mensual: <b className="text-slate-800">{fmtMoney(detalle.cliente.monto_mensual)}</b></span>
-                    <span>Alta: <b className="text-slate-800">{fmtDate(detalle.cliente.alta)}</b></span>
-                  </div>
-                  <div className="mt-3 flex items-center gap-3">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  {/* Cabecera: nombre + tipo/plan + tramo */}
+                  <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-br from-slate-50 to-white px-4 py-3.5">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/gestion-clientes?cliente=${encodeURIComponent(detalle.cliente.cliente_id)}`}
+                        className="group inline-flex max-w-full items-center gap-1.5 text-base font-semibold text-slate-900 hover:text-[#3F8E91]"
+                        title="Abrir en Gestión de clientes"
+                      >
+                        <span className="truncate">{detalle.cliente.cliente_label}</span>
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-[#3F8E91]" />
+                      </Link>
+                      <div className="mt-0.5 truncate text-xs text-slate-500">
+                        {detalle.cliente.tipo}{detalle.cliente.plan ? ` · ${detalle.cliente.plan}` : ""}
+                      </div>
+                    </div>
                     <TramoBadge tramo={detalle.tramo} />
-                    <span className="text-sm font-semibold text-rose-700">Deuda: {fmtMoney(detalle.total_deuda)}</span>
-                    <span className="text-xs text-slate-500">{detalle.cuotas_vencidas} cuota(s) vencida(s)</span>
                   </div>
-                  {detalle.meses_adeudados.length ? (
-                    <p className="mt-2 text-xs text-slate-600">Meses adeudados: {detalle.meses_adeudados.map(fmtMes).join(", ")}</p>
+
+                  {/* Teléfono con botón de copiar */}
+                  {detalle.cliente.telefono ? (
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+                      <div className="flex min-w-0 items-center gap-2 text-sm text-slate-700">
+                        <Phone className="h-4 w-4 shrink-0 text-[#3F8E91]" />
+                        <a href={`tel:${detalle.cliente.telefono}`} className="truncate font-medium tabular-nums hover:underline">
+                          {detalle.cliente.telefono}
+                        </a>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copiarTelefono(detalle.cliente.telefono!)}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                          telCopiado
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-[#3F8E91]/40 hover:text-[#3F8E91]"
+                        }`}
+                        title="Copiar teléfono"
+                        aria-label="Copiar teléfono"
+                      >
+                        {telCopiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        {telCopiado ? "Copiado" : "Copiar"}
+                      </button>
+                    </div>
                   ) : null}
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-                    <span>Mensaje este mes:</span>
+
+                  {/* Deuda destacada */}
+                  <div className="flex items-end justify-between gap-3 px-4 py-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Deuda total</div>
+                      <div className="text-2xl font-bold tabular-nums text-rose-700">{fmtMoney(detalle.total_deuda)}</div>
+                    </div>
+                    <div className="pb-1 text-right text-xs text-slate-500">{detalle.cuotas_vencidas} cuota(s) vencida(s)</div>
+                  </div>
+
+                  {/* Meta: monto mensual / alta */}
+                  <div className="grid grid-cols-2 gap-px border-t border-slate-100 bg-slate-100 text-xs">
+                    <div className="bg-white px-4 py-2.5">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-400">Monto mensual</div>
+                      <div className="mt-0.5 font-semibold tabular-nums text-slate-800">{fmtMoney(detalle.cliente.monto_mensual)}</div>
+                    </div>
+                    <div className="bg-white px-4 py-2.5">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-400">Alta</div>
+                      <div className="mt-0.5 font-semibold text-slate-800">{fmtDate(detalle.cliente.alta)}</div>
+                    </div>
+                  </div>
+
+                  {detalle.meses_adeudados.length ? (
+                    <div className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-600">
+                      <span className="text-slate-400">Meses adeudados: </span>
+                      {detalle.meses_adeudados.map(fmtMes).join(", ")}
+                    </div>
+                  ) : null}
+
+                  {/* Mensaje este mes */}
+                  <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-2.5 text-xs text-slate-600">
+                    <span className="text-slate-400">Mensaje este mes:</span>
                     {detalle.cliente.mensaje_mes_enviado && detalle.cliente.mensaje_mes_fecha ? (
                       <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                         <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" />

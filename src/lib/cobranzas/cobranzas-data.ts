@@ -89,6 +89,7 @@ export type DetalleCobranza = {
     plan: string | null;
     monto_mensual: number | null;
     alta: string | null;
+    telefono: string | null;
     mensaje_mes_enviado: boolean;
     mensaje_mes_fecha: string | null;
   };
@@ -671,6 +672,7 @@ export async function cargarDetalleCliente(
       plan: servicios.length === 1 ? servicios[0]!.plan : null,
       monto_mensual: montoResumen,
       alta: ymd(c.created_at as string) || null,
+      telefono: telCliente || null,
       mensaje_mes_enviado: mensajeMes.enviado,
       mensaje_mes_fecha: mensajeMes.fecha,
     },

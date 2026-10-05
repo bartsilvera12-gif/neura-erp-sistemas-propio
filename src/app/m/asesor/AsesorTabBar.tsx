@@ -67,6 +67,10 @@ function useAccesoSoporte(habilitado: boolean): boolean {
 export default function AsesorTabBar() {
   const { tieneModulo } = useMisModulos();
   const habilitado = tieneModulo("proyectos_movil") === true;
+  // "Modo panel": usuarios (p. ej. administración) que usan la app por Proyectos/Avisos/Soporte
+  // y NO atienden chats. Opt-in explícito vía el módulo restringido `panel_movil`: a quien NO lo
+  // tiene (todos los asesores de hoy) la barra le queda EXACTAMENTE igual, con su pestaña Chats.
+  const soloPanel = tieneModulo("panel_movil") === true;
   const pathname = usePathname() ?? "";
   /* SWR deduplica: comparte la misma petición con la pantalla de Avisos, no la repite. */
   const { noLeidas } = useNotificaciones({ enabled: habilitado });
@@ -94,7 +98,12 @@ export default function AsesorTabBar() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="flex items-stretch">
-        {TABS.filter((t) => t.modulo !== "soporte" || accesoSoporte).map(({ href, label, Icon, exact }) => {
+        {TABS
+          // Soporte solo si el usuario tiene acceso al módulo.
+          .filter((t) => t.modulo !== "soporte" || accesoSoporte)
+          // En modo panel se oculta Chats (la bandeja de conversaciones): esa gente no atiende chats.
+          .filter((t) => !(soloPanel && t.href === "/m/asesor"))
+          .map(({ href, label, Icon, exact }) => {
           // Soporte abarca todo el módulo (/mis-tickets, un ticket, etc.), no solo /tickets.
           const active = exact
             ? pathname === href

@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 import { attachmentCaptionForDisplay, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
 import { useAsesorInbox } from "@/shared/hooks/useAsesorInbox";
+import { useMisModulos } from "@/shared/hooks/useMisModulos";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import AsesorTabBar from "./AsesorTabBar";
 
@@ -24,6 +26,16 @@ function shortTime(iso: string | null): string {
 const CLAVE_COLA = "neura:asesor:cola";
 
 export default function MAsesorInboxPage() {
+  const router = useRouter();
+  // "Modo panel" (módulo `panel_movil`): gente que no atiende chats. La home de la app es esta
+  // bandeja; para ellos la saltamos y entramos directo a Proyectos, que es su pantalla útil.
+  // Para los asesores `soloPanel` es false y esta pantalla se comporta igual que siempre.
+  const { tieneModulo } = useMisModulos();
+  const soloPanel = tieneModulo("panel_movil");
+  useEffect(() => {
+    if (soloPanel === true) router.replace("/m/asesor/proyectos");
+  }, [soloPanel, router]);
+
   // Cola elegida ("" = todas). Se recuerda en el dispositivo, como el filtro del escritorio.
   const [cola, setCola] = useState("");
   useEffect(() => {
@@ -114,6 +126,15 @@ export default function MAsesorInboxPage() {
     });
   })();
 
+
+  // Modo panel: no mostramos la bandeja ni un instante; el efecto de arriba ya redirige a Proyectos.
+  if (soloPanel === true) {
+    return (
+      <div className="grid h-svh place-items-center bg-slate-50 text-sm text-slate-400">
+        Abriendo…
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-svh min-h-0 flex-col bg-slate-50">

@@ -651,6 +651,18 @@ export default function MAsesorChatPage() {
 
   // ── Transferir conversación (mismo comportamiento que el panel de escritorio) ──
   const [transferOpen, setTransferOpen] = useState(false);
+
+  // ── Finalizar con tipificación (mismo cierre que el panel de escritorio) ──
+  const [finOpen, setFinOpen] = useState(false);
+  const [finEstados, setFinEstados] = useState<
+    { id: string; label: string; substates: { id: string; label: string }[] }[]
+  >([]);
+  const [finEstadoId, setFinEstadoId] = useState("");
+  const [finSubId, setFinSubId] = useState("");
+  const [finComentario, setFinComentario] = useState("");
+  const [finCargando, setFinCargando] = useState(false);
+  const [finGuardando, setFinGuardando] = useState(false);
+  const [finError, setFinError] = useState<string | null>(null);
   const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null);
   const [opsQueues, setOpsQueues] = useState<ChatQueueListRow[]>([]);
   const [opsAgents, setOpsAgents] = useState<SupervisorAgentLoadRow[]>([]);
@@ -973,6 +985,87 @@ export default function MAsesorChatPage() {
       })
       .finally(() => setTransferLoading(false));
   }, []);
+
+  const abrirFinalizar = useCallback(() => {
+    setFinOpen(true);
+    setFinError(null);
+    setFinEstadoId("");
+    setFinSubId("");
+    setFinComentario("");
+    setFinCargando(true);
+    void (async () => {
+      try {
+        const res = await fetchWithSupabaseSession(
+          `/api/mobile/asesor/conversations/${encodeURIComponent(conversationId)}/finalizar`,
+          { cache: "no-store" }
+        );
+        const j = (await res.json().catch(() => null)) as
+          | { ok: true; states: { id: string; label: string; substates: { id: string; label: string }[] }[] }
+          | { ok: false; error?: string }
+          | null;
+        if (!res.ok || !j || j.ok !== true) {
+          setFinError((j && "error" in j && j.error) || "No se pudieron cargar las opciones de cierre");
+          return;
+        }
+        setFinEstados(j.states ?? []);
+      } catch {
+        setFinError("No se pudieron cargar las opciones de cierre");
+      } finally {
+        setFinCargando(false);
+      }
+    })();
+  }, [conversationId]);
+
+  const confirmarFinalizar = useCallback(async () => {
+    const st = finEstados.find((e) => e.id === finEstadoId);
+    if (!st) {
+      setFinError("Elegí un estado.");
+      return;
+    }
+    if (st.substates.length > 0 && !finSubId) {
+      setFinError("Elegí un subestado.");
+      return;
+    }
+    const comentario = finComentario.trim();
+    if (comentario.length < 3) {
+      setFinError("El comentario es obligatorio (al menos 3 caracteres).");
+      return;
+    }
+    setFinGuardando(true);
+    setFinError(null);
+    try {
+      const sub = st.substates.find((x) => x.id === finSubId);
+      const res = await fetchWithSupabaseSession(
+        `/api/mobile/asesor/conversations/${encodeURIComponent(conversationId)}/finalizar`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            closure_state_id: st.id,
+            closure_substate_id: st.substates.length > 0 ? finSubId : null,
+            closure_state_label: st.label,
+            closure_substate_label: sub?.label ?? (st.substates.length > 0 ? "" : "—"),
+            comment: comentario,
+          }),
+        }
+      );
+      const j = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || !j?.ok) {
+        setFinError(j?.error || "No se pudo finalizar la conversación");
+        return;
+      }
+      // Cerrada: ya no está en el inbox, así que quedarse adentro del chat no tiene sentido.
+      // Se navega con `router` y no con `volver`, que se define más abajo: nombrarlo en las
+      // dependencias de este hook lo leería antes de existir y rompería el render.
+      setFinOpen(false);
+      if (window.history.length > 1) router.back();
+      else router.push("/m/asesor");
+    } catch {
+      setFinError("No se pudo finalizar la conversación");
+    } finally {
+      setFinGuardando(false);
+    }
+  }, [conversationId, finEstados, finEstadoId, finSubId, finComentario, router]);
 
   // Mismo filtrado que el desktop: la cola acota, el texto busca en nombre, email y cola.
   const filteredAgents = (() => {
@@ -1568,6 +1661,17 @@ export default function MAsesorChatPage() {
         >
           ⇄ Transferir
         </button>
+        {/* Sólo ícono: el encabezado ya tiene Transferir y Soporte, y en un teléfono una
+            tercera pastilla con texto le come el nombre del contacto. */}
+        <button
+          type="button"
+          onClick={abrirFinalizar}
+          aria-label="Finalizar conversación"
+          title="Finalizar conversación"
+          className="shrink-0 grid h-9 w-9 place-items-center rounded-full bg-white/15 text-[15px] font-semibold active:bg-white/25"
+        >
+          ✓
+        </button>
         {puedeSoporte ? (
           <button
             type="button"
@@ -1998,6 +2102,118 @@ export default function MAsesorChatPage() {
           </>
         )}
       </div>
+
+      {finOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+          role="presentation"
+          onClick={() => {
+            if (!finGuardando) setFinOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Finalizar conversación"
+            className="max-h-[88vh] overflow-y-auto rounded-t-2xl bg-white"
+            onClick={(ev) => ev.stopPropagation()}
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <h2 className="text-sm font-semibold text-slate-900">Finalizar conversación</h2>
+              <button
+                type="button"
+                onClick={() => setFinOpen(false)}
+                disabled={finGuardando}
+                className="text-sm text-slate-500 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 px-4 py-3">
+              {finCargando ? (
+                <p className="py-4 text-center text-sm text-slate-400">Cargando opciones…</p>
+              ) : (
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Estado
+                    </span>
+                    <select
+                      value={finEstadoId}
+                      onChange={(e) => {
+                        setFinEstadoId(e.target.value);
+                        setFinSubId("");
+                      }}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+                    >
+                      <option value="">Elegí un estado…</option>
+                      {finEstados.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {(() => {
+                    const st = finEstados.find((e) => e.id === finEstadoId);
+                    if (!st || st.substates.length === 0) return null;
+                    return (
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Subestado
+                        </span>
+                        <select
+                          value={finSubId}
+                          onChange={(e) => setFinSubId(e.target.value)}
+                          className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+                        >
+                          <option value="">Elegí un subestado…</option>
+                          {st.substates.map((x) => (
+                            <option key={x.id} value={x.id}>
+                              {x.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  })()}
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Comentario
+                    </span>
+                    <textarea
+                      value={finComentario}
+                      onChange={(e) => setFinComentario(e.target.value)}
+                      rows={3}
+                      placeholder="Qué pasó con este chat…"
+                      className="resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+                    />
+                  </label>
+                </>
+              )}
+
+              {finError ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
+                  {finError}
+                </p>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void confirmarFinalizar()}
+                disabled={finGuardando || finCargando || finEstados.length === 0}
+                className="mt-1 rounded-xl bg-[#3F8E91] px-4 py-2.5 text-sm font-semibold text-white active:scale-[0.99] disabled:opacity-50"
+              >
+                {finGuardando ? "Guardando…" : "Confirmar finalización"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {transferOpen ? (
         <div

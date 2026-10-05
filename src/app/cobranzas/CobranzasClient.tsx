@@ -314,23 +314,60 @@ export default function CobranzasClient() {
     window.setTimeout(() => setTelCopiado(false), 1500);
   }, []);
 
-  // Scroll horizontal de la tabla arrastrando con el mouse (click + mover).
+  // Scroll horizontal de la tabla: (a) auto-scroll al acercar el mouse a un borde
+  // (llevás el mouse al borde derecho/izquierdo y se desplaza solo), y
+  // (b) arrastre con click, de bonus.
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({ down: false, startX: 0, startLeft: 0 });
+  const edgeTimer = useRef<number | null>(null);
+
+  const stopEdgeScroll = useCallback(() => {
+    if (edgeTimer.current != null) {
+      window.clearInterval(edgeTimer.current);
+      edgeTimer.current = null;
+    }
+  }, []);
+
   const onDragStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
     if (!el || e.button !== 0) return;
     dragRef.current = { down: true, startX: e.clientX, startLeft: el.scrollLeft };
   }, []);
-  const onDragMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const el = scrollRef.current;
-    const d = dragRef.current;
-    if (!el || !d.down) return;
-    el.scrollLeft = d.startLeft - (e.clientX - d.startX);
-  }, []);
-  const onDragEnd = useCallback(() => {
+
+  const onTableMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      // El arrastre tiene prioridad sobre el auto-scroll por borde.
+      if (dragRef.current.down) {
+        el.scrollLeft = dragRef.current.startLeft - (e.clientX - dragRef.current.startX);
+        stopEdgeScroll();
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const EDGE = 80; // zona sensible cerca de cada borde, en px
+      const x = e.clientX - rect.left;
+      let dir = 0;
+      let dist = 0;
+      if (x < EDGE) { dir = -1; dist = x; }
+      else if (x > rect.width - EDGE) { dir = 1; dist = rect.width - x; }
+      stopEdgeScroll();
+      if (dir !== 0 && el.scrollWidth > el.clientWidth) {
+        const speed = Math.max(3, Math.round(((EDGE - Math.max(0, dist)) / EDGE) * 22));
+        edgeTimer.current = window.setInterval(() => {
+          el.scrollLeft += dir * speed;
+        }, 16);
+      }
+    },
+    [stopEdgeScroll],
+  );
+
+  const onTableLeaveOrUp = useCallback(() => {
     dragRef.current.down = false;
-  }, []);
+    stopEdgeScroll();
+  }, [stopEdgeScroll]);
+
+  useEffect(() => () => stopEdgeScroll(), [stopEdgeScroll]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -681,11 +718,11 @@ export default function CobranzasClient() {
           <div
             ref={scrollRef}
             onPointerDown={onDragStart}
-            onPointerMove={onDragMove}
-            onPointerUp={onDragEnd}
-            onPointerLeave={onDragEnd}
+            onPointerMove={onTableMove}
+            onPointerUp={onTableLeaveOrUp}
+            onPointerLeave={onTableLeaveOrUp}
             className="cursor-grab select-none overflow-x-auto active:cursor-grabbing"
-            title="Arrastrá para ver más columnas"
+            title="Llevá el mouse al borde para desplazar, o arrastrá"
           >
             <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50">

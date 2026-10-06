@@ -72,7 +72,12 @@ export async function GET(request: NextRequest) {
       contactIds.length > 0
         ? supabase
             .from("chat_contacts")
-            .select("id, nombre, telefono, raw_telefono")
+            // Las columnas se llaman `name` y `phone_number`. Decía `nombre,
+            // telefono, raw_telefono`: PostgREST devolvía error, el error se
+            // descartaba con el `?? []` de abajo, el mapa quedaba vacío y toda
+            // conversación salía con `contact_nombre: null`. En la app móvil se
+            // veía "Sin nombre" en todas, sin que quedara rastro de por qué.
+            .select("id, name, phone_number, phone_normalized")
             .eq("empresa_id", empresaId)
             .in("id", contactIds)
         : Promise.resolve({ data: [], error: null } as { data: unknown[]; error: null }),
@@ -85,16 +90,23 @@ export async function GET(request: NextRequest) {
         : Promise.resolve({ data: [], error: null } as { data: unknown[]; error: null }),
     ]);
 
+    // Un error acá no corta el inbox —las conversaciones se listan igual, sin
+    // nombre— pero tiene que quedar en el log. Descartarlo en silencio es lo
+    // que hizo que una columna mal escrita pasara meses desapercibida.
+    if (contactsRes.error) {
+      console.warn("[mobile-inbox] no se pudieron leer los contactos:", contactsRes.error.message);
+    }
+
     const contactById = new Map<string, { nombre: string | null; telefono: string | null }>();
     for (const c of (contactsRes.data ?? []) as Array<{
       id: string;
-      nombre: string | null;
-      telefono: string | null;
-      raw_telefono: string | null;
+      name: string | null;
+      phone_number: string | null;
+      phone_normalized: string | null;
     }>) {
       contactById.set(c.id, {
-        nombre: c.nombre ?? null,
-        telefono: c.telefono ?? c.raw_telefono ?? null,
+        nombre: c.name ?? null,
+        telefono: c.phone_number ?? c.phone_normalized ?? null,
       });
     }
 

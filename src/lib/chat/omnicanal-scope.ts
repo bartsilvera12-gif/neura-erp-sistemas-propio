@@ -169,25 +169,6 @@ export function resolveInboxAssignmentForScope(
 }
 
 /**
- * Supervisor sin nada a cargo: ni colas en `chat_queue_supervisors` ni agentes de equipo.
- *
- * Antes esto daba alcance vacío, o sea inbox en blanco: el filtro se armaba con listas vacías y
- * terminaba en `NO_CONVERSATION_MATCH`. Pero a un supervisor no se le asignan colas — supervisa a
- * la empresa, no una fila de atención. Sin esto, la única forma de que vea algo es asignarle colas
- * como si fuera agente, que es justo lo que el rol no es.
- *
- * Un `admin` no pasa por acá (`isOmnicanalAdminScope` corta antes) y un `agente` tampoco cambia:
- * su alcance sigue siendo lo asignado a él más lo sin-asignar de sus colas.
- */
-function esSupervisorSinEquipo(scope: OmnicanalScope): boolean {
-  return (
-    scope.role === "supervisor" &&
-    (scope.queueIds?.length ?? 0) === 0 &&
-    (scope.agentUsuarioIds?.length ?? 0) === 0
-  );
-}
-
-/**
  * Admin ERP (`admin`, `administrador`, `super_admin`) sin rol operativo omnicanal:
  * no se restringe por colas/agentes (compatibilidad con quien gestiona pero no está en `chat_empresa_operator_roles`).
  */
@@ -207,7 +188,6 @@ export async function shouldBypassOmnicanalConversationScope(
   scope: OmnicanalScope
 ): Promise<boolean> {
   if (isOmnicanalAdminScope(scope)) return true;
-  if (esSupervisorSinEquipo(scope)) return true;
   const uid = normalizeId(usuarioId);
   if (!uid) return false;
   const { data, error } = await catalogSr.from("usuarios").select("rol").eq("id", uid).maybeSingle();

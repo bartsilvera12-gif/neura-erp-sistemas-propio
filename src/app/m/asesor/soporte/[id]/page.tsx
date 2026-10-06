@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeftRight, ArrowUp, ChevronLeft, ExternalLink, FileText, Film, ImageIcon, Loader2, Music } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, ChevronLeft, ExternalLink, FileText, Film, ImageIcon, Loader2, Maximize2, Music, X } from "lucide-react";
 import { apiSoporte, obtenerArchivos, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
 import { numeroTicket, tamanoLegible, TRANSICIONES } from "@/lib/soporte/dominio";
@@ -53,6 +53,9 @@ export default function MAsesorTicketPage() {
   const [guardando, setGuardando] = useState(false);
   const [texto, setTexto] = useState("");
   const [menuEstado, setMenuEstado] = useState(false);
+  // Imagen abierta en el visor a pantalla completa (lightbox). En la APK no se puede abrir en
+  // "otra pestaña" (queda la pantalla en negro), así que se muestra DENTRO de la app.
+  const [imagenAmpliada, setImagenAmpliada] = useState<Archivo | null>(null);
 
   const cargar = useCallback(async () => {
     const orden = (a: Item, b: Item) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
@@ -252,7 +255,16 @@ export default function MAsesorTicketPage() {
                               {a.subido_por?.nombre ?? "Usuario"} · {tamanoLegible(a.size_bytes)}
                             </p>
                           </div>
-                          {a.url ? (
+                          {a.url && esImagen ? (
+                            <button
+                              type="button"
+                              onClick={() => setImagenAmpliada(a)}
+                              aria-label={`Ampliar ${a.nombre}`}
+                              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
+                            >
+                              <Maximize2 className="h-4 w-4" aria-hidden />
+                            </button>
+                          ) : a.url ? (
                             <a
                               href={a.url}
                               target="_blank"
@@ -269,7 +281,12 @@ export default function MAsesorTicketPage() {
                             (la misma que usa el escritorio), así la imagen/video/audio se ve DENTRO del
                             ticket en vez de solo un ícono con un enlace. */}
                         {a.url && esImagen ? (
-                          <a href={a.url} target="_blank" rel="noreferrer" className="mt-2 block">
+                          <button
+                            type="button"
+                            onClick={() => setImagenAmpliada(a)}
+                            aria-label={`Ampliar ${a.nombre}`}
+                            className="mt-2 block w-full"
+                          >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={a.url}
@@ -277,7 +294,7 @@ export default function MAsesorTicketPage() {
                               loading="lazy"
                               className="max-h-72 w-full rounded-xl border border-slate-200 bg-slate-50 object-contain"
                             />
-                          </a>
+                          </button>
                         ) : a.url && esVideo ? (
                           <video
                             src={a.url}
@@ -380,6 +397,42 @@ export default function MAsesorTicketPage() {
         >
           {mensaje}
         </button>
+      ) : null}
+
+      {/* Visor de imagen a pantalla completa (lightbox), dentro de la app. Tocar la imagen,
+          el fondo o la X cierra. Evita abrir en "otra pestaña", que en la APK queda en negro. */}
+      {imagenAmpliada?.url ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-black/95"
+          role="dialog"
+          aria-modal="true"
+          style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white">
+            <span className="truncate pr-3 text-[13px] font-medium">{imagenAmpliada.nombre}</span>
+            <button
+              type="button"
+              onClick={() => setImagenAmpliada(null)}
+              aria-label="Cerrar"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 active:bg-white/20"
+            >
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setImagenAmpliada(null)}
+            aria-label="Cerrar"
+            className="flex min-h-0 flex-1 items-center justify-center p-2"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imagenAmpliada.url}
+              alt={imagenAmpliada.nombre}
+              className="max-h-full max-w-full object-contain"
+            />
+          </button>
+        </div>
       ) : null}
     </div>
   );

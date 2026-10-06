@@ -20,17 +20,38 @@ export type ProyectosApiAuth =
   | ProyectosApiAuthOk
   | { ok: false; status: number; message: string };
 
-/**\n * Quién puede eliminar un proyecto definitivamente: admin de empresa, super admin\n * (en cualquiera de sus variantes históricas de rol) o el super admin de bootstrap.\n * Los demás roles tienen el soft delete (`PATCH { archivado: true }`).\n */\nexport function puedeEliminarProyectos(auth: ProyectosApiAuthOk): boolean {
+/**
+ * Quién puede eliminar un proyecto definitivamente: admin de empresa, super admin
+ * (en cualquiera de sus variantes históricas de rol) o el super admin de bootstrap.
+ * Los demás roles tienen el soft delete (`PATCH { archivado: true }`).
+ */
+export function puedeEliminarProyectos(auth: ProyectosApiAuthOk): boolean {
   return auth.bootstrapSuperAdmin || esRolAdminEmpresaOGlobal(auth.rol);
 }
 
-/** Asignaciones de un proyecto que habilitan a manejar su flujo. */\nexport type AsignacionFlujo = {
+/** Asignaciones de un proyecto que habilitan a manejar su flujo. */
+export type AsignacionFlujo = {
   responsable_tecnico_id?: string | null;
   project_manager_id?: string | null;
   qa_responsable_id?: string | null;
 };
 
-/**\n * ¿El usuario es SOLO LECTURA del flujo del proyecto? (Tipo, Estado, Sub-etapa,\n * Eliminar.) El comercial —y cualquier usuario que no sea del equipo— abre la\n * ficha para coordinar (datos, comentarios, archivos) pero no maneja el tablero.\n *\n * El flujo lo maneja el EQUIPO del proyecto: admin, Project Manager, QA o técnico,\n * ya sea por flag global (`es_project_manager`/`es_qa`/`es_tecnico`) o por estar\n * ASIGNADO a ese proyecto (responsable técnico / PM / QA). Todo el resto es solo\n * lectura.\n *\n * Clave: NO se filtra por `usuarios.area` (poco confiable) ni por el rol string\n * suelto. Un comercial real suele figurar con rol "usuario" y área "ventas"\n * (p. ej. Marco), así que confiar en eso lo dejaría afuera. Se decide por función\n * real (flags + asignación): si no sos del equipo técnico/gestión, no tocás el flujo.\n */\nexport async function esComercialSoloLectura(
+/**
+ * ¿El usuario es SOLO LECTURA del flujo del proyecto? (Tipo, Estado, Sub-etapa,
+ * Eliminar.) El comercial —y cualquier usuario que no sea del equipo— abre la
+ * ficha para coordinar (datos, comentarios, archivos) pero no maneja el tablero.
+ *
+ * El flujo lo maneja el EQUIPO del proyecto: admin, Project Manager, QA o técnico,
+ * ya sea por flag global (`es_project_manager`/`es_qa`/`es_tecnico`) o por estar
+ * ASIGNADO a ese proyecto (responsable técnico / PM / QA). Todo el resto es solo
+ * lectura.
+ *
+ * Clave: NO se filtra por `usuarios.area` (poco confiable) ni por el rol string
+ * suelto. Un comercial real suele figurar con rol "usuario" y área "ventas"
+ * (p. ej. Marco), así que confiar en eso lo dejaría afuera. Se decide por función
+ * real (flags + asignación): si no sos del equipo técnico/gestión, no tocás el flujo.
+ */
+export async function esComercialSoloLectura(
   auth: ProyectosApiAuthOk,
   proyecto?: AsignacionFlujo | null
 ): Promise<boolean> {
@@ -46,7 +67,9 @@ export type ProyectosApiAuth =
     es_qa?: boolean | null;
     es_tecnico?: boolean | null;
   };
+  // Equipo técnico / gestión por flag global → maneja el flujo.
   if (u.es_project_manager === true || u.es_qa === true || u.es_tecnico === true) return false;
+  // O asignado a ESTE proyecto como técnico / PM / QA → también.
   const uid = auth.usuarioCatalogId;
   if (
     proyecto &&

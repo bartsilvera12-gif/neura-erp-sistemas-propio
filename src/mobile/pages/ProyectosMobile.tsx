@@ -10,6 +10,7 @@ import {
   type ProyectoCard,
 } from "@/shared/hooks/useProyectos";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
+import AsesorAvisosBell from "@/app/m/asesor/AsesorAvisosBell";
 
 /**
  * Proyectos mobile — vista por etapa.
@@ -184,13 +185,16 @@ export default function ProyectosMobile({
               <h1 className="text-base font-semibold">Proyectos</h1>
               <p className="text-[11px] text-white/80">{resumen}</p>
             </div>
-            <Link
-              href={hrefNuevo}
-              className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-[#3F8E91] shadow-sm active:bg-white"
-            >
-              <Plus className="h-4 w-4" />
-              Nuevo
-            </Link>
+            <div className="flex shrink-0 items-center gap-2">
+              <AsesorAvisosBell />
+              <Link
+                href={hrefNuevo}
+                className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-[#3F8E91] shadow-sm active:bg-white"
+              >
+                <Plus className="h-4 w-4" />
+                Nuevo
+              </Link>
+            </div>
           </div>
           <input
             type="search"

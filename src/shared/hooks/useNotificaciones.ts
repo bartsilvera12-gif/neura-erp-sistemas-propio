@@ -101,7 +101,7 @@ export function useNotificaciones(opts?: { limit?: number; enabled?: boolean }) 
 /**
  * A dónde lleva un aviso DENTRO de la app del asesor.
  *
- * Solo se linkean los dos destinos que existen adentro: la conversación y el proyecto.
+ * Solo se linkean destinos que existen adentro de la app: conversación, proyecto y Soporte.
  * Agenda, cobranzas y chat interno viven únicamente en el dashboard, y mandar ahí te
  * expulsaría de la app — que es justo lo que estuvimos sacando. Esos avisos se leen y se
  * marcan como leídos, pero no navegan.

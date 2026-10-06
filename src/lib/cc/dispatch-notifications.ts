@@ -104,12 +104,15 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
       if (contactId) {
         const { data: ct } = await sb
           .from("chat_contacts")
-          .select("nombre, telefono")
+          // `name` y `phone_number`: las columnas se llaman así. Con los nombres
+          // viejos la consulta fallaba y el aviso llegaba al teléfono sin decir
+          // de quién era el mensaje, sólo con el texto.
+          .select("name, phone_number")
           .eq("id", contactId)
           .maybeSingle();
         who = (
-          (ct as { nombre?: string | null } | null)?.nombre ||
-          (ct as { telefono?: string | null } | null)?.telefono ||
+          (ct as { name?: string | null } | null)?.name ||
+          (ct as { phone_number?: string | null } | null)?.phone_number ||
           ""
         )
           .toString()

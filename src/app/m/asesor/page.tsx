@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { attachmentCaptionForDisplay, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
 import { useAsesorInbox } from "@/shared/hooks/useAsesorInbox";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import AsesorTabBar from "./AsesorTabBar";
+import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
+import { supabase } from "@/lib/supabase";
 
 function shortTime(iso: string | null): string {
   if (!iso) return "";
@@ -23,6 +26,20 @@ function shortTime(iso: string | null): string {
 const CLAVE_COLA = "neura:asesor:cola";
 
 export default function MAsesorInboxPage() {
+  const router = useRouter();
+  const [redirigiendoAccesoEspecial, setRedirigiendoAccesoEspecial] = useState(false);
+
+  useEffect(() => {
+    let activo = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!activo || !tieneAccesoMovilEspecial(data.session?.user.email)) return;
+      setRedirigiendoAccesoEspecial(true);
+      router.replace("/m/asesor/proyectos");
+    });
+    return () => {
+      activo = false;
+    };
+  }, [router]);
   // Cola elegida ("" = todas). Se recuerda en el dispositivo, como el filtro del escritorio.
   const [cola, setCola] = useState("");
   useEffect(() => {
@@ -113,6 +130,8 @@ export default function MAsesorInboxPage() {
     });
   })();
 
+
+  if (redirigiendoAccesoEspecial) return null;
 
   return (
     <div className="flex h-svh min-h-0 flex-col bg-slate-50">

@@ -73,12 +73,12 @@ export default function AsesorTabBar() {
   /* SWR deduplica: comparte la misma petición con la pantalla de Avisos, no la repite. */
   const { noLeidas } = useNotificaciones({ enabled: habilitado });
   const accesoSoporte = useAccesoSoporte(habilitado);
-  const [ocultarChats, setOcultarChats] = useState(false);
+  const [accesoEspecial, setAccesoEspecial] = useState(false);
 
   useEffect(() => {
     let activo = true;
     void supabase.auth.getSession().then(({ data }) => {
-      if (activo) setOcultarChats(tieneAccesoMovilEspecial(data.session?.user.email));
+      if (activo) setAccesoEspecial(tieneAccesoMovilEspecial(data.session?.user.email));
     });
     return () => {
       activo = false;
@@ -107,7 +107,10 @@ export default function AsesorTabBar() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="flex items-stretch">
-        {TABS.filter((t) => (!ocultarChats || t.href !== "/m/asesor") && (t.modulo !== "soporte" || accesoSoporte)).map(({ href, label, Icon, exact }) => {
+        {(accesoEspecial
+          ? [TABS[3], TABS[1]].filter((t) => t.modulo !== "soporte" || accesoSoporte)
+          : TABS.filter((t) => t.modulo !== "soporte" || accesoSoporte)
+        ).map(({ href, label, Icon, exact }) => {
           // Soporte abarca todo el módulo (/mis-tickets, un ticket, etc.), no solo /tickets.
           const active = exact
             ? pathname === href

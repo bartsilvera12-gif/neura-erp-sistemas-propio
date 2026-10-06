@@ -8,6 +8,7 @@ import { apiSoporte } from "@/app/dashboard/soporte/_ui/api";
 import { numeroTicket } from "@/lib/soporte/dominio";
 import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
 import AsesorTabBar from "../AsesorTabBar";
+import AsesorAvisosBell from "../AsesorAvisosBell";
 
 // El mismo formulario del escritorio y del chat. Se carga recién al abrirlo.
 const SoporteTicketModal = dynamic(() => import("@/app/dashboard/conversaciones/SoporteTicketModal"), {
@@ -81,16 +82,19 @@ export default function MAsesorSoportePage() {
             <h1 className="text-base font-semibold">Soporte</h1>
             <p className="text-[11px] text-white/80">Tickets</p>
           </div>
-          {puedeCargar ? (
-            <button
-              type="button"
-              onClick={() => setCargandoTicket(true)}
-              className="inline-flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-[#3F8E91] shadow-sm active:bg-white"
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              Nuevo
-            </button>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-2">
+            <AsesorAvisosBell />
+            {puedeCargar ? (
+              <button
+                type="button"
+                onClick={() => setCargandoTicket(true)}
+                className="inline-flex min-h-[36px] shrink-0 items-center gap-1 rounded-full bg-white/95 px-3.5 text-[13px] font-semibold text-[#3F8E91] shadow-sm active:bg-white"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Nuevo
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-2 grid grid-cols-2 rounded-xl bg-white/15 p-0.5" role="radiogroup" aria-label="Alcance">

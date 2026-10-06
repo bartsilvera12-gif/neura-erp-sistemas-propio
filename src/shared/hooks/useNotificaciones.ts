@@ -17,7 +17,8 @@ export type NotificacionTipo =
   | "qa_vence"
   | "chat_interno_mensaje"
   | "conversacion_asignada"
-  | "conversacion_mensaje";
+  | "conversacion_mensaje"
+  | "soporte_revision";
 
 export type Notificacion = {
   id: string;
@@ -34,6 +35,8 @@ export type Notificacion = {
     sala_id?: string;
     mencion?: boolean;
     conversation_id?: string;
+    ticket_id?: string;
+    subtarea_id?: string;
   } | null;
   /** Aviso calculado en vivo por la API, sin fila en la base: NO se puede marcar leído. */
   derivada?: boolean;
@@ -98,7 +101,7 @@ export function useNotificaciones(opts?: { limit?: number; enabled?: boolean }) 
 /**
  * A dónde lleva un aviso DENTRO de la app del asesor.
  *
- * Solo se linkean los dos destinos que existen adentro: la conversación y el proyecto.
+ * Solo se linkean destinos que existen adentro de la app: conversación, proyecto y Soporte.
  * Agenda, cobranzas y chat interno viven únicamente en el dashboard, y mandar ahí te
  * expulsaría de la app — que es justo lo que estuvimos sacando. Esos avisos se leen y se
  * marcan como leídos, pero no navegan.
@@ -107,6 +110,10 @@ export function destinoEnApp(n: Notificacion): string | null {
   const convId = n.metadata?.conversation_id;
   if ((n.tipo === "conversacion_asignada" || n.tipo === "conversacion_mensaje") && convId) {
     return `/m/asesor/chat/${convId}`;
+  }
+  const ticketId = n.metadata?.ticket_id;
+  if (n.tipo === "soporte_revision" && ticketId) {
+    return `/m/asesor/soporte/${ticketId}`;
   }
   if (n.proyecto_id) {
     const tab = n.tipo === "comentario_proyecto" ? "?tab=comentarios" : "";

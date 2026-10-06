@@ -41,6 +41,7 @@ const ESTILO: Record<NotificacionTipo, { Icono: typeof BellRing; label: string; 
   chat_interno_mensaje: { Icono: Headset, label: "Chat interno", wrap: "bg-sky-50 text-sky-700" },
   conversacion_asignada: { Icono: Headset, label: "Conversación", wrap: "bg-[#4FAEB2]/15 text-[#3F8E91]" },
   conversacion_mensaje: { Icono: MessageSquare, label: "Conversación", wrap: "bg-[#4FAEB2]/15 text-[#3F8E91]" },
+  soporte_revision: { Icono: Headset, label: "Soporte", wrap: "bg-emerald-50 text-emerald-700" },
 };
 
 const FALLBACK = { Icono: BellRing, label: "Aviso", wrap: "bg-slate-100 text-slate-600" };

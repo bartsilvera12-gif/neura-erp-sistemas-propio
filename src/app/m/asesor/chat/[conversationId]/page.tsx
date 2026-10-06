@@ -1501,6 +1501,20 @@ export default function MAsesorChatPage() {
         if (Ctx) {
           const ctx = new Ctx();
           audioCtxRef.current = ctx;
+          // En Android el AudioContext nace SUSPENDIDO. Suspendido, el analizador devuelve
+          // silencio aunque el micrófono esté grabando bien, y el medidor bloqueaba notas de
+          // voz perfectas diciendo "no se escucha nada".
+          if (ctx.state === "suspended") {
+            try {
+              await ctx.resume();
+            } catch {
+              // Si no se puede reactivar, no se mide: mejor dejar pasar que bloquear de más.
+            }
+          }
+          if (ctx.state !== "running") {
+            huboSonidoRef.current = true;
+            throw new Error("medidor no disponible");
+          }
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 512;
           ctx.createMediaStreamSource(stream).connect(analyser);

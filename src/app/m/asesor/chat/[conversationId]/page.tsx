@@ -718,6 +718,8 @@ export default function MAsesorChatPage() {
   const nivelTimerRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const huboSonidoRef = useRef(true);
+  /** El micrófono no captó nada todavía: se avisa mientras se graba, no al final. */
+  const [micMudo, setMicMudo] = useState(false);
 
   const load = useCallback(
     async (silent?: boolean) => {
@@ -1474,6 +1476,7 @@ export default function MAsesorChatPage() {
           recTimerRef.current = null;
         }
         setRecording(false);
+        setMicMudo(false);
         setRecSecs(0);
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         chunksRef.current = [];
@@ -1503,11 +1506,15 @@ export default function MAsesorChatPage() {
           ctx.createMediaStreamSource(stream).connect(analyser);
           const datos = new Uint8Array(analyser.frequencyBinCount);
           huboSonidoRef.current = false;
+          const arranque = Date.now();
           nivelTimerRef.current = window.setInterval(() => {
             analyser.getByteTimeDomainData(datos);
             let pico = 0;
             for (const v of datos) pico = Math.max(pico, Math.abs(v - 128));
             if (pico > 6) huboSonidoRef.current = true; // ~ -25 dB
+            // Avisar EN EL MOMENTO: enterarse al soltar significa haber hablado para nada.
+            // Se dan 1,5 s de gracia para no parpadear en el silencio inicial.
+            if (Date.now() - arranque > 1500) setMicMudo(!huboSonidoRef.current);
           }, 120);
         } else {
           huboSonidoRef.current = true; // sin medidor no se bloquea nada
@@ -1517,6 +1524,7 @@ export default function MAsesorChatPage() {
       }
 
       setRecording(true);
+      setMicMudo(false);
       setRecSecs(0);
       recTimerRef.current = window.setInterval(() => setRecSecs((s) => s + 1), 1000);
       // SIN timeslice: MediaRecorder acumula todo y emite UN solo blob completo al stop().
@@ -1941,9 +1949,16 @@ export default function MAsesorChatPage() {
             >
               Cancelar
             </button>
-            <div className="flex-1 flex items-center gap-2 text-red-600 text-sm font-medium">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
-              Grabando {fmtSecs(recSecs)}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 text-red-600 text-sm font-medium">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
+                Grabando {fmtSecs(recSecs)}
+              </div>
+              {micMudo ? (
+                <p className="mt-0.5 text-[11px] leading-snug text-amber-700">
+                  No se escucha nada. Revisá que otra app no esté usando el micrófono.
+                </p>
+              ) : null}
             </div>
             <button
               type="button"

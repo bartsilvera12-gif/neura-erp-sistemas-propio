@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 import { attachmentCaptionForDisplay, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
 import { useAsesorInbox } from "@/shared/hooks/useAsesorInbox";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
@@ -117,8 +116,6 @@ export default function MAsesorInboxPage() {
 
   return (
     <div className="flex h-svh min-h-0 flex-col bg-slate-50">
-      {/* Registro de push FCM: solo actúa dentro de la APK (Capacitor nativo); no-op en web. */}
-      <CapacitorPushRegister />
       <header
         className="sticky top-0 z-10 bg-[#3F8E91] text-white px-4 pb-3 shadow-sm"
         // iOS: respetar la barra de estado (notch). env(safe-area-inset-top)=0 en Android/web.

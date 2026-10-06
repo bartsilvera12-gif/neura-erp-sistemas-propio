@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeftRight, ArrowUp, ChevronLeft, Download, ExternalLink, FileText, Film, ImageIcon, Loader2, Maximize2, Music, X } from "lucide-react";
 import { apiSoporte, obtenerArchivos, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
-import { numeroTicket, tamanoLegible, TRANSICIONES } from "@/lib/soporte/dominio";
+import { enFranjaDeGuardia, numeroTicket, qaSoporteHabilitado, tamanoLegible, transicionPermitida } from "@/lib/soporte/dominio";
 import { Chip, slaVencido, tonoEstado, tonoPrioridad, type PersonaSoporte, type TicketMovil } from "../_comun";
 
 type Comentario = {
@@ -112,7 +112,16 @@ export default function MAsesorTicketPage() {
     }
   };
 
-  const destinos = ticket ? estados.filter((e) => (TRANSICIONES[ticket.estado_codigo] ?? []).includes(e.codigo)) : [];
+  // Estados a los que se puede pasar. Usa la MISMA regla que el escritorio y el backend
+  // (`transicionPermitida`): contempla el atajo "sin QA" — En proceso / Re-abierto pueden ir
+  // directo a Resuelto cuando la empresa tiene QA desactivado o en horario de guardia. Con el
+  // mapa crudo de transiciones, en esas empresas no aparecía la opción "Resuelto".
+  const qaHabilitado = qaSoporteHabilitado(estados.map((e) => ({ codigo: e.codigo, activo: e.activo !== false })));
+  const destinos = ticket
+    ? estados.filter((e) =>
+        transicionPermitida(ticket.estado_codigo, e.codigo, { guardia: enFranjaDeGuardia(), qaHabilitado })
+      )
+    : [];
 
   const subirNuevosArchivos = async () => {
     if (!nuevosArchivos.length || subiendoArchivos) return;

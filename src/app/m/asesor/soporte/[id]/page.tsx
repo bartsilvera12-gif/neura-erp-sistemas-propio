@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeftRight, ArrowUp, ChevronLeft, ExternalLink, FileText, Loader2 } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, ChevronLeft, ExternalLink, FileText, Film, ImageIcon, Loader2, Music } from "lucide-react";
 import { apiSoporte, obtenerArchivos, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
 import { numeroTicket, tamanoLegible, TRANSICIONES } from "@/lib/soporte/dominio";
@@ -234,30 +234,63 @@ export default function MAsesorTicketPage() {
                 <p className="text-[12px] text-slate-500">Todavía no hay archivos adjuntos.</p>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {archivosTicket.map((a) => (
-                    <div key={a.id} className="flex items-center gap-3 py-2">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">
-                        <FileText className="h-4 w-4" aria-hidden />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-medium text-slate-800">{a.nombre}</p>
-                        <p className="text-[11px] text-slate-400">
-                          {a.subido_por?.nombre ?? "Usuario"} · {tamanoLegible(a.size_bytes)}
-                        </p>
+                  {archivosTicket.map((a) => {
+                    const tipo = a.mime_type ?? "";
+                    const esImagen = tipo.startsWith("image/");
+                    const esVideo = tipo.startsWith("video/");
+                    const esAudio = tipo.startsWith("audio/");
+                    const Icono = esImagen ? ImageIcon : esVideo ? Film : esAudio ? Music : FileText;
+                    return (
+                      <div key={a.id} className="py-2">
+                        <div className="flex items-center gap-3">
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">
+                            <Icono className="h-4 w-4" aria-hidden />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13px] font-medium text-slate-800">{a.nombre}</p>
+                            <p className="text-[11px] text-slate-400">
+                              {a.subido_por?.nombre ?? "Usuario"} · {tamanoLegible(a.size_bytes)}
+                            </p>
+                          </div>
+                          {a.url ? (
+                            <a
+                              href={a.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`Abrir ${a.nombre}`}
+                              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
+                            >
+                              <ExternalLink className="h-4 w-4" aria-hidden />
+                            </a>
+                          ) : null}
+                        </div>
+
+                        {/* Previsualización inline según el tipo. `a.url` ya viene lista para mostrar
+                            (la misma que usa el escritorio), así la imagen/video/audio se ve DENTRO del
+                            ticket en vez de solo un ícono con un enlace. */}
+                        {a.url && esImagen ? (
+                          <a href={a.url} target="_blank" rel="noreferrer" className="mt-2 block">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={a.url}
+                              alt={a.nombre}
+                              loading="lazy"
+                              className="max-h-72 w-full rounded-xl border border-slate-200 bg-slate-50 object-contain"
+                            />
+                          </a>
+                        ) : a.url && esVideo ? (
+                          <video
+                            src={a.url}
+                            controls
+                            preload="metadata"
+                            className="mt-2 w-full rounded-xl border border-slate-200 bg-black"
+                          />
+                        ) : a.url && esAudio ? (
+                          <audio src={a.url} controls preload="metadata" className="mt-2 w-full" />
+                        ) : null}
                       </div>
-                      {a.url ? (
-                        <a
-                          href={a.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`Abrir ${a.nombre}`}
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
-                        >
-                          <ExternalLink className="h-4 w-4" aria-hidden />
-                        </a>
-                      ) : null}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 

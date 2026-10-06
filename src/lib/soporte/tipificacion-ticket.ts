@@ -10,6 +10,8 @@ import { enHorarioLaboral, TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
 import { lunesDe } from "@/lib/guardias/semana";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { numeroTicket } from "@/lib/soporte/dominio";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
 
 /**
  * Tipos de gestión que crean un ticket de Soporte, y el tipo de ticket de cada uno.
@@ -97,6 +99,54 @@ export function asuntoDesdeDescripcion(descripcion: unknown, max = 90): string {
 export type ResultadoAlta =
   | { ok: true; tipificacion_id: string; ticket_id: string; numero: number }
   | { ok: false; mensaje: string; status: number };
+
+/**
+ * Copia el aviso de alta a quienes tienen acceso móvil especial para seguimiento.
+ * No cambia responsable ni estado del ticket y nunca hace fallar el alta.
+ *
+ * Si esa persona ya es la responsable, avisarSoporte le manda el aviso normal.
+ * Solo se duplica acá cuando el aviso normal no existiría (otro responsable o
+ * la propia persona especial cargó el ticket).
+ */
+async function avisarAltaASeguimientoMovil(
+  soporte: SoporteContexto,
+  args: { responsableId: string | null; ticketId: string; titulo: string; cuerpo: string }
+): Promise<void> {
+  try {
+    const catalog = createServiceRoleClient();
+    const { data, error } = await catalog
+      .from("usuarios")
+      .select("id, email")
+      .eq("empresa_id", soporte.empresaId)
+      .ilike("estado", "activo");
+    if (error) {
+      console.error("[soporte] no se pudieron resolver seguidores móviles", error.message);
+      return;
+    }
+
+    const destinatarios = ((data ?? []) as { id: string; email?: string | null }[])
+      .filter((u) => tieneAccesoMovilEspecial(u.email))
+      .map((u) => u.id)
+      .filter((id) => id !== args.responsableId || id === soporte.usuarioId);
+
+    if (destinatarios.length === 0) return;
+
+    const { error: insertError } = await soporte.sb.from("usuario_notificaciones").insert(
+      destinatarios.map((usuarioId) => ({
+        empresa_id: soporte.empresaId,
+        usuario_id: usuarioId,
+        tipo: "soporte_revision",
+        titulo: args.titulo.slice(0, 200),
+        cuerpo: args.cuerpo.slice(0, 300),
+        actor_id: soporte.usuarioId,
+        metadata: { ticket_id: args.ticketId },
+      }))
+    );
+    if (insertError) console.error("[soporte] no se pudo avisar al seguimiento móvil", insertError.message);
+  } catch (e) {
+    console.error("[soporte] no se pudo avisar al seguimiento móvil", e);
+  }
+}
 
 /**
  * Crea la tipificación y su ticket en UNA transacción SQL
@@ -202,13 +252,25 @@ export async function crearTipificacionConTicket(
   // Aviso en la campanita a quien le cayó el ticket (no-throwing; si lo cargó
   // la misma persona no se avisa).
   const clienteNombre = (await clientesPorId(soporte.sb, soporte.empresaId, [args.clienteId])).get(args.clienteId) ?? "Cliente";
+  const tituloAviso = `Nuevo ticket ${numeroTicket(r.numero)} · ${tipoNombre}${prep.ticket.resumen.clasificacion_nombre ? ` ${prep.ticket.resumen.clasificacion_nombre}` : ""}${
+    asignacion.motivo === "guardia" ? " (guardia)" : ""
+  }`;
+  const cuerpoAviso = `${clienteNombre} · ${prep.ticket.fila.asunto}`;
+
   await avisarSoporte(soporte, {
     usuarioId: prep.ticket.fila.responsable_id,
-    titulo: `Nuevo ticket ${numeroTicket(r.numero)} · ${tipoNombre}${prep.ticket.resumen.clasificacion_nombre ? ` ${prep.ticket.resumen.clasificacion_nombre}` : ""}${
-      asignacion.motivo === "guardia" ? " (guardia)" : ""
-    }`,
-    cuerpo: `${clienteNombre} · ${prep.ticket.fila.asunto}`,
+    titulo: tituloAviso,
+    cuerpo: cuerpoAviso,
     ticketId: r.ticket_id,
+  });
+
+  // Seguimiento móvil especial: recibe TODOS los tickets nuevos aunque otro
+  // integrante quede a cargo. No cambia asignación ni flujo de Soporte.
+  await avisarAltaASeguimientoMovil(soporte, {
+    responsableId: prep.ticket.fila.responsable_id,
+    ticketId: r.ticket_id,
+    titulo: tituloAviso,
+    cuerpo: cuerpoAviso,
   });
 
   return { ok: true, tipificacion_id: r.tipificacion_id, ticket_id: r.ticket_id, numero: r.numero };

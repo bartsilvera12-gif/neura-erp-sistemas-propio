@@ -31,6 +31,8 @@ type ClienteCobranza = {
   servicios: ServicioCobranza[];
   mensaje_mes_enviado?: boolean;
   mensaje_mes_fecha?: string | null;
+  /** Marca manual "cobranza enviada" del mes en curso (checkbox). */
+  cobranza_enviada?: boolean;
 };
 
 type PromesaPago = {
@@ -145,6 +147,7 @@ const COLUMNAS: { h: string; right: boolean; key: SortKey | null; kind: "str" | 
   { h: "Último pago", right: false, key: "ultimo", kind: "date" },
   { h: "Próx. venc.", right: false, key: "prox", kind: "date" },
   { h: "Promesa de pago", right: false, key: "promesa", kind: "date" },
+  { h: "Cobranza enviada", right: false, key: null, kind: null, hint: "Marca manual: tildá cuando ya le enviaste la cobranza este mes" },
   { h: "Acción", right: true, key: null, kind: null },
 ];
 
@@ -517,6 +520,28 @@ export default function CobranzasClient() {
     [detalleId, openDetalle, load, showToast]
   );
 
+  // "Cobranza enviada" (checkbox por fila, por mes). Optimista: tilda al toque y
+  // persiste; si falla, revierte. Override local sobre el valor del servidor.
+  const [enviadoLocal, setEnviadoLocal] = useState<Record<string, boolean>>({});
+  const toggleCobranzaEnviada = useCallback(
+    async (clienteId: string, enviada: boolean) => {
+      setEnviadoLocal((m) => ({ ...m, [clienteId]: enviada }));
+      try {
+        const res = await fetchWithSupabaseSession("/api/cobranzas/envio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cliente_id: clienteId, enviada }),
+        });
+        const json = (await res.json()) as { success?: boolean; error?: string };
+        if (!res.ok || json.success !== true) throw new Error(json.error ?? `Error ${res.status}`);
+      } catch (e) {
+        setEnviadoLocal((m) => ({ ...m, [clienteId]: !enviada })); // revertir
+        showToast(e instanceof Error ? e.message : "No se pudo actualizar la cobranza enviada");
+      }
+    },
+    [showToast]
+  );
+
   const rows = useMemo(
     () =>
       baseRows.filter((r) => {
@@ -786,6 +811,21 @@ export default function CobranzasClient() {
                       ) : (
                         <span className="text-slate-400">—</span>
                       )}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {(() => {
+                        const marcada = enviadoLocal[r.c.cliente_id] ?? r.c.cobranza_enviada ?? false;
+                        return (
+                          <input
+                            type="checkbox"
+                            checked={marcada}
+                            onChange={(e) => void toggleCobranzaEnviada(r.c.cliente_id, e.target.checked)}
+                            aria-label={`Cobranza enviada a ${r.c.cliente_label}`}
+                            title={marcada ? "Cobranza enviada este mes" : "Marcar como cobranza enviada este mes"}
+                            className="h-4 w-4 cursor-pointer rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
+                          />
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-3 text-right">
                       <button

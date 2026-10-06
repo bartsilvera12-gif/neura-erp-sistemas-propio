@@ -45,6 +45,8 @@ export type ClienteCobranza = {
   mensaje_mes_enviado: boolean;
   /** Fecha (YYYY-MM-DD) del último mensaje saliente de este mes, o null. */
   mensaje_mes_fecha: string | null;
+  /** Marca manual "cobranza enviada" para el mes en curso (checkbox de la tabla). */
+  cobranza_enviada: boolean;
 };
 
 export type PromesaPago = {
@@ -353,6 +355,29 @@ async function cargarPromesasPendientes(sb: Sb, empresaId: string): Promise<Map<
 }
 
 /**
+ * Clientes con "cobranza enviada" marcada para el período (YYYY-MM). Se consulta
+ * SOLO el mes en curso, por eso la marca se "resetea" sola cada mes. Drift-safe:
+ * si la tabla no existe en este tenant, devuelve vacío sin romper la lista.
+ */
+async function cargarEnviosDelPeriodo(sb: Sb, empresaId: string, periodoYm: string): Promise<Set<string>> {
+  const set = new Set<string>();
+  try {
+    const { data } = await sb
+      .from("cobranza_envios")
+      .select("cliente_id")
+      .eq("empresa_id", empresaId)
+      .eq("periodo", periodoYm);
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const cid = String(r.cliente_id ?? "");
+      if (cid) set.add(cid);
+    }
+  } catch {
+    /* tabla ausente / otro tenant: sin marcas */
+  }
+  return set;
+}
+
+/**
  * ¿A qué clientes se les envió algún mensaje SALIENTE de WhatsApp este mes?
  * Cruce por teléfono: cliente.telefono → dígitos significativos → chat_contacts.phone_normalized
  * → chat_conversations → chat_messages (from_me=true) con fecha en [inicio, fin] del mes.
@@ -457,12 +482,13 @@ export async function cargarCobranzas(
   empresaId: string,
   hoyYmd: string
 ): Promise<{ resumen: CobranzasResumen; clientes: ClienteCobranza[] }> {
-  const [clientesRows, facturasRows, suscInfo, catalogoTipos, promesaPorCliente] = await Promise.all([
+  const [clientesRows, facturasRows, suscInfo, catalogoTipos, promesaPorCliente, enviosDelPeriodo] = await Promise.all([
     fetchAll(sb, "clientes", "id, tipo_cliente, empresa, nombre_contacto, nombre, razon_social, tipo_servicio_cliente, created_at, estado, deleted_at, telefono", empresaId),
     fetchAll(sb, "facturas", "id, cliente_id, suscripcion_id, fecha, fecha_vencimiento, monto, saldo, estado", empresaId),
     cargarSuscripcionInfo(sb, empresaId),
     cargarCatalogoTipos(sb, empresaId),
     cargarPromesasPendientes(sb, empresaId),
+    cargarEnviosDelPeriodo(sb, empresaId, hoyYmd.slice(0, 7)),
   ]);
 
   // Último pago por cliente (pagos → factura → cliente).
@@ -515,6 +541,7 @@ export async function cargarCobranzas(
       servicios,
       mensaje_mes_enviado: false,
       mensaje_mes_fecha: null,
+      cobranza_enviada: enviosDelPeriodo.has(cid),
     });
     const total = servicios.reduce((acc, s) => acc + s.total_adeudado, 0);
     const worst = peorTramo(servicios.map((s) => s.tramo));

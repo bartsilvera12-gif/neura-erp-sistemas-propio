@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   try {
     let ctx;
     try {
-      ctx = await requireEmpresaTenantServiceRole();
+      ctx = await requireEmpresaTenantServiceRole(request);
     } catch {
       return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
     }

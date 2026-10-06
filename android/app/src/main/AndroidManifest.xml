@@ -41,4 +41,7 @@
     <!-- Notas de voz del asesor (grabación de audio en el WebView vía getUserMedia/MediaRecorder) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Guardar adjuntos en la carpeta "Descargas". Solo hace falta en Android <= 9 (API 28);
+         en Android 10+ el DownloadManager escribe en Descargas sin pedir permiso. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 </manifest>

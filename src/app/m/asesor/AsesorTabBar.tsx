@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Bell, FolderKanban, Headphones, MessageCircle } from "lucide-react";
 import { useMisModulos } from "@/shared/hooks/useMisModulos";
 import useSWR from "swr";
 import { useNotificaciones } from "@/shared/hooks/useNotificaciones";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
+import { supabase } from "@/lib/supabase";
 
 /**
  * Barra de pestañas de la app del asesor.
@@ -71,6 +73,17 @@ export default function AsesorTabBar() {
   /* SWR deduplica: comparte la misma petición con la pantalla de Avisos, no la repite. */
   const { noLeidas } = useNotificaciones({ enabled: habilitado });
   const accesoSoporte = useAccesoSoporte(habilitado);
+  const [ocultarChats, setOcultarChats] = useState(false);
+
+  useEffect(() => {
+    let activo = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (activo) setOcultarChats(tieneAccesoMovilEspecial(data.session?.user.email));
+    });
+    return () => {
+      activo = false;
+    };
+  }, []);
 
   // Soporte abre el módulo real en /dashboard/soporte, que por ruta cae en el shell del ERP
   // con su propia barra (Inicio / Chats / Ventas…). Esta marca le avisa al shell que se llegó
@@ -94,7 +107,7 @@ export default function AsesorTabBar() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="flex items-stretch">
-        {TABS.filter((t) => t.modulo !== "soporte" || accesoSoporte).map(({ href, label, Icon, exact }) => {
+        {TABS.filter((t) => (!ocultarChats || t.href !== "/m/asesor") && (t.modulo !== "soporte" || accesoSoporte)).map(({ href, label, Icon, exact }) => {
           // Soporte abarca todo el módulo (/mis-tickets, un ticket, etc.), no solo /tickets.
           const active = exact
             ? pathname === href

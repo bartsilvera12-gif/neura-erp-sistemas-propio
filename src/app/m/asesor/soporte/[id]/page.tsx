@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeftRight, ArrowUp, ChevronLeft, ExternalLink, FileText, Film, ImageIcon, Loader2, Maximize2, Music, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, ChevronLeft, Download, ExternalLink, FileText, Film, ImageIcon, Loader2, Maximize2, Music, X } from "lucide-react";
 import { apiSoporte, obtenerArchivos, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
 import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
 import { numeroTicket, tamanoLegible, TRANSICIONES } from "@/lib/soporte/dominio";
@@ -56,6 +56,20 @@ export default function MAsesorTicketPage() {
   // Imagen abierta en el visor a pantalla completa (lightbox). En la APK no se puede abrir en
   // "otra pestaña" (queda la pantalla en negro), así que se muestra DENTRO de la app.
   const [imagenAmpliada, setImagenAmpliada] = useState<Archivo | null>(null);
+
+  // Descarga: dispara la URL firmada con Content-Disposition: attachment (`url_descarga`). En la
+  // APK la captura el DownloadListener nativo (MainActivity) y la guarda en "Descargas"; en el
+  // navegador normal se descarga como siempre.
+  const descargar = (a: Archivo) => {
+    const url = a.url_descarga ?? a.url;
+    if (!url) return;
+    const link = document.createElement("a");
+    link.href = url;
+    link.rel = "noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
   const cargar = useCallback(async () => {
     const orden = (a: Item, b: Item) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
@@ -255,26 +269,38 @@ export default function MAsesorTicketPage() {
                               {a.subido_por?.nombre ?? "Usuario"} · {tamanoLegible(a.size_bytes)}
                             </p>
                           </div>
-                          {a.url && esImagen ? (
-                            <button
-                              type="button"
-                              onClick={() => setImagenAmpliada(a)}
-                              aria-label={`Ampliar ${a.nombre}`}
-                              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
-                            >
-                              <Maximize2 className="h-4 w-4" aria-hidden />
-                            </button>
-                          ) : a.url ? (
-                            <a
-                              href={a.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              aria-label={`Abrir ${a.nombre}`}
-                              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
-                            >
-                              <ExternalLink className="h-4 w-4" aria-hidden />
-                            </a>
-                          ) : null}
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {a.url_descarga || a.url ? (
+                              <button
+                                type="button"
+                                onClick={() => descargar(a)}
+                                aria-label={`Descargar ${a.nombre}`}
+                                className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
+                              >
+                                <Download className="h-4 w-4" aria-hidden />
+                              </button>
+                            ) : null}
+                            {a.url && esImagen ? (
+                              <button
+                                type="button"
+                                onClick={() => setImagenAmpliada(a)}
+                                aria-label={`Ampliar ${a.nombre}`}
+                                className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
+                              >
+                                <Maximize2 className="h-4 w-4" aria-hidden />
+                              </button>
+                            ) : a.url ? (
+                              <a
+                                href={a.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Abrir ${a.nombre}`}
+                                className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
+                              >
+                                <ExternalLink className="h-4 w-4" aria-hidden />
+                              </a>
+                            ) : null}
+                          </div>
                         </div>
 
                         {/* Previsualización inline según el tipo. `a.url` ya viene lista para mostrar
@@ -410,14 +436,24 @@ export default function MAsesorTicketPage() {
         >
           <div className="flex items-center justify-between px-4 py-3 text-white">
             <span className="truncate pr-3 text-[13px] font-medium">{imagenAmpliada.nombre}</span>
-            <button
-              type="button"
-              onClick={() => setImagenAmpliada(null)}
-              aria-label="Cerrar"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 active:bg-white/20"
-            >
-              <X className="h-5 w-5" aria-hidden />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => descargar(imagenAmpliada)}
+                aria-label="Descargar"
+                className="grid h-9 w-9 place-items-center rounded-full bg-white/10 active:bg-white/20"
+              >
+                <Download className="h-5 w-5" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => setImagenAmpliada(null)}
+                aria-label="Cerrar"
+                className="grid h-9 w-9 place-items-center rounded-full bg-white/10 active:bg-white/20"
+              >
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
           </div>
           <button
             type="button"

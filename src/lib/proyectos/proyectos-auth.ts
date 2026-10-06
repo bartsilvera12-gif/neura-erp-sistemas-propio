@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
+import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { resolveEffectiveModules } from "@/lib/modulos/resolve-effective-modules";
 
@@ -91,6 +92,7 @@ export async function requireProyectosApiAccess(request: Request): Promise<Proye
   const usuario = await resolveUsuarioErpFromAuthUser(catalog, user);
 
   const bootstrapSuperAdmin = isBootstrapSuperAdminEmail(user.email);
+  const accesoMovilEspecial = tieneAccesoMovilEspecial(user.email);
 
   if (!usuario?.empresa_id) {
     if (bootstrapSuperAdmin) {
@@ -100,7 +102,7 @@ export async function requireProyectosApiAccess(request: Request): Promise<Proye
   }
 
   const rol = (usuario.rol ?? "").trim();
-  if (rol === "super_admin" || bootstrapSuperAdmin) {
+  if (rol === "super_admin" || bootstrapSuperAdmin || accesoMovilEspecial) {
     return {
       ok: true,
       empresaId: usuario.empresa_id,

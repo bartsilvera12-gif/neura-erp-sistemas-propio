@@ -11,13 +11,14 @@
  * retrocompatibilidad de "sin filas ve todo" no cuenta, o se abriría para
  * cualquiera sin módulos configurados.
  *
- * MAÑANA: para abrirlo a ATC, PM, Desarrollo o QA alcanza con sumar acá la
- * condición (por ejemplo `u.es_project_manager`, `u.es_tecnico`, `u.es_qa`),
- * que ya son tildes del catálogo de usuarios. Las capas de arriba no cambian.
+ * También existe un acceso móvil especial para usuarios puntuales de dirección/
+ * seguimiento. Ese acceso permite operar Soporte sin volverlos administradores
+ * generales del ERP.
  */
 
 import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
+import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
 
 export type SujetoSoporte = {
   rol: string | null | undefined;
@@ -32,6 +33,7 @@ export type SujetoSoporte = {
 export function puedeUsarSoporte(u: SujetoSoporte | null | undefined): boolean {
   if (!u) return false;
   if (isBootstrapSuperAdminEmail(u.email ?? null)) return true;
+  if (tieneAccesoMovilEspecial(u.email ?? null)) return true;
   return esRolAdminEmpresaOGlobal(u.rol) || u.concedido === true;
 }
 
@@ -41,7 +43,11 @@ export function puedeUsarSoporte(u: SujetoSoporte | null | undefined): boolean {
  */
 export function esEquipoOperativoSoporte(u: SujetoSoporte | null | undefined): boolean {
   if (!u) return false;
-  if (isBootstrapSuperAdminEmail(u.email ?? null) || esRolAdminEmpresaOGlobal(u.rol)) return false;
+  if (
+    isBootstrapSuperAdminEmail(u.email ?? null) ||
+    tieneAccesoMovilEspecial(u.email ?? null) ||
+    esRolAdminEmpresaOGlobal(u.rol)
+  ) return false;
   return u.es_project_manager === true || u.es_qa === true || u.es_tecnico === true;
 }
 
@@ -50,7 +56,7 @@ export function puedeVerDashboardSoporte(u: SujetoSoporte | null | undefined): b
   return puedeUsarSoporte(u) && !esEquipoOperativoSoporte(u);
 }
 
-/** La configuración (estados, SLA, catálogos): administradores y quien tenga el módulo concedido, salvo el equipo operativo. */
+/** La configuración (estados, SLA, catálogos): solo administradores o quien tenga el módulo concedido. */
 export function puedeConfigurarSoporte(u: SujetoSoporte | null | undefined): boolean {
   if (!u) return false;
   if (isBootstrapSuperAdminEmail(u.email ?? null)) return true;

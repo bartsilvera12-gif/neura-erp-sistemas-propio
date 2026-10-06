@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeftRight, ArrowUp, ChevronLeft, Loader2 } from "lucide-react";
-import { apiSoporte } from "@/app/dashboard/soporte/_ui/api";
-import { numeroTicket, TRANSICIONES } from "@/lib/soporte/dominio";
+import { ArrowLeftRight, ArrowUp, ChevronLeft, ExternalLink, FileText, Loader2 } from "lucide-react";
+import { apiSoporte, obtenerArchivos, subirArchivos } from "@/app/dashboard/soporte/_ui/api";
+import ZonaArchivos from "@/app/dashboard/soporte/_ui/ZonaArchivos";
+import { numeroTicket, tamanoLegible, TRANSICIONES } from "@/lib/soporte/dominio";
 import { Chip, slaVencido, tonoEstado, tonoPrioridad, type PersonaSoporte, type TicketMovil } from "../_comun";
 
 type Comentario = {
@@ -15,6 +16,17 @@ type Comentario = {
   autor: PersonaSoporte | null;
 };
 type Subtarea = { id: string; titulo: string | null; estado: string | null; asignado: PersonaSoporte | null };
+type Archivo = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_at: string;
+  subido_por: { nombre: string } | null;
+  url: string | null;
+  url_descarga: string | null;
+};
 type Item = { codigo: string; nombre: string; activo?: boolean | null; sort_order?: number | null };
 
 const fechaHora = (iso?: string | null) =>
@@ -31,6 +43,9 @@ export default function MAsesorTicketPage() {
   const [ticket, setTicket] = useState<TicketMovil | null>(null);
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [subtareas, setSubtareas] = useState<Subtarea[]>([]);
+  const [archivosTicket, setArchivosTicket] = useState<Archivo[] | null>(null);
+  const [nuevosArchivos, setNuevosArchivos] = useState<File[]>([]);
+  const [subiendoArchivos, setSubiendoArchivos] = useState<string | null>(null);
   const [estados, setEstados] = useState<Item[]>([]);
   const [prioridades, setPrioridades] = useState<Item[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +65,7 @@ export default function MAsesorTicketPage() {
         .catch((e: Error) => setError(e.message)),
       apiSoporte<Comentario[]>(`/api/soporte/tickets/${id}/comentarios`).then(setComentarios).catch(() => {}),
       apiSoporte<Subtarea[]>(`/api/soporte/tickets/${id}/subtareas`).then(setSubtareas).catch(() => {}),
+      obtenerArchivos<Archivo[]>(id).then(setArchivosTicket).catch(() => setArchivosTicket([])),
       apiSoporte<{ estados: Item[]; prioridades: Item[] }>("/api/soporte/catalogos")
         .then((c) => {
           setEstados((c.estados ?? []).filter((x) => x.activo !== false).sort(orden));
@@ -80,6 +96,24 @@ export default function MAsesorTicketPage() {
   };
 
   const destinos = ticket ? estados.filter((e) => (TRANSICIONES[ticket.estado_codigo] ?? []).includes(e.codigo)) : [];
+
+  const subirNuevosArchivos = async () => {
+    if (!nuevosArchivos.length || subiendoArchivos) return;
+    setMensaje(null);
+    setSubiendoArchivos(`Subiendo 0 de ${nuevosArchivos.length}…`);
+    try {
+      const r = await subirArchivos(id, nuevosArchivos, {
+        alAvanzar: (hechos, total) => setSubiendoArchivos(`Subiendo ${hechos} de ${total}…`),
+      });
+      setNuevosArchivos([]);
+      setArchivosTicket(await obtenerArchivos<Archivo[]>(id, true));
+      if (r.errores.length) setMensaje(r.errores.join(" · "));
+    } catch (e) {
+      setMensaje(e instanceof Error ? e.message : "No se pudieron subir los archivos");
+    } finally {
+      setSubiendoArchivos(null);
+    }
+  };
 
   const volver = () => {
     if (window.history.length > 1) router.back();
@@ -192,6 +226,60 @@ export default function MAsesorTicketPage() {
                 <p className="whitespace-pre-wrap text-[14px] text-slate-800">{ticket.proxima_accion}</p>
               </Panel>
             ) : null}
+
+            <Panel titulo="Archivos">
+              {archivosTicket == null ? (
+                <p className="text-[12px] text-slate-500">Cargando archivos…</p>
+              ) : archivosTicket.length === 0 ? (
+                <p className="text-[12px] text-slate-500">Todavía no hay archivos adjuntos.</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {archivosTicket.map((a) => (
+                    <div key={a.id} className="flex items-center gap-3 py-2">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">
+                        <FileText className="h-4 w-4" aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-medium text-slate-800">{a.nombre}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {a.subido_por?.nombre ?? "Usuario"} · {tamanoLegible(a.size_bytes)}
+                        </p>
+                      </div>
+                      {a.url ? (
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Abrir ${a.nombre}`}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 active:bg-slate-50"
+                        >
+                          <ExternalLink className="h-4 w-4" aria-hidden />
+                        </a>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <ZonaArchivos
+                  archivos={nuevosArchivos}
+                  onCambio={setNuevosArchivos}
+                  compacta
+                  deshabilitada={!!subiendoArchivos}
+                />
+                {nuevosArchivos.length ? (
+                  <button
+                    type="button"
+                    disabled={!!subiendoArchivos}
+                    onClick={() => void subirNuevosArchivos()}
+                    className="mt-3 w-full rounded-xl bg-[#3F8E91] px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
+                  >
+                    {subiendoArchivos ?? `Subir ${nuevosArchivos.length} archivo(s)`}
+                  </button>
+                ) : null}
+              </div>
+            </Panel>
 
             {subtareas.length > 0 ? (
               <Panel titulo="Subtareas">

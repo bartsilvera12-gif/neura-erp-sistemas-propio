@@ -1118,6 +1118,20 @@ export function ConversacionesClient({
    * WAMID → mensaje, para resolver a qué responde un mensaje del cliente. WhatsApp manda
    * sólo el id del mensaje citado; el texto hay que buscarlo entre los que ya tenemos.
    */
+  /**
+   * Lleva al mensaje citado y lo destaca un segundo.
+   *
+   * Sin el destello el salto se siente perdido: la vista se mueve y no queda claro cuál de
+   * los mensajes era el que se buscaba.
+   */
+  const irAlMensaje = useCallback((id: string) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-[#4FAEB2]", "rounded-lg");
+    window.setTimeout(() => el.classList.remove("ring-2", "ring-[#4FAEB2]", "rounded-lg"), 1200);
+  }, []);
+
   const mensajePorWamid = useMemo(() => {
     const m = new Map<string, ChatMessage>();
     for (const msg of messages) {
@@ -4409,6 +4423,8 @@ export function ConversacionesClient({
                     return (
                       <div
                         key={m.id}
+                        // Ancla para saltar desde una cita al mensaje citado.
+                        id={`msg-${m.id}`}
                         // Nota: NO usar content-visibility acá. El hilo abre con scroll-al-fondo
                         // (scrollTop = scrollHeight) y content-visibility hace que scrollHeight
                         // se calcule con alturas ESTIMADAS de los mensajes fuera de pantalla →
@@ -4493,34 +4509,54 @@ export function ConversacionesClient({
                             // dejamos al responder nosotros; los mensajes del cliente sólo
                             // traen el WAMID citado y hay que ir a buscar el mensaje.
                             let rc = m.raw_payload?.reply_context as
-                              | { preview?: string; from_me?: boolean }
+                              | { preview?: string; from_me?: boolean; wa_message_id?: string | null }
                               | undefined;
+                            // El mensaje citado, si está entre los cargados: es a donde salta
+                            // el clic.
+                            let original: ChatMessage | undefined;
                             if (!rc || typeof rc !== "object") {
                               const citado = wamidCitado(m.raw_payload);
                               if (!citado) return null;
-                              const original = mensajePorWamid.get(citado);
+                              original = mensajePorWamid.get(citado);
                               // El mensaje citado puede ser más viejo que lo que está
                               // cargado. Se avisa igual que hay una cita: mejor eso que una
                               // respuesta suelta que no se entiende.
                               rc = original
                                 ? { preview: messagePreview(original), from_me: original.from_me }
                                 : { preview: "Mensaje anterior", from_me: undefined };
+                            } else if (rc.wa_message_id) {
+                              original = mensajePorWamid.get(rc.wa_message_id);
                             }
-                            return (
-                              <div
-                                className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 text-[12px] ${
-                                  m.from_me
-                                    ? "border-white/60 bg-white/15 text-white/90"
-                                    : "border-[#4FAEB2] bg-slate-50 text-slate-600"
-                                }`}
-                              >
+
+                            const clases = `mb-1.5 w-full rounded-lg border-l-[3px] px-2 py-1 text-left text-[12px] ${
+                              m.from_me
+                                ? "border-white/60 bg-white/15 text-white/90"
+                                : "border-[#4FAEB2] bg-slate-50 text-slate-600"
+                            }`;
+                            const interior = (
+                              <>
                                 {rc.from_me === undefined ? null : (
                                   <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
                                     {rc.from_me ? "Vos" : "Cliente"}
                                   </span>
                                 )}
                                 <span className="line-clamp-2 break-words">{rc.preview ?? "Mensaje"}</span>
-                              </div>
+                              </>
+                            );
+
+                            // Sin el original cargado no hay a dónde ir: se deja como texto,
+                            // en vez de un botón que no hace nada.
+                            if (!original) return <div className={clases}>{interior}</div>;
+
+                            return (
+                              <button
+                                type="button"
+                                title="Ir al mensaje citado"
+                                onClick={() => irAlMensaje(original!.id)}
+                                className={`${clases} transition-colors hover:brightness-95`}
+                              >
+                                {interior}
+                              </button>
                             );
                           })()}
                           {showAsImage && attachUrl ? (

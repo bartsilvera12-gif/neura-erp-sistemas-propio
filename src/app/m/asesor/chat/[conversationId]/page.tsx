@@ -608,6 +608,15 @@ export default function MAsesorChatPage() {
    * WAMID → mensaje, para resolver a qué responde un mensaje del cliente: WhatsApp manda
    * sólo el id del mensaje citado y el texto hay que buscarlo entre los que ya tenemos.
    */
+  /** Lleva al mensaje citado y lo destaca un segundo, para no perder de vista cuál era. */
+  const irAlMensaje = useCallback((id: string) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-[#4FAEB2]", "rounded-xl");
+    window.setTimeout(() => el.classList.remove("ring-2", "ring-[#4FAEB2]", "rounded-xl"), 1200);
+  }, []);
+
   const mensajePorWamid = useMemo(() => {
     const idx = new Map<string, Msg>();
     for (const msg of messages) {
@@ -1758,6 +1767,7 @@ export default function MAsesorChatPage() {
               .map((m) => (
               <div
                 key={m.id}
+                id={`msg-${m.id}`}
                 className={`relative flex ${m.from_me ? "justify-end" : "justify-start"}`}
                 onTouchStart={(e) => onBubbleTouchStart(e, m)}
                 onTouchMove={(e) => onBubbleTouchMove(e, m)}
@@ -1794,31 +1804,48 @@ export default function MAsesorChatPage() {
                     // mensajes del cliente sólo traen el WAMID citado y hay que buscar el
                     // mensaje entre los cargados.
                     let rc = m.raw_payload?.reply_context as
-                      | { preview?: string; from_me?: boolean }
+                      | { preview?: string; from_me?: boolean; wa_message_id?: string | null }
                       | undefined;
+                    let original: Msg | undefined;
                     if (!rc || typeof rc !== "object") {
                       const citado = wamidCitado(m.raw_payload);
                       if (!citado) return null;
-                      const original = mensajePorWamid.get(citado);
+                      original = mensajePorWamid.get(citado);
                       rc = original
                         ? { preview: previewOf(original), from_me: original.from_me }
                         : { preview: "Mensaje anterior", from_me: undefined };
+                    } else if (rc.wa_message_id) {
+                      original = mensajePorWamid.get(rc.wa_message_id);
                     }
-                    return (
-                      <div
-                        className={`mb-1.5 rounded-lg border-l-[3px] px-2 py-1 text-[12px] ${
-                          m.from_me
-                            ? "border-white/60 bg-white/15 text-white/90"
-                            : "border-[#4FAEB2] bg-slate-50 text-slate-600"
-                        }`}
-                      >
+
+                    const clases = `mb-1.5 w-full rounded-lg border-l-[3px] px-2 py-1 text-left text-[12px] ${
+                      m.from_me
+                        ? "border-white/60 bg-white/15 text-white/90"
+                        : "border-[#4FAEB2] bg-slate-50 text-slate-600"
+                    }`;
+                    const interior = (
+                      <>
                         {rc.from_me === undefined ? null : (
                           <span className="block text-[10px] font-semibold uppercase tracking-wide opacity-80">
                             {rc.from_me ? "Vos" : "Cliente"}
                           </span>
                         )}
                         <span className="line-clamp-2 break-words">{rc.preview ?? "Mensaje"}</span>
-                      </div>
+                      </>
+                    );
+
+                    // Sin el original cargado no hay a dónde ir.
+                    if (!original) return <div className={clases}>{interior}</div>;
+
+                    return (
+                      <button
+                        type="button"
+                        aria-label="Ir al mensaje citado"
+                        onClick={() => irAlMensaje(original!.id)}
+                        className={clases}
+                      >
+                        {interior}
+                      </button>
                     );
                   })()}
                   <MessageBody m={m} onZoom={setZoomUrl} favStickers={favStickers} onToggleFav={toggleFavSticker} />

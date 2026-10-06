@@ -38,7 +38,15 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/");
+    // Dentro de la APK (Capacitor nativo) el asesor va directo a su vista móvil: "/" exige
+    // el módulo dashboard, que este usuario no tiene, y AuthGuard lo rebota al login (loop).
+    // En navegador/desktop se mantiene exactamente el destino de siempre ("/").
+    const { Capacitor } = await import("@capacitor/core");
+    if (Capacitor?.isNativePlatform?.()) {
+      router.push("/m/asesor");
+    } else {
+      router.push("/");
+    }
   }
 
   return (

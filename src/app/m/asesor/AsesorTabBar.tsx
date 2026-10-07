@@ -108,7 +108,9 @@ export default function AsesorTabBar() {
     >
       <ul className="flex items-stretch">
         {(accesoEspecial
-          ? [TABS[3], TABS[1]].filter((t) => t.modulo !== "soporte" || accesoSoporte)
+          ? // Acceso móvil especial: Chats | Soporte | Proyectos (Avisos va como campana arriba).
+            // Chats se agregó porque este usuario ahora atiende conversaciones asignadas.
+            [TABS[0], TABS[3], TABS[1]].filter((t) => t.modulo !== "soporte" || accesoSoporte)
           : TABS.filter((t) => t.modulo !== "soporte" || accesoSoporte)
         ).map(({ href, label, Icon, exact }) => {
           // Soporte abarca todo el módulo (/mis-tickets, un ticket, etc.), no solo /tickets.

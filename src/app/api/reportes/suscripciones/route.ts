@@ -256,20 +256,23 @@ export async function GET(request: NextRequest) {
     const cobradoBySub = new Map<string, number>();
 
     // Facturas del mes / mes anterior → facturado (emitido) por tipo + estado del mes por sub.
+    // "Facturado del mes" = FOTO de lo EMITIDO ese mes: incluye las anuladas a propósito
+    // (una cuota emitida y luego anulada igual se emitió). Así el número y el % mes-vs-mes NO
+    // cambian cuando una factura se anula. Cobrado y Por cobrar sí excluyen anuladas (plata real).
     for (const f of factMes) {
       const per = String(f.periodo_facturado ?? "");
       const monto = Number(f.monto) || 0;
       const anulada = String(f.estado ?? "").trim().toLowerCase() === "anulado";
       const tipo = tipoDeFactura(f.suscripcion_id, f.cliente_id);
       if (per === ym) {
-        if (anulada) {
-          if (f.suscripcion_id) anuladaBySub.add(String(f.suscripcion_id));
-          continue;
-        }
         addAgg(tipo, "facturado_mes", monto);
         addAgg(tipo, "facturas_mes", 1);
-        if (f.suscripcion_id) factBySub.set(String(f.suscripcion_id), { estado: String(f.estado ?? "").trim(), saldo: Number(f.saldo) || 0, monto });
-      } else if (per === ymPrev && !anulada) {
+        if (anulada) {
+          if (f.suscripcion_id) anuladaBySub.add(String(f.suscripcion_id));
+        } else if (f.suscripcion_id) {
+          factBySub.set(String(f.suscripcion_id), { estado: String(f.estado ?? "").trim(), saldo: Number(f.saldo) || 0, monto });
+        }
+      } else if (per === ymPrev) {
         addAgg(tipo, "facturado_mes_ant", monto);
       }
     }
@@ -307,7 +310,8 @@ export async function GET(request: NextRequest) {
     const emitidoPorPeriodo = new Map<string, number>(periodos6.map((p) => [p.ym, 0]));
     const emitidoPorPeriodoTipo = new Map<string, Map<string, number>>(); // tipoSlug → (ym → monto)
     for (const f of factSerie) {
-      if (String(f.estado ?? "").trim().toLowerCase() === "anulado") continue;
+      // Emitido = foto del mes: incluye anuladas (igual que "Facturado del mes"), así la
+      // tendencia no se mueve cuando se anula una cuota de un mes ya cerrado.
       const per = String(f.periodo_facturado ?? "");
       if (!emitidoPorPeriodo.has(per)) continue;
       const monto = Number(f.monto) || 0;

@@ -404,12 +404,17 @@ export async function listChatQueues(): Promise<ChatQueueListRow[]> {
 
       if (!bypass) {
         if (scope.role === "supervisor") {
-          const qids = await resolveQueueIdsForUsuarios(
+          // Las colas de los agentes a cargo MÁS las que se supervisan directo. Antes sólo
+          // se miraban las de los agentes, así que una cola supervisada sin tener a nadie
+          // adentro no aparecía en el filtro —aunque sus conversaciones sí entraran al
+          // inbox, porque el alcance de conversaciones sí suma las dos vías—.
+          const deAgentes = await resolveQueueIdsForUsuarios(
             supabase,
             empresa_id,
             scope.agentUsuarioIds,
             dataSchema
           );
+          const qids = [...new Set([...deAgentes, ...scope.queueIds])];
           if (qids.length > 0) {
             const allowed = new Set(qids);
             rows = rows.filter((row) => allowed.has(row.id));
@@ -445,7 +450,9 @@ export async function listChatQueues(): Promise<ChatQueueListRow[]> {
 
   if (!bypass) {
     if (scope.role === "supervisor") {
-      const qids = await resolveQueueIdsForUsuarios(supabase, empresa_id, scope.agentUsuarioIds, dataSchema);
+      // Mismo criterio que arriba: agentes a cargo + colas supervisadas directo.
+      const deAgentes = await resolveQueueIdsForUsuarios(supabase, empresa_id, scope.agentUsuarioIds, dataSchema);
+      const qids = [...new Set([...deAgentes, ...scope.queueIds])];
       if (qids.length > 0) {
         q = q.in("id", qids);
       } else {

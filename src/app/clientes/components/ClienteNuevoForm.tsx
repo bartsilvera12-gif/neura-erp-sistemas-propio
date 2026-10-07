@@ -263,6 +263,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     if (form.tipo_cliente === "empresa" && !form.empresa.trim())
       return setError("El nombre de empresa es obligatorio.");
 
+    // El tipo de servicio es obligatorio. Si es SaaS, además exige elegir un plan.
+    if (!form.tipo_servicio_cliente.trim())
+      return setError("El tipo de servicio es obligatorio.");
+    if (form.tipo_servicio_cliente.trim().toLowerCase() === "saas" && !formSusc.plan_id.trim())
+      return setError("Para clientes SaaS el plan es obligatorio.");
+
     if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
       const dur = parseInt(formSusc.duracion_meses, 10) || 0;
       const diaFac = parseInt(formSusc.dia_facturacion, 10) || 0;
@@ -556,7 +562,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
             )}
 
             <div>
-              <label className={labelClass}>Tipo de servicio</label>
+              <label className={labelClass}>
+                Tipo de servicio <span className="text-rose-500">*</span>
+              </label>
               <select
                 name="tipo_servicio_cliente"
                 value={form.tipo_servicio_cliente}
@@ -830,7 +838,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
             <div className={planBoxCls}>
               <SectionTitle>Plan</SectionTitle>
               <div>
-                <label className={labelClass}>Plan</label>
+                <label className={labelClass}>
+                  Plan{" "}
+                  {form.tipo_servicio_cliente.trim().toLowerCase() === "saas" ? (
+                    <span className="text-rose-500">*</span>
+                  ) : null}
+                </label>
                 <select
                   value={formSusc.plan_id}
                   onChange={(e) => {

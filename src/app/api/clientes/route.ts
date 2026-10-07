@@ -313,15 +313,21 @@ export async function POST(request: NextRequest) {
     }
 
     const tipoServicio = tipo_servicio_cliente?.trim();
-    if (tipoServicio) {
-      await ensureSemillasCatalogoTipos(supabase, auth.empresa_id);
-      const valido = await tipoServicioSlugValido(supabase, auth.empresa_id, tipoServicio);
-      if (!valido) {
-        return NextResponse.json(
-          errorResponse("tipo_servicio_cliente no existe en el catálogo de la empresa. Actualizá la lista en Configuración → CRM."),
-          { status: 400 }
-        );
-      }
+    // El tipo de servicio es obligatorio al crear un cliente (ambas vías: CRM y módulo Clientes).
+    if (!tipoServicio) {
+      return NextResponse.json(errorResponse("El tipo de servicio es obligatorio."), { status: 400 });
+    }
+    await ensureSemillasCatalogoTipos(supabase, auth.empresa_id);
+    const valido = await tipoServicioSlugValido(supabase, auth.empresa_id, tipoServicio);
+    if (!valido) {
+      return NextResponse.json(
+        errorResponse("tipo_servicio_cliente no existe en el catálogo de la empresa. Actualizá la lista en Configuración → CRM."),
+        { status: 400 }
+      );
+    }
+    // SaaS exige plan: el plan comercial es obligatorio para ese tipo de servicio.
+    if (tipoServicio.toLowerCase() === "saas" && !planComercial) {
+      return NextResponse.json(errorResponse("Para clientes SaaS el plan es obligatorio."), { status: 400 });
     }
 
     const nombreCreador =

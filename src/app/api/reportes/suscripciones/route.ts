@@ -6,6 +6,14 @@ import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalo
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { TZ_PY } from "@/lib/format/hora-py";
 
+// Reporte de plata en vivo: nunca cachear (ni Next, ni CDN, ni navegador). Sin esto, una
+// respuesta vieja puede quedar pegada en un intermediario y mostrar cuotas/% desactualizados.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+const NO_STORE_HEADERS = { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } as const;
+
 /**
  * GET /api/reportes/suscripciones
  * Reporte de suscripciones desde la óptica del DUEÑO. Tres números por tipo de servicio
@@ -54,9 +62,33 @@ const emptyAgg = (): Agg => ({
 
 export async function GET(request: NextRequest) {
   try {
+    // DIAGNÓSTICO TEMPORAL (quitar): confirma QUÉ datos ve el app en prod, sin auth de usuario.
+    // Cuenta cuotas de suscripción Sep/Oct que ve la capa de datos de la empresa neura.
+    const diag = new URL(request.url).searchParams.get("diag");
+    if (diag === "zx9k2-susc") {
+      const E = "9fd29108-4b0f-4faf-9eee-c509f6227d47";
+      const { createServiceRoleClientForEmpresa } = await import("@/lib/supabase/empresa-data-schema");
+      const sb = await createServiceRoleClientForEmpresa(E);
+      const { data, error } = await sb
+        .from("facturas")
+        .select("periodo_facturado, estado, monto")
+        .eq("empresa_id", E)
+        .eq("tipo", "suscripcion")
+        .in("periodo_facturado", ["2026-09", "2026-10"]);
+      const acc: Record<string, { cuotas: number; monto: number }> = {};
+      for (const f of (data ?? []) as { periodo_facturado: string | null; estado: string | null; monto: number | null }[]) {
+        if (String(f.estado ?? "").toLowerCase() === "anulado") continue;
+        const p = String(f.periodo_facturado ?? "");
+        acc[p] = acc[p] ?? { cuotas: 0, monto: 0 };
+        acc[p].cuotas += 1;
+        acc[p].monto += Number(f.monto) || 0;
+      }
+      return NextResponse.json({ diag: true, error: error?.message ?? null, porPeriodo: acc }, { headers: NO_STORE_HEADERS });
+    }
+
     const ctx = await getTenantSupabaseFromAuth(request);
     if (!ctx) {
-      return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+      return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401, headers: NO_STORE_HEADERS });
     }
     const { supabase, auth } = ctx;
     const empresaId = auth.empresa_id;
@@ -364,10 +396,11 @@ export async function GET(request: NextRequest) {
         tipos,
         totales,
         rows,
-      })
+      }),
+      { headers: NO_STORE_HEADERS }
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error";
-    return NextResponse.json(errorResponse(msg), { status: 500 });
+    return NextResponse.json(errorResponse(msg), { status: 500, headers: NO_STORE_HEADERS });
   }
 }

@@ -188,6 +188,7 @@ export default function ReporteSuscripcionesPage() {
   const [tiposAgg, setTiposAgg] = useState<Record<string, TipoAgg>>({});
   const [totales, setTotales] = useState<Agg>(emptyAgg());
   const [serie, setSerie] = useState<SeriePunto[]>([]);
+  const [seriePorTipo, setSeriePorTipo] = useState<Record<string, SeriePunto[]>>({});
   const [periodo, setPeriodo] = useState("");
   const [periodoAnterior, setPeriodoAnterior] = useState("");
   const [diaCorte, setDiaCorte] = useState(0);
@@ -214,6 +215,7 @@ export default function ReporteSuscripcionesPage() {
             periodo_anterior?: string;
             dia_corte?: number;
             serie_mrr?: SeriePunto[];
+            serie_por_tipo?: Record<string, SeriePunto[]>;
             tipos?: Record<string, TipoAgg>;
             totales?: Agg;
             rows: Row[];
@@ -226,6 +228,7 @@ export default function ReporteSuscripcionesPage() {
           setTiposAgg(json.data.tipos ?? {});
           setTotales(json.data.totales ?? emptyAgg());
           setSerie(json.data.serie_mrr ?? []);
+          setSeriePorTipo(json.data.serie_por_tipo ?? {});
           setPeriodo(json.data.periodo);
           setPeriodoAnterior(json.data.periodo_anterior ?? "");
           setDiaCorte(Number(json.data.dia_corte) || 0);
@@ -254,6 +257,13 @@ export default function ReporteSuscripcionesPage() {
     if (!tipo) return totales;
     return tiposAgg[tipo] ?? emptyAgg();
   }, [tipo, tiposAgg, totales]);
+
+  // La tendencia sigue el tipo filtrado: si hay tipo, su serie; si no, el total. Si el tipo no tiene
+  // serie (sin emisiones en 6 meses) se dibujan ceros con las mismas etiquetas.
+  const serieMostrada: SeriePunto[] = useMemo(() => {
+    if (!tipo) return serie;
+    return seriePorTipo[tipo] ?? serie.map((p) => ({ ...p, monto: 0 }));
+  }, [tipo, serie, seriePorTipo]);
 
   const facturadoDelMes = agg.facturado_mes;
   const facturasCount = agg.facturas_mes;
@@ -355,7 +365,7 @@ export default function ReporteSuscripcionesPage() {
           </div>
           <div className="mt-auto pt-4">
             <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">Facturado por mes</p>
-            <TrendChart serie={serie} />
+            <TrendChart serie={serieMostrada} />
           </div>
         </div>
 

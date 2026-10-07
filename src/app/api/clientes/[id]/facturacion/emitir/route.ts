@@ -117,6 +117,7 @@ export async function POST(
         numero_factura: numeroFactura,
         fecha,
         fecha_vencimiento: fechaVenc,
+        periodo_facturado: mes, // mes elegido (YYYY-MM): sin esto la cuota no aparece en el reporte de suscripciones
         monto,
         saldo: monto,
         estado: "Pendiente",

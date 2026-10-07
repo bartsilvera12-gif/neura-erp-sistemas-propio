@@ -109,6 +109,23 @@ export async function GET(request: NextRequest) {
       suscripcion_id: string | null; cliente_id: string | null; saldo: number | null; estado: string | null; fecha_vencimiento: string | null;
     }[];
 
+    // 3.5) Serie de facturado (emitido) — últimos 6 meses — con sub/cliente para poder abrirla POR TIPO.
+    const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    const periodos6: { ym: string; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(Date.UTC(yy, mm - 1 - i, 1));
+      periodos6.push({ ym: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, label: MESES_CORTOS[d.getUTCMonth()] });
+    }
+    const { data: factSerieData } = await supabase
+      .from("facturas")
+      .select("suscripcion_id, cliente_id, monto, estado, periodo_facturado")
+      .eq("empresa_id", empresaId)
+      .eq("tipo", "suscripcion")
+      .in("periodo_facturado", periodos6.map((p) => p.ym));
+    const factSerie = (factSerieData ?? []) as {
+      suscripcion_id: string | null; cliente_id: string | null; monto: number | null; estado: string | null; periodo_facturado: string | null;
+    }[];
+
     // 4) Pagos de suscripción (caja): este mes (1→hoy) y mismo tramo del mes anterior (1→mismo día).
     const { data: pagosData } = await supabase
       .from("pagos")
@@ -132,12 +149,14 @@ export async function GET(request: NextRequest) {
       ...activeSubs.map((s) => s.id),
       ...factMes.map((f) => f.suscripcion_id),
       ...factDeuda.map((f) => f.suscripcion_id),
+      ...factSerie.map((f) => f.suscripcion_id),
       ...pagos.map((p) => pagoFac(p)?.suscripcion_id ?? null),
     ].filter(Boolean))] as string[];
     const cliIds = [...new Set([
       ...activeSubs.map((s) => s.cliente_id),
       ...factMes.map((f) => f.cliente_id),
       ...factDeuda.map((f) => f.cliente_id),
+      ...factSerie.map((f) => f.cliente_id),
       ...pagos.map((p) => pagoFac(p)?.cliente_id ?? null),
     ].filter(Boolean))] as string[];
 
@@ -275,28 +294,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 7) Serie de facturado (emitido) de suscripciones — últimos 6 meses (total, para la tendencia).
-    const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-    const periodos6: { ym: string; label: string }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(Date.UTC(yy, mm - 1 - i, 1));
-      periodos6.push({ ym: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`, label: MESES_CORTOS[d.getUTCMonth()] });
-    }
+    // 7) Serie de facturado (emitido) — últimos 6 meses. Total + desglose POR TIPO, para que la
+    //    tendencia acompañe el tipo que se filtra arriba (antes la línea siempre era de todos los tipos).
     const emitidoPorPeriodo = new Map<string, number>(periodos6.map((p) => [p.ym, 0]));
-    {
-      const { data } = await supabase
-        .from("facturas")
-        .select("monto, estado, periodo_facturado")
-        .eq("empresa_id", empresaId)
-        .eq("tipo", "suscripcion")
-        .in("periodo_facturado", periodos6.map((p) => p.ym));
-      for (const f of (data ?? []) as { monto: number | null; estado: string | null; periodo_facturado: string | null }[]) {
-        if (String(f.estado ?? "").trim().toLowerCase() === "anulado") continue;
-        const per = String(f.periodo_facturado ?? "");
-        if (emitidoPorPeriodo.has(per)) emitidoPorPeriodo.set(per, (emitidoPorPeriodo.get(per) ?? 0) + (Number(f.monto) || 0));
-      }
+    const emitidoPorPeriodoTipo = new Map<string, Map<string, number>>(); // tipoSlug → (ym → monto)
+    for (const f of factSerie) {
+      if (String(f.estado ?? "").trim().toLowerCase() === "anulado") continue;
+      const per = String(f.periodo_facturado ?? "");
+      if (!emitidoPorPeriodo.has(per)) continue;
+      const monto = Number(f.monto) || 0;
+      emitidoPorPeriodo.set(per, (emitidoPorPeriodo.get(per) ?? 0) + monto);
+      const tipoKey = tipoDeFactura(f.suscripcion_id, f.cliente_id) || SIN_TIPO;
+      let porYm = emitidoPorPeriodoTipo.get(tipoKey);
+      if (!porYm) { porYm = new Map(periodos6.map((p) => [p.ym, 0])); emitidoPorPeriodoTipo.set(tipoKey, porYm); }
+      porYm.set(per, (porYm.get(per) ?? 0) + monto);
     }
     const serie_mrr = periodos6.map((p) => ({ periodo: p.ym, label: p.label, monto: Math.round(emitidoPorPeriodo.get(p.ym) ?? 0) }));
+    const serie_por_tipo: Record<string, { periodo: string; label: string; monto: number }[]> = {};
+    for (const [tipoKey, porYm] of emitidoPorPeriodoTipo.entries()) {
+      serie_por_tipo[tipoKey] = periodos6.map((p) => ({ periodo: p.ym, label: p.label, monto: Math.round(porYm.get(p.ym) ?? 0) }));
+    }
 
     // 8) Filas de la tabla: suscripciones activas de clientes vigentes.
     const rows = activeSubs
@@ -343,6 +360,7 @@ export async function GET(request: NextRequest) {
         periodo_anterior: ymPrev,
         dia_corte: diaCorte,
         serie_mrr,
+        serie_por_tipo,
         tipos,
         totales,
         rows,

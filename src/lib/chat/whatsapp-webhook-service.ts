@@ -1963,14 +1963,28 @@ async function resolveStatusChannelContext(
   };
 }
 
+// Cache de columnas por `schema:tabla`. Las columnas no cambian en runtime, así que
+// introspeccionarlas en cada webhook de estado de WhatsApp (3+ por mensaje) generaba
+// miles de `information_schema.columns`/seg en hora pico de campañas, ahogando la base.
+// TTL corto: si una migración agrega una columna, se ve en ≤5 min; un deploy limpia el cache.
+const colsCache = new Map<string, { cols: Set<string>; hasta: number }>();
+const COLS_TTL_MS = 5 * 60_000;
+
 async function loadTableColumns(pool: Pool, schema: string, table: string): Promise<Set<string>> {
+  const clave = `${schema}:${table}`;
+  const ahora = Date.now();
+  const hit = colsCache.get(clave);
+  if (hit && hit.hasta > ahora) return hit.cols;
+
   const r = await pool.query(
     `SELECT column_name
      FROM information_schema.columns
      WHERE table_schema = $1 AND table_name = $2`,
     [schema, table]
   );
-  return new Set(r.rows.map((row: { column_name: string }) => row.column_name));
+  const cols = new Set(r.rows.map((row: { column_name: string }) => row.column_name));
+  colsCache.set(clave, { cols, hasta: ahora + COLS_TTL_MS });
+  return cols;
 }
 
 async function applyWhatsappStatusPg(

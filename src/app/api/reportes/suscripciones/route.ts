@@ -62,39 +62,6 @@ const emptyAgg = (): Agg => ({
 
 export async function GET(request: NextRequest) {
   try {
-    // DIAGNÓSTICO TEMPORAL (quitar): confirma QUÉ datos ve el app en prod, sin auth de usuario.
-    // Cuenta cuotas de suscripción Sep/Oct que ve la capa de datos de la empresa neura.
-    const diag = new URL(request.url).searchParams.get("diag");
-    if (diag === "zx9k2-susc") {
-      const E = "9fd29108-4b0f-4faf-9eee-c509f6227d47";
-      const mod = await import("@/lib/supabase/empresa-data-schema");
-      const resolvedSchema = await mod.fetchDataSchemaForEmpresaId(E).catch((e) => `ERR:${e?.message}`);
-      const cuenta = async (sb: Awaited<ReturnType<typeof mod.createServiceRoleClientForEmpresa>>) => {
-        const { data, error } = await sb
-          .from("facturas").select("periodo_facturado, estado, monto")
-          .eq("empresa_id", E).eq("tipo", "suscripcion")
-          .in("periodo_facturado", ["2026-09", "2026-10"]);
-        const acc: Record<string, { cuotas: number; monto: number }> = {};
-        for (const f of (data ?? []) as { periodo_facturado: string | null; estado: string | null; monto: number | null }[]) {
-          if (String(f.estado ?? "").toLowerCase() === "anulado") continue;
-          const p = String(f.periodo_facturado ?? "");
-          acc[p] = acc[p] ?? { cuotas: 0, monto: 0 };
-          acc[p].cuotas += 1; acc[p].monto += Number(f.monto) || 0;
-        }
-        return { error: error?.message ?? null, porPeriodo: acc };
-      };
-      const sbResuelto = await mod.createServiceRoleClientForEmpresa(E);
-      const sbNeura = mod.createServiceRoleClientWithDbSchema("neura");
-      return NextResponse.json({
-        diag: true,
-        resolvedSchema: typeof resolvedSchema === "string" ? resolvedSchema : String(resolvedSchema),
-        appSchemaEnv: process.env.APP_DB_SCHEMA ?? null,
-        supabaseUrl: (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/^https?:\/\//, ""),
-        porSchemaResuelto: await cuenta(sbResuelto),
-        porSchemaNeura: await cuenta(sbNeura),
-      }, { headers: NO_STORE_HEADERS });
-    }
-
     const ctx = await getTenantSupabaseFromAuth(request);
     if (!ctx) {
       return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401, headers: NO_STORE_HEADERS });

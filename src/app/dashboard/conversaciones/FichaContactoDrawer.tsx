@@ -44,6 +44,8 @@ function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cache = useRef(new Map<string, FichaContacto>());
+  /** Cambia para volver a pedir la ficha tras corregir el cliente. */
+  const [recarga, setRecarga] = useState(0);
   const panelRef = useRef<HTMLElement | null>(null);
   /**
    * `null` = todavía en el ancho por defecto (la mitad del chat). Se lee en el inicializador
@@ -147,7 +149,7 @@ function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
     return () => {
       vigente = false;
     };
-  }, [abierto, conversationId]);
+  }, [abierto, conversationId, recarga]);
 
   // Escape cierra, como cualquier panel del sistema.
   useEffect(() => {
@@ -225,16 +227,37 @@ function FichaPanel({ conversationId, abierto, alCerrar }: Props) {
               {error}
             </p>
           ) : null}
-          {ficha && !cargando ? <Contenido ficha={ficha} /> : null}
+          {ficha && !cargando ? (
+            <Contenido
+              ficha={ficha}
+              conversationId={conversationId}
+              alRecargar={() => {
+                // Se descarta lo cacheado: después de corregir el cliente cambian también los
+                // proyectos, que salen de él.
+                cache.current.delete(conversationId);
+                setFicha(null);
+                setRecarga((n) => n + 1);
+              }}
+            />
+          ) : null}
         </div>
       </aside>
     </>
   );
 }
 
-function Contenido({ ficha }: { ficha: FichaContacto }) {
+function Contenido({
+  ficha,
+  conversationId,
+  alRecargar,
+}: {
+  ficha: FichaContacto;
+  conversationId: string;
+  alRecargar: () => void;
+}) {
   const { contacto, cliente, proyectos, ultima_tipificacion, conversaciones, linea_tiempo, notas } =
     ficha;
+  const [corrigiendo, setCorrigiendo] = useState(false);
 
   return (
     <div className="flex flex-col gap-4">
@@ -304,6 +327,7 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
             <dl className="mt-1.5 grid gap-x-3 gap-y-1 text-[11px] sm:grid-cols-2">
               <Dato etiqueta="RUC" valor={cliente.ruc} />
               <Dato etiqueta="Teléfono" valor={cliente.telefono} />
+              <Dato etiqueta="Tel. secundario" valor={cliente.telefono_secundario} />
               <Dato etiqueta="Email" valor={cliente.email} />
               <Dato etiqueta="Ciudad" valor={cliente.ciudad} />
               <Dato etiqueta="Dirección" valor={cliente.direccion} />
@@ -317,12 +341,34 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
                     : "Vinculado por teléfono"}
               </p>
             ) : null}
+            <button
+              type="button"
+              onClick={() => setCorrigiendo(true)}
+              className="mt-1.5 text-[10px] font-semibold text-slate-500 underline-offset-2 hover:text-[#3F8E91] hover:underline"
+            >
+              No es este cliente
+            </button>
           </div>
         ) : (
-          <p className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500">
-            Sin cliente vinculado.
-          </p>
+          <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
+            <p className="text-[11px] text-slate-500">Sin cliente vinculado.</p>
+            <button
+              type="button"
+              onClick={() => setCorrigiendo(true)}
+              className="mt-1 text-[10px] font-semibold text-[#3F8E91] underline-offset-2 hover:underline"
+            >
+              Vincular uno
+            </button>
+          </div>
         )}
+        {corrigiendo ? (
+          <ElegirCliente
+            conversationId={conversationId}
+            hayVinculo={Boolean(cliente)}
+            alCerrar={() => setCorrigiendo(false)}
+            alGuardar={alRecargar}
+          />
+        ) : null}
       </Seccion>
 
       {/* Proyectos: null = sin permiso al módulo, no se muestra la sección. */}
@@ -676,4 +722,139 @@ class LimiteDeError extends Component<
       </aside>
     );
   }
+}
+
+/**
+ * Buscador para corregir a qué cliente apunta el contacto.
+ *
+ * Existe porque la deducción automática se guarda como si fuera un hecho: si el número está
+ * cargado en el cliente equivocado, el chat queda bajo ese cliente —con sus proyectos— y no
+ * había manera de arreglarlo sin tocar Gestión de Clientes.
+ */
+function ElegirCliente({
+  conversationId,
+  hayVinculo,
+  alCerrar,
+  alGuardar,
+}: {
+  conversationId: string;
+  hayVinculo: boolean;
+  alCerrar: () => void;
+  alGuardar: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [opciones, setOpciones] = useState<
+    { id: string; nombre: string; ruc: string | null; telefono: string | null }[]
+  >([]);
+  const [buscando, setBuscando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Se espera a que deje de escribir: cada tecla no dispara una búsqueda.
+  useEffect(() => {
+    const texto = q.trim();
+    if (texto.length < 2) {
+      setOpciones([]);
+      return;
+    }
+    let vigente = true;
+    setBuscando(true);
+    const t = window.setTimeout(() => {
+      void fetchWithSupabaseSession(
+        `/api/chat/contactos/vincular?q=${encodeURIComponent(texto)}`,
+        { cache: "no-store" }
+      )
+        .then((r) => r.json())
+        .then((j) => {
+          if (vigente && j?.ok) setOpciones(j.clientes ?? []);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (vigente) setBuscando(false);
+        });
+    }, 300);
+    return () => {
+      vigente = false;
+      window.clearTimeout(t);
+    };
+  }, [q]);
+
+  async function guardar(clienteId: string | null) {
+    setGuardando(true);
+    setError(null);
+    try {
+      const r = await fetchWithSupabaseSession("/api/chat/contactos/vincular", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, cliente_id: clienteId }),
+      });
+      const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!r.ok || !j?.ok) {
+        setError(j?.error || "No se pudo guardar");
+        return;
+      }
+      alCerrar();
+      alGuardar();
+    } catch {
+      setError("No se pudo guardar");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div className="mt-1.5 rounded-xl border border-slate-200 bg-white p-2">
+      <div className="flex items-center justify-between gap-2">
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar cliente por nombre, RUC o teléfono…"
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+        />
+        <button
+          type="button"
+          onClick={alCerrar}
+          className="shrink-0 text-[10px] font-semibold text-slate-500 hover:text-slate-700"
+        >
+          Cancelar
+        </button>
+      </div>
+
+      {error ? <p className="mt-1 text-[10px] text-red-600">{error}</p> : null}
+
+      {buscando ? <p className="mt-1 text-[10px] text-slate-400">Buscando…</p> : null}
+
+      {opciones.length > 0 ? (
+        <ul className="mt-1.5 max-h-56 overflow-y-auto">
+          {opciones.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                disabled={guardando}
+                onClick={() => void guardar(c.id)}
+                className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-slate-50 disabled:opacity-50"
+              >
+                <span className="block text-[11px] font-medium text-slate-800">{c.nombre}</span>
+                <span className="block text-[10px] text-slate-500">
+                  {[c.ruc, c.telefono].filter(Boolean).join(" · ") || "—"}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {hayVinculo ? (
+        <button
+          type="button"
+          disabled={guardando}
+          onClick={() => void guardar(null)}
+          className="mt-1.5 text-[10px] font-semibold text-red-600 hover:underline disabled:opacity-50"
+        >
+          Desvincular del cliente actual
+        </button>
+      ) : null}
+    </div>
+  );
 }

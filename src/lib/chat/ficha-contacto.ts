@@ -32,6 +32,8 @@ export type FichaCliente = {
   ruc: string | null;
   email: string | null;
   telefono: string | null;
+  /** El secundario explica muchos vínculos que de otro modo parecen inventados. */
+  telefono_secundario: string | null;
   direccion: string | null;
   ciudad: string | null;
   /** Cómo se llegó a este cliente: guardado en el contacto o deducido al vuelo. */
@@ -271,7 +273,7 @@ async function resolverCliente(
   const { data } = await supabase
     .from("clientes")
     .select(
-      "id, tipo_cliente, nombre, empresa, razon_social, nombre_contacto, ruc, email, telefono, direccion, ciudad"
+      "id, tipo_cliente, nombre, empresa, razon_social, nombre_contacto, ruc, email, telefono, telefono_secundario, direccion, ciudad"
     )
     .eq("empresa_id", empresaId)
     .eq("id", clienteId)
@@ -287,6 +289,7 @@ async function resolverCliente(
     ruc: txt(c.ruc),
     email: txt(c.email),
     telefono: txt(c.telefono),
+    telefono_secundario: txt(c.telefono_secundario),
     direccion: txt(c.direccion),
     ciudad: txt(c.ciudad),
     via,

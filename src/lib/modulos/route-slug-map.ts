@@ -130,6 +130,11 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/notas-credito")) return "notas_credito";
   if (p.startsWith("/ventas")) return "ventas";
   if (p.startsWith("/inventario")) return "inventario";
+  // La tipificación del cliente es una operación de Gestión de Clientes (el botón vive en
+  // /gestion-clientes), aunque la página cuelgue de /clientes. Se gatea con ese módulo para
+  // que el perfil ATC (gestion-clientes, sin `clientes`) pueda tipificar. Quien tenga
+  // `clientes` también entra: el alias de isModuleSlugGranted cubre gestion-clientes.
+  if (/^\/clientes\/[^/]+\/tipificacion(\/|$)/.test(p)) return "gestion-clientes";
   if (p.startsWith("/clientes")) return "clientes";
   if (p.startsWith("/proveedores")) return "compras";
   if (p.startsWith("/compras")) return "compras";

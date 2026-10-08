@@ -2667,7 +2667,23 @@ export function ConversacionesClient({
       }
       void loadConversations({ silent: true }); // reconciliar en 2º plano (no bloquea la UI)
     } catch (e) {
-      setFinalizeModalError(e instanceof Error ? e.message : "No se pudo finalizar la conversación");
+      // En producción Next.js reemplaza el mensaje real del Server Action por un
+      // placeholder genérico ("An error occurred in the Server Components
+      // render..."), y pone el stack trace en el server bajo un `digest` corto
+      // que se adjunta al Error del cliente. Sin eso, el asesor veía una frase
+      // intimidante sin nada accionable y para rastrearlo había que ir a los
+      // logs sin saber qué buscar. Mostramos el digest al lado del mensaje
+      // (código de 10 caracteres) para que al menos sea trazable con un copy.
+      const err = e as (Error & { digest?: string }) | null;
+      const digest = typeof err?.digest === "string" ? err.digest.trim() : "";
+      const base = err instanceof Error && err.message
+        ? err.message
+        : "No se pudo finalizar la conversación.";
+      const esMascaraGenerica = base.toLowerCase().includes("server components render");
+      const amistoso = esMascaraGenerica
+        ? "No se pudo finalizar la conversación en el servidor."
+        : base;
+      setFinalizeModalError(digest ? `${amistoso} (código ${digest})` : amistoso);
     } finally {
       setFinalizeSaving(false);
     }

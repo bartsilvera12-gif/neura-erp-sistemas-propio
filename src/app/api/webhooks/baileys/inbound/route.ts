@@ -10,7 +10,14 @@
  * Seguridad: header `x-bridge-secret` debe coincidir con `BAILEYS_BRIDGE_SECRET`.
  *
  * Cuerpo esperado (JSON):
- *   { channelId, empresaId, fromDigits, fromPhone, waMessageId, messageKind, text, pushName, hasMedia, timestamp }
+ *   { channelId, empresaId, fromDigits, fromPhone?, waMessageId, messageKind,
+ *     text?, pushName?, hasMedia?, timestamp? }
+ *
+ * Para media (foto/video/audio/doc/sticker): el bridge llama a /inbound con
+ * este JSON (el mensaje queda con placeholder "[imagen]" / "[video]" / ...),
+ * y después sube el archivo por multipart a /inbound/media con el mismo
+ * waMessageId. Ese segundo endpoint es el que attachéa la URL del archivo
+ * a la fila ya persistida acá.
  */
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -215,6 +222,12 @@ export async function POST(request: NextRequest) {
     // quedaba a la vista para siempre. Se corrige la MISMA fila: no se crea un contacto nuevo,
     // no se parte el historial.
     await corregirTelefonoDelContacto(supabase, empresaId, result.contact_id, fromDigits, fromPhone);
+
+    // Nota: los bytes de la media (foto/video/audio/doc/sticker) los sube el
+    // bridge como multipart al endpoint /inbound/media, usando el mismo
+    // waMessageId. Ese otro route es el que adjunta la URL del archivo a la
+    // fila que acabamos de persistir acá. No bloqueamos este ack esperando
+    // la descarga de bytes.
 
     // Ventana 24h + asignación por equidad (mismo patrón que el webhook YCloud).
     if (contactCenterV1Enabled()) {

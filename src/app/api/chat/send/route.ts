@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
     // inbound como dato informativo, pero ya no bloquea envíos.
 
     let sendResult: Awaited<ReturnType<typeof sendOutboundTextMessage>>;
+    let wentViaBaileys = false;
     try {
       // Canal social (Messenger / Instagram Direct): enviar por la Graph API de Meta.
       // Si el canal NO es social, devuelve null y seguimos por el camino WhatsApp de siempre.
@@ -150,6 +151,11 @@ export async function POST(request: NextRequest) {
         );
         if (baileys) {
           sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, message);
+          // Marker para distinguir, en auditoría, qué outbound salió por el
+          // puente Baileys y cuáles por Meta/YCloud. Sin esto, los que entran
+          // por Baileys quedan con raw_payload sin `source` y se confunden
+          // con los legacy de YCloud.
+          wentViaBaileys = true;
         } else {
           const outbound = await resolveOutboundTextContextFromIds(
             supabase,
@@ -187,6 +193,7 @@ export async function POST(request: NextRequest) {
     const rawPayloadOut: Record<string, unknown> = {
       ...((sendResult.raw ?? {}) as Record<string, unknown>),
       ...(replyContext ? { reply_context: replyContext } : {}),
+      ...(wentViaBaileys ? { source: "baileys" } : {}),
     };
 
     if (tenantPg && pool) {

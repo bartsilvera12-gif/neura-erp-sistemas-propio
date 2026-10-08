@@ -34,8 +34,25 @@ export const dynamic = "force-dynamic";
 
 const LOG = "[webhooks/baileys/inbound]";
 
-/** Mapea el tipo de mensaje de Baileys al `message_type` del ERP + un preview. */
-function mapKind(kind: string): { message_type: string; placeholder: string } {
+type MappedKind =
+  | { skip: true; reason: string }
+  | { skip?: false; message_type: string; placeholder: string };
+
+/**
+ * Mapea el tipo de mensaje de Baileys al `message_type` del ERP + un preview.
+ *
+ * Antes el `default` guardaba todo como `text` con contenido vacío, y en el inbox
+ * aparecían burbujas grises sin texto cada vez que el cliente reaccionaba con un
+ * emoji, editaba un mensaje o eliminaba uno (y también para eventos de protocolo
+ * internos que WhatsApp manda y no son conversación). Ahora:
+ *  - Los tipos útiles con texto/media siguen mapeando igual.
+ *  - Las reacciones/ediciones/revokes se marcan con su `message_type` propio;
+ *    si el bridge adjunta un placeholder, se muestra algo visible (si no, el
+ *    front los filtra por `message_type !== 'reaction'` para no estorbar).
+ *  - Los tipos de protocolo o desconocidos se SALTEAN (no se crea fila). El
+ *    webhook responde 200 OK y punto; sin esto el inbox se ensucia.
+ */
+function mapKind(kind: string): MappedKind {
   switch (kind) {
     case "conversation":
     case "extendedTextMessage":
@@ -47,16 +64,35 @@ function mapKind(kind: string): { message_type: string; placeholder: string } {
     case "audioMessage":
       return { message_type: "audio", placeholder: "[audio]" };
     case "documentMessage":
+    case "documentWithCaptionMessage":
       return { message_type: "document", placeholder: "[documento]" };
     case "stickerMessage":
       return { message_type: "sticker", placeholder: "[sticker]" };
     case "locationMessage":
+    case "liveLocationMessage":
       return { message_type: "location", placeholder: "[ubicación]" };
     case "contactMessage":
     case "contactsArrayMessage":
       return { message_type: "contacts", placeholder: "[contacto]" };
+    case "reactionMessage":
+      return { message_type: "reaction", placeholder: "" };
+    case "editedMessage":
+    case "messageEditMessage":
+      return { message_type: "edit", placeholder: "[mensaje editado]" };
+    // protocolMessage incluye revokes, syncs, keys, acks de protocolo: nada
+    // de esto es conversación. Antes caían al default y aparecían como
+    // burbujas vacías. Se saltean a propósito.
+    case "protocolMessage":
+    case "senderKeyDistributionMessage":
+    case "messageContextInfo":
+    case "ephemeralMessage":
+    case "pollUpdateMessage":
+      return { skip: true, reason: kind };
     default:
-      return { message_type: "text", placeholder: "" };
+      // Cualquier tipo nuevo que no reconocemos NO lo guardamos como texto
+      // vacío. Si en el futuro aparece algo útil (polls, buttons), se agrega
+      // acá explícitamente. Mientras tanto queda el log y la fila no se crea.
+      return { skip: true, reason: `desconocido:${kind}` };
   }
 }
 
@@ -124,7 +160,14 @@ export async function POST(request: NextRequest) {
     const rawType = String(ch.type ?? "whatsapp");
     const channelType: ChatChannelType = isChatChannelType(rawType) ? rawType : "whatsapp";
 
-    const { message_type, placeholder } = mapKind(messageKind);
+    const mapped = mapKind(messageKind);
+    if (mapped.skip) {
+      // Tipo irrelevante para el inbox (protocolo, update de poll, etc). Ack OK
+      // sin crear fila; el bridge no reintenta y el inbox queda limpio.
+      console.info(LOG, "skip_kind", { kind: messageKind, reason: mapped.reason });
+      return NextResponse.json({ ok: true, skipped: true, reason: mapped.reason });
+    }
+    const { message_type, placeholder } = mapped;
     const content = message_type === "text" ? text : text || placeholder;
 
     const result = await saveIncomingMessage({

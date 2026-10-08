@@ -44,6 +44,7 @@ export async function sendConversationText(p: SendConversationTextParams): Promi
 
   try {
     let sendResult: Awaited<ReturnType<typeof sendOutboundTextMessage>>;
+    let wentViaBaileys = false;
 
     // Canal social (Messenger / Instagram Direct) → Graph API de Meta; si no es social, null.
     const metaMsg = await resolveMetaMessagingSendContext(p.supabase, {
@@ -67,6 +68,7 @@ export async function sendConversationText(p: SendConversationTextParams): Promi
       );
       if (baileys) {
         sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, text);
+        wentViaBaileys = true;
       } else {
         const outbound = await resolveOutboundTextContextFromIds(
           p.supabase,
@@ -80,7 +82,10 @@ export async function sendConversationText(p: SendConversationTextParams): Promi
     if (!sendResult.ok) return { ok: false, error: sendResult.error };
 
     const ts = new Date().toISOString();
-    const raw = (sendResult.raw ?? {}) as Record<string, unknown>;
+    const raw: Record<string, unknown> = {
+      ...((sendResult.raw ?? {}) as Record<string, unknown>),
+      ...(wentViaBaileys ? { source: "baileys" } : {}),
+    };
 
     if (p.tenantPg && p.pool) {
       await pgInsertChatMessageOutbound(p.pool, p.dataSchema, {

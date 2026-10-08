@@ -179,17 +179,16 @@ export async function POST(request: NextRequest) {
     const { message_type, placeholder } = mapped;
     const content = message_type === "text" ? text : text || placeholder;
 
-    // Con qué número se guarda el contacto.
+    // El contacto se guarda SIEMPRE con el identificador con el que llega el mensaje.
     //
-    // Si WhatsApp mandó el teléfono real, se usa ÉSE desde el principio. Antes se guardaba
-    // siempre el @lid (el código interno) y después se intentaba renombrar la fila, lo que
-    // partía el chat en dos: el inbox busca al contacto por el número guardado, así que el
-    // siguiente mensaje con @lid no encontraba a nadie y creaba un contacto nuevo. Resultado:
-    // lo que entraba caía en un chat y lo que salía en otro.
+    // Se probó guardarlo con el teléfono real cuando WhatsApp lo mandaba, para que el inbox no
+    // mostrara el código interno. Resultado: se duplicaron los chats. El contacto viejo seguía
+    // existiendo bajo el código y el mensaje nuevo creaba otro bajo el teléfono, así que el
+    // mismo cliente aparecía dos veces, en dos colas y con dos agentes.
     //
-    // Creándolo derecho con el teléfono, entrante y saliente comparten el mismo contacto y no
-    // hay nada que renombrar.
-    const direccionContacto = fromPhone || fromDigits;
+    // Mostrar el código feo es mucho menos grave que duplicar conversaciones. Para arreglar lo
+    // que se ve sin partir nada hay que guardar el @lid EN el contacto y buscar por los dos.
+    const direccionContacto = fromDigits;
 
     const result = await saveIncomingMessage({
       supabase,

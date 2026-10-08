@@ -33,3 +33,20 @@ export function telefonoLegibleOVacio(phone: string | null | undefined): string 
   if (esLidWhatsapp(p)) return "";
   return p;
 }
+
+/**
+ * Nombre a mostrar en títulos / listados: `nombre` si lo hay, el teléfono si es real,
+ * o un placeholder genérico cuando solo tenemos un LID. Reemplaza el patrón repetido
+ * `nombre || telefono || "Contacto"` que mostraba el LID basura cuando no había nombre.
+ */
+export function nombreOTelefonoParaMostrar(
+  nombre: string | null | undefined,
+  telefono: string | null | undefined,
+  fallback = "Cliente de WhatsApp"
+): string {
+  const n = (nombre ?? "").trim();
+  if (n) return n;
+  const t = telefonoLegibleOVacio(telefono);
+  if (t) return t;
+  return fallback;
+}

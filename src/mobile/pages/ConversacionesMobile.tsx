@@ -10,6 +10,7 @@ import {
   type MobileChatConversation,
   type MobileChatMessage,
 } from "@/shared/hooks/useChatMobile";
+import { nombreOTelefonoParaMostrar } from "@/lib/chat/wa-phone";
 
 /**
  * Conversaciones mobile — vista funcional.
@@ -102,7 +103,7 @@ function InboxList() {
 }
 
 function ConversationCard({ conv }: { conv: MobileChatConversation }) {
-  const nombre = conv.contact_nombre?.trim() || conv.contact_telefono?.trim() || "Sin contacto";
+  const nombre = nombreOTelefonoParaMostrar(conv.contact_nombre, conv.contact_telefono, "Sin contacto");
   const inicial = nombre.charAt(0).toUpperCase();
   const unread = conv.unread_count > 0;
   return (
@@ -185,7 +186,7 @@ function ChatDetail({ conversationId, onBack }: { conversationId: string; onBack
     setSending(false);
   }, [text, sending, conversationId, mutate]);
 
-  const nombre = conv?.contact_nombre?.trim() || conv?.contact_telefono?.trim() || "Conversación";
+  const nombre = nombreOTelefonoParaMostrar(conv?.contact_nombre, conv?.contact_telefono, "Conversación");
 
   return (
     <div className="flex h-full flex-col">

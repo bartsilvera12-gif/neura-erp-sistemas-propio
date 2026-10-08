@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { ContactHistoryDetail, HistorySearchItem } from "@/lib/chat/history-service";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { getErpAttachmentPublicUrl } from "@/lib/chat/message-erp-display";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 
 function fmtDate(iso: string | null) {
@@ -241,8 +242,15 @@ export default function HistorialPage() {
             <>
               <div className="p-4 border-b border-slate-200 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold text-slate-800">{detail.contact.name || detail.contact.phone_number}</h2>
-                  <span className="text-xs font-mono text-slate-500">{detail.contact.phone_number}</span>
+                  <h2 className="text-lg font-semibold text-slate-800">
+                    {detail.contact.name
+                      || (esLidWhatsapp(detail.contact.phone_number) ? "Cliente de WhatsApp" : detail.contact.phone_number)}
+                  </h2>
+                  {esLidWhatsapp(detail.contact.phone_number) ? (
+                    <span className="text-xs text-slate-500">ID de WhatsApp</span>
+                  ) : (
+                    <span className="text-xs font-mono text-slate-500">{detail.contact.phone_number}</span>
+                  )}
                   {detail.contact.cliente_id && (
                     <Link href={`/clientes/${detail.contact.cliente_id}`} className="text-xs text-[#0EA5E9] hover:underline">
                       Ver cliente

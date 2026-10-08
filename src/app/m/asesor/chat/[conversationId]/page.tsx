@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { getStickerFavoritos, toggleStickerFavorito } from "@/lib/chat/sticker-favorites";
+import { esLidWhatsapp, nombreOTelefonoParaMostrar } from "@/lib/chat/wa-phone";
 import {
   assignConversationToAgent,
   changeConversationQueue,
@@ -746,7 +747,7 @@ export default function MAsesorChatPage() {
           lastMsgsSigRef.current = sig;
           setMessages(nuevos);
         }
-        setTitle(data.conversation?.contact_nombre || data.conversation?.contact_telefono || "Chat");
+        setTitle(nombreOTelefonoParaMostrar(data.conversation?.contact_nombre, data.conversation?.contact_telefono, "Chat"));
         setContactPhone(data.conversation?.contact_telefono ?? null);
         setAssignedAgentId(data.conversation?.assigned_agent_id ?? null);
         setWindowOpen(data.conversation?.window_open ?? null);
@@ -1189,7 +1190,7 @@ export default function MAsesorChatPage() {
     setReenvioEnviando(true);
     try {
       await reenviar(reenviando, reenvioDestino);
-      setAviso(`Reenviado a ${reenvioDestino.contact_nombre || reenvioDestino.contact_telefono || "el chat"}`);
+      setAviso(`Reenviado a ${nombreOTelefonoParaMostrar(reenvioDestino.contact_nombre, reenvioDestino.contact_telefono, "el chat")}`);
       setReenviando(null);
       setReenvioDestino(null);
       setReenvioBusqueda("");
@@ -2505,7 +2506,7 @@ export default function MAsesorChatPage() {
                   return (c.contact_nombre ?? "").toLowerCase().includes(t) || (c.contact_telefono ?? "").includes(t);
                 })
                 .map((c) => {
-                  const nombre = c.contact_nombre || c.contact_telefono || "Contacto";
+                  const nombre = nombreOTelefonoParaMostrar(c.contact_nombre, c.contact_telefono, "Contacto");
                   const elegido = reenvioDestino?.id === c.id;
                   return (
                     <li key={c.id}>
@@ -2520,7 +2521,9 @@ export default function MAsesorChatPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[14px] font-medium text-slate-800">{nombre}</span>
                           {c.contact_nombre && c.contact_telefono ? (
-                            <span className="block text-[12px] text-slate-500">{c.contact_telefono}</span>
+                            <span className="block text-[12px] text-slate-500">
+                              {esLidWhatsapp(c.contact_telefono) ? "ID de WhatsApp" : c.contact_telefono}
+                            </span>
                           ) : null}
                         </span>
                         {elegido ? <span className="text-[#3F8E91]">✓</span> : null}
@@ -2539,7 +2542,7 @@ export default function MAsesorChatPage() {
                 {reenvioEnviando
                   ? "Reenviando…"
                   : reenvioDestino
-                    ? `Reenviar a ${reenvioDestino.contact_nombre || reenvioDestino.contact_telefono || "este chat"}`
+                    ? `Reenviar a ${nombreOTelefonoParaMostrar(reenvioDestino.contact_nombre, reenvioDestino.contact_telefono, "este chat")}`
                     : "Elegí un chat"}
               </button>
             </div>

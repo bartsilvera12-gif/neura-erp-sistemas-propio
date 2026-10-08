@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { attachmentCaptionForDisplay, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
+import { nombreOTelefonoParaMostrar } from "@/lib/chat/wa-phone";
 import { useAsesorInbox } from "@/shared/hooks/useAsesorInbox";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import AsesorTabBar from "./AsesorTabBar";
@@ -234,7 +235,7 @@ export default function MAsesorInboxPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {filtered.map((c) => {
-              const title = c.contact_nombre || c.contact_telefono || "Contacto";
+              const title = nombreOTelefonoParaMostrar(c.contact_nombre, c.contact_telefono, "Contacto");
               return (
                 <li key={c.id}>
                   <Link

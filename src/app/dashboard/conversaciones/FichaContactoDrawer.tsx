@@ -3,6 +3,7 @@
 import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import type {
   FichaContacto,
   FichaConversacion,
@@ -267,8 +268,16 @@ function Contenido({
           {contacto.nombre ?? "Sin nombre"}
         </p>
         <div className="mt-1 flex items-center gap-1.5">
-          <span className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</span>
-          <BotonCopiar valor={contacto.telefono} />
+          {esLidWhatsapp(contacto.telefono) ? (
+            <span className="text-xs text-slate-500">
+              ID de WhatsApp <span className="text-[10px] text-slate-400">(sin teléfono)</span>
+            </span>
+          ) : (
+            <>
+              <span className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</span>
+              <BotonCopiar valor={contacto.telefono} />
+            </>
+          )}
         </div>
         {contacto.creado_en ? (
           <p className="mt-1 text-[11px] text-slate-400">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { X, MessageSquarePlus, Download, SlidersHorizontal } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import {
   listFinalizedClosures,
   type FinalizedClosureListRow,
@@ -613,7 +614,13 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                   >
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-700">{formatDateTime(r.closed_at)}</td>
                     <td className="px-3 py-2.5 text-slate-900 font-medium">{r.contact_name ?? "—"}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-600">{r.phone_number}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-600">
+                      {esLidWhatsapp(r.phone_number) ? (
+                        <span className="italic text-slate-400">ID de WhatsApp</span>
+                      ) : (
+                        r.phone_number
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-slate-700">{channelLabel(r)}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.queue_nombre ?? "—"}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.assigned_agent_nombre ?? "—"}</td>
@@ -701,13 +708,17 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#4FAEB2]/20 bg-gradient-to-r from-[#4FAEB2]/14 via-[#4FAEB2]/6 to-transparent px-5 py-4">
               <div className="min-w-0">
                 <h2 id="finalized-detail-title" className="text-[17px] font-semibold text-slate-900">
-                  {detail.contact_name?.trim() || detail.phone_number || "Detalle del cierre"}
+                  {detail.contact_name?.trim()
+                    || (esLidWhatsapp(detail.phone_number) ? "Cliente de WhatsApp" : detail.phone_number)
+                    || "Detalle del cierre"}
                 </h2>
                 {/* El teléfono y la fecha son lo que ubica: el id de la
                     conversación no le dice nada a nadie y ocupaba el renglón
                     más visible del modal. */}
                 <p className="mt-0.5 truncate text-[12.5px] text-slate-600">
-                  {detail.phone_number} · cerrado el {formatDateTime(detail.closed_at)}
+                  {esLidWhatsapp(detail.phone_number) ? "ID de WhatsApp" : detail.phone_number}
+                  {" · cerrado el "}
+                  {formatDateTime(detail.closed_at)}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">

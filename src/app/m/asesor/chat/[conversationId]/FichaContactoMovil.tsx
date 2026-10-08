@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import type {
   FichaContacto,
   FichaConversacion,
@@ -99,7 +100,11 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
     <div className="flex flex-col gap-4">
       <section>
         <p className="text-base font-semibold text-slate-900">{contacto.nombre ?? "Sin nombre"}</p>
-        <p className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</p>
+        {esLidWhatsapp(contacto.telefono) ? (
+          <p className="text-xs text-slate-500">ID de WhatsApp</p>
+        ) : (
+          <p className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</p>
+        )}
         {contacto.creado_en ? (
           <p className="mt-0.5 text-[11px] text-slate-400">
             Primer contacto: {fechaLarga(contacto.creado_en)}

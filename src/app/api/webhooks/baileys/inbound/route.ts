@@ -10,15 +10,14 @@
  * Seguridad: header `x-bridge-secret` debe coincidir con `BAILEYS_BRIDGE_SECRET`.
  *
  * Cuerpo esperado (JSON):
- *   {
- *     channelId, empresaId, fromDigits, fromPhone?, waMessageId, messageKind,
- *     text?, pushName?, hasMedia?, timestamp?,
- *     // Media (opcional). Cuando el bridge descarga los bytes via
- *     // downloadMediaMessage(), los adjunta como base64 acá. El ERP los sube
- *     // a Supabase Storage y los deja renderizables en el inbox igual que
- *     // Meta/YCloud (raw_payload.erp.{public_url, storage_path, ...}).
- *     media?: { base64: string, mime: string, filename?: string | null }
- *   }
+ *   { channelId, empresaId, fromDigits, fromPhone?, waMessageId, messageKind,
+ *     text?, pushName?, hasMedia?, timestamp? }
+ *
+ * Para media (foto/video/audio/doc/sticker): el bridge llama a /inbound con
+ * este JSON (el mensaje queda con placeholder "[imagen]" / "[video]" / ...),
+ * y después sube el archivo por multipart a /inbound/media con el mismo
+ * waMessageId. Ese segundo endpoint es el que attachéa la URL del archivo
+ * a la fila ya persistida acá.
  */
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -37,10 +36,6 @@ import {
 } from "@/lib/chat/contact-center-inbound";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 import type { SupabaseAdmin } from "@/lib/chat/types";
-import {
-  attachBaileysInboundMedia,
-  type BaileysInboundMediaInput,
-} from "@/lib/chat/baileys-inbound-media-attach";
 
 export const dynamic = "force-dynamic";
 
@@ -227,33 +222,11 @@ export async function POST(request: NextRequest) {
     // no se parte el historial.
     await corregirTelefonoDelContacto(supabase, empresaId, result.contact_id, fromDigits, fromPhone);
 
-    // Media del cliente (foto/video/audio/doc/sticker): si el bridge adjuntó
-    // los bytes en base64, los subimos a Storage y los dejamos renderizables
-    // en el inbox. Best-effort: si falla, el mensaje queda con placeholder
-    // ("[imagen]" / "[video]" / ...) pero NO rompemos la ingesta.
-    const mediaRaw = body?.media as Record<string, unknown> | null | undefined;
-    const media: BaileysInboundMediaInput | null =
-      mediaRaw && typeof mediaRaw === "object" && typeof mediaRaw.base64 === "string"
-        ? {
-            base64: String(mediaRaw.base64),
-            mime: typeof mediaRaw.mime === "string" ? mediaRaw.mime : null,
-            filename: typeof mediaRaw.filename === "string" ? mediaRaw.filename : null,
-          }
-        : null;
-    if (media && result.message_id) {
-      try {
-        await attachBaileysInboundMedia({
-          supabase,
-          empresaId,
-          conversationId,
-          messageId: result.message_id,
-          messageKind,
-          media,
-        });
-      } catch (e) {
-        console.warn(LOG, "attach_media_error", e instanceof Error ? e.message : e);
-      }
-    }
+    // Nota: los bytes de la media (foto/video/audio/doc/sticker) los sube el
+    // bridge como multipart al endpoint /inbound/media, usando el mismo
+    // waMessageId. Ese otro route es el que adjunta la URL del archivo a la
+    // fila que acabamos de persistir acá. No bloqueamos este ack esperando
+    // la descarga de bytes.
 
     // Ventana 24h + asignación por equidad (mismo patrón que el webhook YCloud).
     if (contactCenterV1Enabled()) {

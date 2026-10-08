@@ -85,6 +85,8 @@ export async function POST(request: NextRequest) {
   const messageKind = String(body?.messageKind ?? "conversation");
   const text = typeof body?.text === "string" ? body.text : "";
   const pushName = typeof body?.pushName === "string" ? (body.pushName as string) : null;
+  // true = saliente espejado del celu (la PM respondió desde la app); false = entrante del cliente.
+  const fromMe = body?.fromMe === true;
 
   if (!channelId || !empresaId || !fromDigits || !waMessageId) {
     return NextResponse.json(
@@ -129,7 +131,9 @@ export async function POST(request: NextRequest) {
       supabase,
       channel: { id: channelId, empresa_id: empresaId, type: channelType },
       external_id: waMessageId,
-      contact_data: { address: fromDigits, display_name: pushName },
+      // En los salientes espejados (fromMe) el pushName es el del negocio, no el del contacto:
+      // no pisamos el nombre del contacto con eso.
+      contact_data: { address: fromDigits, display_name: fromMe ? null : pushName },
       message_data: {
         message_type,
         content: content || placeholder || "",
@@ -139,11 +143,12 @@ export async function POST(request: NextRequest) {
             fromDigits,
             messageKind,
             hasMedia: Boolean(body?.hasMedia),
+            fromMe,
             timestamp: body?.timestamp ?? null,
           },
         },
-        from_me: false,
-        sender_type: "contact",
+        from_me: fromMe,
+        sender_type: fromMe ? "human" : "contact",
       },
       // Con Contact Center V1 activo, la asignación la hace cc_assign (abajo), no la legacy.
       skipLegacyAutoAssignment: contactCenterV1Enabled(),

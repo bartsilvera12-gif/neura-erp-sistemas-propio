@@ -13,6 +13,9 @@ import type { SupabaseAdmin } from "@/lib/chat/types";
 
 const LOG = "[baileys/telefono-real]";
 
+/** Ver el comentario de abajo: se apagó porque partía el chat en dos. */
+const DEJAR_CORREGIR_NUMEROS = false;
+
 /**
  * Reemplaza el identificador interno por el teléfono real, en la MISMA fila del contacto:
  * no se crea un contacto nuevo ni se parte el historial.
@@ -28,6 +31,16 @@ export async function corregirTelefonoDelContacto(
   guardado: string,
   telefonoReal: string
 ): Promise<boolean> {
+  // APAGADO. Renombrar el número PARTÍA el chat en dos.
+  //
+  // El inbox busca al contacto por el número guardado. Al renombrar la fila al teléfono real,
+  // el siguiente mensaje que entraba con el @lid no encontraba a nadie con ese número y creaba
+  // un contacto NUEVO: el mismo cliente quedaba como dos chats, en dos colas y con dos agentes.
+  //
+  // Para reactivarlo hace falta primero que el @lid quede guardado en el contacto, para poder
+  // seguir encontrándolo después de cambiarle el número. Mientras tanto, mostrar el código feo
+  // es mucho menos grave que partir conversaciones.
+  if (!DEJAR_CORREGIR_NUMEROS) return false;
   if (!contactId || !telefonoReal || telefonoReal === guardado) return false;
   try {
     const { data: ocupado } = await supabase

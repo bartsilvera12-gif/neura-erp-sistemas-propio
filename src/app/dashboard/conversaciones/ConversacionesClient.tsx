@@ -3,7 +3,7 @@
 import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
 import { textoDeMensajeDeSistema, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
 import { wamidCitado } from "@/lib/chat/message-quote";
-import { wamidDeMensaje } from "@/lib/chat/message-reactions";
+import { agruparReacciones, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -1131,6 +1131,15 @@ export function ConversacionesClient({
     el.classList.add("ring-2", "ring-[#4FAEB2]", "rounded-lg");
     window.setTimeout(() => el.classList.remove("ring-2", "ring-[#4FAEB2]", "rounded-lg"), 1200);
   }, []);
+
+  /**
+   * Reacciones colgadas del mensaje al que apuntan.
+   *
+   * WhatsApp manda cada reacción como un mensaje más, con el WAMID del destino adentro. Sin
+   * agruparlas, el escritorio las dibujaba como burbujas sueltas que decían "Reaccionó a un
+   * mensaje" y no se veía ni el emoji ni a qué mensaje iban.
+   */
+  const reaccionesPorWamid = useMemo(() => agruparReacciones(messages), [messages]);
 
   const mensajePorWamid = useMemo(() => {
     const m = new Map<string, ChatMessage>();
@@ -4411,7 +4420,10 @@ export function ConversacionesClient({
                   </div>
                 ) : (
                   <div ref={setMessagesContentNode}>
-                  {messages.map((m, idx) => {
+                  {messages
+                    // Una reacción NO es un mensaje: se dibuja colgada de su destino, abajo.
+                    .filter((m) => m.message_type !== "reaction")
+                    .map((m, idx) => {
                     const attachUrl = resolveAttachmentUrl(m);
                     const metaDocName = getMetaInboundDocumentFilename(m.raw_payload);
                     const erpName = getErpAttachmentFilename(m.raw_payload);
@@ -4782,6 +4794,29 @@ export function ConversacionesClient({
                               </span>
                             </div>
                           ) : null}
+                          {/* Cuelgan del borde inferior, medio salidas de la burbuja, como en
+                              WhatsApp: así no empujan el contenido ni se confunden con él. */}
+                          {(() => {
+                            // Por el WAMID real: en los salientes puede no ser `wa_message_id`.
+                            const clave = wamidDeMensaje(m) ?? m.wa_message_id;
+                            const rs: ReaccionEnUI[] = clave
+                              ? reaccionesPorWamid.get(clave) ?? []
+                              : [];
+                            if (rs.length === 0) return null;
+                            return (
+                              <div className="-mb-3 mt-0.5 flex justify-end gap-1">
+                                {rs.map((r, i) => (
+                                  <span
+                                    key={`${r.emoji}-${i}`}
+                                    title={r.from_me ? "Tu reacción" : "Reacción del cliente"}
+                                    className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[13px] leading-none shadow-sm"
+                                  >
+                                    {r.emoji}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     );

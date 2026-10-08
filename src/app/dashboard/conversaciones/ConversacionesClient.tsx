@@ -2,7 +2,6 @@
 
 import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
 import { textoDeMensajeDeSistema, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
-import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import { wamidCitado } from "@/lib/chat/message-quote";
 import { agruparReacciones, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
 import Link from "next/link";

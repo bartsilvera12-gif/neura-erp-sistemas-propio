@@ -101,11 +101,12 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
     <div className="flex flex-col gap-4">
       <section>
         <p className="text-base font-semibold text-slate-900">{contacto.nombre ?? "Sin nombre"}</p>
+        <p className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</p>
         {esLidWhatsapp(contacto.telefono) ? (
-          <p className="text-xs text-slate-500">ID de WhatsApp</p>
-        ) : (
-          <p className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</p>
-        )}
+          <p className="mt-0.5 text-[10px] italic leading-tight text-slate-400">
+            Es un identificador de WhatsApp, no un teléfono. Para llamar, pedí el número al cliente.
+          </p>
+        ) : null}
         {contacto.creado_en ? (
           <p className="mt-0.5 text-[11px] text-slate-400">
             Primer contacto: {fechaLarga(contacto.creado_en)}

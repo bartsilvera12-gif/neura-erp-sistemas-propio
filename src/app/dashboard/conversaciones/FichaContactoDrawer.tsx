@@ -269,17 +269,19 @@ function Contenido({
           {contacto.nombre ?? "Sin nombre"}
         </p>
         <div className="mt-1 flex items-center gap-1.5">
-          {esLidWhatsapp(contacto.telefono) ? (
-            <span className="text-xs text-slate-500">
-              ID de WhatsApp <span className="text-[10px] text-slate-400">(sin teléfono)</span>
-            </span>
-          ) : (
-            <>
-              <span className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</span>
-              <BotonCopiar valor={contacto.telefono} />
-            </>
-          )}
+          <span className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</span>
+          <BotonCopiar valor={contacto.telefono} />
         </div>
+        {/* Aclaración chica para que la asesora no intente llamar al número ni
+            lo pase a un cliente — no es un teléfono real sino el identificador
+            privado que usa WhatsApp cuando el cliente no está en la libreta del
+            celular vinculado. Para llamarlo hay que preguntarle el número al
+            cliente directamente en el chat. */}
+        {esLidWhatsapp(contacto.telefono) ? (
+          <p className="mt-0.5 text-[10px] italic leading-tight text-slate-400">
+            Es un identificador de WhatsApp, no un teléfono. Para llamar, pedí el número al cliente.
+          </p>
+        ) : null}
         {/* Botón para marcar este contacto como alias de otro — típico uso: un @lid
             de WhatsApp sin teléfono real que corresponde a un cliente ya conocido.
             Al vincular se mergea el historial y los próximos mensajes van solos. */}

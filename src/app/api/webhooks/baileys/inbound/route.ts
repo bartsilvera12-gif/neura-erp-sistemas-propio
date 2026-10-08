@@ -10,7 +10,15 @@
  * Seguridad: header `x-bridge-secret` debe coincidir con `BAILEYS_BRIDGE_SECRET`.
  *
  * Cuerpo esperado (JSON):
- *   { channelId, empresaId, fromDigits, fromPhone, waMessageId, messageKind, text, pushName, hasMedia, timestamp }
+ *   {
+ *     channelId, empresaId, fromDigits, fromPhone?, waMessageId, messageKind,
+ *     text?, pushName?, hasMedia?, timestamp?,
+ *     // Media (opcional). Cuando el bridge descarga los bytes via
+ *     // downloadMediaMessage(), los adjunta como base64 acá. El ERP los sube
+ *     // a Supabase Storage y los deja renderizables en el inbox igual que
+ *     // Meta/YCloud (raw_payload.erp.{public_url, storage_path, ...}).
+ *     media?: { base64: string, mime: string, filename?: string | null }
+ *   }
  */
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -29,6 +37,10 @@ import {
 } from "@/lib/chat/contact-center-inbound";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 import type { SupabaseAdmin } from "@/lib/chat/types";
+import {
+  attachBaileysInboundMedia,
+  type BaileysInboundMediaInput,
+} from "@/lib/chat/baileys-inbound-media-attach";
 
 export const dynamic = "force-dynamic";
 
@@ -214,6 +226,34 @@ export async function POST(request: NextRequest) {
     // quedaba a la vista para siempre. Se corrige la MISMA fila: no se crea un contacto nuevo,
     // no se parte el historial.
     await corregirTelefonoDelContacto(supabase, empresaId, result.contact_id, fromDigits, fromPhone);
+
+    // Media del cliente (foto/video/audio/doc/sticker): si el bridge adjuntó
+    // los bytes en base64, los subimos a Storage y los dejamos renderizables
+    // en el inbox. Best-effort: si falla, el mensaje queda con placeholder
+    // ("[imagen]" / "[video]" / ...) pero NO rompemos la ingesta.
+    const mediaRaw = body?.media as Record<string, unknown> | null | undefined;
+    const media: BaileysInboundMediaInput | null =
+      mediaRaw && typeof mediaRaw === "object" && typeof mediaRaw.base64 === "string"
+        ? {
+            base64: String(mediaRaw.base64),
+            mime: typeof mediaRaw.mime === "string" ? mediaRaw.mime : null,
+            filename: typeof mediaRaw.filename === "string" ? mediaRaw.filename : null,
+          }
+        : null;
+    if (media && result.message_id) {
+      try {
+        await attachBaileysInboundMedia({
+          supabase,
+          empresaId,
+          conversationId,
+          messageId: result.message_id,
+          messageKind,
+          media,
+        });
+      } catch (e) {
+        console.warn(LOG, "attach_media_error", e instanceof Error ? e.message : e);
+      }
+    }
 
     // Ventana 24h + asignación por equidad (mismo patrón que el webhook YCloud).
     if (contactCenterV1Enabled()) {

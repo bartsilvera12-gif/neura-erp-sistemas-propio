@@ -2508,6 +2508,20 @@ export async function patchChatChannelActivo(channelId: string, activo: boolean)
     return;
   }
 
+  if (prov === "baileys") {
+    // WhatsApp por QR: no pasa por el save de Meta (exigiría phone_number_id y borraría la
+    // config del puente). Se togglea preservando `config.baileys_bridge_url`.
+    const existingBridge =
+      typeof row.config?.baileys_bridge_url === "string" ? row.config.baileys_bridge_url : "";
+    await saveBaileysWhatsappChannel({
+      id: row.id,
+      nombre: row.nombre?.trim() || "WhatsApp por QR",
+      bridge_url: existingBridge,
+      activo,
+    });
+    return;
+  }
+
   await saveChatChannel({
     id: row.id,
     nombre: row.nombre?.trim() || "WhatsApp",

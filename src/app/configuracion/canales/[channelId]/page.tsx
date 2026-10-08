@@ -7,6 +7,7 @@ import { ChannelBadge, channelTypeLabel } from "@/components/chat/ChannelBadge";
 import { GenericOmnichannelChannelForm } from "@/components/chat/GenericOmnichannelChannelForm";
 import { ChannelQuickRepliesStandaloneBlock } from "@/components/chat/ChannelQuickRepliesStandaloneBlock";
 import { WhatsAppChannelForm } from "@/components/chat/WhatsAppChannelForm";
+import { BaileysConnectPanel } from "@/components/chat/BaileysConnectPanel";
 import WhatsAppTagRulesPanel from "@/components/chat/tags/WhatsAppTagRulesPanel";
 import { OMNICHANNEL_CARD_DEFINITIONS } from "@/lib/chat/omnichannel-catalog";
 import { normalizeChannelType } from "@/lib/chat/channel-type-utils";
@@ -113,6 +114,7 @@ export default function EditarCanalPage() {
   const isWhatsapp = type === "whatsapp";
   const providerNorm = String(row.provider ?? "meta").trim().toLowerCase();
   const isYcloud = isWhatsapp && providerNorm === "ycloud";
+  const isBaileys = isWhatsapp && providerNorm === "baileys";
   const cardDef = OMNICHANNEL_CARD_DEFINITIONS.find((d) => d.type === type);
 
   return (
@@ -165,9 +167,11 @@ export default function EditarCanalPage() {
 
       <section className="w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:p-8">
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 lg:mb-6">
-          Credenciales y opciones
+          {isBaileys ? "Conexión" : "Credenciales y opciones"}
         </h2>
-        {isWhatsapp ? (
+        {isBaileys ? (
+          <BaileysConnectPanel channelId={row.id} />
+        ) : isWhatsapp ? (
           <>
             <WhatsAppChannelForm
               mode="edit"

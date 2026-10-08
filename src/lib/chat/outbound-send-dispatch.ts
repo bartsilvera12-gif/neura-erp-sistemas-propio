@@ -20,6 +20,16 @@ export const OUTBOUND_ERR_META_INCOMPLETE =
 export const OUTBOUND_ERR_YCLOUD_INCOMPLETE =
   "Este canal YCloud no tiene configuración completa. Revisá ycloud_api_key y ycloud_sender_id en el canal (Configuración → Canales).";
 
+/**
+ * Mensaje claro cuando se intenta un envío NO soportado por el puente Baileys (WhatsApp por QR).
+ * El texto del inbox sí se maneja aparte (resolveBaileysContextFromIds + sendTextViaBaileysBridge);
+ * los demás caminos (media, plantillas, stickers, reacciones, campañas, bot) llegan a este resolver
+ * sin rama baileys y, en vez de caer al ramal Meta con un error engañoso o mandar por el número
+ * equivocado, fallan fail-closed con este mensaje. (Media saliente por el puente: follow-up.)
+ */
+export const OUTBOUND_ERR_BAILEYS_UNSUPPORTED =
+  "Este canal es WhatsApp por QR (Baileys): por ahora solo se puede responder con TEXTO desde el chat. Enviar archivos, plantillas, stickers, reacciones o campañas por este canal todavía no está habilitado.";
+
 const LOG_PREFIX = "[outbound-resolve]";
 
 export type OutboundCredentialSource = "channel" | "legacy_env" | "mixed";
@@ -221,6 +231,14 @@ function buildOutboundTextContextFromRows(
       credential_source: "channel",
     });
     return { provider: "ycloud", toDigits, apiKey, fromE164 };
+  }
+
+  // Canal WhatsApp por QR (Baileys): este resolver (unión meta|ycloud) no lo representa.
+  // El texto del inbox ya se desvía antes con resolveBaileysContextFromIds; si un camino SIN
+  // ese pre-chequeo (media, plantillas, stickers, reacciones, campañas, bot) llega hasta acá,
+  // fallamos fail-closed con un mensaje claro en vez de degradar al ramal Meta.
+  if (effective === "baileys") {
+    throw new Error(OUTBOUND_ERR_BAILEYS_UNSUPPORTED);
   }
 
   const { phoneNumberId, accessToken, credential_source } = resolveMetaGraphCredentials(

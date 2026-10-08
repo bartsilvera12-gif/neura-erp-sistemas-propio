@@ -4,6 +4,7 @@ import { Component, useCallback, useEffect, useRef, useState, type ReactNode } f
 import Link from "next/link";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { esLidWhatsapp } from "@/lib/chat/wa-phone";
+import { VincularAliasBoton } from "@/components/chat/VincularAliasBoton";
 import type {
   FichaContacto,
   FichaConversacion,
@@ -279,6 +280,19 @@ function Contenido({
             </>
           )}
         </div>
+        {/* Botón para marcar este contacto como alias de otro — típico uso: un @lid
+            de WhatsApp sin teléfono real que corresponde a un cliente ya conocido.
+            Al vincular se mergea el historial y los próximos mensajes van solos. */}
+        {esLidWhatsapp(contacto.telefono) ? (
+          <div className="mt-2">
+            <VincularAliasBoton
+              contactoActualId={contacto.id}
+              contactoActualNombre={contacto.nombre}
+              onVinculado={alRecargar}
+              compacto
+            />
+          </div>
+        ) : null}
         {contacto.creado_en ? (
           <p className="mt-1 text-[11px] text-slate-400">
             Primer contacto: {fechaLarga(contacto.creado_en)}

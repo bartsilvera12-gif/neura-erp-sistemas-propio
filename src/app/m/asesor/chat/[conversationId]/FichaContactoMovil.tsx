@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { esLidWhatsapp } from "@/lib/chat/wa-phone";
+import { VincularAliasBoton } from "@/components/chat/VincularAliasBoton";
 import type {
   FichaContacto,
   FichaConversacion,
@@ -109,6 +110,21 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
           <p className="mt-0.5 text-[11px] text-slate-400">
             Primer contacto: {fechaLarga(contacto.creado_en)}
           </p>
+        ) : null}
+        {/* Vincular con otro contacto cuando sabemos quién es (típico: @lid de WhatsApp). */}
+        {esLidWhatsapp(contacto.telefono) ? (
+          <div className="mt-2">
+            <VincularAliasBoton
+              contactoActualId={contacto.id}
+              contactoActualNombre={contacto.nombre}
+              onVinculado={() => {
+                // Recarga la ficha pidiendo la actual (el drawer móvil no tiene callback
+                // explícito; con un reload de la URL alcanza para refrescar los datos).
+                if (typeof window !== "undefined") window.location.reload();
+              }}
+              compacto
+            />
+          </div>
         ) : null}
       </section>
 

@@ -273,23 +273,41 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
   const { data: contact, error: cErr } = await supabase
     .from("chat_contacts")
     .upsert(upsertPayload, { onConflict: "empresa_id,phone_number" })
-    .select("id, name, crm_prospecto_id")
+    .select("id, name, crm_prospecto_id, alias_de_contact_id")
     .single();
 
   if (cErr || !contact) {
     return { ok: false, error: `Contacto: ${cErr?.message ?? "error"}` };
   }
 
-  const contactId = contact.id as string;
-  const existingLooksLikePhone =
-    !contact.name ||
-    !/\p{L}/u.test(String(contact.name)) ||
-    String(contact.name).replace(/\D+/g, "") === address.replace(/\D+/g, "");
-  if (displayName && displayName !== contact.name && existingLooksLikePhone) {
-    await supabase
-      .from("chat_contacts")
-      .update({ name: displayName, updated_at: new Date().toISOString() })
-      .eq("id", contactId);
+  // Seguimiento de alias: si este contacto es un alias (p. ej. un @lid de WhatsApp
+  // vinculado al teléfono real), toda la conversación corre bajo el contacto real.
+  // El contacto alias queda vivo como "redirección permanente" para que el próximo
+  // mensaje con el mismo LID también se resuelva al real, sin bucle de duplicados.
+  //
+  // Un hop solo: no seguimos cadenas (si el real a su vez fuera alias, nos
+  // quedamos con el primer apuntado — las cadenas no deberían existir y seguirlas
+  // abre riesgo de bucles).
+  const resolvedContactId = (contact.alias_de_contact_id as string | null) ?? (contact.id as string);
+  const esAlias = resolvedContactId !== contact.id;
+
+  const contactId = resolvedContactId;
+
+  // Actualización de nombre: solo sobre el contacto en el que vamos a cargar el
+  // mensaje. Para el alias NO lo tocamos — si el usuario vinculó un LID a un
+  // contacto real con nombre bueno, un pushName vacío/raro del alias no debe
+  // pisarlo.
+  if (!esAlias) {
+    const existingLooksLikePhone =
+      !contact.name ||
+      !/\p{L}/u.test(String(contact.name)) ||
+      String(contact.name).replace(/\D+/g, "") === address.replace(/\D+/g, "");
+    if (displayName && displayName !== contact.name && existingLooksLikePhone) {
+      await supabase
+        .from("chat_contacts")
+        .update({ name: displayName, updated_at: new Date().toISOString() })
+        .eq("id", contactId);
+    }
   }
 
   const { data: existingConvRaw } = await supabase

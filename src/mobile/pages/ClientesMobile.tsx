@@ -171,7 +171,7 @@ function OrigenBadge({ origen }: { origen: OrigenCliente }) {
   };
   const label = origen === "CRM" ? "CRM" : origen === "VENTA" ? "Venta" : "Manual";
   return (
-    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${cfg[origen]}`}>
+    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${cfg[origen] ?? "bg-slate-100 text-slate-600"}`}>
       {label}
     </span>
   );

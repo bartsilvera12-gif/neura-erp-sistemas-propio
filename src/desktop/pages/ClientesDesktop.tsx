@@ -53,7 +53,9 @@ function BadgeOrigen({ origen }: { origen: Cliente["origen"] }) {
       dot: "bg-slate-400",
     },
   };
-  const it = cfg[origen];
+  // Defensa: si el cliente trae un `origen` fuera del mapa (valor nuevo, null, dato viejo),
+  // cfg[origen] era undefined y `it.cls` tiraba un TypeError que crasheaba TODO el listado.
+  const it = cfg[origen] ?? { cls: "border-slate-200 bg-slate-50 text-slate-600", dot: "bg-slate-400" };
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${it.cls}`}

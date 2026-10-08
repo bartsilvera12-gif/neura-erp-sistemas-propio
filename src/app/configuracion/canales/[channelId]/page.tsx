@@ -114,7 +114,14 @@ export default function EditarCanalPage() {
   const isWhatsapp = type === "whatsapp";
   const providerNorm = String(row.provider ?? "meta").trim().toLowerCase();
   const isYcloud = isWhatsapp && providerNorm === "ycloud";
-  const isBaileys = isWhatsapp && providerNorm === "baileys";
+  // El panel de conexión/reconexión Baileys se muestra si el canal es provider='baileys'
+  // O si ya tiene la URL del puente configurada (permite conectar/escanear durante la
+  // transición de YCloud→QR sin cortar la entrada por YCloud mientras tanto).
+  const hasBridgeUrl =
+    typeof (row.config as { baileys_bridge_url?: unknown } | null | undefined)?.baileys_bridge_url ===
+      "string" &&
+    ((row.config as { baileys_bridge_url?: string }).baileys_bridge_url ?? "").trim().length > 0;
+  const isBaileys = isWhatsapp && (providerNorm === "baileys" || hasBridgeUrl);
   const cardDef = OMNICHANNEL_CARD_DEFINITIONS.find((d) => d.type === type);
 
   return (

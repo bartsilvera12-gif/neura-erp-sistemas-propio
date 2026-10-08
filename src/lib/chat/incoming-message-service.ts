@@ -14,7 +14,7 @@ import { kickPushDispatcher } from "@/lib/cc/kick-dispatcher";
 import { markCampaignReplyFromInbound } from "@/lib/campaigns/campaign-inbound-hook";
 import { executeCampaignButtonActionForMatchedRecipient } from "@/lib/campaigns/campaign-button-action-service";
 import type { SupabaseAdmin } from "@/lib/chat/types";
-import { normalizeWaPhone } from "@/lib/chat/wa-phone";
+import { esLidWhatsapp, normalizeWaPhone } from "@/lib/chat/wa-phone";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 
@@ -280,6 +280,67 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
     return { ok: false, error: `Contacto: ${cErr?.message ?? "error"}` };
   }
 
+  // Auto-vinculación conservadora de LID → contacto real.
+  //
+  // Si este contacto todavía no es alias de nadie, su phone_number parece un @lid
+  // de WhatsApp (14+ díg sin país válido) y tenemos un nombre usable (el pushName
+  // que el bridge nos pasó), intentamos encontrar un ÚNICO contacto real (teléfono
+  // auténtico, no LID, no alias) con el mismo nombre. Si hay exactamente uno,
+  // vinculamos el LID como alias y seguimos con el contacto real.
+  //
+  // Reglas:
+  //  - 0 matches  → no hacemos nada (contacto nuevo real).
+  //  - 1 match    → auto-vinculamos.
+  //  - 2+ matches → ambiguo (ej. dos "Ivan" distintos), queda para que la asesora
+  //    decida con el botón manual. Nunca adivinamos.
+  let aliasAplicado: string | null = (contact.alias_de_contact_id as string | null) ?? null;
+  if (
+    aliasAplicado == null &&
+    esLidWhatsapp(address) &&
+    typeof contact.name === "string" &&
+    contact.name.trim().length >= 3 &&
+    /\p{L}/u.test(contact.name)
+  ) {
+    const nombreBuscado = contact.name.trim();
+    const { data: candidatos } = await supabase
+      .from("chat_contacts")
+      .select("id, phone_number")
+      .eq("empresa_id", empresaId)
+      .eq("name", nombreBuscado)
+      .is("alias_de_contact_id", null)
+      .neq("id", contact.id)
+      .limit(5);
+    const reales = ((candidatos ?? []) as Array<{ id: string; phone_number: string }>).filter(
+      (c) => !esLidWhatsapp(c.phone_number)
+    );
+    if (reales.length === 1) {
+      const realId = reales[0].id;
+      try {
+        const sbRpc = supabase as unknown as {
+          schema: (s: string) => {
+            rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+          };
+        };
+        const { error: rpcErr } = await sbRpc.schema("neura").rpc("vincular_contacto_como_alias", {
+          p_alias_id: contact.id,
+          p_real_id: realId,
+        });
+        if (!rpcErr) {
+          aliasAplicado = realId;
+          console.info("[saveIncomingMessage] auto_alias_vinculado", {
+            alias: contact.id,
+            real: realId,
+            nombre: nombreBuscado,
+          });
+        } else {
+          console.warn("[saveIncomingMessage] auto_alias_fallo", rpcErr.message);
+        }
+      } catch (e) {
+        console.warn("[saveIncomingMessage] auto_alias_exception", e instanceof Error ? e.message : e);
+      }
+    }
+  }
+
   // Seguimiento de alias: si este contacto es un alias (p. ej. un @lid de WhatsApp
   // vinculado al teléfono real), toda la conversación corre bajo el contacto real.
   // El contacto alias queda vivo como "redirección permanente" para que el próximo
@@ -288,7 +349,7 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
   // Un hop solo: no seguimos cadenas (si el real a su vez fuera alias, nos
   // quedamos con el primer apuntado — las cadenas no deberían existir y seguirlas
   // abre riesgo de bucles).
-  const resolvedContactId = (contact.alias_de_contact_id as string | null) ?? (contact.id as string);
+  const resolvedContactId = aliasAplicado ?? (contact.id as string);
   const esAlias = resolvedContactId !== contact.id;
 
   const contactId = resolvedContactId;

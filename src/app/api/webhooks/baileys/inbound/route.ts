@@ -28,6 +28,7 @@ import {
   applyInboundWindowAndAssignRest,
 } from "@/lib/chat/contact-center-inbound";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
+import { corregirTelefonoDelContacto } from "@/lib/chat/baileys-telefono-real";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 
 export const dynamic = "force-dynamic";
@@ -235,59 +236,5 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error(LOG, "error", err instanceof Error ? err.message : err);
     return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
-  }
-}
-
-/**
- * Reemplaza el identificador interno (@lid) por el teléfono real del contacto.
- *
- * Solo actúa cuando WhatsApp mandó el teléfono y es distinto al guardado. Si YA existe otro
- * contacto de la empresa con ese teléfono, no se toca nada: fusionar dos contactos es otra
- * decisión y hacerlo acá, a ciegas, rompería el índice único (empresa_id, phone_number).
- */
-async function corregirTelefonoDelContacto(
-  supabase: SupabaseAdmin,
-  empresaId: string,
-  contactId: string,
-  guardado: string,
-  telefonoReal: string
-): Promise<void> {
-  if (!contactId || !telefonoReal || telefonoReal === guardado) return;
-  try {
-    const { data: ocupado } = await supabase
-      .from("chat_contacts")
-      .select("id")
-      .eq("empresa_id", empresaId)
-      .eq("phone_number", telefonoReal)
-      .maybeSingle();
-    if (ocupado && String((ocupado as { id?: string }).id ?? "") !== contactId) {
-      console.info(LOG, "telefono_real_ya_usado", { contactId, telefonoReal });
-      return;
-    }
-
-    const parche: Record<string, unknown> = {
-      phone_number: telefonoReal,
-      phone_normalized: telefonoReal,
-      updated_at: new Date().toISOString(),
-    };
-    const { data: actual } = await supabase
-      .from("chat_contacts")
-      .select("name")
-      .eq("id", contactId)
-      .maybeSingle();
-    // Si el nombre visible era el código interno, también queda corregido.
-    const nombre = String((actual as { name?: string | null } | null)?.name ?? "");
-    if (nombre && nombre.replace(/\D+/g, "") === guardado) parche.name = telefonoReal;
-
-    const { error } = await supabase
-      .from("chat_contacts")
-      .update(parche)
-      .eq("empresa_id", empresaId)
-      .eq("id", contactId);
-    if (error) console.warn(LOG, "no_se_pudo_corregir_telefono", error.message);
-    else console.info(LOG, "telefono_corregido", { contactId, de: guardado, a: telefonoReal });
-  } catch (e) {
-    // Corregir el número es cosmético: si falla, el mensaje ya se guardó igual.
-    console.warn(LOG, "corregir_telefono_fallo", e instanceof Error ? e.message : String(e));
   }
 }

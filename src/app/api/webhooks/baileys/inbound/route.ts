@@ -10,7 +10,7 @@
  * Seguridad: header `x-bridge-secret` debe coincidir con `BAILEYS_BRIDGE_SECRET`.
  *
  * Cuerpo esperado (JSON):
- *   { channelId, empresaId, fromDigits, waMessageId, messageKind, text, pushName, hasMedia, timestamp }
+ *   { channelId, empresaId, fromDigits, fromPhone, waMessageId, messageKind, text, pushName, hasMedia, timestamp }
  */
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
   const channelId = String(body?.channelId ?? "").trim();
   const empresaId = String(body?.empresaId ?? "").trim();
   const fromDigits = normalizeWaPhone(String(body?.fromDigits ?? ""));
+  // Teléfono real cuando el chat llega con un @lid (identificador interno de WhatsApp).
+  const fromPhone = normalizeWaPhone(String(body?.fromPhone ?? ""));
   const waMessageId = String(body?.waMessageId ?? "").trim();
   const messageKind = String(body?.messageKind ?? "conversation");
   const text = typeof body?.text === "string" ? body.text : "";
@@ -207,6 +209,12 @@ export async function POST(request: NextRequest) {
 
     const conversationId = result.conversation_id;
 
+    // El número que se ve en el inbox queda corregido acá. Los chats que entran con @lid
+    // guardaban el identificador interno como si fuera el teléfono (`219537454674033`), y así
+    // quedaba a la vista para siempre. Se corrige la MISMA fila: no se crea un contacto nuevo,
+    // no se parte el historial.
+    await corregirTelefonoDelContacto(supabase, empresaId, result.contact_id, fromDigits, fromPhone);
+
     // Ventana 24h + asignación por equidad (mismo patrón que el webhook YCloud).
     if (contactCenterV1Enabled()) {
       const schema = await fetchDataSchemaForEmpresaId(empresaId);
@@ -227,5 +235,59 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error(LOG, "error", err instanceof Error ? err.message : err);
     return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
+  }
+}
+
+/**
+ * Reemplaza el identificador interno (@lid) por el teléfono real del contacto.
+ *
+ * Solo actúa cuando WhatsApp mandó el teléfono y es distinto al guardado. Si YA existe otro
+ * contacto de la empresa con ese teléfono, no se toca nada: fusionar dos contactos es otra
+ * decisión y hacerlo acá, a ciegas, rompería el índice único (empresa_id, phone_number).
+ */
+async function corregirTelefonoDelContacto(
+  supabase: SupabaseAdmin,
+  empresaId: string,
+  contactId: string,
+  guardado: string,
+  telefonoReal: string
+): Promise<void> {
+  if (!contactId || !telefonoReal || telefonoReal === guardado) return;
+  try {
+    const { data: ocupado } = await supabase
+      .from("chat_contacts")
+      .select("id")
+      .eq("empresa_id", empresaId)
+      .eq("phone_number", telefonoReal)
+      .maybeSingle();
+    if (ocupado && String((ocupado as { id?: string }).id ?? "") !== contactId) {
+      console.info(LOG, "telefono_real_ya_usado", { contactId, telefonoReal });
+      return;
+    }
+
+    const parche: Record<string, unknown> = {
+      phone_number: telefonoReal,
+      phone_normalized: telefonoReal,
+      updated_at: new Date().toISOString(),
+    };
+    const { data: actual } = await supabase
+      .from("chat_contacts")
+      .select("name")
+      .eq("id", contactId)
+      .maybeSingle();
+    // Si el nombre visible era el código interno, también queda corregido.
+    const nombre = String((actual as { name?: string | null } | null)?.name ?? "");
+    if (nombre && nombre.replace(/\D+/g, "") === guardado) parche.name = telefonoReal;
+
+    const { error } = await supabase
+      .from("chat_contacts")
+      .update(parche)
+      .eq("empresa_id", empresaId)
+      .eq("id", contactId);
+    if (error) console.warn(LOG, "no_se_pudo_corregir_telefono", error.message);
+    else console.info(LOG, "telefono_corregido", { contactId, de: guardado, a: telefonoReal });
+  } catch (e) {
+    // Corregir el número es cosmético: si falla, el mensaje ya se guardó igual.
+    console.warn(LOG, "corregir_telefono_fallo", e instanceof Error ? e.message : String(e));
   }
 }

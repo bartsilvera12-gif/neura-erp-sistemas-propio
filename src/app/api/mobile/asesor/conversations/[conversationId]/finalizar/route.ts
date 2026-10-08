@@ -68,7 +68,7 @@ export async function POST(
     const error = await verificarAcceso(conversationId);
     if (error) return error;
     try {
-      await finalizeConversationWithClosure({
+      const r = await finalizeConversationWithClosure({
         conversationId,
         closureStateId: estadoId,
         closureSubstateId: txt(body?.closure_substate_id) || null,
@@ -76,10 +76,15 @@ export async function POST(
         closureSubstateLabel: txt(body?.closure_substate_label) || "—",
         comment: comentario,
       });
+      if (!r.ok) {
+        return NextResponse.json({ ok: false, error: r.error }, { status: 400 });
+      }
       return NextResponse.json({ ok: true });
     } catch (e) {
+      // Red de contención: hoy el action no throwa (devuelve result), pero
+      // mantenemos el catch por si alguien lo refactoriza mañana.
       const msg = e instanceof Error ? e.message : "No se pudo finalizar la conversación";
-      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+      return NextResponse.json({ ok: false, error: msg }, { status: 500 });
     }
   });
 }

@@ -147,20 +147,21 @@ function isHumanContactName(name: string | null | undefined, phone?: string | nu
 /**
  * Qué mostrar como "subtítulo" (abajo del nombre) para un contacto.
  *
- * Para teléfonos reales devuelve el teléfono. Para `@lid` de WhatsApp (código interno
- * de 14+ dígitos de clientes no agregados a la libreta del celu vinculado) devuelve
- * un placeholder — mostrar "117308928352399" al asesor es ruido puro y lo confunde
- * con un número roto.
+ * Siempre devuelve el `phone` crudo si existe — tanto un teléfono real como un
+ * @lid de WhatsApp. Para la asesora el identificador numérico sigue siendo
+ * útil como referencia ("el cliente 97057…", a otro colega), aunque el LID
+ * no sea un número al que se pueda llamar.
+ *
+ * Antes acá se devolvía "ID de WhatsApp" o se escondía el número para LIDs —
+ * eso dejaba a la asesora sin cómo referir al cliente. Mejor mostrarlo tal
+ * cual y aclarar en la ficha que es un ID de WhatsApp, no un teléfono.
  */
 function contactPhoneFallback(
   phone: string | null | undefined,
   name: string | null | undefined
 ): string {
   const p = (phone ?? "").trim();
-  if (p) {
-    if (esLidWhatsapp(p)) return "ID de WhatsApp";
-    return p;
-  }
+  if (p) return p;
   const n = (name ?? "").trim();
   if (n && !/\p{L}/u.test(n)) return n;
   return "—";
@@ -2644,7 +2645,7 @@ export function ConversacionesClient({
     const sub = st.substates.find((x) => x.id === finalizeSubstateId);
     setFinalizeSaving(true);
     try {
-      await finalizeConversationWithClosure({
+      const r = await finalizeConversationWithClosure({
         conversationId: selectedId,
         closureStateId: st.id,
         closureSubstateId: st.substates.length > 0 ? finalizeSubstateId : null,
@@ -2652,6 +2653,11 @@ export function ConversacionesClient({
         closureSubstateLabel: sub?.label ?? (st.substates.length > 0 ? "" : "—"),
         comment,
       });
+      if (!r.ok) {
+        setFinalizeModalError(r.error || "No se pudo finalizar la conversación.");
+        setFinalizeSaving(false);
+        return;
+      }
       setFinalizeOpen(false);
       setFinalizeOptions(null);
       const closedId = selectedId;

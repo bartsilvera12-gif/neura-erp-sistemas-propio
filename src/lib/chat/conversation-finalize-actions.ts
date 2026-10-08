@@ -219,6 +219,15 @@ function resolveFallbackLabels(stateId: string, substateId: string | null): { st
   return null;
 }
 
+/**
+ * Resultado del cierre. Se usa `{ok,error}` en vez de throw para evitar la
+ * máscara genérica que Next.js aplica en producción a los errores de Server
+ * Actions ("An error occurred in the Server Components render..."): el
+ * `error` serializado como string atraviesa el límite server→client intacto,
+ * y el modal puede mostrarle al asesor el motivo real.
+ */
+export type FinalizeConversationResult = { ok: true } | { ok: false; error: string };
+
 export async function finalizeConversationWithClosure(input: {
   conversationId: string;
   closureStateId: string | null;
@@ -226,116 +235,160 @@ export async function finalizeConversationWithClosure(input: {
   closureStateLabel: string;
   closureSubstateLabel: string;
   comment: string;
-}): Promise<void> {
-  const { supabase, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
-  const convId = input.conversationId.trim();
-  if (!convId) throw new Error("Conversación inválida");
-
-  const comment = input.comment.trim();
-  if (comment.length < 3) {
-    throw new Error("El comentario es obligatorio (al menos 3 caracteres).");
+}): Promise<FinalizeConversationResult> {
+  let supabase: Awaited<ReturnType<typeof requireEmpresaTenantServiceRole>>["supabase"];
+  let empresa_id: string;
+  let usuario_id: string;
+  try {
+    const ctx = await requireEmpresaTenantServiceRole();
+    supabase = ctx.supabase;
+    empresa_id = ctx.empresa_id;
+    usuario_id = ctx.usuario_id;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo autenticar." };
   }
 
-  let stateLabel = input.closureStateLabel.trim();
-  let substateLabel = input.closureSubstateLabel.trim();
+  try {
+    const convId = input.conversationId.trim();
+    if (!convId) return { ok: false, error: "Conversación inválida." };
 
-  const { data: conv, error: cErr } = await supabase
-    .from("chat_conversations")
-    .select("id, queue_id, status, channel_id, contact_id")
-    .eq("id", convId)
-    .eq("empresa_id", empresa_id)
-    .maybeSingle();
-  if (cErr) throw new Error(cErr.message);
-  if (!conv) throw new Error("Conversación no encontrada");
-  if (String((conv as { status?: string }).status).toLowerCase() === "closed") {
-    throw new Error("La conversación ya está finalizada");
-  }
-
-  const queueId = ((conv as { queue_id?: string | null }).queue_id ?? null) as string | null;
-  let closureStateId: string | null = input.closureStateId?.trim() || null;
-  let closureSubstateId: string | null = input.closureSubstateId?.trim() || null;
-
-  if (closureStateId && isFallbackClosureStateId(closureStateId)) {
-    const fb = resolveFallbackLabels(closureStateId, closureSubstateId);
-    if (!fb) {
-      throw new Error("Estado o subestado inválido.");
+    const comment = input.comment.trim();
+    if (comment.length < 3) {
+      return { ok: false, error: "El comentario es obligatorio (al menos 3 caracteres)." };
     }
-    stateLabel = fb.state;
-    substateLabel = fb.sub || substateLabel || "—";
-    closureStateId = null;
-    closureSubstateId = null;
-  } else if (closureStateId) {
-    const { data: st, error: stErr } = await supabase
-      .from("chat_queue_closure_states")
-      .select("id, label, queue_id")
-      .eq("id", closureStateId)
+
+    let stateLabel = input.closureStateLabel.trim();
+    let substateLabel = input.closureSubstateLabel.trim();
+
+    const { data: conv, error: cErr } = await supabase
+      .from("chat_conversations")
+      .select("id, queue_id, status, channel_id, contact_id")
+      .eq("id", convId)
       .eq("empresa_id", empresa_id)
       .maybeSingle();
-    if (stErr) throw new Error(stErr.message);
-    if (!st) throw new Error("Estado de cierre no encontrado");
-    if (queueId && (st as { queue_id: string }).queue_id !== queueId) {
-      throw new Error("El estado no pertenece a la cola de esta conversación.");
+    if (cErr) return { ok: false, error: `No se pudo leer la conversación: ${cErr.message}` };
+    if (!conv) return { ok: false, error: "Conversación no encontrada." };
+    if (String((conv as { status?: string }).status).toLowerCase() === "closed") {
+      return { ok: false, error: "La conversación ya está finalizada." };
     }
-    stateLabel = String((st as { label: string }).label).trim() || stateLabel;
 
-    const { data: subs, error: subQ } = await supabase
-      .from("chat_queue_closure_substates")
-      .select("id")
-      .eq("closure_state_id", closureStateId)
-      .eq("empresa_id", empresa_id)
-      .eq("is_active", true);
-    if (subQ) throw new Error(subQ.message);
-    const subCount = (subs ?? []).length;
-    if (subCount > 0) {
-      if (!closureSubstateId) {
-        throw new Error("Elegí un subestado de cierre.");
-      }
-      const { data: subRow, error: subErr } = await supabase
-        .from("chat_queue_closure_substates")
-        .select("id, label")
-        .eq("id", closureSubstateId)
-        .eq("empresa_id", empresa_id)
-        .eq("closure_state_id", closureStateId)
-        .maybeSingle();
-      if (subErr) throw new Error(subErr.message);
-      if (!subRow) throw new Error("Subestado no encontrado.");
-      substateLabel = String((subRow as { label: string }).label).trim() || substateLabel;
-    } else {
+    const queueId = ((conv as { queue_id?: string | null }).queue_id ?? null) as string | null;
+    let closureStateId: string | null = input.closureStateId?.trim() || null;
+    let closureSubstateId: string | null = input.closureSubstateId?.trim() || null;
+
+    if (closureStateId && isFallbackClosureStateId(closureStateId)) {
+      const fb = resolveFallbackLabels(closureStateId, closureSubstateId);
+      if (!fb) return { ok: false, error: "Estado o subestado inválido." };
+      stateLabel = fb.state;
+      substateLabel = fb.sub || substateLabel || "—";
+      closureStateId = null;
       closureSubstateId = null;
-      if (!substateLabel) substateLabel = "—";
+    } else if (closureStateId) {
+      const { data: st, error: stErr } = await supabase
+        .from("chat_queue_closure_states")
+        .select("id, label, queue_id")
+        .eq("id", closureStateId)
+        .eq("empresa_id", empresa_id)
+        .maybeSingle();
+      if (stErr) return { ok: false, error: `No se pudo leer el estado: ${stErr.message}` };
+      if (!st) return { ok: false, error: "Estado de cierre no encontrado." };
+      if (queueId && (st as { queue_id: string }).queue_id !== queueId) {
+        return {
+          ok: false,
+          error:
+            "El estado elegido pertenece a otra cola, no a la de esta conversación. " +
+            "Pedile al admin que agregue este estado a la cola de este chat, o cerralo con un estado válido para su cola.",
+        };
+      }
+      stateLabel = String((st as { label: string }).label).trim() || stateLabel;
+
+      const { data: subs, error: subQ } = await supabase
+        .from("chat_queue_closure_substates")
+        .select("id")
+        .eq("closure_state_id", closureStateId)
+        .eq("empresa_id", empresa_id)
+        .eq("is_active", true);
+      if (subQ) return { ok: false, error: `No se pudo leer los subestados: ${subQ.message}` };
+      const subCount = (subs ?? []).length;
+      if (subCount > 0) {
+        if (!closureSubstateId) return { ok: false, error: "Elegí un subestado de cierre." };
+        const { data: subRow, error: subErr } = await supabase
+          .from("chat_queue_closure_substates")
+          .select("id, label")
+          .eq("id", closureSubstateId)
+          .eq("empresa_id", empresa_id)
+          .eq("closure_state_id", closureStateId)
+          .maybeSingle();
+        if (subErr) return { ok: false, error: `No se pudo leer el subestado: ${subErr.message}` };
+        if (!subRow) return { ok: false, error: "Subestado no encontrado." };
+        substateLabel = String((subRow as { label: string }).label).trim() || substateLabel;
+      } else {
+        closureSubstateId = null;
+        if (!substateLabel) substateLabel = "—";
+      }
     }
-  }
 
-  if (!stateLabel.trim()) {
-    throw new Error("Elegí un estado de cierre.");
-  }
-  if (!substateLabel) substateLabel = "—";
+    if (!stateLabel.trim()) return { ok: false, error: "Elegí un estado de cierre." };
+    if (!substateLabel) substateLabel = "—";
 
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  const { error: insErr } = await supabase.from("chat_conversation_closures").insert({
-    empresa_id: empresa_id,
-    conversation_id: convId,
-    queue_id: queueId,
-    closure_state_id: closureStateId,
-    closure_substate_id: closureSubstateId,
-    closure_state_label: stateLabel,
-    closure_substate_label: substateLabel,
-    comment,
-    closed_at: now,
-    closed_by_usuario_id: usuario_id,
-  });
-  if (insErr) throw new Error(insErr.message);
-
-  const { error: upErr } = await supabase
-    .from("chat_conversations")
-    .update({
-      status: "closed",
+    const { error: insErr } = await supabase.from("chat_conversation_closures").insert({
+      empresa_id: empresa_id,
+      conversation_id: convId,
+      queue_id: queueId,
+      closure_state_id: closureStateId,
+      closure_substate_id: closureSubstateId,
+      closure_state_label: stateLabel,
+      closure_substate_label: substateLabel,
+      comment,
       closed_at: now,
       closed_by_usuario_id: usuario_id,
-      updated_at: now,
-    })
-    .eq("id", convId)
-    .eq("empresa_id", empresa_id);
-  if (upErr) throw new Error(upErr.message);
+    });
+    if (insErr) {
+      // Log server-side con todo el contexto; el client solo recibe un
+      // mensaje corto para que no se filtren detalles de implementación.
+      console.error("[finalizeConversationWithClosure] insert_closure", {
+        empresa_id,
+        conv_id: convId,
+        queue_id: queueId,
+        closure_state_id: closureStateId,
+        closure_substate_id: closureSubstateId,
+        err: insErr.message,
+      });
+      return { ok: false, error: `No se pudo guardar el cierre: ${insErr.message}` };
+    }
+
+    const { error: upErr } = await supabase
+      .from("chat_conversations")
+      .update({
+        status: "closed",
+        closed_at: now,
+        closed_by_usuario_id: usuario_id,
+        updated_at: now,
+      })
+      .eq("id", convId)
+      .eq("empresa_id", empresa_id);
+    if (upErr) {
+      console.error("[finalizeConversationWithClosure] update_conversation", {
+        empresa_id,
+        conv_id: convId,
+        err: upErr.message,
+      });
+      return { ok: false, error: `El cierre se guardó pero la conversación quedó abierta: ${upErr.message}` };
+    }
+
+    return { ok: true };
+  } catch (e) {
+    // Un error inesperado (p. ej. problema de red/schema) ya no se enmascara:
+    // devolvemos el message para que el asesor lo vea. Igual logeamos server
+    // side por si el ownership del repo lo necesita después.
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[finalizeConversationWithClosure] unexpected", {
+      conversationId: input.conversationId,
+      err: msg,
+      stack: e instanceof Error ? e.stack?.slice(0, 500) : null,
+    });
+    return { ok: false, error: msg || "Error inesperado al finalizar la conversación." };
+  }
 }

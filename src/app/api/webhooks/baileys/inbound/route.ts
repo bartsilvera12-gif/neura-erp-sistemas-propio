@@ -35,7 +35,6 @@ import {
   applyInboundWindowAndAssignRest,
 } from "@/lib/chat/contact-center-inbound";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
-import { corregirTelefonoDelContacto } from "@/lib/chat/baileys-telefono-real";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 
 export const dynamic = "force-dynamic";
@@ -180,13 +179,25 @@ export async function POST(request: NextRequest) {
     const { message_type, placeholder } = mapped;
     const content = message_type === "text" ? text : text || placeholder;
 
+    // Con qué número se guarda el contacto.
+    //
+    // Si WhatsApp mandó el teléfono real, se usa ÉSE desde el principio. Antes se guardaba
+    // siempre el @lid (el código interno) y después se intentaba renombrar la fila, lo que
+    // partía el chat en dos: el inbox busca al contacto por el número guardado, así que el
+    // siguiente mensaje con @lid no encontraba a nadie y creaba un contacto nuevo. Resultado:
+    // lo que entraba caía en un chat y lo que salía en otro.
+    //
+    // Creándolo derecho con el teléfono, entrante y saliente comparten el mismo contacto y no
+    // hay nada que renombrar.
+    const direccionContacto = fromPhone || fromDigits;
+
     const result = await saveIncomingMessage({
       supabase,
       channel: { id: channelId, empresa_id: empresaId, type: channelType },
       external_id: waMessageId,
       // En los salientes espejados (fromMe) el pushName es el del negocio, no el del contacto:
       // no pisamos el nombre del contacto con eso.
-      contact_data: { address: fromDigits, display_name: fromMe ? null : pushName },
+      contact_data: { address: direccionContacto, display_name: fromMe ? null : pushName },
       message_data: {
         message_type,
         content: content || placeholder || "",
@@ -217,11 +228,6 @@ export async function POST(request: NextRequest) {
 
     const conversationId = result.conversation_id;
 
-    // El número que se ve en el inbox queda corregido acá. Los chats que entran con @lid
-    // guardaban el identificador interno como si fuera el teléfono (`219537454674033`), y así
-    // quedaba a la vista para siempre. Se corrige la MISMA fila: no se crea un contacto nuevo,
-    // no se parte el historial.
-    await corregirTelefonoDelContacto(supabase, empresaId, result.contact_id, fromDigits, fromPhone);
 
     // Nota: los bytes de la media (foto/video/audio/doc/sticker) los sube el
     // bridge como multipart al endpoint /inbound/media, usando el mismo

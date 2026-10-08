@@ -2,6 +2,7 @@
 
 import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
 import { textoDeMensajeDeSistema, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import { wamidCitado } from "@/lib/chat/message-quote";
 import { agruparReacciones, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
 import Link from "next/link";
@@ -143,12 +144,23 @@ function isHumanContactName(name: string | null | undefined, phone?: string | nu
   return true;
 }
 
+/**
+ * Qué mostrar como "subtítulo" (abajo del nombre) para un contacto.
+ *
+ * Para teléfonos reales devuelve el teléfono. Para `@lid` de WhatsApp (código interno
+ * de 14+ dígitos de clientes no agregados a la libreta del celu vinculado) devuelve
+ * un placeholder — mostrar "117308928352399" al asesor es ruido puro y lo confunde
+ * con un número roto.
+ */
 function contactPhoneFallback(
   phone: string | null | undefined,
   name: string | null | undefined
 ): string {
   const p = (phone ?? "").trim();
-  if (p) return p;
+  if (p) {
+    if (esLidWhatsapp(p)) return "ID de WhatsApp";
+    return p;
+  }
   const n = (name ?? "").trim();
   if (n && !/\p{L}/u.test(n)) return n;
   return "—";

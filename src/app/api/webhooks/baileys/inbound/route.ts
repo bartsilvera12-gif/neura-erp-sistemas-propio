@@ -35,6 +35,7 @@ import {
   applyInboundWindowAndAssignRest,
 } from "@/lib/chat/contact-center-inbound";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
+import { guardarTelefonoRealDelContacto } from "@/lib/chat/baileys-telefono-real";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 
 export const dynamic = "force-dynamic";
@@ -244,6 +245,20 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         console.warn(LOG, "wa_jid_update_fallo", e instanceof Error ? e.message : String(e));
       }
+    }
+
+    // Teléfono real: el puente lo manda en `fromPhone` cuando lo conoce (senderPn o libreta) y
+    // el chat entró con un @lid. Se guarda en `telefono_real` (columna aparte) SOLO para mostrar;
+    // NO se renombra phone_number (no parte el chat), NO se mueve la conversación (no cambia el
+    // envío ni las asignaciones).
+    //
+    // GUARD AUTORITATIVO: solo si el JID ENTRANTE es un @lid (fromJid termina en @lid) y sus
+    // dígitos coinciden con el contacto que actualizamos (direccionContacto = fromDigits = los
+    // dígitos del fromJid por construcción). Así NUNCA se toca un contacto normal (@s.whatsapp.net),
+    // ni aunque viniera un fromPhone distinto por algún borde.
+    const esLidEntrante = fromJid.endsWith("@lid") && normalizeWaPhone(fromJid) === fromDigits;
+    if (fromPhone && fromPhone !== fromDigits && esLidEntrante) {
+      await guardarTelefonoRealDelContacto(supabase, empresaId, direccionContacto, fromPhone);
     }
 
     // Nota: los bytes de la media (foto/video/audio/doc/sticker) los sube el

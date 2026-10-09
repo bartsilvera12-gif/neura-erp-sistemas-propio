@@ -10,8 +10,55 @@
  * de contactos (cuando WhatsApp manda la equivalencia por su cuenta, sin que nadie escriba).
  */
 import type { SupabaseAdmin } from "@/lib/chat/types";
+import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 
 const LOG = "[baileys/telefono-real]";
+
+/** ¿`tel` parece un teléfono real guardable? dígitos, 8–15, y distinto del @lid. */
+function telefonoValido(lid: string, tel: string): boolean {
+  if (!lid || !tel || lid === tel) return false;
+  return tel.length >= 8 && tel.length <= 15;
+}
+
+/**
+ * Guarda el teléfono REAL del contacto en la columna `telefono_real`, SIN tocar
+ * `phone_number` ni `wa_jid`. Es la forma NO destructiva de mostrar el número:
+ *  - el chat sigue identificado por el @lid → no se parte, no se duplica, no cambia el envío;
+ *  - la UI muestra `telefono_real` cuando existe.
+ *
+ * Solo escribe sobre la fila cuyo `phone_number` es el @lid (identificador entrante). Un
+ * contacto normal (phone_number = su teléfono) NUNCA se toca: ahí `lid === tel` y se corta.
+ * Acotado a la empresa (y la fila ya pertenece al canal del inbound). Valida el número.
+ * Devuelve true si actualizó una fila.
+ */
+export async function guardarTelefonoRealDelContacto(
+  supabase: SupabaseAdmin,
+  empresaId: string,
+  lidGuardado: string,
+  telefonoReal: string
+): Promise<boolean> {
+  const lid = normalizeWaPhone(lidGuardado);
+  const tel = normalizeWaPhone(telefonoReal);
+  if (!empresaId || !telefonoValido(lid, tel)) return false;
+  try {
+    const { data, error } = await supabase
+      .from("chat_contacts")
+      .update({ telefono_real: tel, updated_at: new Date().toISOString() })
+      .eq("empresa_id", empresaId)
+      .eq("phone_number", lid)
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      console.warn(LOG, "telefono_real_update_fallo", error.message);
+      return false;
+    }
+    if (data) console.info(LOG, "telefono_real_guardado", { lid, tel });
+    return Boolean(data);
+  } catch (e) {
+    console.warn(LOG, "telefono_real_excepcion", e instanceof Error ? e.message : String(e));
+    return false;
+  }
+}
 
 /** Ver el comentario de abajo: se apagó porque partía el chat en dos. */
 const DEJAR_CORREGIR_NUMEROS = false;

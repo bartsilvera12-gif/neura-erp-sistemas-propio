@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import {
   aggregateBotClassificationReasons,
   buildActiveFlowMatchSet,
@@ -882,6 +883,29 @@ export async function fetchChatConversationsFromTenantPg(
         [empresa_id, contactIds]
       );
       byId = Object.fromEntries((cr.rows ?? []).map((c) => [String(c.id), c as Record<string, unknown>]));
+      // telefono_real + wa_jid (canal WhatsApp por QR, hoy solo neura): lectura APARTE y
+      // drift-safe. wa_jid permite reconocer un @lid por el sufijo del JID (no por longitud).
+      // Si el schema no tiene las columnas, se ignora y se muestra el phone_number como antes.
+      try {
+        const tr = await pool.query(
+          `SELECT id::text, telefono_real::text, wa_jid::text FROM ${cq}
+           WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])`,
+          [empresa_id, contactIds]
+        );
+        for (const r of (tr.rows ?? []) as {
+          id?: string;
+          telefono_real?: string | null;
+          wa_jid?: string | null;
+        }[]) {
+          const id = String(r.id ?? "");
+          if (id && byId[id]) {
+            (byId[id] as Record<string, unknown>).telefono_real = r.telefono_real ?? null;
+            (byId[id] as Record<string, unknown>).wa_jid = r.wa_jid ?? null;
+          }
+        }
+      } catch {
+        /* columnas ausentes en el schema → se ignoran */
+      }
     } catch {
       console.warn("[fetchChatConversations] chat_contacts pg batch falló");
     }
@@ -931,10 +955,16 @@ export async function fetchChatConversationsFromTenantPg(
           id?: string;
           name?: string | null;
           phone_number?: string;
+          telefono_real?: string | null;
+          wa_jid?: string | null;
           cliente_id?: string | null;
           crm_prospecto_id?: string | null;
         }
       | undefined;
+    // ¿Es un @lid? Autoritativo por el sufijo del JID (wa_jid); fallback al heurístico por
+    // longitud solo si no hay wa_jid. Así se reconocen también los @lid de 12 dígitos.
+    const cWaJid = String(c?.wa_jid ?? "");
+    const cEsLid = cWaJid.endsWith("@lid") || (!cWaJid && esLidWhatsapp(String(c?.phone_number ?? "")));
     const cid = (row.channel_id as string | null | undefined)?.trim() ?? "";
     const chMeta = cid ? channelById[cid] : undefined;
     const channelId = cid;
@@ -983,7 +1013,12 @@ export async function fetchChatConversationsFromTenantPg(
       contact: {
         id: c?.id ?? (row.contact_id as string),
         name: c?.name ?? null,
-        phone_number: c?.phone_number ?? "",
+        // Se muestra el teléfono real si lo conocemos (canal QR); si no, el phone_number
+        // (que para un @lid es el código interno). NO se usa para enviar: el envío lee la
+        // columna real por contact_id, no esta salida.
+        phone_number: (c?.telefono_real || c?.phone_number) ?? "",
+        telefono_real: (c?.telefono_real as string | null) ?? null,
+        es_lid: cEsLid,
         cliente_id: c?.cliente_id != null ? String(c.cliente_id) : null,
         crm_prospecto_id: c?.crm_prospecto_id != null ? String(c.crm_prospecto_id) : null,
       },

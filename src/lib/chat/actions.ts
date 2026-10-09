@@ -171,7 +171,12 @@ export type InboxConversation = {
   contact: {
     id: string;
     name: string | null;
+    /** Teléfono a mostrar: el real si se conoce; si no, el phone_number (que para un @lid es el código interno). */
     phone_number: string;
+    /** Teléfono real si lo conocemos (canal WhatsApp por QR); si no, null. */
+    telefono_real: string | null;
+    /** El contacto está identificado por un @lid de WhatsApp (código interno), no por un teléfono. */
+    es_lid: boolean;
     cliente_id: string | null;
     crm_prospecto_id: string | null;
   };
@@ -1182,6 +1187,9 @@ async function fetchChatConversationsUnsafe(
         id: c?.id ?? (row.contact_id as string),
         name: c?.name ?? null,
         phone_number: c?.phone_number ?? "",
+        // Ruta REST (schemas expuestos): no hay canal baileys/LID acá → defaults seguros.
+        telefono_real: null,
+        es_lid: false,
         cliente_id: c?.cliente_id ?? null,
         crm_prospecto_id: c?.crm_prospecto_id ?? null,
       },

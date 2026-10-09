@@ -166,6 +166,24 @@ function contactPhoneFallback(
   return "—";
 }
 
+/**
+ * Teléfono a mostrar en la lista/detalle del inbox:
+ *  - el teléfono real si lo conocemos (canal WhatsApp por QR);
+ *  - "cód. interno WhatsApp" si es un @lid SIN teléfono (así el comercial distingue de un vistazo
+ *    un teléfono real de un código interno, sin depender de la cantidad de dígitos);
+ *  - el teléfono normal en cualquier otro caso.
+ */
+function telefonoMostrableContacto(contact: {
+  phone_number: string;
+  telefono_real?: string | null;
+  es_lid?: boolean;
+  name?: string | null;
+}): string {
+  if (contact.telefono_real) return contact.telefono_real;
+  if (contact.es_lid) return "⚙ cód. interno WhatsApp";
+  return contactPhoneFallback(contact.phone_number, contact.name);
+}
+
 function formatTime(iso: string) {
   try {
     return new Date(iso).toLocaleString("es-PY", {
@@ -3861,7 +3879,7 @@ export function ConversacionesClient({
                             {cardName}
                           </div>
                           <div className="text-[11px] text-slate-500 font-mono truncate tabular-nums">
-                            {contactPhoneFallback(c.contact.phone_number, c.contact.name)}
+                            {telefonoMostrableContacto(c.contact)}
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
@@ -4033,7 +4051,7 @@ export function ConversacionesClient({
                                 {contactDisplayName}
                               </p>
                               <p className="mt-0.5 truncate font-mono text-[11px] tabular-nums text-slate-500">
-                                {contactPhoneFallback(selected.contact.phone_number, selected.contact.name)}
+                                {telefonoMostrableContacto(selected.contact)}
                               </p>
                             </button>
                           </div>
@@ -4085,7 +4103,10 @@ export function ConversacionesClient({
                                 conversationId={selected.id}
                                 clienteId={selected.contact.cliente_id ?? null}
                                 contacto={contactDisplayName}
-                                telefono={selected.contact.phone_number ?? null}
+                                telefono={
+                                  selected.contact.telefono_real ||
+                                  (selected.contact.es_lid ? null : selected.contact.phone_number || null)
+                                }
                                 alCerrar={() => setSoporteModalOpen(false)}
                               />
                             ) : null}

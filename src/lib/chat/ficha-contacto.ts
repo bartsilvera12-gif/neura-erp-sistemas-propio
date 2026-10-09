@@ -6,6 +6,7 @@ import { nombrePreferido } from "@/lib/format/nombres";
 import { enrichProyectosRows } from "@/lib/proyectos/enrich-proyectos";
 import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 /**
@@ -110,7 +111,12 @@ export type FichaContacto = {
   contacto: {
     id: string;
     nombre: string | null;
+    /** Teléfono a mostrar: el real si se conoce; si no, el phone_number (que para un @lid es el código interno). */
     telefono: string;
+    /** Teléfono real si lo conocemos (""); cuando está, `telefono` ya es este valor. */
+    telefono_real: string;
+    /** El contacto está identificado por un @lid de WhatsApp (código interno, no teléfono). */
+    es_lid: boolean;
     creado_en: string | null;
   };
   cliente: FichaCliente | null;
@@ -192,6 +198,28 @@ export async function construirFichaContacto(input: {
   } | null;
   if (!contacto) return { ok: false, status: 404, error: "Contacto no encontrado" };
 
+  // Teléfono real (canal WhatsApp por QR). Lectura APARTE y drift-safe: la columna
+  // `telefono_real` hoy existe solo en neura; si el schema no la tiene, se ignora y la ficha
+  // muestra el phone_number (el @lid) como antes. No se toca el SELECT del contacto para no
+  // romper el fetch en otros tenants.
+  let telefonoReal = "";
+  let waJid = "";
+  try {
+    const { data: tr, error: trErr } = await supabase
+      .from("chat_contacts")
+      .select("telefono_real, wa_jid")
+      .eq("empresa_id", empresaId)
+      .eq("id", contactId)
+      .maybeSingle();
+    if (!trErr) {
+      const r = tr as { telefono_real?: string | null; wa_jid?: string | null } | null;
+      telefonoReal = String(r?.telefono_real ?? "");
+      waJid = String(r?.wa_jid ?? "");
+    }
+  } catch {
+    /* columnas ausentes en el schema → se ignoran */
+  }
+
   const notas: string[] = [];
 
   // 4 y 5. Cliente y proyectos, en paralelo con el resto del historial del contacto.
@@ -217,7 +245,14 @@ export async function construirFichaContacto(input: {
       contacto: {
         id: contacto.id,
         nombre: txt(contacto.name),
-        telefono: String(contacto.phone_number ?? ""),
+        // Mostrar el teléfono real si lo conocemos; si no, el phone_number (que para un
+        // contacto @lid es el código interno).
+        telefono: telefonoReal || String(contacto.phone_number ?? ""),
+        telefono_real: telefonoReal,
+        // ¿Es un @lid? Autoritativo por el sufijo del JID (wa_jid), con fallback al heurístico
+        // por longitud para filas sin wa_jid. Esto rotula bien incluso LIDs de 12 dígitos.
+        es_lid:
+          waJid.endsWith("@lid") || (!waJid && esLidWhatsapp(String(contacto.phone_number ?? ""))),
         creado_en: txt(contacto.created_at),
       },
       cliente: clienteRes,

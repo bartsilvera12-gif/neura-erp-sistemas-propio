@@ -3,7 +3,6 @@
 import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import { VincularAliasBoton } from "@/components/chat/VincularAliasBoton";
 import type {
   FichaContacto,
@@ -277,7 +276,7 @@ function Contenido({
             privado que usa WhatsApp cuando el cliente no está en la libreta del
             celular vinculado. Para llamarlo hay que preguntarle el número al
             cliente directamente en el chat. */}
-        {esLidWhatsapp(contacto.telefono) ? (
+        {contacto.es_lid && !contacto.telefono_real ? (
           <p className="mt-0.5 text-[10px] italic leading-tight text-slate-400">
             Es un identificador de WhatsApp, no un teléfono. Para llamar, pedí el número al cliente.
           </p>
@@ -285,7 +284,7 @@ function Contenido({
         {/* Botón para marcar este contacto como alias de otro — típico uso: un @lid
             de WhatsApp sin teléfono real que corresponde a un cliente ya conocido.
             Al vincular se mergea el historial y los próximos mensajes van solos. */}
-        {esLidWhatsapp(contacto.telefono) ? (
+        {contacto.es_lid && !contacto.telefono_real ? (
           <div className="mt-2">
             <VincularAliasBoton
               contactoActualId={contacto.id}

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import { VincularAliasBoton } from "@/components/chat/VincularAliasBoton";
 import type {
   FichaContacto,
@@ -102,7 +101,7 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
       <section>
         <p className="text-base font-semibold text-slate-900">{contacto.nombre ?? "Sin nombre"}</p>
         <p className="font-mono text-xs tabular-nums text-slate-500">{contacto.telefono}</p>
-        {esLidWhatsapp(contacto.telefono) ? (
+        {contacto.es_lid && !contacto.telefono_real ? (
           <p className="mt-0.5 text-[10px] italic leading-tight text-slate-400">
             Es un identificador de WhatsApp, no un teléfono. Para llamar, pedí el número al cliente.
           </p>
@@ -113,7 +112,7 @@ function Contenido({ ficha }: { ficha: FichaContacto }) {
           </p>
         ) : null}
         {/* Vincular con otro contacto cuando sabemos quién es (típico: @lid de WhatsApp). */}
-        {esLidWhatsapp(contacto.telefono) ? (
+        {contacto.es_lid && !contacto.telefono_real ? (
           <div className="mt-2">
             <VincularAliasBoton
               contactoActualId={contacto.id}

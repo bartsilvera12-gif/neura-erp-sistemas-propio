@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
-import { corregirTelefonoDelContacto } from "@/lib/chat/baileys-telefono-real";
+import { guardarTelefonoRealDelContacto } from "@/lib/chat/baileys-telefono-real";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 
@@ -73,11 +73,13 @@ export async function POST(request: NextRequest) {
       porLid.set(String(f.phone_number), String(f.id));
     }
 
+    // Guarda el teléfono real en `telefono_real` (NO renombra phone_number, NO fusiona): solo
+    // para MOSTRAR. Sincroniza las equivalencias de la libreta que el puente ya manda, sin
+    // esperar mensajes nuevos ni partir conversaciones.
     let corregidos = 0;
     for (const p of limpios) {
-      const contactId = porLid.get(p.lid);
-      if (!contactId) continue;
-      if (await corregirTelefonoDelContacto(supabase, empresaId, contactId, p.lid, p.telefono)) {
+      if (!porLid.get(p.lid)) continue; // solo los @lid que existen como contacto
+      if (await guardarTelefonoRealDelContacto(supabase, empresaId, p.lid, p.telefono)) {
         corregidos++;
       }
     }

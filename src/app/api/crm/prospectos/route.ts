@@ -96,9 +96,8 @@ export async function POST(request: NextRequest) {
     if (!contacto) {
       return NextResponse.json(errorResponse("contacto es obligatorio"), { status: 400 });
     }
-    if (!servicio) {
-      return NextResponse.json(errorResponse("servicio es obligatorio"), { status: 400 });
-    }
+    // `servicio` es OPCIONAL: un prospecto es una oportunidad temprana; el servicio/plan
+    // se define al transformarlo en cliente (donde sí es obligatorio para SaaS).
 
     const sb = ctx.supabase;
     const dataSchema = await fetchDataSchemaForEmpresaId(empresaId);

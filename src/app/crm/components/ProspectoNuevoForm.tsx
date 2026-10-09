@@ -163,7 +163,7 @@ export default function ProspectoNuevoForm({
 
     if (!form.empresa.trim()) return setError("La empresa es obligatoria.");
     if (!form.contacto.trim()) return setError("El contacto es obligatorio.");
-    if (form.planIds.length === 0) return setError("Seleccioná al menos un servicio/plan.");
+    // El servicio/plan es OPCIONAL al crear un prospecto (se define al convertirlo en cliente).
     if (!form.etapa) return setError("Seleccioná una etapa.");
     if (form.telefono && !isValidTelefono(form.telefono)) {
       return setError(
@@ -317,7 +317,7 @@ export default function ProspectoNuevoForm({
           <div className="space-y-4">
             <div>
               <label className={LABEL_CLS}>
-                Servicios / Productos de interés <span className="text-rose-500">*</span>
+                Servicios / Productos de interés <span className="text-slate-400 font-normal">(opcional)</span>
               </label>
               {cargandoPlanes ? (
                 <p className="py-2 text-sm text-slate-400">Cargando planes…</p>

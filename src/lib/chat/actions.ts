@@ -47,6 +47,7 @@ import {
   quoteSchemaTable,
 } from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
+import { esLidWhatsapp } from "@/lib/chat/wa-phone";
 import {
   pgDeleteChatChannel,
   pgInsertChatChannelMetaWhatsapp,
@@ -1078,11 +1079,29 @@ async function fetchChatConversationsUnsafe(
       const cchunk = 80;
       for (let i = 0; i < contactIds.length; i += cchunk) {
         const part = contactIds.slice(i, i + cchunk);
-        const { data: contacts, error: e2 } = await supabase
+        // Intento leer telefono_real + wa_jid (canal WhatsApp por QR; hoy neura). Drift-safe:
+        // si el schema del tenant no tiene esas columnas, se reintenta con el select base.
+        let contacts: Record<string, unknown>[] | null = null;
+        let e2: { message: string } | null = null;
+        const withLid = await supabase
           .from("chat_contacts")
-          .select("id, name, phone_number, cliente_id, crm_prospecto_id")
+          .select("id, name, phone_number, cliente_id, crm_prospecto_id, telefono_real, wa_jid")
           .eq("empresa_id", empresa_id)
           .in("id", part);
+        if (withLid.error) {
+          // El único error esperado es que el tenant no tenga telefono_real/wa_jid
+          // (columnas solo-neura). Ante cualquier error, se reintenta con el select base.
+          const base = await supabase
+            .from("chat_contacts")
+            .select("id, name, phone_number, cliente_id, crm_prospecto_id")
+            .eq("empresa_id", empresa_id)
+            .in("id", part);
+          contacts = (base.data as Record<string, unknown>[] | null) ?? null;
+          e2 = base.error;
+        } else {
+          contacts = (withLid.data as Record<string, unknown>[] | null) ?? null;
+          e2 = withLid.error;
+        }
         if (e2) {
           console.warn("[fetchChatConversations] chat_contacts:", e2.message, {
             chunk_index: i,
@@ -1135,7 +1154,7 @@ async function fetchChatConversationsUnsafe(
 
   const mapped = list.map((row) => {
     const c = byId[row.contact_id as string] as
-      | { id?: string; name?: string | null; phone_number?: string; cliente_id?: string | null; crm_prospecto_id?: string | null }
+      | { id?: string; name?: string | null; phone_number?: string; cliente_id?: string | null; crm_prospecto_id?: string | null; telefono_real?: string | null; wa_jid?: string | null }
       | undefined;
     const cid = (row.channel_id as string | null | undefined)?.trim() ?? "";
     const chMeta = cid ? channelById[cid] : undefined;
@@ -1186,10 +1205,14 @@ async function fetchChatConversationsUnsafe(
       contact: {
         id: c?.id ?? (row.contact_id as string),
         name: c?.name ?? null,
-        phone_number: c?.phone_number ?? "",
-        // Ruta REST (schemas expuestos): no hay canal baileys/LID acá → defaults seguros.
-        telefono_real: null,
-        es_lid: false,
+        // telefono_real/wa_jid se leyeron drift-safe arriba (canal WhatsApp por QR; hoy neura).
+        // Se muestra el número real cuando existe; si no, el phone_number (que puede ser un @lid).
+        phone_number: (c?.telefono_real as string | null) || (c?.phone_number as string | null) || "",
+        telefono_real: (c?.telefono_real as string | null) ?? null,
+        es_lid: (() => {
+          const waJid = String(c?.wa_jid ?? "");
+          return waJid.endsWith("@lid") || (!waJid && esLidWhatsapp(String(c?.phone_number ?? "")));
+        })(),
         cliente_id: c?.cliente_id ?? null,
         crm_prospecto_id: c?.crm_prospecto_id ?? null,
       },

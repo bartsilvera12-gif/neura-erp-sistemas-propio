@@ -67,7 +67,7 @@ export async function sendConversationText(p: SendConversationTextParams): Promi
         { dataSchema: p.dataSchema, empresaId: p.empresaId }
       );
       if (baileys) {
-        sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, text);
+        sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, text, baileys.toJid);
         wentViaBaileys = true;
       } else {
         const outbound = await resolveOutboundTextContextFromIds(

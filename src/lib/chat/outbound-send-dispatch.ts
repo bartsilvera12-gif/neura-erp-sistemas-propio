@@ -1,5 +1,5 @@
 import type { SupabaseAdmin } from "@/lib/chat/types";
-import { normalizeWaPhone } from "@/lib/chat/wa-phone";
+import { normalizeWaPhone, esLidWhatsapp } from "@/lib/chat/wa-phone";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
@@ -373,7 +373,7 @@ export async function resolveOutboundTextContextFromIds(
   });
 }
 
-export type BaileysOutboundContext = { toDigits: string; bridgeUrl: string };
+export type BaileysOutboundContext = { toDigits: string; toJid: string; bridgeUrl: string };
 
 /**
  * Si el canal de la conversación es WhatsApp por QR (provider='baileys'), devuelve el
@@ -441,7 +441,44 @@ export async function resolveBaileysContextFromIds(
       "Falta la URL del puente (baileys_bridge_url) en la configuración del canal WhatsApp por QR."
     );
   }
-  return { toDigits, bridgeUrl };
+
+  // JID destino real. El inbound preserva el JID original del contacto en `wa_jid`
+  // (@lid / @s.whatsapp.net); al responder lo usamos tal cual para que un contacto @lid
+  // se direccione como @lid y el mensaje llegue (antes se forzaba @s.whatsapp.net y, para
+  // un @lid, se mandaba a un número inexistente). La lectura va DESPUÉS de confirmar que el
+  // canal es baileys (solo neura) y en try/catch: si el schema no tiene la columna, cae al
+  // heurístico (drift-safe, no rompe otros tenants/canales).
+  let waJid = "";
+  try {
+    if (usePg && pool && sch) {
+      const r = await pool.query(
+        `SELECT wa_jid FROM ${quoteSchemaTable(sch, "chat_contacts")} WHERE id = $1::uuid LIMIT 1`,
+        [input.contactId]
+      );
+      waJid = (r.rows?.[0]?.wa_jid as string | null | undefined) ?? "";
+    } else {
+      const { data } = await supabase
+        .from("chat_contacts")
+        .select("wa_jid")
+        .eq("id", input.contactId)
+        .maybeSingle();
+      waJid = ((data as { wa_jid?: string | null } | null)?.wa_jid as string | null | undefined) ?? "";
+    }
+  } catch {
+    waJid = "";
+  }
+  const toJid =
+    typeof waJid === "string" && waJid.includes("@")
+      ? waJid.trim()
+      : esLidWhatsapp(toDigits)
+        ? `${toDigits}@lid`
+        : `${toDigits}@s.whatsapp.net`;
+  console.info("[baileys-send]", "jid_resuelto", {
+    tipo: toJid.endsWith("@lid") ? "lid" : toJid.endsWith("@s.whatsapp.net") ? "pn" : "otro",
+    origen: waJid ? "wa_jid" : "heuristico",
+  });
+
+  return { toDigits, toJid, bridgeUrl };
 }
 
 /** Envío de texto por el puente Baileys (canal WhatsApp por QR). Exportado para
@@ -449,14 +486,16 @@ export async function resolveBaileysContextFromIds(
 export async function sendTextViaBaileysBridge(
   bridgeUrl: string,
   toDigits: string,
-  text: string
+  text: string,
+  toJid?: string
 ): Promise<SendWhatsAppTextResult> {
   const secret = (process.env.BAILEYS_BRIDGE_SECRET || "").trim();
   try {
     const res = await fetch(`${bridgeUrl}/send`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-bridge-secret": secret },
-      body: JSON.stringify({ to: toDigits, text }),
+      // `toJid` preserva el tipo real (@lid / @s.whatsapp.net); `to` queda como fallback.
+      body: JSON.stringify({ to: toDigits, toJid: toJid ?? null, text }),
     });
     const raw = (await res.json().catch(() => ({}))) as {
       ok?: boolean;

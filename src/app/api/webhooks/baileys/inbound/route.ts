@@ -126,6 +126,9 @@ export async function POST(request: NextRequest) {
   const fromDigits = normalizeWaPhone(String(body?.fromDigits ?? ""));
   // Teléfono real cuando el chat llega con un @lid (identificador interno de WhatsApp).
   const fromPhone = normalizeWaPhone(String(body?.fromPhone ?? ""));
+  // JID original de WhatsApp con su sufijo real (`<id>@lid` o `<pn>@s.whatsapp.net`).
+  // El puente ya lo manda; lo preservamos para enviar al destino correcto (ver abajo).
+  const fromJid = typeof body?.fromJid === "string" ? (body.fromJid as string).trim() : "";
   const waMessageId = String(body?.waMessageId ?? "").trim();
   const messageKind = String(body?.messageKind ?? "conversation");
   const text = typeof body?.text === "string" ? body.text : "";
@@ -227,6 +230,21 @@ export async function POST(request: NextRequest) {
 
     const conversationId = result.conversation_id;
 
+    // Preservar el JID original (@lid / @s.whatsapp.net) en la fila del contacto que coincide
+    // con el identificador entrante (por phone_number), para enviar después al destino correcto.
+    // NO se renombra phone_number (eso partía el chat): solo se guarda el JID aparte.
+    // Drift-safe: solo corre en el canal baileys (neura); si la columna no existiera, se traga.
+    if (fromJid.includes("@")) {
+      try {
+        await supabase
+          .from("chat_contacts")
+          .update({ wa_jid: fromJid })
+          .eq("empresa_id", empresaId)
+          .eq("phone_number", direccionContacto);
+      } catch (e) {
+        console.warn(LOG, "wa_jid_update_fallo", e instanceof Error ? e.message : String(e));
+      }
+    }
 
     // Nota: los bytes de la media (foto/video/audio/doc/sticker) los sube el
     // bridge como multipart al endpoint /inbound/media, usando el mismo
@@ -245,7 +263,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.info(LOG, "ok", { channelId, conversationId, message_type });
+    console.info(LOG, "ok", {
+      channelId,
+      conversationId,
+      message_type,
+      jid_tipo: fromJid.endsWith("@lid") ? "lid" : fromJid.endsWith("@s.whatsapp.net") ? "pn" : fromJid ? "otro" : "sin_jid",
+    });
     return NextResponse.json({
       ok: true,
       conversation_id: conversationId,

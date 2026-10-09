@@ -268,6 +268,47 @@ export async function POST(request: NextRequest) {
     const esLidEntrante = fromJid.endsWith("@lid") && normalizeWaPhone(fromJid) === fromDigits;
     if (fromPhone && fromPhone !== fromDigits && esLidEntrante) {
       await guardarTelefonoRealDelContacto(supabase, empresaId, direccionContacto, fromPhone);
+
+      // Auto-fusión por número resuelto: si este @lid tiene un teléfono real conocido y YA existe
+      // un contacto con ese número (ej. uno creado por "Nuevo mensaje", que WhatsApp después
+      // responde como @lid), se vincula el @lid como alias del contacto real. Así la respuesta cae
+      // en la MISMA conversación en vez de partirse en dos. Conservador: solo si hay EXACTAMENTE
+      // un contacto real con ese número y el @lid no es alias todavía. Idempotente. Drift-safe.
+      try {
+        const { data: lidC } = await supabase
+          .from("chat_contacts")
+          .select("id, alias_de_contact_id")
+          .eq("empresa_id", empresaId)
+          .eq("phone_number", direccionContacto)
+          .maybeSingle();
+        const lidRow = lidC as { id?: string; alias_de_contact_id?: string | null } | null;
+        if (lidRow?.id && !lidRow.alias_de_contact_id) {
+          const { data: realesData } = await supabase
+            .from("chat_contacts")
+            .select("id, alias_de_contact_id")
+            .eq("empresa_id", empresaId)
+            .eq("phone_number", fromPhone)
+            .limit(3);
+          const reales = ((realesData as { id: string; alias_de_contact_id?: string | null }[] | null) ?? []).filter(
+            (r) => !r.alias_de_contact_id && r.id !== lidRow.id
+          );
+          if (reales.length === 1) {
+            const sbRpc = supabase as unknown as {
+              schema: (s: string) => {
+                rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+              };
+            };
+            const { error: rpcErr } = await sbRpc.schema("neura").rpc("vincular_contacto_como_alias", {
+              p_alias_id: lidRow.id,
+              p_real_id: reales[0].id,
+            });
+            if (rpcErr) console.warn(LOG, "auto_alias_por_telefono_fallo", rpcErr.message);
+            else console.info(LOG, "auto_alias_lid_a_real", { lidId: lidRow.id, realId: reales[0].id });
+          }
+        }
+      } catch (e) {
+        console.warn(LOG, "auto_alias_excepcion", e instanceof Error ? e.message : String(e));
+      }
     }
 
     // Atribución Meta CTWA: si el lead vino de un anuncio (el puente mandó `referral`), se

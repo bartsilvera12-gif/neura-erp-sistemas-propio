@@ -266,8 +266,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     // El tipo de servicio es obligatorio. Si es SaaS, además exige elegir un plan.
     if (!form.tipo_servicio_cliente.trim())
       return setError("El tipo de servicio es obligatorio.");
-    if (form.tipo_servicio_cliente.trim().toLowerCase() === "saas" && !formSusc.plan_id.trim())
-      return setError("Para clientes SaaS el plan es obligatorio.");
+    if (form.tipo_servicio_cliente.trim().toLowerCase() === "saas") {
+      if (form.condicion_pago !== "MENSUAL")
+        return setError("Los clientes SaaS son mensuales: la condición de pago debe ser Mensual.");
+      if (!formSusc.plan_id.trim())
+        return setError("Para clientes SaaS el plan es obligatorio.");
+    }
 
     if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
       const dur = parseInt(formSusc.duracion_meses, 10) || 0;
@@ -568,7 +572,15 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               <select
                 name="tipo_servicio_cliente"
                 value={form.tipo_servicio_cliente}
-                onChange={(e) => setForm((prev) => ({ ...prev, tipo_servicio_cliente: e.target.value }))}
+                onChange={(e) => {
+                  const ts = e.target.value;
+                  setForm((prev) => ({
+                    ...prev,
+                    tipo_servicio_cliente: ts,
+                    // SaaS es recurrente: se fuerza condición Mensual para que SÍ se cree la suscripción.
+                    condicion_pago: ts.trim().toLowerCase() === "saas" ? "MENSUAL" : prev.condicion_pago,
+                  }));
+                }}
                 className={inputClass}
               >
                 <option value="">— Ninguno —</option>
@@ -786,6 +798,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   value={form.condicion_pago}
                   onChange={handleChange}
                   className={inputClass}
+                  disabled={form.tipo_servicio_cliente.trim().toLowerCase() === "saas"}
                 >
                   <option value="CONTADO">Contado</option>
                   <option value="15 DÍAS">15 días</option>
@@ -794,6 +807,11 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   <option value="90 DÍAS">90 días</option>
                   <option value="MENSUAL">Mensual</option>
                 </select>
+                {form.tipo_servicio_cliente.trim().toLowerCase() === "saas" ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Los clientes SaaS son mensuales: se crea una suscripción con el plan elegido.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className={labelClass}>Vendedor responsable</label>

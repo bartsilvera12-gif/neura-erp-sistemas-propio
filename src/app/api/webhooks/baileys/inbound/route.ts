@@ -26,6 +26,7 @@ import {
   type ChatChannelType,
 } from "@/lib/chat/incoming-message-service";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
+import { captureFirstMetaAttribution } from "@/lib/chat/meta-attribution-storage";
 import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
@@ -136,6 +137,12 @@ export async function POST(request: NextRequest) {
   const pushName = typeof body?.pushName === "string" ? (body.pushName as string) : null;
   // true = saliente espejado del celu (la PM respondió desde la app); false = entrante del cliente.
   const fromMe = body?.fromMe === true;
+  // Atribución del anuncio CTWA que manda el puente (de qué pauta vino el lead). Shape `referral`
+  // snake_case, igual que Meta/YCloud → lo parsea el mismo extractMetaAttribution.
+  const referral =
+    body?.referral && typeof body.referral === "object" && !Array.isArray(body.referral)
+      ? (body.referral as Record<string, unknown>)
+      : null;
 
   if (!channelId || !empresaId || !fromDigits || !waMessageId) {
     return NextResponse.json(
@@ -213,6 +220,8 @@ export async function POST(request: NextRequest) {
             fromMe,
             timestamp: body?.timestamp ?? null,
           },
+          // Atribución CTWA en el shape que lee extractMetaAttribution (rawPayload.referral).
+          ...(referral ? { referral } : {}),
         },
         from_me: fromMe,
         sender_type: fromMe ? "human" : "contact",
@@ -259,6 +268,32 @@ export async function POST(request: NextRequest) {
     const esLidEntrante = fromJid.endsWith("@lid") && normalizeWaPhone(fromJid) === fromDigits;
     if (fromPhone && fromPhone !== fromDigits && esLidEntrante) {
       await guardarTelefonoRealDelContacto(supabase, empresaId, direccionContacto, fromPhone);
+    }
+
+    // Atribución Meta CTWA: si el lead vino de un anuncio (el puente mandó `referral`), se
+    // persiste en chat_conversation_attribution (idempotente "first wins"), igual que el webhook
+    // YCloud. El ad_id se resuelve a nombre de campaña aparte. Solo entrantes; no bloquea el ack.
+    if (!fromMe && referral) {
+      try {
+        const cap = await captureFirstMetaAttribution({
+          supabase: supabase as unknown as Parameters<typeof captureFirstMetaAttribution>[0]["supabase"],
+          empresaId,
+          conversationId,
+          contactId: result.contact_id,
+          channelId,
+          rawPayload: { referral },
+          messageTimestampIso: body?.timestamp != null ? String(body.timestamp) : null,
+          provider: "meta",
+        });
+        if (cap.ok && cap.created) {
+          console.info(LOG, "ctwa_attribution_captured", {
+            conversationId,
+            ad_id: (referral.source_id as string | undefined) ?? null,
+          });
+        }
+      } catch (e) {
+        console.warn(LOG, "ctwa_attribution_fallo", e instanceof Error ? e.message : String(e));
+      }
     }
 
     // Nota: los bytes de la media (foto/video/audio/doc/sticker) los sube el

@@ -60,7 +60,7 @@ import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recordin
 import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
 import {
   X,
-  CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, Smile, Square, Trash2, UserRound, Zap } from "lucide-react";
+  CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, Smile, Square, Trash2, UserRound, UserPlus, Zap } from "lucide-react";
 
 /** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -106,6 +106,12 @@ import { puedeCargarSoporte } from "./SoporteTicketModal";
 
 // La ventana de Soporte sólo se descarga cuando alguien la abre.
 const SoporteTicketModal = dynamic(() => import("./SoporteTicketModal"), { ssr: false });
+
+// "Nuevo mensaje": escribirle a una persona desde el ERP. Se descarga al abrirlo.
+const NuevoMensajeModal = dynamic(
+  () => import("./NuevoMensajeModal").then((m) => m.NuevoMensajeModal),
+  { ssr: false }
+);
 
 // Igual que Soporte: la ficha del contacto no se descarga hasta que se abre.
 const FichaContactoDrawer = dynamic(() => import("./FichaContactoDrawer"), { ssr: false });
@@ -1195,6 +1201,8 @@ export function ConversacionesClient({
   // Soporte desde el chat: PM o quien usa Soporte. Se consulta una vez al entrar.
   const [puedeSoporte, setPuedeSoporte] = useState(false);
   const [soporteModalOpen, setSoporteModalOpen] = useState(false);
+  /** Modal "Nuevo mensaje" (escribir a una persona nueva desde el inbox). */
+  const [nuevoMsgOpen, setNuevoMsgOpen] = useState(false);
   /** Ficha lateral del contacto (cliente, proyectos, tipificación y recorrido). */
   const [fichaAbierta, setFichaAbierta] = useState(false);
   /**
@@ -3676,6 +3684,15 @@ export function ConversacionesClient({
               </span>
             ) : null}
           </div>
+          <button
+            type="button"
+            onClick={() => setNuevoMsgOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#4FAEB2] px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#3F8E91] shrink-0"
+            title="Escribirle a una persona nueva"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Nuevo mensaje</span>
+          </button>
           {mode === "historial" || vista === "inbox" ? (
             <>
               <select
@@ -5304,6 +5321,16 @@ export function ConversacionesClient({
           )}
         </div>
       </div>
+      {nuevoMsgOpen ? (
+        <NuevoMensajeModal
+          channels={inboxChannels}
+          onClose={() => setNuevoMsgOpen(false)}
+          onCreated={(convId) => {
+            setSelectedId(convId);
+            setNuevoMsgOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

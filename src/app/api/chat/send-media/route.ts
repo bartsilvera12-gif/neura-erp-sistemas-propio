@@ -686,6 +686,10 @@ export async function POST(request: NextRequest) {
       content: contentLabel,
       raw_payload: {
         ...(sendResult.raw && typeof sendResult.raw === "object" ? sendResult.raw : {}),
+        // Marca de por dónde salió. Sirve para saber cómo leer `wa_message_id`: los ids del
+        // canal QR no tienen el prefijo `wamid.` y, sin esta marca, se confundirían con los
+        // ids internos de YCloud —que tampoco lo tienen pero NO son ids de WhatsApp—.
+        ...(provider === "baileys" ? { source: "baileys" } : {}),
         erp: {
           public_url: publicUrl,
           storage_path: objectPath,

@@ -116,7 +116,26 @@ export function wamidDeMensaje(m: {
   const propio = txt(m.wa_message_id);
   if (propio.startsWith("wamid.")) return propio;
   const guardado = txt(m.raw_payload?.neura_wamid);
-  return guardado.startsWith("wamid.") ? guardado : null;
+  if (guardado.startsWith("wamid.")) return guardado;
+
+  // Canal WhatsApp por QR (Baileys): sus ids NO llevan el prefijo `wamid.` —son del estilo
+  // `3EB0A1D025B9C42D8C3725`—, así que el filtro de arriba los descartaba y el índice de
+  // mensajes quedaba vacío para esos chats: las citas resolvían bien a qué mensaje apuntaban
+  // y después no lo encontraban, y las reacciones no se pegaban a ninguna burbuja.
+  //
+  // Se exige la marca de canal, y no basta con "no tiene prefijo": en YCloud `wa_message_id`
+  // guarda el id INTERNO del proveedor, que tampoco lleva prefijo y no es un id de WhatsApp.
+  // Aceptarlo ahí haría coincidir mensajes equivocados.
+  if (propio && esDeBaileys(m.raw_payload)) return propio;
+  return null;
+}
+
+/** ¿El mensaje salió o entró por el canal QR? */
+function esDeBaileys(raw: Record<string, unknown> | null | undefined): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  if (txt(raw.source) === "baileys") return true;
+  const bridge = raw.bridge;
+  return Boolean(bridge && typeof bridge === "object" && !Array.isArray(bridge));
 }
 
 /** Los seis de WhatsApp, en el mismo orden. */

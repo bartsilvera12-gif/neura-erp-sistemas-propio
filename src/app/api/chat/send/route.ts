@@ -150,7 +150,13 @@ export async function POST(request: NextRequest) {
           { dataSchema, empresaId: conv.empresa_id }
         );
         if (baileys) {
-          sendResult = await sendTextViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, message, baileys.toJid);
+          sendResult = await sendTextViaBaileysBridge(
+            baileys.bridgeUrl,
+            baileys.toDigits,
+            message,
+            baileys.toJid,
+            replyToWamid
+          );
           // Marker para distinguir, en auditoría, qué outbound salió por el
           // puente Baileys y cuáles por Meta/YCloud. Sin esto, los que entran
           // por Baileys quedan con raw_payload sin `source` y se confunden

@@ -487,7 +487,13 @@ export async function sendTextViaBaileysBridge(
   bridgeUrl: string,
   toDigits: string,
   text: string,
-  toJid?: string
+  toJid?: string,
+  /**
+   * Id del mensaje que se está respondiendo. Sin esto, contestar un mensaje desde el inbox
+   * salía como un mensaje suelto: el cliente no veía a qué se le respondía y se perdía el
+   * hilo. El dato llegaba hasta acá y se descartaba.
+   */
+  replyToWamid?: string | null
 ): Promise<SendWhatsAppTextResult> {
   const secret = (process.env.BAILEYS_BRIDGE_SECRET || "").trim();
   try {
@@ -495,7 +501,12 @@ export async function sendTextViaBaileysBridge(
       method: "POST",
       headers: { "content-type": "application/json", "x-bridge-secret": secret },
       // `toJid` preserva el tipo real (@lid / @s.whatsapp.net); `to` queda como fallback.
-      body: JSON.stringify({ to: toDigits, toJid: toJid ?? null, text }),
+      body: JSON.stringify({
+        to: toDigits,
+        toJid: toJid ?? null,
+        text,
+        replyTo: (replyToWamid ?? "").trim() || null,
+      }),
     });
     const raw = (await res.json().catch(() => ({}))) as {
       ok?: boolean;

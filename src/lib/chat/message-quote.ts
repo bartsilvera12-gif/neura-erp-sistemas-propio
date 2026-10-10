@@ -50,5 +50,16 @@ export function wamidCitado(
 
   // Algunos ecos traen el id suelto, sin el nodo `context`.
   const suelto = txt(rawPayload["context_message_id"]) || txt(rawPayload["contextMessageId"]);
-  return suelto.startsWith("wamid.") ? suelto : null;
+  if (suelto.startsWith("wamid.")) return suelto;
+
+  // Canal QR (Baileys). Va aparte porque sus ids NO empiezan con `wamid.` —son del estilo
+  // `3EB0C871...`— así que el filtro de arriba los descartaba y las respuestas del cliente
+  // seguían llegando sin cita. Acá el id viene de un campo propio nuestro, no de adivinar
+  // dentro del payload de un tercero, así que no hace falta el prefijo para confiar en él.
+  const bridge = rawPayload["bridge"];
+  if (bridge && typeof bridge === "object" && !Array.isArray(bridge)) {
+    const citado = txt((bridge as Record<string, unknown>)["quoted_wamid"]);
+    if (citado) return citado;
+  }
+  return null;
 }

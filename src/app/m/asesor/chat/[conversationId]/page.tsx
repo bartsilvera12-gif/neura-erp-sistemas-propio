@@ -1431,9 +1431,22 @@ export default function MAsesorChatPage() {
     (item: Pending) => {
       setSendErr(null);
       setPending((p) => p.map((x) => (x.tempId === item.tempId ? { ...x, status: "sending" } : x)));
-      if (item.kind === "audio" && item.file) deliverAudio(item.tempId, item.file);
-      else if (item.kind === "sticker" && item.stickerUrl) deliverSticker(item.tempId, item.stickerUrl);
-      else deliverText(item.tempId, item.content);
+      // Un archivo se vuelve a SUBIR. Antes sólo se contemplaba el audio y el sticker, y todo
+      // lo demás caía en `deliverText`: al reintentar un video, el cliente recibía un mensaje
+      // de texto que decía "📹 Video" —la etiqueta de la burbuja— en vez del video. Pasó en
+      // vivo y el asesor no tenía forma de notarlo, porque de su lado se veía enviado.
+      if ((item.kind === "audio" || item.kind === "file") && item.file) {
+        deliverAudio(item.tempId, item.file);
+      } else if (item.kind === "sticker" && item.stickerUrl) {
+        deliverSticker(item.tempId, item.stickerUrl);
+      } else if (item.kind === "text") {
+        deliverText(item.tempId, item.content);
+      } else {
+        // Sin el archivo original no hay nada que reenviar: mandar la etiqueta sería mentirle
+        // al cliente y al asesor.
+        setSendErr("Se perdió el archivo. Volvé a adjuntarlo.");
+        setPending((p) => p.filter((x) => x.tempId !== item.tempId));
+      }
     },
     [deliverAudio, deliverSticker, deliverText]
   );

@@ -128,6 +128,11 @@ export async function POST(request: NextRequest) {
   const fromDigits = normalizeWaPhone(String(body?.fromDigits ?? ""));
   // Teléfono real cuando el chat llega con un @lid (identificador interno de WhatsApp).
   const fromPhone = normalizeWaPhone(String(body?.fromPhone ?? ""));
+  // A qué mensaje responde éste. Sin esto, una respuesta del cliente —incluso un "."— llegaba
+  // al inbox como una burbuja suelta y nadie sabía a qué contestaba.
+  const quotedWaMessageId = String(body?.quotedWaMessageId ?? "").trim();
+  // Tarjeta(s) de contacto compartidas, ya con la forma que el inbox sabe dibujar.
+  const contacts = Array.isArray(body?.contacts) ? body!.contacts : null;
   // JID original de WhatsApp con su sufijo real (`<id>@lid` o `<pn>@s.whatsapp.net`).
   // El puente ya lo manda; lo preservamos para enviar al destino correcto (ver abajo).
   const fromJid = typeof body?.fromJid === "string" ? (body.fromJid as string).trim() : "";
@@ -213,12 +218,16 @@ export async function POST(request: NextRequest) {
         content: content || placeholder || "",
         raw_payload: {
           source: "baileys",
+          // `contacts` en la raíz es donde el inbox busca las tarjetas de contacto (misma
+          // forma que YCloud/Meta), así que se guardan ahí y se dibujan sin tocar el front.
+          ...(contacts ? { contacts } : {}),
           bridge: {
             fromDigits,
             messageKind,
             hasMedia: Boolean(body?.hasMedia),
             fromMe,
             timestamp: body?.timestamp ?? null,
+            quoted_wamid: quotedWaMessageId || null,
           },
           // Atribución CTWA en el shape que lee extractMetaAttribution (rawPayload.referral).
           ...(referral ? { referral } : {}),

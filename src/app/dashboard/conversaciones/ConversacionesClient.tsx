@@ -303,7 +303,10 @@ function telefonosDeVcard(vcardB64: unknown): { label: string; phone: string; wa
   }
   const out: { label: string; phone: string; waId: string }[] = [];
   for (const line of txt.split(/\r?\n/)) {
-    const m = /^TEL(?:;[^:]*)?:(.+)$/i.exec(line.trim());
+    // El `item1.` del principio es la forma que usa WhatsApp al compartir un contacto
+    // (`item1.TEL;waid=595…:+595 …`). Sin contemplarlo, la tarjeta llegaba con nombre pero
+    // sin número y se mostraba "Sin número en la tarjeta".
+    const m = /^(?:item\d+\.)?TEL(?:;[^:]*)?:(.+)$/i.exec(line.trim());
     if (!m?.[1]) continue;
     const phone = m[1].trim();
     const wa = /waid=(\d+)/i.exec(line);

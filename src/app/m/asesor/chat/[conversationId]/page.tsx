@@ -1967,7 +1967,13 @@ export default function MAsesorChatPage() {
       ) : null}
       {sendErr ? <div className="px-3 py-1.5 bg-red-50 text-red-700 text-[12px]">{sendErr}</div> : null}
 
-      <div className="sticky bottom-0 bg-white border-t border-slate-200 px-2 py-2">
+      <div
+        className="sticky bottom-0 bg-white border-t border-slate-200 px-2 pt-2"
+        // Android con barra de gestos / iPhone sin botón home: la barra del sistema se
+        // dibuja sobre el borde inferior del WebView. Sin esto, el composer queda tapado
+        // y no se puede escribir.
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
+      >
         {recording ? (
           <div className="flex items-center gap-2">
             <button

@@ -22,7 +22,13 @@ export const runtime = "nodejs";
 
 function limpiar(body: unknown): HorarioNotificaciones {
   const b = (body ?? {}) as Record<string, unknown>;
-  return { activo: b.activo === true, franjas: limpiarFranjas(b.franjas) };
+  return {
+    // Ausente = encendido: una app vieja que no manda el campo no debe apagarle las
+    // notificaciones a nadie sin querer.
+    notificar: b.notificar !== false,
+    activo: b.activo === true,
+    franjas: limpiarFranjas(b.franjas),
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -51,7 +57,7 @@ export async function PUT(request: NextRequest) {
 
     // Un horario activo sin ningún día no deja pasar NADA. Nadie quiere eso de verdad, y el
     // que lo hace sin querer se queda incomunicado sin enterarse: se rechaza.
-    if (horario.activo && Object.keys(horario.franjas).length === 0) {
+    if (horario.notificar && horario.activo && Object.keys(horario.franjas).length === 0) {
       return NextResponse.json(
         { ok: false, error: "Elegí al menos un día, o apagá el horario." },
         { status: 400 }
@@ -62,6 +68,7 @@ export async function PUT(request: NextRequest) {
       {
         usuario_id: ctx.usuario_id,
         empresa_id: ctx.empresa_id,
+        notificar: horario.notificar,
         activo: horario.activo,
         franjas: horario.franjas,
         updated_at: new Date().toISOString(),

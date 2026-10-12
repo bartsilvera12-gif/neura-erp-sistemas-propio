@@ -23,13 +23,18 @@ BEGIN
       CREATE TABLE IF NOT EXISTS %I.usuario_horario_notificaciones (
         usuario_id  uuid PRIMARY KEY,
         empresa_id  uuid NOT NULL,
+        notificar   boolean NOT NULL DEFAULT true,
         activo      boolean NOT NULL DEFAULT false,
         franjas     jsonb NOT NULL DEFAULT '{}'::jsonb,
         updated_at  timestamptz NOT NULL DEFAULT now()
       )
     $f$, r.sch);
 
-    -- Versión anterior de esta misma tabla: tenía un único horario para todos los días.
+    -- Versiones anteriores de esta misma tabla.
+    EXECUTE format(
+      'ALTER TABLE %I.usuario_horario_notificaciones ADD COLUMN IF NOT EXISTS notificar boolean NOT NULL DEFAULT true',
+      r.sch
+    );
     EXECUTE format(
       'ALTER TABLE %I.usuario_horario_notificaciones ADD COLUMN IF NOT EXISTS franjas jsonb NOT NULL DEFAULT ''{}''::jsonb',
       r.sch

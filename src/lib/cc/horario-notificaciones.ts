@@ -21,6 +21,9 @@ export type Franja = [number, number];
 export type Franjas = Record<string, Franja>;
 
 export type HorarioNotificaciones = {
+  /** Interruptor general. En false no se manda NINGUNA notificación, haya horario o no. */
+  notificar: boolean;
+  /** Si está en false, se notifica a cualquier hora. */
   activo: boolean;
   franjas: Franjas;
 };
@@ -37,6 +40,7 @@ export const PRESET_GUARDIA_SEMANAL: Franjas = {
 };
 
 export const HORARIO_POR_DEFECTO: HorarioNotificaciones = {
+  notificar: true,
   activo: false,
   franjas: { "1": [8, 20], "2": [8, 20], "3": [8, 20], "4": [8, 20], "5": [8, 20] },
 };
@@ -66,7 +70,8 @@ function franjaDe(franjas: Franjas, dia: number): Franja | null {
 
 /** ¿El momento actual cae dentro de alguna franja configurada? */
 export function estaDentroDelHorario(h: HorarioNotificaciones): boolean {
-  if (!h.activo) return true; // sin restricción configurada, siempre se notifica
+  if (!h.notificar) return false; // apagado del todo
+  if (!h.activo) return true; // sin restricción de horario, siempre se notifica
   const { dia, hora } = ahoraEnParaguay();
 
   const hoy = franjaDe(h.franjas, dia);
@@ -123,12 +128,18 @@ export async function horarioDeUsuario(
   try {
     const { data, error } = await sb
       .from("usuario_horario_notificaciones")
-      .select("activo, franjas")
+      .select("activo, franjas, notificar")
       .eq("usuario_id", usuarioId)
       .maybeSingle();
     if (error || !data) return null;
     const row = data as Record<string, unknown>;
-    return { activo: row.activo === true, franjas: limpiarFranjas(row.franjas) };
+    return {
+      // Si la columna todavía no existe, se asume encendido: no apagar a nadie por una
+      // migración a medio aplicar.
+      notificar: row.notificar !== false,
+      activo: row.activo === true,
+      franjas: limpiarFranjas(row.franjas),
+    };
   } catch (e) {
     console.warn(LOG, "no_se_pudo_leer", e instanceof Error ? e.message : String(e));
     return null;

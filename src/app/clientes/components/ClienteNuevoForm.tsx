@@ -119,7 +119,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     duracion_meses: "12",
     dia_facturacion: "1",
     dia_vencimiento: "10",
-    generar_factura: false,
+    // Cuándo emitir la PRIMERA cuota. Default "siguiente": la cuota recién arranca el
+    // mes que viene (emisión 01, vence el día de vencimiento del mes siguiente), para
+    // no cobrarla antes de tiempo. "actual"=este mes, "override"=fecha personalizada,
+    // "none"=no emitir ahora (la genera el cron el día 01).
+    emision: "siguiente" as "actual" | "siguiente" | "override" | "none",
+    venc_personalizada: "",
   });
 
   const [formContado, setFormContado] = useState({
@@ -194,6 +199,11 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     if (p) setFormContado((fc) => ({ ...fc, monto: String(p.precio) }));
   }, [formSusc.plan_id, form.condicion_pago, planes]);
 
+  // SaaS y Mixto generan recurrencia (suscripción): fuerzan condición Mensual y exigen plan.
+  const tsActual = form.tipo_servicio_cliente.trim().toLowerCase();
+  const esTipoRecurrente = tsActual === "saas" || tsActual === "mixto";
+  const etiquetaTipoRecurrente = tsActual === "mixto" ? "Mixto" : "SaaS";
+
   useEffect(() => {
     if (!fromCrmId) return;
     let cancelled = false;
@@ -263,14 +273,14 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     if (form.tipo_cliente === "empresa" && !form.empresa.trim())
       return setError("El nombre de empresa es obligatorio.");
 
-    // El tipo de servicio es obligatorio. Si es SaaS, además exige elegir un plan.
+    // El tipo de servicio es obligatorio. Si es SaaS o Mixto, además exige elegir un plan.
     if (!form.tipo_servicio_cliente.trim())
       return setError("El tipo de servicio es obligatorio.");
-    if (form.tipo_servicio_cliente.trim().toLowerCase() === "saas") {
+    if (esTipoRecurrente) {
       if (form.condicion_pago !== "MENSUAL")
-        return setError("Los clientes SaaS son mensuales: la condición de pago debe ser Mensual.");
+        return setError(`Los clientes ${etiquetaTipoRecurrente} son mensuales: la condición de pago debe ser Mensual.`);
       if (!formSusc.plan_id.trim())
-        return setError("Para clientes SaaS el plan es obligatorio.");
+        return setError(`Para clientes ${etiquetaTipoRecurrente} el plan es obligatorio.`);
     }
 
     if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
@@ -284,6 +294,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
       if (!formSusc.plan_id.trim()) return setError("Seleccioná un plan para clientes mensuales.");
       const precio = parseFloat(formSusc.precio) || 0;
       if (precio <= 0) return setError("El precio debe ser mayor a 0.");
+      if (formSusc.emision === "override" && !formSusc.venc_personalizada.trim())
+        return setError("Elegí la fecha de vencimiento de la primera cuota (fecha personalizada).");
     }
 
     if (form.condicion_pago === "CONTADO" && formContado.emitir_factura) {
@@ -392,6 +404,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
 
     if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
       const plan = planes.find((p) => p.id === formSusc.plan_id);
+      // "override" (fecha personalizada) = período "actual" + fecha de vencimiento elegida
+      // (el override gana sobre el período y deriva el mes de la cuota del venc elegido).
+      const esOverride = formSusc.emision === "override";
       await apiCreateSuscripcion({
         cliente_id: clienteId,
         plan_id: formSusc.plan_id || null,
@@ -401,7 +416,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
         duracion_meses: parseInt(formSusc.duracion_meses, 10) || 12,
         dia_facturacion: parseInt(formSusc.dia_facturacion, 10) || 1,
         dia_vencimiento: parseInt(formSusc.dia_vencimiento, 10) || 10,
-        generar_factura_este_mes: formSusc.generar_factura,
+        periodo_factura: esOverride ? "actual" : (formSusc.emision as "actual" | "siguiente" | "none"),
+        fecha_vencimiento_override: esOverride ? formSusc.venc_personalizada || null : null,
       });
     }
 
@@ -577,8 +593,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   setForm((prev) => ({
                     ...prev,
                     tipo_servicio_cliente: ts,
-                    // SaaS es recurrente: se fuerza condición Mensual para que SÍ se cree la suscripción.
-                    condicion_pago: ts.trim().toLowerCase() === "saas" ? "MENSUAL" : prev.condicion_pago,
+                    // SaaS/Mixto son recurrentes: se fuerza condición Mensual para que SÍ se cree la suscripción.
+                    condicion_pago: ["saas", "mixto"].includes(ts.trim().toLowerCase()) ? "MENSUAL" : prev.condicion_pago,
                   }));
                 }}
                 className={inputClass}
@@ -798,7 +814,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   value={form.condicion_pago}
                   onChange={handleChange}
                   className={inputClass}
-                  disabled={form.tipo_servicio_cliente.trim().toLowerCase() === "saas"}
+                  disabled={esTipoRecurrente}
                 >
                   <option value="CONTADO">Contado</option>
                   <option value="15 DÍAS">15 días</option>
@@ -807,9 +823,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   <option value="90 DÍAS">90 días</option>
                   <option value="MENSUAL">Mensual</option>
                 </select>
-                {form.tipo_servicio_cliente.trim().toLowerCase() === "saas" ? (
+                {esTipoRecurrente ? (
                   <p className="mt-1 text-xs text-slate-500">
-                    Los clientes SaaS son mensuales: se crea una suscripción con el plan elegido.
+                    Los clientes {etiquetaTipoRecurrente} son mensuales: se crea una suscripción con el plan elegido.
                   </p>
                 ) : null}
               </div>
@@ -858,7 +874,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               <div>
                 <label className={labelClass}>
                   Plan{" "}
-                  {form.tipo_servicio_cliente.trim().toLowerCase() === "saas" ? (
+                  {esTipoRecurrente ? (
                     <span className="text-rose-500">*</span>
                   ) : null}
                 </label>
@@ -968,15 +984,33 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                     />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={formSusc.generar_factura}
-                    onChange={(e) => setFormSusc((p) => ({ ...p, generar_factura: e.target.checked }))}
-                    className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
-                  />
-                  Emitir factura este mes
-                </label>
+                <div>
+                  <label className={labelClass}>¿Cuándo emitir la primera cuota?</label>
+                  <select
+                    value={formSusc.emision}
+                    onChange={(e) => setFormSusc((p) => ({ ...p, emision: e.target.value as typeof p.emision }))}
+                    className={inputClass}
+                  >
+                    <option value="siguiente">Mes siguiente (emite el 01, vence el día de vencimiento del mes que viene)</option>
+                    <option value="actual">Este mes (emite hoy)</option>
+                    <option value="override">Fecha personalizada</option>
+                    <option value="none">No emitir todavía (la genera el cron el día 01)</option>
+                  </select>
+                  {formSusc.emision === "override" && (
+                    <div className="mt-2">
+                      <label className={labelClass}>Fecha de vencimiento de la primera cuota</label>
+                      <input
+                        type="date"
+                        value={formSusc.venc_personalizada}
+                        onChange={(e) => setFormSusc((p) => ({ ...p, venc_personalizada: e.target.value }))}
+                        className={inputClass}
+                      />
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-slate-500">
+                    La recurrencia (cuota) arranca según esto; la factura de implementación se maneja aparte.
+                  </p>
+                </div>
               </div>
             )}
           </div>

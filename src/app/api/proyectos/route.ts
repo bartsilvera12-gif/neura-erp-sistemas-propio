@@ -7,7 +7,7 @@ import { requireProyectosApiAccess } from "@/lib/proyectos/proyectos-auth";
 import { coincideBusqueda, tokenizarBusqueda } from "@/lib/proyectos/busqueda";
 import { pmDelCliente } from "@/lib/proyectos/pm-sincronizacion";
 import { PROYECTO_SAAS_BRIEF_KEYS, esFacturacionValida } from "@/lib/proyectos/brief-data";
-import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { tipoIncluyeSaas, tipoIncluyeWeb, codigoProyectoDesdeTipoCliente } from "@/lib/proyectos/tipos-proyecto";
 
 const PRIORIDADES = new Set(["baja", "normal", "alta", "urgente"]);
 
@@ -214,7 +214,9 @@ export async function POST(request: Request) {
     }
 
     const titulo = typeof body.titulo === "string" ? body.titulo.trim() : "";
-    const tipoId = typeof body.tipo_id === "string" ? body.tipo_id : "";
+    // El tipo del proyecto puede venir del body, pero si el cliente tiene un tipo
+    // que mapea (web/saas/mixto) el server lo SOBREESCRIBE más abajo (herencia).
+    let tipoId = typeof body.tipo_id === "string" ? body.tipo_id : "";
     if (!titulo || !tipoId) {
       return NextResponse.json(errorResponse("titulo y tipo_id son obligatorios"), { status: 400 });
     }
@@ -268,6 +270,32 @@ export async function POST(request: Request) {
         errorResponse("Indicá el cliente del proyecto."),
         { status: 400 }
       );
+    }
+
+    // HERENCIA cliente→proyecto: el tipo del proyecto lo manda el CLIENTE.
+    // web→web, saas→saas, mixto→web_saas. El server sobreescribe el tipo_id del
+    // body (no se elige a mano para esos tipos). Si el tipo del cliente no mapea
+    // (marketing/contable/branding/sin tipo), se respeta el tipo_id enviado.
+    {
+      const { data: cliTipoRow } = await sb
+        .from("clientes")
+        .select("tipo_servicio_cliente")
+        .eq("empresa_id", empresaId)
+        .eq("id", clienteId)
+        .maybeSingle();
+      const codigoHeredado = codigoProyectoDesdeTipoCliente(
+        (cliTipoRow as { tipo_servicio_cliente?: string | null } | null)?.tipo_servicio_cliente
+      );
+      if (codigoHeredado) {
+        const { data: tipoHer } = await sb
+          .from("proyecto_tipos")
+          .select("id")
+          .eq("empresa_id", empresaId)
+          .eq("codigo", codigoHeredado)
+          .maybeSingle();
+        const idHer = (tipoHer as { id?: string } | null)?.id;
+        if (idHer) tipoId = idHer;
+      }
     }
 
     const brief_data =

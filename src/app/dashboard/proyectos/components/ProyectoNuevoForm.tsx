@@ -18,7 +18,7 @@ import {
   esFacturacionValida,
   type ProyectoModuloSnapshot,
 } from "@/lib/proyectos/brief-data";
-import { tipoIncluyeSaas, tipoIncluyeWeb } from "@/lib/proyectos/tipos-proyecto";
+import { tipoIncluyeSaas, tipoIncluyeWeb, codigoProyectoDesdeTipoCliente } from "@/lib/proyectos/tipos-proyecto";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 
 type Tipo = { id: string; nombre: string; codigo: string };
@@ -29,6 +29,7 @@ type Cliente = {
   nombre_contacto?: string | null;
   telefono?: string | null;
   telefono_secundario?: string | null;
+  tipo_servicio_cliente?: string | null;
 };
 type Usuario = { id: string; nombre?: string | null };
 
@@ -91,6 +92,16 @@ export default function ProyectoNuevoForm({
   // El tipo mixto muestra los dos bloques de brief a la vez.
   const esWeb = tipoIncluyeWeb(tipoCodigo);
   const esSaas = tipoIncluyeSaas(tipoCodigo);
+  // Cadena cliente→proyecto: el tipo lo HEREDA del cliente (web→web, saas→saas,
+  // mixto→web_saas) y queda BLOQUEADO. Si el cliente no mapea (Contable/Marketing/
+  // Branding/sin tipo) se elige a mano.
+  const clienteSel = useMemo(() => clientes.find((x) => x.id === clienteId) ?? null, [clientes, clienteId]);
+  const codigoTipoHeredado = codigoProyectoDesdeTipoCliente(clienteSel?.tipo_servicio_cliente);
+  const tipoBloqueado = Boolean(codigoTipoHeredado);
+  const nombreTipoHeredado = useMemo(
+    () => (codigoTipoHeredado ? tipos.find((t) => t.codigo === codigoTipoHeredado)?.nombre ?? "" : ""),
+    [tipos, codigoTipoHeredado]
+  );
   const saasModulosSeleccionados = useMemo<ProyectoModuloSnapshot[]>(
     () =>
       modulosCatalogo
@@ -159,6 +170,13 @@ export default function ProyectoNuevoForm({
     const c = clientes.find((x) => x.id === id);
     const tel = (c?.telefono ?? "").trim() || (c?.telefono_secundario ?? "").trim();
     if (tel) setContactoWhatsapp(tel);
+    // El tipo del proyecto se HEREDA del tipo del cliente (si mapea). Queda fijado acá;
+    // el server lo vuelve a resolver igual, así que la UI solo refleja.
+    const codigoHer = codigoProyectoDesdeTipoCliente(c?.tipo_servicio_cliente);
+    if (codigoHer) {
+      const t = tipos.find((x) => x.codigo === codigoHer);
+      if (t) setTipoId(t.id);
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -398,13 +416,22 @@ export default function ProyectoNuevoForm({
                 Tipo <span className="text-rose-500">*</span>
               </span>
               <div className="mt-1.5">
-                <FancySelect
-                  ariaLabel="Tipo de proyecto"
-                  placeholder="Seleccionar…"
-                  value={tipoId}
-                  onChange={setTipoId}
-                  options={tipos.map((t) => ({ value: t.id, label: t.nombre }))}
-                />
+                {tipoBloqueado ? (
+                  <>
+                    <div className={`${INPUT_CLS} flex items-center bg-slate-50 text-slate-700`}>
+                      {nombreTipoHeredado || "—"}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">Heredado del tipo del cliente.</p>
+                  </>
+                ) : (
+                  <FancySelect
+                    ariaLabel="Tipo de proyecto"
+                    placeholder="Seleccionar…"
+                    value={tipoId}
+                    onChange={setTipoId}
+                    options={tipos.map((t) => ({ value: t.id, label: t.nombre }))}
+                  />
+                )}
               </div>
             </div>
             <div className="block text-sm">

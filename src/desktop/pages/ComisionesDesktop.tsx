@@ -138,6 +138,7 @@ type ACobrarFactura = {
   vendedor_usuario_id: string;
   /** Proyecto asociado a la factura (estado, PM, tiempo en estado). null si no tiene. */
   proyecto?: ACobrarProyecto | null;
+  monto_suscripcion?: number | null;
 };
 
 type ACobrarVendedor = {
@@ -212,7 +213,7 @@ function ACobrarTablaVendedor({
                 ["Fecha", "left"],
                 ["Tipo de proyecto", "left"],
                 ["Estado", "left"],
-                ["PM", "left"],
+                ["Monto suscripción", "right"],
                 ["En estado", "left"],
                 ["Total", "right"],
                 ["Saldo a cobrar", "right"],
@@ -251,8 +252,8 @@ function ACobrarTablaVendedor({
                   </span>
                 )}
               </td>
-              <td className="max-w-[190px] truncate px-3 py-2 text-slate-500" title={f.proyecto?.pm_nombre ?? undefined}>
-                {f.proyecto?.pm_nombre ?? <span className="text-slate-300">—</span>}
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">
+                {f.monto_suscripcion ? `₲ ${fmtMoney(f.monto_suscripcion)}` : <span className="text-slate-300">—</span>}
               </td>
               <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-500">
                 {f.proyecto ? fmtDur(f.proyecto.tiempo_en_estado_ms) : <span className="text-slate-300">—</span>}

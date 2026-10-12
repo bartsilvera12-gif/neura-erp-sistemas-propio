@@ -194,6 +194,11 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     if (p) setFormContado((fc) => ({ ...fc, monto: String(p.precio) }));
   }, [formSusc.plan_id, form.condicion_pago, planes]);
 
+  // SaaS y Mixto generan recurrencia (suscripción): fuerzan condición Mensual y exigen plan.
+  const tsActual = form.tipo_servicio_cliente.trim().toLowerCase();
+  const esTipoRecurrente = tsActual === "saas" || tsActual === "mixto";
+  const etiquetaTipoRecurrente = tsActual === "mixto" ? "Mixto" : "SaaS";
+
   useEffect(() => {
     if (!fromCrmId) return;
     let cancelled = false;
@@ -263,14 +268,14 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     if (form.tipo_cliente === "empresa" && !form.empresa.trim())
       return setError("El nombre de empresa es obligatorio.");
 
-    // El tipo de servicio es obligatorio. Si es SaaS, además exige elegir un plan.
+    // El tipo de servicio es obligatorio. Si es SaaS o Mixto, además exige elegir un plan.
     if (!form.tipo_servicio_cliente.trim())
       return setError("El tipo de servicio es obligatorio.");
-    if (form.tipo_servicio_cliente.trim().toLowerCase() === "saas") {
+    if (esTipoRecurrente) {
       if (form.condicion_pago !== "MENSUAL")
-        return setError("Los clientes SaaS son mensuales: la condición de pago debe ser Mensual.");
+        return setError(`Los clientes ${etiquetaTipoRecurrente} son mensuales: la condición de pago debe ser Mensual.`);
       if (!formSusc.plan_id.trim())
-        return setError("Para clientes SaaS el plan es obligatorio.");
+        return setError(`Para clientes ${etiquetaTipoRecurrente} el plan es obligatorio.`);
     }
 
     if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
@@ -577,8 +582,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   setForm((prev) => ({
                     ...prev,
                     tipo_servicio_cliente: ts,
-                    // SaaS es recurrente: se fuerza condición Mensual para que SÍ se cree la suscripción.
-                    condicion_pago: ts.trim().toLowerCase() === "saas" ? "MENSUAL" : prev.condicion_pago,
+                    // SaaS/Mixto son recurrentes: se fuerza condición Mensual para que SÍ se cree la suscripción.
+                    condicion_pago: ["saas", "mixto"].includes(ts.trim().toLowerCase()) ? "MENSUAL" : prev.condicion_pago,
                   }));
                 }}
                 className={inputClass}
@@ -798,7 +803,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   value={form.condicion_pago}
                   onChange={handleChange}
                   className={inputClass}
-                  disabled={form.tipo_servicio_cliente.trim().toLowerCase() === "saas"}
+                  disabled={esTipoRecurrente}
                 >
                   <option value="CONTADO">Contado</option>
                   <option value="15 DÍAS">15 días</option>
@@ -807,9 +812,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   <option value="90 DÍAS">90 días</option>
                   <option value="MENSUAL">Mensual</option>
                 </select>
-                {form.tipo_servicio_cliente.trim().toLowerCase() === "saas" ? (
+                {esTipoRecurrente ? (
                   <p className="mt-1 text-xs text-slate-500">
-                    Los clientes SaaS son mensuales: se crea una suscripción con el plan elegido.
+                    Los clientes {etiquetaTipoRecurrente} son mensuales: se crea una suscripción con el plan elegido.
                   </p>
                 ) : null}
               </div>
@@ -858,7 +863,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               <div>
                 <label className={labelClass}>
                   Plan{" "}
-                  {form.tipo_servicio_cliente.trim().toLowerCase() === "saas" ? (
+                  {esTipoRecurrente ? (
                     <span className="text-rose-500">*</span>
                   ) : null}
                 </label>

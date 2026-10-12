@@ -325,9 +325,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    // SaaS exige plan: el plan comercial es obligatorio para ese tipo de servicio.
-    if (tipoServicio.toLowerCase() === "saas" && !planComercial) {
-      return NextResponse.json(errorResponse("Para clientes SaaS el plan es obligatorio."), { status: 400 });
+    // SaaS y Mixto exigen plan: ambos tipos generan recurrencia (suscripción), así que el
+    // plan comercial es obligatorio. Web/Contable/otros no lo exigen.
+    const tipoLower = tipoServicio.toLowerCase();
+    if ((tipoLower === "saas" || tipoLower === "mixto") && !planComercial) {
+      const etiqueta = tipoLower === "mixto" ? "Mixto" : "SaaS";
+      return NextResponse.json(errorResponse(`Para clientes ${etiqueta} el plan es obligatorio.`), { status: 400 });
     }
 
     const nombreCreador =

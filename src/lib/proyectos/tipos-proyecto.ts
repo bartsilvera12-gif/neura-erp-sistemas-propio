@@ -27,3 +27,23 @@ export function tipoIncluyeSaas(codigo: string | null | undefined): boolean {
 export function tipoEsMixto(codigo: string | null | undefined): boolean {
   return codigo === TIPO_PROYECTO_WEB_SAAS;
 }
+
+/**
+ * Cadena cliente→proyecto: el tipo del proyecto lo HEREDA del tipo de servicio
+ * del cliente. Mapea el slug de `clientes.tipo_servicio_cliente` al `codigo` de
+ * `proyecto_tipos`:
+ *   web → web, saas → saas, mixto → web_saas.
+ * Los tipos de cliente sin equivalente de proyecto (marketing, branding,
+ * contable/otro, o sin tipo) devuelven null → no hay herencia y el tipo se elige
+ * a mano (fallback). El id concreto de `proyecto_tipos` se resuelve por empresa
+ * a partir de este código (los ids difieren por tenant).
+ */
+export function codigoProyectoDesdeTipoCliente(
+  tipoServicioCliente: string | null | undefined
+): string | null {
+  const t = String(tipoServicioCliente ?? "").trim().toLowerCase();
+  if (t === "web") return TIPO_PROYECTO_WEB;
+  if (t === "saas") return TIPO_PROYECTO_SAAS;
+  if (t === "mixto") return TIPO_PROYECTO_WEB_SAAS;
+  return null;
+}

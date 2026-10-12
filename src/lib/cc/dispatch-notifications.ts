@@ -1,4 +1,5 @@
 import "server-only";
+import { puedeNotificarAhora } from "@/lib/cc/horario-notificaciones";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { getFcmMessaging } from "@/lib/cc/firebase-admin";
 
@@ -64,13 +65,36 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
 
   for (const ev of events) {
     let tokens: string[] = [];
+    let usuarioDelAgente = "";
     if (ev.agent_id) {
+      const { data: ag } = await sb
+        .from("chat_agents")
+        .select("usuario_id")
+        .eq("id", ev.agent_id)
+        .maybeSingle();
+      usuarioDelAgente = String((ag as { usuario_id?: string } | null)?.usuario_id ?? "");
+
       const { data: tk } = await sb
         .from("agent_device_tokens")
         .select("fcm_token")
         .eq("agent_id", ev.agent_id)
         .eq("is_active", true);
       tokens = ((tk ?? []) as Array<{ fcm_token: string }>).map((r) => r.fcm_token).filter(Boolean);
+    }
+
+    // Horario propio: fuera de su franja, a esta persona no se le manda nada. Se marca como
+    // salteado —no fallido— para que quede claro en la auditoría que fue una decisión y no
+    // un error. Si no configuró nada, o no se pudo leer, se manda igual.
+    if (tokens.length > 0 && usuarioDelAgente && !(await puedeNotificarAhora(sb, usuarioDelAgente))) {
+      if (!dryRun) {
+        await sb
+          .from("agent_notification_events")
+          .update({ status: "skipped", error_message: "fuera_de_horario" })
+          .eq("id", ev.id);
+      }
+      skipped++;
+      detail.push({ event: ev.id.slice(0, 8), result: "fuera_de_horario" });
+      continue;
     }
     if (tokens.length === 0) {
       if (!dryRun) {

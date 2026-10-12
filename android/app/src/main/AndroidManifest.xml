@@ -44,4 +44,9 @@
     <!-- Guardar adjuntos en la carpeta "Descargas". Solo hace falta en Android <= 9 (API 28);
          en Android 10+ el DownloadManager escribe en Descargas sin pedir permiso. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <!-- Android 13+ (API 33) requiere declarar explícitamente POST_NOTIFICATIONS para que
+         el sistema muestre el diálogo nativo cuando la app llama a requestPermissions().
+         El plugin @capacitor/push-notifications NO lo mergea en su manifest, así que sin esta
+         línea el popup nunca se muestra y los pushes quedan bloqueados de entrada. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

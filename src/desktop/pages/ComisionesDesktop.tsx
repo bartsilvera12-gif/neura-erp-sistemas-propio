@@ -939,13 +939,22 @@ function ExcluidosToggle({
   );
 }
 
-function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?: OverrideCtx }) {
+function MovimientosTable({
+  row,
+  overrideCtx,
+  hideExcluidos = false,
+}: {
+  row: VendedorRow;
+  overrideCtx?: OverrideCtx;
+  /** Oculta el toggle "Mostrar excluidos" (el asesor no debe ver las líneas excluidas). */
+  hideExcluidos?: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   const comisionables = useMemo(() => row.lineas.filter((l) => l.comisiona !== false), [row.lineas]);
   const excluidas = useMemo(() => row.lineas.filter((l) => l.comisiona === false), [row.lineas]);
-  const base = mostrarExcluidos ? excluidas : comisionables;
+  const base = !hideExcluidos && mostrarExcluidos ? excluidas : comisionables;
   const lineasFiltradas = useMemo(
     () => base.filter((ln) => lineaMatchesQuery(ln, query)),
     [base, query]
@@ -957,11 +966,13 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
         <div className="flex-1 min-w-[200px]">
           <MovimientosSearch value={query} onChange={setQuery} shown={lineasFiltradas.length} total={base.length} />
         </div>
-        <ExcluidosToggle
-          mostrar={mostrarExcluidos}
-          onToggle={() => setMostrarExcluidos((v) => !v)}
-          countExcluidos={excluidas.length}
-        />
+        {!hideExcluidos && (
+          <ExcluidosToggle
+            mostrar={mostrarExcluidos}
+            onToggle={() => setMostrarExcluidos((v) => !v)}
+            countExcluidos={excluidas.length}
+          />
+        )}
       </div>
 
       {lineasFiltradas.length === 0 ? (
@@ -1210,8 +1221,9 @@ function renderVendedorView({
                 {sellerRowView.cantidad_movimientos} movimientos · Pendiente de cobro ₲ {fmtMoney(sellerACobrarTotal)}
               </p>
             </div>
-            {/* Misma tabla que la vista admin, pero solo con sus datos y sin acción de excluir. */}
-            <MovimientosTable row={sellerRowView} />
+            {/* Misma tabla que la vista admin, pero solo con sus datos, sin acción de excluir
+                ni botón "Mostrar excluidos" (el asesor no debe ver las líneas excluidas). */}
+            <MovimientosTable row={sellerRowView} hideExcluidos />
           </section>
 
           <ACobrarBloqueVendedor aCobrar={aCobrar[0] ?? null} onCobrar={onCobrar} />

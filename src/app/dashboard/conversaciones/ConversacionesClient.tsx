@@ -829,6 +829,17 @@ function VentanaWhatsApp({ messages }: { messages: ChatMessage[] }) {
     return () => window.clearInterval(id);
   }, []);
 
+  // La ventana de 24 h es una regla de la API oficial de WhatsApp (YCloud/Meta): fuera de
+  // ella sólo se aceptan plantillas. Por el canal QR no existe —se escribe cuando se quiere—,
+  // así que el reloj ahí no significaba nada y encima asustaba de gusto.
+  //
+  // Se deduce de los mensajes y no del canal porque es el dato que esta vista ya tiene a mano.
+  const esCanalQR = messages.some((m) => {
+    const raw = m.raw_payload as Record<string, unknown> | null | undefined;
+    return raw?.source === "baileys" || Boolean(raw?.bridge);
+  });
+  if (esCanalQR) return null;
+
   let ultimo = 0;
   for (const m of messages) {
     if (m.from_me || m.message_type === "reaction") continue;

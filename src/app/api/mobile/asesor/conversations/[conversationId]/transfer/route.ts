@@ -8,6 +8,7 @@ import {
   listTransferQueues,
 } from "@/lib/chat/chat-ops-actions";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 
 export const runtime = "nodejs";
 
@@ -75,7 +76,15 @@ export async function POST(
   });
 }
 
-/** Mismo criterio que el resto de las rutas móviles: solo sobre lo que tenés asignado. */
+/**
+ * Puede transferir quien tiene la conversación asignada como agente, o quien la ve por su
+ * alcance omnicanal (supervisor).
+ *
+ * Antes exigía ser el agente asignado y nada más, así que un supervisor recibía 403 y la app
+ * nativa directamente escondía el botón Transferir. En el escritorio los supervisores
+ * transfieren todo el tiempo —es parte de su trabajo—, así que la app quedaba con menos
+ * permisos que la web para la misma persona.
+ */
 async function verificarPertenencia(conversationId: string): Promise<NextResponse | null> {
   let ctx;
   try {
@@ -106,11 +115,19 @@ async function verificarPertenencia(conversationId: string): Promise<NextRespons
     return NextResponse.json({ ok: false, error: "Conversación no encontrada" }, { status: 404 });
   }
   const asignado = (conv as { assigned_agent_id: string | null }).assigned_agent_id;
-  if (!asignado || !agentIds.has(String(asignado))) {
-    return NextResponse.json(
-      { ok: false, error: "No autorizado para esta conversación", code: "forbidden" },
-      { status: 403 }
-    );
-  }
-  return null;
+  if (asignado && agentIds.has(String(asignado))) return null;
+
+  const visibles = await filterConversationIdsByOmnicanalScope(
+    supabase,
+    ctx.catalogSr,
+    empresa_id,
+    usuario_id,
+    [conversationId]
+  );
+  if (visibles.has(conversationId)) return null;
+
+  return NextResponse.json(
+    { ok: false, error: "No autorizado para esta conversación", code: "forbidden" },
+    { status: 403 }
+  );
 }

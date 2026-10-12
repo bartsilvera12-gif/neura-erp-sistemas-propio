@@ -6,6 +6,7 @@
  */
 const EMAILS_ACCESO_MOVIL_ESPECIAL = new Set([
   "milagrosgomezlujan26@gmail.com",
+  "karen.ayala@neura.com.py",
 ]);
 
 export function tieneAccesoMovilEspecial(email: string | null | undefined): boolean {

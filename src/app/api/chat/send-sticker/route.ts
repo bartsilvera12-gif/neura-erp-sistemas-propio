@@ -4,6 +4,8 @@ import { markFirstHumanOperatorReply } from "@/lib/chat/conversation-sla-markers
 import { getAuthWithRol } from "@/lib/middleware/auth";
 import {
   resolveOutboundTextContextFromIds,
+  resolveBaileysContextFromIds,
+  sendMediaViaBaileysBridge,
   type ChannelOutboundTextContext,
 } from "@/lib/chat/outbound-send-dispatch";
 import type { SendWhatsAppTextResult } from "@/lib/chat/whatsapp-send-service";
@@ -112,13 +114,24 @@ export async function POST(request: NextRequest) {
     }
     const empresaId = conv.empresa_id;
 
-    let outboundCtx: ChannelOutboundTextContext;
+    // Canal WhatsApp por QR: va por el puente, que sabe mandar stickers. Se resuelve ANTES
+    // que el camino de siempre porque ese resolver falla con un cartel que dice que los
+    // stickers no están habilitados — y sí lo están.
+    const baileys = await resolveBaileysContextFromIds(
+      supabase,
+      { contactId: conv.contact_id, channelId: conv.channel_id },
+      { dataSchema, empresaId }
+    );
+
+    let outboundCtx: ChannelOutboundTextContext | null = null;
     try {
-      outboundCtx = await resolveOutboundTextContextFromIds(
-        supabase,
-        { contactId: conv.contact_id, channelId: conv.channel_id },
-        { dataSchema, empresaId }
-      );
+      if (!baileys) {
+        outboundCtx = await resolveOutboundTextContextFromIds(
+          supabase,
+          { contactId: conv.contact_id, channelId: conv.channel_id },
+          { dataSchema, empresaId }
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Datos de envío incompletos";
       let status = 400;
@@ -126,26 +139,33 @@ export async function POST(request: NextRequest) {
       else if (msg.includes("token") || msg.includes("ycloud_api_key")) status = 500;
       return NextResponse.json({ ok: false, error: msg }, { status });
     }
-    if (outboundCtx.provider !== "ycloud") {
-      return NextResponse.json(
-        { ok: false, error: "Los stickers sólo se pueden enviar por canales de WhatsApp vía YCloud" },
-        { status: 400 }
-      );
-    }
-    if (!outboundCtx.toDigits) {
-      return NextResponse.json({ ok: false, error: "Falta teléfono del contacto" }, { status: 400 });
-    }
-
     const problema = await verificarSticker(stickerUrl);
     if (problema) return NextResponse.json({ ok: false, error: problema }, { status: 400 });
 
-    const sendResult: SendWhatsAppTextResult = await sendYCloudWhatsappMediaViaLink({
-      apiKey: outboundCtx.apiKey,
-      fromE164: outboundCtx.fromE164,
-      toDigits: outboundCtx.toDigits,
-      kind: "sticker",
-      mediaLink: stickerUrl,
-    });
+    let sendResult: SendWhatsAppTextResult;
+    if (baileys) {
+      sendResult = await sendMediaViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, {
+        url: stickerUrl,
+        tipo: "sticker",
+      });
+    } else {
+      if (!outboundCtx || outboundCtx.provider !== "ycloud") {
+        return NextResponse.json(
+          { ok: false, error: "Los stickers sólo se pueden enviar por canales de WhatsApp vía YCloud" },
+          { status: 400 }
+        );
+      }
+      if (!outboundCtx.toDigits) {
+        return NextResponse.json({ ok: false, error: "Falta teléfono del contacto" }, { status: 400 });
+      }
+      sendResult = await sendYCloudWhatsappMediaViaLink({
+        apiKey: outboundCtx.apiKey,
+        fromE164: outboundCtx.fromE164,
+        toDigits: outboundCtx.toDigits,
+        kind: "sticker",
+        mediaLink: stickerUrl,
+      });
+    }
     if (!sendResult.ok) {
       const err = sendResult.error || "No se pudo enviar el sticker";
       // Fuera de la ventana de 24 h WhatsApp sólo acepta plantillas (código 131047).

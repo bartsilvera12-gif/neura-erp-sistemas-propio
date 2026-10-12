@@ -3,6 +3,8 @@ import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-cli
 import { getAuthWithRol } from "@/lib/middleware/auth";
 import {
   resolveOutboundTextContextFromIds,
+  resolveBaileysContextFromIds,
+  sendReactionViaBaileysBridge,
   type ChannelOutboundTextContext,
 } from "@/lib/chat/outbound-send-dispatch";
 import type { SendWhatsAppTextResult } from "@/lib/chat/whatsapp-send-service";
@@ -73,34 +75,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
     }
 
-    let outboundCtx: ChannelOutboundTextContext;
-    try {
-      outboundCtx = await resolveOutboundTextContextFromIds(
-        supabase,
-        { contactId: conv.contact_id, channelId: conv.channel_id },
-        { dataSchema, empresaId: conv.empresa_id }
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Datos de envío incompletos";
-      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
-    }
-    if (outboundCtx.provider !== "ycloud") {
-      return NextResponse.json(
-        { ok: false, error: "Las reacciones sólo funcionan en canales de WhatsApp vía YCloud" },
-        { status: 400 }
-      );
-    }
-    if (!outboundCtx.toDigits) {
-      return NextResponse.json({ ok: false, error: "Falta teléfono del contacto" }, { status: 400 });
-    }
+    // Canal WhatsApp por QR: va por el puente. Se resuelve ANTES que el camino de siempre,
+    // que para estos canales corta con un cartel diciendo que no está habilitado.
+    const baileys = await resolveBaileysContextFromIds(
+      supabase,
+      { contactId: conv.contact_id, channelId: conv.channel_id },
+      { dataSchema, empresaId: conv.empresa_id }
+    );
 
-    const sendResult: SendWhatsAppTextResult = await sendYCloudWhatsappReaction({
-      apiKey: outboundCtx.apiKey,
-      fromE164: outboundCtx.fromE164,
-      toDigits: outboundCtx.toDigits,
-      targetWamid: target,
-      emoji,
-    });
+    let sendResult: SendWhatsAppTextResult;
+    if (baileys) {
+      sendResult = await sendReactionViaBaileysBridge(baileys.bridgeUrl, baileys.toDigits, target, emoji);
+    } else {
+      let outboundCtx: ChannelOutboundTextContext;
+      try {
+        outboundCtx = await resolveOutboundTextContextFromIds(
+          supabase,
+          { contactId: conv.contact_id, channelId: conv.channel_id },
+          { dataSchema, empresaId: conv.empresa_id }
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Datos de envío incompletos";
+        return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+      }
+      if (outboundCtx.provider !== "ycloud") {
+        return NextResponse.json(
+          { ok: false, error: "Las reacciones sólo funcionan en canales de WhatsApp vía YCloud" },
+          { status: 400 }
+        );
+      }
+      if (!outboundCtx.toDigits) {
+        return NextResponse.json({ ok: false, error: "Falta teléfono del contacto" }, { status: 400 });
+      }
+      sendResult = await sendYCloudWhatsappReaction({
+        apiKey: outboundCtx.apiKey,
+        fromE164: outboundCtx.fromE164,
+        toDigits: outboundCtx.toDigits,
+        targetWamid: target,
+        emoji,
+      });
+    }
     if (!sendResult.ok) {
       const err = sendResult.error || "No se pudo reaccionar";
       const status = sendResult.code === "sin_wamid" ? 400 : 502;

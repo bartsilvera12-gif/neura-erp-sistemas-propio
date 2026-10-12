@@ -22,13 +22,16 @@ export const OUTBOUND_ERR_YCLOUD_INCOMPLETE =
 
 /**
  * Mensaje claro cuando se intenta un envío NO soportado por el puente Baileys (WhatsApp por QR).
- * El texto del inbox sí se maneja aparte (resolveBaileysContextFromIds + sendTextViaBaileysBridge);
- * los demás caminos (media, plantillas, stickers, reacciones, campañas, bot) llegan a este resolver
- * sin rama baileys y, en vez de caer al ramal Meta con un error engañoso o mandar por el número
- * equivocado, fallan fail-closed con este mensaje. (Media saliente por el puente: follow-up.)
+ * Texto, archivos, stickers y reacciones tienen su propia rama por el puente
+ * (resolveBaileysContextFromIds + send*ViaBaileysBridge). Lo que todavía NO la tiene
+ * —plantillas, campañas, bot— llega a este resolver y, en vez de caer al ramal Meta con un
+ * error engañoso o salir por el número equivocado, falla con este mensaje.
+ *
+ * Si se agrega una rama nueva, hay que actualizar el texto: durante días dijo que no se podían
+ * mandar archivos cuando ya se podía, y los asesores dejaron de intentarlo.
  */
 export const OUTBOUND_ERR_BAILEYS_UNSUPPORTED =
-  "Este canal es WhatsApp por QR (Baileys): por ahora solo se puede responder con TEXTO desde el chat. Enviar archivos, plantillas, stickers, reacciones o campañas por este canal todavía no está habilitado.";
+  "Este canal es WhatsApp por QR: todavía no se pueden enviar plantillas ni campañas por acá. Texto, archivos, stickers y reacciones sí funcionan.";
 
 const LOG_PREFIX = "[outbound-resolve]";
 
@@ -523,6 +526,38 @@ export async function sendTextViaBaileysBridge(
 }
 
 /**
+ * Reacciona a un mensaje por el puente Baileys.
+ *
+ * `emoji` vacío quita la reacción, igual que en WhatsApp.
+ */
+export async function sendReactionViaBaileysBridge(
+  bridgeUrl: string,
+  toDigits: string,
+  targetWaMessageId: string,
+  emoji: string
+): Promise<SendWhatsAppTextResult> {
+  const secret = (process.env.BAILEYS_BRIDGE_SECRET || "").trim();
+  try {
+    const res = await fetch(`${bridgeUrl}/send-reaction`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bridge-secret": secret },
+      body: JSON.stringify({ to: toDigits, targetId: targetWaMessageId, emoji }),
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      id?: string | null;
+      error?: string;
+    };
+    if (!res.ok || !raw.ok) {
+      return { ok: false, error: raw.error || `El puente WhatsApp respondió ${res.status}.`, raw };
+    }
+    return { ok: true, waMessageId: raw.id ?? null, raw };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo contactar al puente WhatsApp." };
+  }
+}
+
+/**
  * Manda un archivo por el puente Baileys.
  *
  * Viaja la URL pública del storage y no el binario: el archivo ya está subido, y pasar
@@ -534,7 +569,7 @@ export async function sendMediaViaBaileysBridge(
   toDigits: string,
   media: {
     url: string;
-    tipo: "image" | "video" | "audio" | "document";
+    tipo: "image" | "video" | "audio" | "document" | "sticker";
     caption?: string | null;
     filename?: string | null;
     mimetype?: string | null;

@@ -25,9 +25,14 @@ export type HorarioNotificaciones = {
   franjas: Franjas;
 };
 
-/** Guardia de fin de semana: sábados y domingos de 08:00 a 21:00. */
+/** Guardia semanal: los siete días de 08:00 a 21:00. */
 export const PRESET_GUARDIA_SEMANAL: Franjas = {
   "0": [8, 21],
+  "1": [8, 21],
+  "2": [8, 21],
+  "3": [8, 21],
+  "4": [8, 21],
+  "5": [8, 21],
   "6": [8, 21],
 };
 

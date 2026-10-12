@@ -4,6 +4,7 @@ import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import {
   horarioDeUsuario,
+  limpiarFranjas,
   HORARIO_POR_DEFECTO,
   type HorarioNotificaciones,
 } from "@/lib/cc/horario-notificaciones";
@@ -21,19 +22,7 @@ export const runtime = "nodejs";
 
 function limpiar(body: unknown): HorarioNotificaciones {
   const b = (body ?? {}) as Record<string, unknown>;
-  const dias = Array.isArray(b.dias)
-    ? [...new Set((b.dias as unknown[]).map((d) => Number(d)).filter((d) => d >= 0 && d <= 6))].sort()
-    : HORARIO_POR_DEFECTO.dias;
-  const hora = (v: unknown, porDefecto: number) => {
-    const n = Math.trunc(Number(v));
-    return Number.isFinite(n) && n >= 0 && n <= 23 ? n : porDefecto;
-  };
-  return {
-    activo: b.activo === true,
-    dias,
-    hora_desde: hora(b.hora_desde, HORARIO_POR_DEFECTO.hora_desde),
-    hora_hasta: hora(b.hora_hasta, HORARIO_POR_DEFECTO.hora_hasta),
-  };
+  return { activo: b.activo === true, franjas: limpiarFranjas(b.franjas) };
 }
 
 export async function GET(request: NextRequest) {
@@ -60,9 +49,9 @@ export async function PUT(request: NextRequest) {
     }
     const horario = limpiar(body);
 
-    // Un horario activo sin días no deja pasar NADA: eso no es lo que nadie quiere, así que
-    // se guarda desactivado en vez de dejar a la persona incomunicada sin darse cuenta.
-    if (horario.activo && horario.dias.length === 0) {
+    // Un horario activo sin ningún día no deja pasar NADA. Nadie quiere eso de verdad, y el
+    // que lo hace sin querer se queda incomunicado sin enterarse: se rechaza.
+    if (horario.activo && Object.keys(horario.franjas).length === 0) {
       return NextResponse.json(
         { ok: false, error: "Elegí al menos un día, o apagá el horario." },
         { status: 400 }
@@ -74,9 +63,7 @@ export async function PUT(request: NextRequest) {
         usuario_id: ctx.usuario_id,
         empresa_id: ctx.empresa_id,
         activo: horario.activo,
-        dias: horario.dias,
-        hora_desde: horario.hora_desde,
-        hora_hasta: horario.hora_hasta,
+        franjas: horario.franjas,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "usuario_id" }

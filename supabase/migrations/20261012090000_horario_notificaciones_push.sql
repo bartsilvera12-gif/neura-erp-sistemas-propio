@@ -1,10 +1,13 @@
--- Horario en el que cada persona acepta notificaciones push.
+-- Horario en el que cada persona acepta notificaciones push, con una franja POR DÍA.
 --
--- Fuera de ese horario el despachador NO manda nada (ver src/lib/cc/horario-notificaciones.ts).
--- Se guarda por usuario: cada uno configura el suyo desde la app.
+-- Fuera de su franja el despachador NO manda nada (ver src/lib/cc/horario-notificaciones.ts).
 --
--- Sin fila = sin restricción: se notifica siempre. Por eso `activo` arranca en false incluso
--- cuando alguien guarda un horario sin querer activarlo todavía.
+-- `franjas` es un objeto { "<día>": [desde, hasta] } con el día 0 = domingo … 6 = sábado y
+-- horas enteras 0-23. Un día que no está en el objeto no recibe notificaciones. Si `desde` es
+-- mayor que `hasta`, la franja sigue hasta esa hora del día siguiente (guardias de noche).
+--
+-- Se guarda como un objeto y no como siete columnas porque cada día tiene su propio tramo y
+-- la lista cambia de forma seguido; con columnas, cada ajuste sería una migración.
 DO $$
 DECLARE r record;
 BEGIN
@@ -21,19 +24,14 @@ BEGIN
         usuario_id  uuid PRIMARY KEY,
         empresa_id  uuid NOT NULL,
         activo      boolean NOT NULL DEFAULT false,
-        -- 0 = domingo … 6 = sábado.
-        dias        smallint[] NOT NULL DEFAULT '{1,2,3,4,5}',
-        -- Horas enteras 0-23. Si `hora_desde` > `hora_hasta`, el tramo cruza la medianoche.
-        hora_desde  smallint NOT NULL DEFAULT 8,
-        hora_hasta  smallint NOT NULL DEFAULT 20,
-        updated_at  timestamptz NOT NULL DEFAULT now(),
-        CONSTRAINT horario_notif_horas_validas
-          CHECK (hora_desde BETWEEN 0 AND 23 AND hora_hasta BETWEEN 0 AND 23)
+        franjas     jsonb NOT NULL DEFAULT '{}'::jsonb,
+        updated_at  timestamptz NOT NULL DEFAULT now()
       )
     $f$, r.sch);
 
+    -- Versión anterior de esta misma tabla: tenía un único horario para todos los días.
     EXECUTE format(
-      'CREATE INDEX IF NOT EXISTS idx_horario_notif_empresa ON %I.usuario_horario_notificaciones (empresa_id)',
+      'ALTER TABLE %I.usuario_horario_notificaciones ADD COLUMN IF NOT EXISTS franjas jsonb NOT NULL DEFAULT ''{}''::jsonb',
       r.sch
     );
   END LOOP;

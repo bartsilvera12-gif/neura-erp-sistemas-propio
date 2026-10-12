@@ -204,6 +204,75 @@ export async function assignConversationToAgent(
 /**
  * Cola de la conversación (no limpia asignación; el supervisor puede reasignar después).
  */
+
+/**
+ * A quién darle un chat que acaba de llegar a una cola.
+ *
+ * Reparte entre la gente de ESA cola: prefiere a quien está conectado y, dentro de eso, al
+ * que menos chats abiertos tiene; a igualdad, al que hace más tiempo que no recibe uno.
+ *
+ * No exige `receives_new_chats`. Ese interruptor dice "no me mandes chats NUEVOS del reparto
+ * automático", y así están configuradas a propósito las colas que solo reciben derivaciones
+ * (Atención al Cliente, Project Manager). Si se exigiera, transferir a esas colas no
+ * encontraría a nadie, que es justamente lo que hay que evitar.
+ *
+ * Devuelve null si la cola no tiene a nadie: ahí el chat queda sin asignar y visible en la
+ * cola, que es mejor que dárselo a alguien que no la atiende.
+ */
+async function elegirAgenteDeLaCola(
+  supabase: AppSupabaseClient,
+  empresaId: string,
+  queueId: string
+): Promise<{ id: string } | null> {
+  const { data: agentes } = await supabase
+    .from("chat_agents")
+    .select("id, usuario_id, max_conversations, last_heartbeat_at, last_assigned_at, operational_status")
+    .eq("empresa_id", empresaId)
+    .eq("queue_id", queueId)
+    .eq("is_active", true);
+
+  const lista = (agentes ?? []) as Array<{
+    id: string;
+    usuario_id: string | null;
+    max_conversations: number | null;
+    last_heartbeat_at: string | null;
+    last_assigned_at: string | null;
+    operational_status: string | null;
+  }>;
+  if (lista.length === 0) return null;
+
+  // Carga actual de cada uno.
+  const { data: abiertas } = await supabase
+    .from("chat_conversations")
+    .select("assigned_agent_id")
+    .eq("empresa_id", empresaId)
+    .in("status", ["open", "pending"])
+    .not("assigned_agent_id", "is", null);
+  const carga = new Map<string, number>();
+  for (const r of (abiertas ?? []) as Array<{ assigned_agent_id: string }>) {
+    carga.set(r.assigned_agent_id, (carga.get(r.assigned_agent_id) ?? 0) + 1);
+  }
+
+  const ahora = Date.now();
+  const enLinea = (a: (typeof lista)[number]) =>
+    a.last_heartbeat_at ? ahora - new Date(a.last_heartbeat_at).getTime() <= 60_000 : false;
+
+  const ordenados = [...lista].sort((a, b) => {
+    const listo = (x: (typeof lista)[number]) =>
+      (x.operational_status ?? "").toLowerCase() === "ready" ? 0 : 1;
+    if (listo(a) !== listo(b)) return listo(a) - listo(b);
+    if (enLinea(a) !== enLinea(b)) return enLinea(a) ? -1 : 1;
+    const ca = carga.get(a.id) ?? 0;
+    const cb = carga.get(b.id) ?? 0;
+    if (ca !== cb) return ca - cb;
+    const ta = a.last_assigned_at ? new Date(a.last_assigned_at).getTime() : 0;
+    const tb = b.last_assigned_at ? new Date(b.last_assigned_at).getTime() : 0;
+    return ta - tb;
+  });
+
+  return ordenados[0] ? { id: ordenados[0].id } : null;
+}
+
 export async function changeConversationQueue(conversationId: string, queueId: string): Promise<void> {
   const { supabase, empresa_id, usuario_id } = await requireEmpresaTenantServiceRole();
   const conv = await loadConversationForEmpresa(supabase, empresa_id, conversationId);
@@ -212,23 +281,57 @@ export async function changeConversationQueue(conversationId: string, queueId: s
   if (!queue) throw new Error("Cola no encontrada");
 
   const colaAnterior = conv.queue_id ?? null;
+  const agenteAnterior = conv.assigned_agent_id ?? null;
+
+  // Transferir a una cola también cambia de dueño.
+  //
+  // Antes sólo se pisaba `queue_id` y el asesor anterior quedaba asignado: el chat figuraba
+  // en Project Manager y lo seguía atendiendo alguien de Atención al Cliente. Y como el
+  // repartidor saltea las conversaciones que ya tienen asesor, nunca llegaba a la cola nueva.
+  //
+  // Si la cola no tiene a nadie, queda sin asignar y visible ahí para que la tomen: es mejor
+  // que dejarlo con quien ya no corresponde.
+  const nuevoAgente = await elegirAgenteDeLaCola(supabase, empresa_id, queue.id);
+  const ts = new Date().toISOString();
 
   const { error } = await supabase
     .from("chat_conversations")
     .update({
       queue_id: queue.id,
-      updated_at: new Date().toISOString(),
+      assigned_agent_id: nuevoAgente?.id ?? null,
+      initial_assignment_at: nuevoAgente ? ts : null,
+      // El reloj de primera respuesta arranca de cero con el dueño nuevo.
+      first_human_response_at: null,
+      initial_reassign_count: 0,
+      assignment_wait_code: nuevoAgente ? null : "manual_queue",
+      updated_at: ts,
     })
     .eq("id", conv.id)
     .eq("empresa_id", empresa_id);
 
   if (error) throw new Error(error.message);
 
+  if (nuevoAgente) {
+    const cid = (conv.contact_id as string | null)?.trim();
+    const chid = (conv.channel_id as string | null)?.trim();
+    if (cid && chid) {
+      await updateContactLastRouted(supabase, {
+        empresa_id: empresa_id,
+        contact_id: cid,
+        channel_id: chid,
+        chat_agent_id: nuevoAgente.id,
+        at_iso: ts,
+      });
+    }
+  }
+
   // Pasar un chat de una cola a otra (típico: comercial -> project manager) es un paso real
   // del recorrido del contacto y antes no dejaba rastro: sólo se pisaba `queue_id`. Sin esto
   // la línea de tiempo muestra un salto de agente sin explicación. Best-effort, igual que el
   // resto de la auditoría: si falla, el cambio de cola ya se hizo y no se revierte.
-  if (colaAnterior !== queue.id) {
+  // También cuando la cola es la misma: puede haber cambiado el dueño, y sin el registro la
+  // línea de tiempo muestra un salto de asesor sin explicación.
+  if (colaAnterior !== queue.id || agenteAnterior !== (nuevoAgente?.id ?? null)) {
     await insertChatRoutingEvent(supabase, {
       empresa_id: empresa_id,
       conversation_id: conv.id,
@@ -237,7 +340,8 @@ export async function changeConversationQueue(conversationId: string, queueId: s
       payload: {
         from_queue_id: colaAnterior,
         to_queue_id: queue.id,
-        from_agent_id: conv.assigned_agent_id ?? null,
+        from_agent_id: agenteAnterior,
+        to_agent_id: nuevoAgente?.id ?? null,
         by_usuario_id: usuario_id,
         source: "changeConversationQueue",
       },

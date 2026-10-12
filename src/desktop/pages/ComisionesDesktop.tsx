@@ -1133,82 +1133,6 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
   );
 }
 
-function SellerMovimientosList({ row }: { row: VendedorRow }) {
-  const [query, setQuery] = useState("");
-  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
-
-  const comisionables = useMemo(() => row.lineas.filter((l) => l.comisiona !== false), [row.lineas]);
-  const excluidas = useMemo(() => row.lineas.filter((l) => l.comisiona === false), [row.lineas]);
-  const base = mostrarExcluidos ? excluidas : comisionables;
-  const lineasFiltradas = useMemo(() => base.filter((ln) => lineaMatchesQuery(ln, query)), [base, query]);
-
-  return (
-    <div className="mt-3 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex-1 min-w-[200px]">
-          <MovimientosSearch value={query} onChange={setQuery} shown={lineasFiltradas.length} total={base.length} />
-        </div>
-        <ExcluidosToggle
-          mostrar={mostrarExcluidos}
-          onToggle={() => setMostrarExcluidos((v) => !v)}
-          countExcluidos={excluidas.length}
-        />
-      </div>
-      {lineasFiltradas.length === 0 ? (
-        <MovimientosEmptyState />
-      ) : (
-        <div className="grid gap-3">
-          {lineasFiltradas.map((ln, i) => (
-            <article
-              key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
-              className={`rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md ${
-                mostrarExcluidos ? "border-amber-200" : "border-slate-200"
-              }`}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{ln.cliente_label}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {ln.numero_factura ?? "Sin comprobante"} · {formatDate(ln.fecha)}
-                  </p>
-                  {mostrarExcluidos ? (
-                    <p className="mt-1 text-[11px] font-medium text-amber-700">{motivoExclusionLabel(ln)}</p>
-                  ) : null}
-                </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    Comisión (variable)
-                  </p>
-                  <p className="mt-0.5 text-base font-semibold tabular-nums text-[#3F8E91]">
-                    ₲ {fmtMoney(ln.comision_estimada_linea)}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Monto total</p>
-                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">₲ {fmtMoney(ln.factura_monto_total ?? 0)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Monto pagado</p>
-                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">₲ {fmtMoney(ln.monto_base)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Fecha de pago</p>
-                  <p className="mt-0.5 text-sm font-medium tabular-nums text-slate-700">{formatDate(ln.fecha)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Fecha alta cliente</p>
-                  <p className="mt-0.5 text-sm font-medium tabular-nums text-slate-700">{formatDate(ln.cliente_alta ?? null)}</p>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Vendedor view (vista del vendedor autenticado) ───────────────────────────
 
@@ -1359,8 +1283,9 @@ function renderVendedorView({
               </div>
               <ChevronDown className="h-5 w-5 shrink-0 text-[#4FAEB2] transition-transform group-open:rotate-180" />
             </summary>
-            <div className="space-y-4 border-t border-slate-100 px-5 pb-5">
-              <SellerMovimientosList row={sellerRow} />
+            <div className="space-y-4 border-t border-slate-100 px-5 pb-5 pt-4">
+              {/* Misma tabla que la vista admin, pero solo con los datos del asesor y sin acción de excluir. */}
+              <MovimientosTable row={sellerRow} />
             </div>
           </details>
         </>

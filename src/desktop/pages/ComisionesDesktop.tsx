@@ -659,17 +659,16 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
   );
 }
 
-/** Detalle compacto de la recurrencia nueva del mes: qué clientes SaaS/Mixto la componen. */
+/** Detalle de la recurrencia nueva del mes: qué clientes SaaS/Mixto la componen. Siempre visible. */
 function RecurrenciaDetalle({ items }: { items: RecurrenciaItem[] | undefined }) {
   const list = items ?? [];
   if (list.length === 0) return null;
   return (
-    <details className="group rounded-xl border border-slate-200 bg-slate-50/50 open:shadow-sm">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-600 [&::-webkit-details-marker]:hidden">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
-        Ver recurrencia nueva del mes · {list.length} cliente{list.length === 1 ? "" : "s"} SaaS/Mixto
-      </summary>
-      <div className="overflow-x-auto px-4 pb-3">
+    <div className="rounded-xl border border-slate-200 bg-slate-50/50">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-600">
+        Recurrencia nueva del mes · {list.length} cliente{list.length === 1 ? "" : "s"} SaaS/Mixto
+      </div>
+      <div className="overflow-x-auto px-4 py-2">
         <table className="w-full min-w-[460px] text-xs">
           <thead>
             <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -693,7 +692,7 @@ function RecurrenciaDetalle({ items }: { items: RecurrenciaItem[] | undefined })
           </tbody>
         </table>
       </div>
-    </details>
+    </div>
   );
 }
 

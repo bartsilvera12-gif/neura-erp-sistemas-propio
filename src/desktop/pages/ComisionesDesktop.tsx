@@ -1388,21 +1388,10 @@ function renderAdminView({
                 (kpis.lineas_excluidas ?? 0) > 0 && onShowExcluidas ? onShowExcluidas : undefined
               }
             />
-            <Kpi label="Vendedores con comisión" value={kpis.vendedores_con_comision} />
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi
               label="Recurrencia nueva del mes"
               value={`₲ ${fmtMoney(recurrencia?.total_recurrencia ?? 0)}`}
               sub="SaaS/Mixto nuevos · no suma al revenue"
-            />
-            <Kpi
-              label="Movimientos sin vendedor"
-              value={kpis.fuentes_sin_vendedor}
-              sub={
-                kpis.fuentes_sin_vendedor > 0 ? "Se incluirán al asignar vendedor responsable" : undefined
-              }
-              accent={kpis.fuentes_sin_vendedor > 0 ? "warning" : "neutral"}
             />
           </div>
           {kpis.fuentes_sin_vendedor > 0 && (

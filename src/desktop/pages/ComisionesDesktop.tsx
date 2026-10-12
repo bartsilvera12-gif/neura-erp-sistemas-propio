@@ -52,6 +52,8 @@ type VendedorRow = {
   a_cobrar_total?: number;
   /** Recurrencia NUEVA del mes del asesor (SaaS/Mixto nuevos). Métrica aparte: NO suma al revenue. */
   recurrencia_mes?: number;
+  /** Detalle (clientes nuevos SaaS/Mixto) que componen la recurrencia del mes. */
+  recurrencia_items?: RecurrenciaItem[];
   pendiente_por_comisionar_total: number;
   lineas_excluidas?: number;
   lineas_incluidas_manual?: number;
@@ -654,6 +656,44 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
         sub="SaaS/Mixto nuevos · no suma al revenue"
       />
     </div>
+  );
+}
+
+/** Detalle compacto de la recurrencia nueva del mes: qué clientes SaaS/Mixto la componen. */
+function RecurrenciaDetalle({ items }: { items: RecurrenciaItem[] | undefined }) {
+  const list = items ?? [];
+  if (list.length === 0) return null;
+  return (
+    <details className="group rounded-xl border border-slate-200 bg-slate-50/50 open:shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-600 [&::-webkit-details-marker]:hidden">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
+        Ver recurrencia nueva del mes · {list.length} cliente{list.length === 1 ? "" : "s"} SaaS/Mixto
+      </summary>
+      <div className="overflow-x-auto px-4 pb-3">
+        <table className="w-full min-w-[460px] text-xs">
+          <thead>
+            <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              <th className="py-1.5 pr-3">Cliente</th>
+              <th className="py-1.5 pr-3">Plan</th>
+              <th className="py-1.5 pr-3">Tipo</th>
+              <th className="py-1.5 pr-3">Alta cliente</th>
+              <th className="py-1.5 pr-3 text-right">Cuota</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {list.map((it) => (
+              <tr key={it.suscripcion_id}>
+                <td className="py-1.5 pr-3 font-medium text-slate-700">{it.cliente}</td>
+                <td className="py-1.5 pr-3 text-slate-500">{it.plan ?? "—"}</td>
+                <td className="py-1.5 pr-3"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">{it.tipo_cliente}</span></td>
+                <td className="py-1.5 pr-3 tabular-nums text-slate-500">{it.fecha ?? "—"}</td>
+                <td className="py-1.5 pr-3 text-right font-semibold tabular-nums text-slate-700">{it.moneda === "USD" ? "USD " : "₲ "}{fmtMoney(it.monto)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }
 
@@ -1333,6 +1373,7 @@ function renderVendedorView({
                 sub="SaaS/Mixto nuevos · no suma al revenue"
               />
             </div>
+            <RecurrenciaDetalle items={recurrencia?.por_vendedor?.[0]?.items} />
           </section>
 
           <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm open:shadow-md">
@@ -1386,16 +1427,17 @@ function renderAdminView({
   recurrencia?: RecurrenciaPayload | null;
 }) {
   // Recurrencia nueva del mes por vendedor (métrica aparte, NO suma al revenue).
-  const recByVend = new Map<string, number>();
+  const recByVend = new Map<string, RecurrenciaVendedor>();
   for (const v of recurrencia?.por_vendedor ?? []) {
-    if (v.vendedor_id) recByVend.set(v.vendedor_id, v.total);
+    if (v.vendedor_id) recByVend.set(v.vendedor_id, v);
   }
   // "Pendiente de cobro" por asesor = su total comisionable a cobrar (mismo número que la lista).
   const rowsView: VendedorRow[] = rows.map((r) => ({
     ...r,
     a_cobrar_total:
       aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id)?.total_a_cobrar ?? 0,
-    recurrencia_mes: recByVend.get(r.vendedor_usuario_id) ?? 0,
+    recurrencia_mes: recByVend.get(r.vendedor_usuario_id)?.total ?? 0,
+    recurrencia_items: recByVend.get(r.vendedor_usuario_id)?.items ?? [],
   }));
   return (
     <div className="space-y-6 pb-10">
@@ -1662,6 +1704,7 @@ function renderAdminView({
                   <div className="space-y-4 border-t border-slate-100 px-5 pb-5 pt-4">
                     <ScaleProgress row={r} />
                     <TotalsStrip row={r} />
+                    <RecurrenciaDetalle items={r.recurrencia_items} />
                     <MovimientosTable row={r} overrideCtx={overrideCtx} />
                     <ACobrarBloqueVendedor
                       aCobrar={aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id) ?? null}

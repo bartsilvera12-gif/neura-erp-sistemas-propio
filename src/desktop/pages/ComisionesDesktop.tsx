@@ -38,6 +38,8 @@ type Linea = {
   override_at?: string | null;
   cliente_alta?: string | null;
   factura_monto_total?: number | null;
+  tipo_proyecto?: string | null;
+  monto_suscripcion?: number | null;
 };
 
 type VendedorRow = {
@@ -122,6 +124,7 @@ type ACobrarProyecto = {
   estado_color: string;
   pm_nombre: string | null;
   tiempo_en_estado_ms: number | null;
+  tipo_nombre?: string | null;
 };
 type ACobrarFactura = {
   cliente_id: string | null;
@@ -206,8 +209,8 @@ function ACobrarTablaVendedor({
             {(
               [
                 ["Cliente", "left"],
-                ["Factura", "left"],
                 ["Fecha", "left"],
+                ["Tipo de proyecto", "left"],
                 ["Estado", "left"],
                 ["PM", "left"],
                 ["En estado", "left"],
@@ -231,8 +234,8 @@ function ACobrarTablaVendedor({
           {v.facturas.map((f) => (
             <tr key={f.factura_id} className="hover:bg-amber-50/40">
               <td className="max-w-[240px] truncate px-3 py-2 font-medium text-slate-800" title={f.cliente_label}>{f.cliente_label}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-slate-500">{f.numero_factura ?? "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 text-slate-500">{formatDate(f.fecha)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-500">{f.proyecto?.tipo_nombre ?? <span className="text-slate-300">—</span>}</td>
               <td className="whitespace-nowrap px-3 py-2">
                 {f.proyecto ? (
                   <span
@@ -637,7 +640,7 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
   const premio = row.premio_fijo_aplicado ?? 0;
   const variable = row.comision_variable ?? row.comision_estimada;
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
       <Kpi label="Base comisionable" value={`₲ ${fmtMoney(row.revenue_base)}`} />
       <Kpi
         label="Comisión estimada"
@@ -660,41 +663,6 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
 }
 
 /** Detalle de la recurrencia nueva del mes: qué clientes SaaS/Mixto la componen. Siempre visible. */
-function RecurrenciaDetalle({ items }: { items: RecurrenciaItem[] | undefined }) {
-  const list = items ?? [];
-  if (list.length === 0) return null;
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/50">
-      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-600">
-        Recurrencia nueva del mes · {list.length} cliente{list.length === 1 ? "" : "s"} SaaS/Mixto
-      </div>
-      <div className="overflow-x-auto px-4 py-2">
-        <table className="w-full min-w-[460px] text-xs">
-          <thead>
-            <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-slate-400">
-              <th className="py-1.5 pr-3">Cliente</th>
-              <th className="py-1.5 pr-3">Plan</th>
-              <th className="py-1.5 pr-3">Tipo</th>
-              <th className="py-1.5 pr-3">Alta cliente</th>
-              <th className="py-1.5 pr-3 text-right">Cuota</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {list.map((it) => (
-              <tr key={it.suscripcion_id}>
-                <td className="py-1.5 pr-3 font-medium text-slate-700">{it.cliente}</td>
-                <td className="py-1.5 pr-3 text-slate-500">{it.plan ?? "—"}</td>
-                <td className="py-1.5 pr-3"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">{it.tipo_cliente}</span></td>
-                <td className="py-1.5 pr-3 tabular-nums text-slate-500">{it.fecha ?? "—"}</td>
-                <td className="py-1.5 pr-3 text-right font-semibold tabular-nums text-slate-700">{it.moneda === "USD" ? "USD " : "₲ "}{fmtMoney(it.monto)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 export type OverrideCtx = {
   canOverride: boolean;
@@ -1105,8 +1073,10 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
                   {[
                     { h: "Cliente", right: false },
                     { h: "Fecha alta cliente", right: false },
+                    { h: "Tipo de proyecto", right: false },
                     { h: "Monto total", right: true },
                     { h: "Monto pagado", right: true },
+                    { h: "Monto suscripción", right: true },
                     { h: "Fecha de pago", right: false },
                     { h: "Comisión (variable)", right: true },
                     { h: "Acción", right: true },
@@ -1135,11 +1105,15 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
                       ) : null}
                     </td>
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.cliente_alta ?? null)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{ln.tipo_proyecto ?? <span className="text-slate-300">—</span>}</td>
                     <td className="px-4 py-3 text-right text-sm tabular-nums text-slate-700">
                       {fmtMoney(ln.factura_monto_total ?? 0)}
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-slate-900">
                       {fmtMoney(ln.monto_base)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs tabular-nums text-slate-600">
+                      {ln.monto_suscripcion ? fmtMoney(ln.monto_suscripcion) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{formatDate(ln.fecha)}</td>
                     <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-[#3F8E91]">
@@ -1349,7 +1323,7 @@ function renderVendedorView({
 
             <ScaleProgress row={sellerRow} />
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
               <Kpi label="Base comisionable" value={`₲ ${fmtMoney(sellerRow.revenue_base)}`} />
               <Kpi
                 label="Comisión estimada"
@@ -1372,7 +1346,6 @@ function renderVendedorView({
                 sub="SaaS/Mixto nuevos · no suma al revenue"
               />
             </div>
-            <RecurrenciaDetalle items={recurrencia?.por_vendedor?.[0]?.items} />
           </section>
 
           <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm open:shadow-md">
@@ -1703,7 +1676,6 @@ function renderAdminView({
                   <div className="space-y-4 border-t border-slate-100 px-5 pb-5 pt-4">
                     <ScaleProgress row={r} />
                     <TotalsStrip row={r} />
-                    <RecurrenciaDetalle items={r.recurrencia_items} />
                     <MovimientosTable row={r} overrideCtx={overrideCtx} />
                     <ACobrarBloqueVendedor
                       aCobrar={aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id) ?? null}

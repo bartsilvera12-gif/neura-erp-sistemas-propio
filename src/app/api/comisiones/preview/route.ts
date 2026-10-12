@@ -57,6 +57,10 @@ type LineaPreview = {
   factura_monto_total?: number | null;
   /** Vendedor que se lleva la comisión de esta línea: factura.vendedor_usuario_id ?? cliente.vendedor_usuario_id. */
   vendedor_usuario_id?: string | null;
+  /** Tipo de proyecto del cliente (Web/SaaS/Mixto). Solo-lectura para la tabla; no afecta el cálculo. */
+  tipo_proyecto?: string | null;
+  /** Monto de suscripción (cuota mensual vigente) del cliente. Solo-lectura para la tabla. */
+  monto_suscripcion?: number | null;
 };
 
 type OverrideRow = {
@@ -372,6 +376,46 @@ export async function GET(request: Request) {
       clienteAlta.set(id, c.created_at != null ? String(c.created_at).slice(0, 10) : null);
     }
 
+    // Enriquecimiento SOLO-LECTURA para las tablas (no afecta el cálculo de comisión):
+    //   · tipo de proyecto por factura/cliente (cuadros gris y amarillo)
+    //   · monto de suscripción vigente por cliente (cuadro gris)
+    const tipoProyPorFactura = new Map<string, string>();
+    const tipoProyPorCliente = new Map<string, string>();
+    const montoSuscPorCliente = new Map<string, number>();
+    try {
+      const { data: tiposProy } = await sb.from("proyecto_tipos").select("id, nombre").eq("empresa_id", empresaId);
+      const nombreTipoProy = new Map<string, string>();
+      for (const t of (tiposProy ?? []) as { id: string; nombre: string | null }[]) {
+        if (t?.id) nombreTipoProy.set(String(t.id), (t.nombre ?? "").trim() || "—");
+      }
+      const { data: proyRows } = await sb
+        .from("proyectos")
+        .select("cliente_id, factura_id, tipo_id")
+        .eq("empresa_id", empresaId);
+      for (const p of (proyRows ?? []) as { cliente_id: string | null; factura_id: string | null; tipo_id: string | null }[]) {
+        const nom = p.tipo_id ? nombreTipoProy.get(String(p.tipo_id)) ?? null : null;
+        if (!nom) continue;
+        if (p.factura_id) tipoProyPorFactura.set(String(p.factura_id), nom);
+        if (p.cliente_id && !tipoProyPorCliente.has(String(p.cliente_id))) tipoProyPorCliente.set(String(p.cliente_id), nom);
+      }
+    } catch { /* best-effort: si falla, las columnas quedan en "—" */ }
+    try {
+      const { data: suscRows } = await sb
+        .from("suscripciones")
+        .select("cliente_id, precio, estado")
+        .eq("empresa_id", empresaId);
+      for (const s of (suscRows ?? []) as { cliente_id: string | null; precio: number | null; estado: string | null }[]) {
+        const est = String(s.estado ?? "").trim().toLowerCase();
+        if (est === "cancelada" || est === "anulada" || est === "anulado" || est === "cancelado") continue;
+        const cid = s.cliente_id ? String(s.cliente_id) : "";
+        if (!cid) continue;
+        montoSuscPorCliente.set(cid, (montoSuscPorCliente.get(cid) ?? 0) + (Number(s.precio) || 0));
+      }
+    } catch { /* best-effort */ }
+    const tipoProyDe = (facturaId: string | null | undefined, clienteId: string | null | undefined): string | null =>
+      (facturaId ? tipoProyPorFactura.get(String(facturaId)) ?? null : null) ??
+      (clienteId ? tipoProyPorCliente.get(String(clienteId)) ?? null : null);
+
     const { ncMap, alertaNetoSinNc } = await cargarNcAprobadasPorFacturaId(sb, empresaId);
 
     const clientesAsignadosAutenticado = clientesRows.filter((c) => {
@@ -520,6 +564,8 @@ export async function GET(request: Request) {
             cliente_alta: clienteAlta.get(clienteId) ?? null,
             factura_monto_total: Number(fac.monto) || 0,
             vendedor_usuario_id: vid,
+            tipo_proyecto: tipoProyDe(fid, clienteId),
+            monto_suscripcion: montoSuscPorCliente.get(clienteId) ?? null,
           },
           Boolean(vid),
           "pago"
@@ -590,6 +636,8 @@ export async function GET(request: Request) {
             cliente_alta: clienteAlta.get(clienteId) ?? null,
             factura_monto_total: Number(fac.monto) || 0,
             vendedor_usuario_id: vid,
+            tipo_proyecto: tipoProyDe(fid, clienteId),
+            monto_suscripcion: montoSuscPorCliente.get(clienteId) ?? null,
           },
           Boolean(vid),
           "factura"
@@ -670,6 +718,8 @@ export async function GET(request: Request) {
               origen: "auto",
               cliente_alta: clienteAlta.get(clienteId) ?? null,
               factura_monto_total: Number(fac.monto) || 0,
+              tipo_proyecto: tipoProyDe(fid, clienteId),
+              monto_suscripcion: montoSuscPorCliente.get(clienteId) ?? null,
             },
             Boolean(vid),
             "factura"
@@ -861,6 +911,7 @@ export async function GET(request: Request) {
       estado_color: string;
       pm_nombre: string | null;
       tiempo_en_estado_ms: number | null;
+      tipo_nombre: string | null;
     };
     type ACobrarItem = {
       cliente_id: string | null;
@@ -937,6 +988,7 @@ export async function GET(request: Request) {
             estado_color: p.estado_color,
             pm_nombre: p.project_manager_id ? dsProy.nombreUsuario(p.project_manager_id) : null,
             tiempo_en_estado_ms: p.tiempo_en_estado_ms,
+            tipo_nombre: p.tipo_nombre ?? null,
           });
         }
         for (const agg of aCobrarPorVendor.values()) {

@@ -50,6 +50,8 @@ type VendedorRow = {
   saldo_pendiente_total: number;
   /** Total comisionable pendiente de cobro (balance-driven, = suma de la lista "A cobrar"). */
   a_cobrar_total?: number;
+  /** Recurrencia NUEVA del mes del asesor (SaaS/Mixto nuevos). Métrica aparte: NO suma al revenue. */
+  recurrencia_mes?: number;
   pendiente_por_comisionar_total: number;
   lineas_excluidas?: number;
   lineas_incluidas_manual?: number;
@@ -646,6 +648,11 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
         }
       />
       <Kpi label="Pendiente de cobro" value={`₲ ${fmtMoney(row.a_cobrar_total ?? 0)}`} accent="warning" />
+      <Kpi
+        label="Recurrencia nueva del mes"
+        value={`₲ ${fmtMoney(row.recurrencia_mes ?? 0)}`}
+        sub="SaaS/Mixto nuevos · no suma al revenue"
+      />
     </div>
   );
 }
@@ -1199,6 +1206,7 @@ function renderVendedorView({
   onCobrar,
   selectedSellerMonth,
   onMonthChange,
+  recurrencia,
 }: {
   meta: PreviewMeta | null | undefined;
   sellerRow: VendedorRow | null;
@@ -1206,6 +1214,7 @@ function renderVendedorView({
   onCobrar: (f: ACobrarFactura) => void;
   selectedSellerMonth: string;
   onMonthChange: (mes: string) => void;
+  recurrencia?: RecurrenciaPayload | null;
 }) {
   // "Pendiente de cobro" del asesor = su total comisionable a cobrar (mismo número que su lista).
   const sellerACobrarTotal = aCobrar[0]?.total_a_cobrar ?? 0;
@@ -1318,6 +1327,11 @@ function renderVendedorView({
                 value={`₲ ${fmtMoney(sellerACobrarTotal)}`}
                 accent="warning"
               />
+              <Kpi
+                label="Recurrencia nueva del mes"
+                value={`₲ ${fmtMoney(recurrencia?.total_recurrencia ?? 0)}`}
+                sub="SaaS/Mixto nuevos · no suma al revenue"
+              />
             </div>
           </section>
 
@@ -1356,6 +1370,7 @@ function renderAdminView({
   onReload,
   overrideCtx,
   onShowExcluidas,
+  recurrencia,
 }: {
   onShowExcluidas?: () => void;
   meta: PreviewMeta | null | undefined;
@@ -1368,12 +1383,19 @@ function renderAdminView({
   onMonthChange: (mes: string) => void;
   onReload: () => void;
   overrideCtx?: OverrideCtx;
+  recurrencia?: RecurrenciaPayload | null;
 }) {
+  // Recurrencia nueva del mes por vendedor (métrica aparte, NO suma al revenue).
+  const recByVend = new Map<string, number>();
+  for (const v of recurrencia?.por_vendedor ?? []) {
+    if (v.vendedor_id) recByVend.set(v.vendedor_id, v.total);
+  }
   // "Pendiente de cobro" por asesor = su total comisionable a cobrar (mismo número que la lista).
   const rowsView: VendedorRow[] = rows.map((r) => ({
     ...r,
     a_cobrar_total:
       aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id)?.total_a_cobrar ?? 0,
+    recurrencia_mes: recByVend.get(r.vendedor_usuario_id) ?? 0,
   }));
   return (
     <div className="space-y-6 pb-10">
@@ -1491,6 +1513,11 @@ function renderAdminView({
             <Kpi label="Vendedores con comisión" value={kpis.vendedores_con_comision} />
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi
+              label="Recurrencia nueva del mes"
+              value={`₲ ${fmtMoney(recurrencia?.total_recurrencia ?? 0)}`}
+              sub="SaaS/Mixto nuevos · no suma al revenue"
+            />
             <Kpi
               label="Movimientos sin vendedor"
               value={kpis.fuentes_sin_vendedor}
@@ -1653,10 +1680,36 @@ function renderAdminView({
 
 // ── Página principal ────────────────────────────────────────────────────────
 
+// ── Recurrencia por asesor (Paso 1: solo lectura, métrica SEPARADA del revenue) ──────────
+type RecurrenciaItem = {
+  suscripcion_id: string;
+  cliente: string;
+  tipo_cliente: string;
+  plan: string | null;
+  monto: number;
+  moneda: string;
+  fecha: string | null;
+};
+type RecurrenciaVendedor = {
+  vendedor_id: string | null;
+  vendedor_nombre: string;
+  total: number;
+  cantidad: number;
+  items: RecurrenciaItem[];
+};
+type RecurrenciaPayload = {
+  meta: { periodo: string; periodo_mes: string; is_vendedor_view: boolean; moneda: string };
+  total_recurrencia: number;
+  cantidad_suscripciones: number;
+  por_vendedor: RecurrenciaVendedor[];
+};
+
+
 export default function ComisionesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PreviewPayload | null>(null);
+  const [recurrencia, setRecurrencia] = useState<RecurrenciaPayload | null>(null);
   const [selectedMonth, setSelectedMonth] = useState("");
   const [overrideModal, setOverrideModal] = useState<
     { ln: Linea; decision: "incluir" | "excluir"; periodoYm: string } | null
@@ -1676,6 +1729,14 @@ export default function ComisionesPage() {
       if (!r.ok) throw new Error(r.mensaje);
       const json = { data: r.data };
       setData(r.data);
+      // Recurrencia por asesor (métrica separada; si falla no derriba la página de comisiones).
+      try {
+        const resR = await fetchWithSupabaseSession(`/api/comisiones/recurrencia${qs}`, { cache: "no-store" });
+        const rr = await leerRespuestaApi<RecurrenciaPayload>(resR);
+        setRecurrencia(rr.ok ? rr.data : null);
+      } catch {
+        setRecurrencia(null);
+      }
       // Sincroniza el selector de mes con el período efectivamente cargado
       // (aplica tanto a la vista de vendedor como a la de administración).
       if (!opts?.mes) {
@@ -1873,6 +1934,7 @@ export default function ComisionesPage() {
           onCobrar,
           selectedSellerMonth: selectedMonthValue,
           onMonthChange,
+          recurrencia,
         })}
         {cobrarModal}
       </>
@@ -1902,6 +1964,7 @@ export default function ComisionesPage() {
         onReload: () => void load({ mes: periodoYm }),
         overrideCtx,
         onShowExcluidas: () => setExcludedDrawerOpen(true),
+        recurrencia,
       })}
       {cobrarModal}
       {overrideModal ? (

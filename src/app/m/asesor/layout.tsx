@@ -1,22 +1,24 @@
 import type { ReactNode } from "react";
-import MAsesorPushGate from "./MAsesorPushGate";
+import CapacitorPushRegister from "@/components/CapacitorPushRegister";
 
 /**
  * Layout de /m/asesor/*.
  *
- * Monta el registro de push (gateado al acceso móvil especial, ver MAsesorPushGate) a nivel
- * layout para que se registre en CUALQUIER pantalla de la app —inbox, proyectos, avisos,
- * soporte— y siga montado al navegar entre ellas. Es necesario porque el acceso móvil
- * especial entra directo a /m/asesor/proyectos y nunca pasa por el inbox, que es donde antes
- * (hasta el PR #4) vivía el registro de push.
+ * Monta el registro de push a nivel layout para que se registre en CUALQUIER pantalla de la
+ * app —inbox, proyectos, avisos, soporte— y siga montado al navegar entre ellas.
  *
- * No agrega UI: el gate renderiza el registro (sin interfaz) o null.
+ * Antes había un gate (MAsesorPushGate) por acceso móvil especial porque la APK vieja se
+ * compilaba sin google-services.json y crasheaba al inicializar el plugin de push. Hoy la
+ * APK que distribuimos ya trae el archivo correcto, así que el gate se quitó para que todos
+ * los asesores puedan registrar su token FCM.
+ *
+ * En navegador el componente es no-op: internamente chequea Capacitor.isNativePlatform().
  */
 export default function MAsesorLayout({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      <MAsesorPushGate />
+      <CapacitorPushRegister />
     </>
   );
 }

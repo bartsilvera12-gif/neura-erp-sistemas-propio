@@ -119,7 +119,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     duracion_meses: "12",
     dia_facturacion: "1",
     dia_vencimiento: "10",
-    generar_factura: false,
+    // Cuándo emitir la PRIMERA cuota. Default "siguiente": la cuota recién arranca el
+    // mes que viene (emisión 01, vence el día de vencimiento del mes siguiente), para
+    // no cobrarla antes de tiempo. "actual"=este mes, "override"=fecha personalizada,
+    // "none"=no emitir ahora (la genera el cron el día 01).
+    emision: "siguiente" as "actual" | "siguiente" | "override" | "none",
+    venc_personalizada: "",
   });
 
   const [formContado, setFormContado] = useState({
@@ -289,6 +294,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
       if (!formSusc.plan_id.trim()) return setError("Seleccioná un plan para clientes mensuales.");
       const precio = parseFloat(formSusc.precio) || 0;
       if (precio <= 0) return setError("El precio debe ser mayor a 0.");
+      if (formSusc.emision === "override" && !formSusc.venc_personalizada.trim())
+        return setError("Elegí la fecha de vencimiento de la primera cuota (fecha personalizada).");
     }
 
     if (form.condicion_pago === "CONTADO" && formContado.emitir_factura) {
@@ -397,6 +404,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
 
     if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
       const plan = planes.find((p) => p.id === formSusc.plan_id);
+      // "override" (fecha personalizada) = período "actual" + fecha de vencimiento elegida
+      // (el override gana sobre el período y deriva el mes de la cuota del venc elegido).
+      const esOverride = formSusc.emision === "override";
       await apiCreateSuscripcion({
         cliente_id: clienteId,
         plan_id: formSusc.plan_id || null,
@@ -406,7 +416,8 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
         duracion_meses: parseInt(formSusc.duracion_meses, 10) || 12,
         dia_facturacion: parseInt(formSusc.dia_facturacion, 10) || 1,
         dia_vencimiento: parseInt(formSusc.dia_vencimiento, 10) || 10,
-        generar_factura_este_mes: formSusc.generar_factura,
+        periodo_factura: esOverride ? "actual" : (formSusc.emision as "actual" | "siguiente" | "none"),
+        fecha_vencimiento_override: esOverride ? formSusc.venc_personalizada || null : null,
       });
     }
 
@@ -973,15 +984,33 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                     />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={formSusc.generar_factura}
-                    onChange={(e) => setFormSusc((p) => ({ ...p, generar_factura: e.target.checked }))}
-                    className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
-                  />
-                  Emitir factura este mes
-                </label>
+                <div>
+                  <label className={labelClass}>¿Cuándo emitir la primera cuota?</label>
+                  <select
+                    value={formSusc.emision}
+                    onChange={(e) => setFormSusc((p) => ({ ...p, emision: e.target.value as typeof p.emision }))}
+                    className={inputClass}
+                  >
+                    <option value="siguiente">Mes siguiente (emite el 01, vence el día de vencimiento del mes que viene)</option>
+                    <option value="actual">Este mes (emite hoy)</option>
+                    <option value="override">Fecha personalizada</option>
+                    <option value="none">No emitir todavía (la genera el cron el día 01)</option>
+                  </select>
+                  {formSusc.emision === "override" && (
+                    <div className="mt-2">
+                      <label className={labelClass}>Fecha de vencimiento de la primera cuota</label>
+                      <input
+                        type="date"
+                        value={formSusc.venc_personalizada}
+                        onChange={(e) => setFormSusc((p) => ({ ...p, venc_personalizada: e.target.value }))}
+                        className={inputClass}
+                      />
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-slate-500">
+                    La recurrencia (cuota) arranca según esto; la factura de implementación se maneja aparte.
+                  </p>
+                </div>
               </div>
             )}
           </div>

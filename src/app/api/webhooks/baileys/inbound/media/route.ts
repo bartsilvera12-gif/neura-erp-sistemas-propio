@@ -118,7 +118,26 @@ export async function POST(request: NextRequest) {
     const subida = await supabase.storage
       .from(CHAT_MEDIA_BUCKET)
       .upload(ruta, bytes, { contentType: mime, upsert: true });
-    if (subida.error) throw new Error("upload: " + (subida.error.message ?? "desconocido"));
+    if (subida.error) {
+      const detalle = subida.error.message ?? "desconocido";
+      // El bucket tiene su propio tope de tamaño, más bajo que el de esta ruta. Cuando lo
+      // rechaza por eso, insistir no sirve: el archivo va a pesar lo mismo siempre. Se
+      // devuelve 413 para que el puente no reintente durante quince minutos, y se deja dicho
+      // el tamaño, que es el dato que hace falta para subir el tope.
+      if (/exceed|too large|maximum size|payload/i.test(detalle)) {
+        console.warn(LOG, "archivo_mas_grande_que_el_bucket", {
+          waMessageId,
+          tipo,
+          mb: Math.round((bytes.length / 1048576) * 10) / 10,
+          detalle,
+        });
+        return NextResponse.json(
+          { ok: false, error: `El archivo (${Math.round(bytes.length / 1048576)} MB) supera el límite del almacenamiento.` },
+          { status: 413 }
+        );
+      }
+      throw new Error("upload: " + detalle);
+    }
 
     const { data: pub } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(ruta);
     const publicUrl = pub?.publicUrl;

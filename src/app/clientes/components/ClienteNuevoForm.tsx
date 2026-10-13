@@ -276,14 +276,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
     // El tipo de servicio es obligatorio. Si es SaaS o Mixto, además exige elegir un plan.
     if (!form.tipo_servicio_cliente.trim())
       return setError("El tipo de servicio es obligatorio.");
-    if (esTipoRecurrente) {
-      if (form.condicion_pago !== "MENSUAL")
-        return setError(`Los clientes ${etiquetaTipoRecurrente} son mensuales: la condición de pago debe ser Mensual.`);
-      if (!formSusc.plan_id.trim())
-        return setError(`Para clientes ${etiquetaTipoRecurrente} el plan es obligatorio.`);
-    }
+    // SaaS/Mixto exigen plan (generan suscripción). Web/otros: plan opcional.
+    if (esTipoRecurrente && !formSusc.plan_id.trim())
+      return setError(`Para clientes ${etiquetaTipoRecurrente} el plan es obligatorio.`);
 
-    if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
+    // Si hay plan → se crea la SUSCRIPCIÓN: validar sus datos.
+    if (formSusc.plan_id && form.estado === "activo") {
       const dur = parseInt(formSusc.duracion_meses, 10) || 0;
       const diaFac = parseInt(formSusc.dia_facturacion, 10) || 0;
       const diaVenc = parseInt(formSusc.dia_vencimiento, 10) || 0;
@@ -291,16 +289,14 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
       if (diaFac < 1 || diaFac > 28) return setError("El día de facturación debe estar entre 1 y 28.");
       if (diaVenc < 1 || diaVenc > 31) return setError("El día de vencimiento debe estar entre 1 y 31.");
       if (diaVenc <= diaFac) return setError("El día de vencimiento debe ser mayor al día de facturación.");
-      if (!formSusc.plan_id.trim()) return setError("Seleccioná un plan para clientes mensuales.");
       const precio = parseFloat(formSusc.precio) || 0;
-      if (precio <= 0) return setError("El precio debe ser mayor a 0.");
-      if (formSusc.emision === "override" && !formSusc.venc_personalizada.trim())
-        return setError("Elegí la fecha de vencimiento de la primera cuota (fecha personalizada).");
+      if (precio <= 0) return setError("El plan elegido no tiene un precio válido.");
     }
 
-    if (form.condicion_pago === "CONTADO" && formContado.emitir_factura) {
+    // Factura inicial (implementación): venta única, independiente. Si se marca, validar monto.
+    if (formContado.emitir_factura) {
       const monto = parseFloat(formContado.monto) || 0;
-      if (monto <= 0) return setError("El monto de la factura debe ser mayor a 0.");
+      if (monto <= 0) return setError("El monto de la factura inicial (implementación) debe ser mayor a 0.");
     }
 
     if (gestionTributariaEmpresa && formTributario.perfil_activo) {
@@ -402,11 +398,10 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
       }
     }
 
-    if (form.condicion_pago === "MENSUAL" && form.estado === "activo") {
+    // SUSCRIPCIÓN: se crea cuando hay plan (independiente de la factura inicial).
+    if (formSusc.plan_id && form.estado === "activo") {
       const plan = planes.find((p) => p.id === formSusc.plan_id);
-      // "override" (fecha personalizada) = período "actual" + fecha de vencimiento elegida
-      // (el override gana sobre el período y deriva el mes de la cuota del venc elegido).
-      const esOverride = formSusc.emision === "override";
+      const periodo = formSusc.emision === "actual" ? "actual" : "siguiente";
       await apiCreateSuscripcion({
         cliente_id: clienteId,
         plan_id: formSusc.plan_id || null,
@@ -416,12 +411,12 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
         duracion_meses: parseInt(formSusc.duracion_meses, 10) || 12,
         dia_facturacion: parseInt(formSusc.dia_facturacion, 10) || 1,
         dia_vencimiento: parseInt(formSusc.dia_vencimiento, 10) || 10,
-        periodo_factura: esOverride ? "actual" : (formSusc.emision as "actual" | "siguiente" | "none"),
-        fecha_vencimiento_override: esOverride ? formSusc.venc_personalizada || null : null,
+        periodo_factura: periodo as "actual" | "siguiente",
       });
     }
 
-    if (form.condicion_pago === "CONTADO" && formContado.emitir_factura) {
+    // FACTURA INICIAL (implementación): venta única comisionable. Para TODOS, si se marca.
+    if (formContado.emitir_factura) {
       const monto = parseFloat(formContado.monto) || 0;
       if (monto > 0) {
         const hoy = new Date().toISOString().slice(0, 10);
@@ -432,7 +427,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
           monto,
           tipo: "contado",
           moneda: form.moneda_preferida,
-          descripcion_linea: formContado.descripcion.trim() || "Venta al contado",
+          descripcion_linea: formContado.descripcion.trim() || "Implementación / puesta en marcha",
         });
       }
     }
@@ -814,7 +809,7 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   value={form.condicion_pago}
                   onChange={handleChange}
                   className={inputClass}
-                  disabled={esTipoRecurrente}
+                  disabled={esTipoRecurrente || !!formSusc.plan_id}
                 >
                   <option value="CONTADO">Contado</option>
                   <option value="15 DÍAS">15 días</option>
@@ -823,9 +818,9 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                   <option value="90 DÍAS">90 días</option>
                   <option value="MENSUAL">Mensual</option>
                 </select>
-                {esTipoRecurrente ? (
+                {esTipoRecurrente || formSusc.plan_id ? (
                   <p className="mt-1 text-xs text-slate-500">
-                    Los clientes {etiquetaTipoRecurrente} son mensuales: se crea una suscripción con el plan elegido.
+                    Con plan elegido el cliente es mensual: se crea la suscripción. La factura de implementación es aparte.
                   </p>
                 ) : null}
               </div>
@@ -881,11 +876,19 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                 <select
                   value={formSusc.plan_id}
                   onChange={(e) => {
-                    const p = planes.find((x) => x.id === e.target.value);
+                    const id = e.target.value;
+                    const p = planes.find((x) => x.id === id);
                     setFormSusc((prev) => ({
                       ...prev,
-                      plan_id: e.target.value,
-                      precio: p ? String(p.precio) : prev.precio,
+                      plan_id: id,
+                      // El precio de la suscripción SIEMPRE sale del plan (no editable).
+                      precio: p ? String(p.precio) : "",
+                    }));
+                    // Elegir plan ⇒ el cliente pasa a Mensual (se crea y factura la suscripción
+                    // recurrente). Sin plan vuelve a Contado (salvo SaaS/Mixto, que exigen plan).
+                    setForm((prev) => ({
+                      ...prev,
+                      condicion_pago: id ? "MENSUAL" : esTipoRecurrente ? "MENSUAL" : "CONTADO",
                     }));
                   }}
                   className={inputClass}
@@ -900,55 +903,55 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
               </div>
             </div>
 
-            {form.condicion_pago === "CONTADO" && (
-              <div className={planBoxCls}>
-                <SectionTitle>Facturación al contado</SectionTitle>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={formContado.emitir_factura}
-                    onChange={(e) => setFormContado((p) => ({ ...p, emitir_factura: e.target.checked }))}
-                    className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
-                  />
-                  Emitir factura inicial
-                </label>
-                {formContado.emitir_factura && (
-                  <>
-                    <div>
-                      <label className={labelClass}>Monto (Gs.)</label>
-                      <MontoInput
-                        value={formContado.monto}
-                        onChange={(n) => setFormContado((p) => ({ ...p, monto: String(n) }))}
-                        className={inputClass}
-                        placeholder="Monto de la factura"
-                      />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Descripción</label>
-                      <input
-                        type="text"
-                        value={formContado.descripcion}
-                        onChange={(e) => setFormContado((p) => ({ ...p, descripcion: e.target.value }))}
-                        className={inputClass}
-                        placeholder="Venta al contado"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            {/* Factura inicial (implementación): venta ÚNICA, comisionable. Disponible para TODOS
+                los clientes (también SaaS/Mixto, además de su suscripción). Es independiente de
+                la condición de pago y de la suscripción. */}
+            <div className={planBoxCls}>
+              <SectionTitle>Factura inicial (implementación)</SectionTitle>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={formContado.emitir_factura}
+                  onChange={(e) => setFormContado((p) => ({ ...p, emitir_factura: e.target.checked }))}
+                  className="h-4 w-4 rounded border-slate-300 text-[#4FAEB2] accent-[#4FAEB2] focus:ring-[#4FAEB2]/30"
+                />
+                Emitir factura inicial (cobro único de implementación)
+              </label>
+              {formContado.emitir_factura && (
+                <>
+                  <div>
+                    <label className={labelClass}>Monto (Gs.)</label>
+                    <MontoInput
+                      value={formContado.monto}
+                      onChange={(n) => setFormContado((p) => ({ ...p, monto: String(n) }))}
+                      className={inputClass}
+                      placeholder="Costo de implementación"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Descripción</label>
+                    <input
+                      type="text"
+                      value={formContado.descripcion}
+                      onChange={(e) => setFormContado((p) => ({ ...p, descripcion: e.target.value }))}
+                      className={inputClass}
+                      placeholder="Implementación / puesta en marcha"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
 
-            {form.condicion_pago === "MENSUAL" && (
+            {formSusc.plan_id && (
               <div className={planBoxCls}>
                 <SectionTitle>Configuración de suscripción</SectionTitle>
                 <div>
-                  <label className={labelClass}>Precio (Gs.)</label>
-                  <MontoInput
-                    value={formSusc.precio}
-                    onChange={(n) => setFormSusc((p) => ({ ...p, precio: String(n) }))}
-                    className={inputClass}
-                    placeholder="Monto mensual"
-                  />
+                  <label className={labelClass}>
+                    Precio mensual (Gs.) <span className="font-normal text-slate-400">· lo define el plan</span>
+                  </label>
+                  <div className={`${inputClass} flex items-center bg-slate-50 text-slate-700`}>
+                    {(parseFloat(formSusc.precio) || 0).toLocaleString("es-PY")}
+                  </div>
                 </div>
                 <div>
                   <label className={labelClass}>Duración contrato (meses)</label>
@@ -987,26 +990,13 @@ function ClienteNuevoFormInner({ variant = "page", onCreated, onCancel, fromPros
                 <div>
                   <label className={labelClass}>¿Cuándo emitir la primera cuota?</label>
                   <select
-                    value={formSusc.emision}
+                    value={formSusc.emision === "siguiente" || formSusc.emision === "actual" ? formSusc.emision : "siguiente"}
                     onChange={(e) => setFormSusc((p) => ({ ...p, emision: e.target.value as typeof p.emision }))}
                     className={inputClass}
                   >
                     <option value="siguiente">Mes siguiente (emite el 01, vence el día de vencimiento del mes que viene)</option>
                     <option value="actual">Este mes (emite hoy)</option>
-                    <option value="override">Fecha personalizada</option>
-                    <option value="none">No emitir todavía (la genera el cron el día 01)</option>
                   </select>
-                  {formSusc.emision === "override" && (
-                    <div className="mt-2">
-                      <label className={labelClass}>Fecha de vencimiento de la primera cuota</label>
-                      <input
-                        type="date"
-                        value={formSusc.venc_personalizada}
-                        onChange={(e) => setFormSusc((p) => ({ ...p, venc_personalizada: e.target.value }))}
-                        className={inputClass}
-                      />
-                    </div>
-                  )}
                   <p className="mt-1 text-xs text-slate-500">
                     La recurrencia (cuota) arranca según esto; la factura de implementación se maneja aparte.
                   </p>

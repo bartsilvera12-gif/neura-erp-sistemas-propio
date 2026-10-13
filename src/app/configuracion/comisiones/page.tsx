@@ -12,6 +12,7 @@ import {
 } from "@/components/config/global-config-primitives";
 import { GlobalConfigSubpageShell } from "@/components/config/GlobalConfigSubpageShell";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import MatrizComisionEditor from "./_matriz/MatrizComisionEditor";
 import {
   getUnknownErrorKeys,
   serializeUnknownError,
@@ -396,6 +397,7 @@ export default function ConfiguracionComisionesPage() {
     <GlobalConfigSubpageShell
       title="Comisiones"
       description="Política comercial y escalas por montos. El motor de cálculo se habilitará en una etapa posterior."
+      maxWidthClassName="max-w-none"
     >
       {success && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
@@ -680,6 +682,10 @@ export default function ConfiguracionComisionesPage() {
           )}
         </div>
       )}
+
+      <div className="mt-6">
+        <MatrizComisionEditor />
+      </div>
     </GlobalConfigSubpageShell>
   );
 }

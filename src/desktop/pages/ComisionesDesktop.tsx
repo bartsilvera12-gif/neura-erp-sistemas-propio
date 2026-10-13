@@ -138,6 +138,7 @@ type ACobrarFactura = {
   vendedor_usuario_id: string;
   /** Proyecto asociado a la factura (estado, PM, tiempo en estado). null si no tiene. */
   proyecto?: ACobrarProyecto | null;
+  monto_suscripcion?: number | null;
 };
 
 type ACobrarVendedor = {
@@ -212,7 +213,7 @@ function ACobrarTablaVendedor({
                 ["Fecha", "left"],
                 ["Tipo de proyecto", "left"],
                 ["Estado", "left"],
-                ["PM", "left"],
+                ["Monto suscripción", "right"],
                 ["En estado", "left"],
                 ["Total", "right"],
                 ["Saldo a cobrar", "right"],
@@ -251,8 +252,8 @@ function ACobrarTablaVendedor({
                   </span>
                 )}
               </td>
-              <td className="max-w-[190px] truncate px-3 py-2 text-slate-500" title={f.proyecto?.pm_nombre ?? undefined}>
-                {f.proyecto?.pm_nombre ?? <span className="text-slate-300">—</span>}
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">
+                {f.monto_suscripcion ? `₲ ${fmtMoney(f.monto_suscripcion)}` : <span className="text-slate-300">—</span>}
               </td>
               <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-500">
                 {f.proyecto ? fmtDur(f.proyecto.tiempo_en_estado_ms) : <span className="text-slate-300">—</span>}
@@ -326,55 +327,6 @@ function ACobrarBloqueVendedor({
  * Panel "A cobrar (comisionable)". `sellerView`=true → un solo asesor (tabla plana);
  * admin → agrupado por asesor.
  */
-function ACobrarPanel({
-  vendedores,
-  sellerView,
-  onCobrar,
-}: {
-  vendedores: ACobrarVendedor[];
-  sellerView: boolean;
-  onCobrar?: (f: ACobrarFactura) => void;
-}) {
-  const total = vendedores.reduce((s, v) => s + (v.total_a_cobrar ?? 0), 0);
-  return (
-    <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm ring-1 ring-amber-100">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900">A cobrar (comisionable)</h3>
-          <p className="mt-0.5 text-[11px] text-slate-500">
-            Saldos pendientes de facturas que te generan comisión al cobrarlas. No depende de si hubo pago este
-            mes: es lo que tenés que perseguir.
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Total a cobrar</p>
-          <p className="text-xl font-bold tabular-nums text-amber-800">₲ {fmtMoney(total)}</p>
-        </div>
-      </div>
-      {vendedores.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-6 text-center text-sm text-slate-400">
-          No hay facturas comisionables con saldo pendiente. ¡Todo cobrado!
-        </p>
-      ) : sellerView ? (
-        <ACobrarTablaVendedor v={vendedores[0]!} onCobrar={onCobrar} />
-      ) : (
-        <div className="space-y-4">
-          {vendedores.map((v) => (
-            <div key={v.vendedor_usuario_id} className="rounded-xl border border-slate-200 p-2">
-              <div className="mb-1 flex items-center justify-between px-1">
-                <span className="text-xs font-semibold text-slate-700">{v.vendedor_nombre}</span>
-                <span className="text-xs font-bold tabular-nums text-amber-800">
-                  ₲ {fmtMoney(v.total_a_cobrar)}
-                </span>
-              </div>
-              <ACobrarTablaVendedor v={v} onCobrar={onCobrar} />
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ── Búsqueda local de movimientos (no altera cálculo ni totales) ─────────────
 
@@ -988,13 +940,22 @@ function ExcluidosToggle({
   );
 }
 
-function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?: OverrideCtx }) {
+function MovimientosTable({
+  row,
+  overrideCtx,
+  hideExcluidos = false,
+}: {
+  row: VendedorRow;
+  overrideCtx?: OverrideCtx;
+  /** Oculta el toggle "Mostrar excluidos" (el asesor no debe ver las líneas excluidas). */
+  hideExcluidos?: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   const comisionables = useMemo(() => row.lineas.filter((l) => l.comisiona !== false), [row.lineas]);
   const excluidas = useMemo(() => row.lineas.filter((l) => l.comisiona === false), [row.lineas]);
-  const base = mostrarExcluidos ? excluidas : comisionables;
+  const base = !hideExcluidos && mostrarExcluidos ? excluidas : comisionables;
   const lineasFiltradas = useMemo(
     () => base.filter((ln) => lineaMatchesQuery(ln, query)),
     [base, query]
@@ -1006,11 +967,13 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
         <div className="flex-1 min-w-[200px]">
           <MovimientosSearch value={query} onChange={setQuery} shown={lineasFiltradas.length} total={base.length} />
         </div>
-        <ExcluidosToggle
-          mostrar={mostrarExcluidos}
-          onToggle={() => setMostrarExcluidos((v) => !v)}
-          countExcluidos={excluidas.length}
-        />
+        {!hideExcluidos && (
+          <ExcluidosToggle
+            mostrar={mostrarExcluidos}
+            onToggle={() => setMostrarExcluidos((v) => !v)}
+            countExcluidos={excluidas.length}
+          />
+        )}
       </div>
 
       {lineasFiltradas.length === 0 ? (
@@ -1133,82 +1096,6 @@ function MovimientosTable({ row, overrideCtx }: { row: VendedorRow; overrideCtx?
   );
 }
 
-function SellerMovimientosList({ row }: { row: VendedorRow }) {
-  const [query, setQuery] = useState("");
-  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
-
-  const comisionables = useMemo(() => row.lineas.filter((l) => l.comisiona !== false), [row.lineas]);
-  const excluidas = useMemo(() => row.lineas.filter((l) => l.comisiona === false), [row.lineas]);
-  const base = mostrarExcluidos ? excluidas : comisionables;
-  const lineasFiltradas = useMemo(() => base.filter((ln) => lineaMatchesQuery(ln, query)), [base, query]);
-
-  return (
-    <div className="mt-3 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex-1 min-w-[200px]">
-          <MovimientosSearch value={query} onChange={setQuery} shown={lineasFiltradas.length} total={base.length} />
-        </div>
-        <ExcluidosToggle
-          mostrar={mostrarExcluidos}
-          onToggle={() => setMostrarExcluidos((v) => !v)}
-          countExcluidos={excluidas.length}
-        />
-      </div>
-      {lineasFiltradas.length === 0 ? (
-        <MovimientosEmptyState />
-      ) : (
-        <div className="grid gap-3">
-          {lineasFiltradas.map((ln, i) => (
-            <article
-              key={`${ln.pago_id ?? ""}-${ln.factura_id ?? ""}-${i}`}
-              className={`rounded-2xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md ${
-                mostrarExcluidos ? "border-amber-200" : "border-slate-200"
-              }`}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{ln.cliente_label}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {ln.numero_factura ?? "Sin comprobante"} · {formatDate(ln.fecha)}
-                  </p>
-                  {mostrarExcluidos ? (
-                    <p className="mt-1 text-[11px] font-medium text-amber-700">{motivoExclusionLabel(ln)}</p>
-                  ) : null}
-                </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    Comisión (variable)
-                  </p>
-                  <p className="mt-0.5 text-base font-semibold tabular-nums text-[#3F8E91]">
-                    ₲ {fmtMoney(ln.comision_estimada_linea)}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Monto total</p>
-                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">₲ {fmtMoney(ln.factura_monto_total ?? 0)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Monto pagado</p>
-                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">₲ {fmtMoney(ln.monto_base)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Fecha de pago</p>
-                  <p className="mt-0.5 text-sm font-medium tabular-nums text-slate-700">{formatDate(ln.fecha)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Fecha alta cliente</p>
-                  <p className="mt-0.5 text-sm font-medium tabular-nums text-slate-700">{formatDate(ln.cliente_alta ?? null)}</p>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Vendedor view (vista del vendedor autenticado) ───────────────────────────
 
@@ -1231,6 +1118,10 @@ function renderVendedorView({
 }) {
   // "Pendiente de cobro" del asesor = su total comisionable a cobrar (mismo número que su lista).
   const sellerACobrarTotal = aCobrar[0]?.total_a_cobrar ?? 0;
+  // Fila enriquecida para reutilizar los MISMOS componentes que la vista admin (TotalsStrip, etc.).
+  const sellerRowView: VendedorRow | null = sellerRow
+    ? { ...sellerRow, a_cobrar_total: sellerACobrarTotal, recurrencia_mes: recurrencia?.total_recurrencia ?? 0 }
+    : null;
   return (
     <div className="space-y-6 pb-10">
       <section className="rounded-2xl border border-[#4FAEB2]/45 bg-white px-6 py-4 shadow-sm">
@@ -1262,9 +1153,7 @@ function renderVendedorView({
         </div>
       </section>
 
-      <ACobrarPanel vendedores={aCobrar} sellerView onCobrar={onCobrar} />
-
-      {!sellerRow ? (
+      {!sellerRowView ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-12 text-center shadow-sm">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#4FAEB2]/25 bg-[#4FAEB2]/10 text-[#4FAEB2]">
             <svg
@@ -1291,6 +1180,7 @@ function renderVendedorView({
         </div>
       ) : (
         <>
+          {/* Mismo bloque que la vista admin por-vendedor: dashboard → tabla de movimientos → A cobrar. */}
           <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -1306,7 +1196,7 @@ function renderVendedorView({
               </div>
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                  sellerRow.max_escala_alcanzada
+                  sellerRowView.max_escala_alcanzada
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                     : "border-[#4FAEB2]/30 bg-[#4FAEB2]/10 text-[#3F8E91]"
                 }`}
@@ -1314,55 +1204,30 @@ function renderVendedorView({
                 <span
                   aria-hidden="true"
                   className={`h-1.5 w-1.5 rounded-full ${
-                    sellerRow.max_escala_alcanzada ? "bg-emerald-500" : "bg-[#4FAEB2]"
+                    sellerRowView.max_escala_alcanzada ? "bg-emerald-500" : "bg-[#4FAEB2]"
                   }`}
                 />
-                {sellerRow.max_escala_alcanzada ? "Máxima escala alcanzada" : "En progreso"}
+                {sellerRowView.max_escala_alcanzada ? "Máxima escala alcanzada" : "En progreso"}
               </span>
             </div>
 
-            <ScaleProgress row={sellerRow} />
-
-            <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
-              <Kpi label="Base comisionable" value={`₲ ${fmtMoney(sellerRow.revenue_base)}`} />
-              <Kpi
-                label="Comisión estimada"
-                value={`₲ ${fmtMoney(sellerRow.comision_estimada)}`}
-                accent="featured"
-                sub={
-                  (sellerRow.premio_fijo_aplicado ?? 0) > 0
-                    ? `Variable ₲ ${fmtMoney(sellerRow.comision_variable ?? sellerRow.comision_estimada)} + Premio fijo ₲ ${fmtMoney(sellerRow.premio_fijo_aplicado ?? 0)}`
-                    : undefined
-                }
-              />
-              <Kpi
-                label="Pendiente de cobro"
-                value={`₲ ${fmtMoney(sellerACobrarTotal)}`}
-                accent="warning"
-              />
-              <Kpi
-                label="Recurrencia nueva del mes"
-                value={`₲ ${fmtMoney(recurrencia?.total_recurrencia ?? 0)}`}
-                sub="SaaS/Mixto nuevos · no suma al revenue"
-              />
-            </div>
+            <ScaleProgress row={sellerRowView} />
+            <TotalsStrip row={sellerRowView} />
           </section>
 
-          <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm open:shadow-md">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
-              <div>
-                <p className="font-semibold text-slate-900">Mis clientes y movimientos</p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {sellerRow.cantidad_movimientos} movimientos · Pendiente de cobro ₲{" "}
-                  {fmtMoney(sellerACobrarTotal)}
-                </p>
-              </div>
-              <ChevronDown className="h-5 w-5 shrink-0 text-[#4FAEB2] transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="space-y-4 border-t border-slate-100 px-5 pb-5">
-              <SellerMovimientosList row={sellerRow} />
+          <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <p className="font-semibold text-slate-900">Mis clientes y movimientos</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {sellerRowView.cantidad_movimientos} movimientos · Pendiente de cobro ₲ {fmtMoney(sellerACobrarTotal)}
+              </p>
             </div>
-          </details>
+            {/* Misma tabla que la vista admin, pero solo con sus datos, sin acción de excluir
+                ni botón "Mostrar excluidos" (el asesor no debe ver las líneas excluidas). */}
+            <MovimientosTable row={sellerRowView} hideExcluidos />
+          </section>
+
+          <ACobrarBloqueVendedor aCobrar={aCobrar[0] ?? null} onCobrar={onCobrar} />
         </>
       )}
     </div>
@@ -1524,21 +1389,10 @@ function renderAdminView({
                 (kpis.lineas_excluidas ?? 0) > 0 && onShowExcluidas ? onShowExcluidas : undefined
               }
             />
-            <Kpi label="Vendedores con comisión" value={kpis.vendedores_con_comision} />
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi
               label="Recurrencia nueva del mes"
               value={`₲ ${fmtMoney(recurrencia?.total_recurrencia ?? 0)}`}
               sub="SaaS/Mixto nuevos · no suma al revenue"
-            />
-            <Kpi
-              label="Movimientos sin vendedor"
-              value={kpis.fuentes_sin_vendedor}
-              sub={
-                kpis.fuentes_sin_vendedor > 0 ? "Se incluirán al asignar vendedor responsable" : undefined
-              }
-              accent={kpis.fuentes_sin_vendedor > 0 ? "warning" : "neutral"}
             />
           </div>
           {kpis.fuentes_sin_vendedor > 0 && (

@@ -925,6 +925,8 @@ export async function GET(request: Request) {
       vendedor_usuario_id: string;
       /** Proyecto asociado a la factura (estado, PM, tiempo en estado). null si no tiene. */
       proyecto: ACobrarProyecto | null;
+      /** Monto de suscripción vigente del cliente (si tiene). Solo-lectura para la tabla. */
+      monto_suscripcion: number | null;
     };
     const aCobrarPorVendor = new Map<string, { items: ACobrarItem[]; total: number }>();
     for (const f of facturasSaldo) {
@@ -960,6 +962,7 @@ export async function GET(request: Request) {
         moneda: String((f as { moneda?: unknown }).moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
         vendedor_usuario_id: vid,
         proyecto: null,
+        monto_suscripcion: montoSuscPorCliente.get(clienteId) ?? null,
       });
       agg.total += saldo;
     }

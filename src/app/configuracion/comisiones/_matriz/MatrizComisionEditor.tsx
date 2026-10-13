@@ -148,14 +148,20 @@ export default function MatrizComisionEditor() {
 
       {/* Matriz */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
+        <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+          <colgroup>
+            <col className="w-[132px]" />
+            {recurrencias.map((c) => (
+              <col key={c} />
+            ))}
+          </colgroup>
           <thead>
-            <tr>
-              <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-slate-200">
+              <th className="sticky left-0 z-10 bg-white px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500">
                 Revenue \ Recurrencia
               </th>
               {recurrencias.map((c) => (
-                <th key={c} className="px-2 py-2 text-center text-[11px] font-bold text-[#3F8E91]">
+                <th key={c} className="bg-[#4FAEB2]/5 px-3 py-3 text-center text-sm font-bold text-[#3F8E91]">
                   {fmtMM(c)}
                 </th>
               ))}
@@ -164,26 +170,26 @@ export default function MatrizComisionEditor() {
           <tbody className="divide-y divide-slate-100">
             {revenues.map((r) => (
               <tr key={r} className="hover:bg-[#4FAEB2]/[0.03]">
-                <td className="sticky left-0 z-10 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700">
+                <td className="sticky left-0 z-10 bg-white px-3 py-2.5 text-left text-sm font-bold text-slate-700">
                   {fmtMM(r)}
                 </td>
                 {recurrencias.map((c) => {
                   const raw = pct[r]?.[c] ?? "";
                   const p = parseFloat(raw) || 0;
                   return (
-                    <td key={c} className="px-1.5 py-1.5 align-top">
-                      <div className="flex items-center gap-1">
+                    <td key={c} className="px-2.5 py-2 align-top">
+                      <div className="relative">
                         <input
                           type="text"
                           inputMode="decimal"
                           value={raw}
                           disabled={!puedeEditar}
                           onChange={(e) => setCelda(r, c, e.target.value)}
-                          className={inputCls}
+                          className={`${inputCls} pr-6 text-base`}
                         />
-                        <span className="text-[11px] text-slate-400">%</span>
+                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">%</span>
                       </div>
-                      <div className="mt-0.5 text-right text-[10px] text-slate-400">≈ {fmtGs((r * p) / 100)}</div>
+                      <div className="mt-1 text-right text-[11px] font-medium text-slate-400">≈ Gs {fmtGs((r * p) / 100)}</div>
                     </td>
                   );
                 })}

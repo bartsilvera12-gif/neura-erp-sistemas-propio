@@ -26,18 +26,46 @@ function friendlyYcloudError(code: string, rawMsg: string): string {
   }
 }
 
+/**
+ * Tope de espera para hablar con YCloud.
+ *
+ * Sin esto el `fetch` esperaba para siempre: si YCloud no contestaba, el pedido quedaba
+ * colgado hasta que el servidor web de adelante lo cortaba a los 60 s con un 502 sin cuerpo.
+ * Al asesor le aparecía "Error al enviar (HTTP 502)" —un código pelado, sin motivo— y en los
+ * logs no quedaba nada. Pasó con el canal contable: nadie podía escribir desde el inbox y
+ * nadie sabía por qué.
+ *
+ * 20 segundos es de sobra para una API que normalmente responde en menos de uno.
+ */
+const YCLOUD_TIMEOUT_MS = 20_000;
+
 async function postYCloudWhatsappMessage(
   apiKey: string,
   body: Record<string, unknown>
 ): Promise<SendWhatsAppTextResult> {
-  const res = await fetch(YCLOUD_WHATSAPP_MESSAGES_URL, {
-    method: "POST",
-    headers: {
-      "X-API-Key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(YCLOUD_WHATSAPP_MESSAGES_URL, {
+      method: "POST",
+      headers: {
+        "X-API-Key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(YCLOUD_TIMEOUT_MS),
+    });
+  } catch (e) {
+    const abortado = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    console.warn("[ycloud-send] sin_respuesta", {
+      motivo: abortado ? "timeout" : e instanceof Error ? e.message : String(e),
+    });
+    return {
+      ok: false,
+      error: abortado
+        ? `WhatsApp (YCloud) no respondió en ${YCLOUD_TIMEOUT_MS / 1000} s. El mensaje NO se envió. Probá de nuevo; si sigue, el servidor no está pudiendo salir a internet.`
+        : `No se pudo contactar a WhatsApp (YCloud): ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
 
   const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {

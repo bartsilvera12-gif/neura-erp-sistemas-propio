@@ -12,6 +12,7 @@ import {
 } from "@/components/config/global-config-primitives";
 import { GlobalConfigSubpageShell } from "@/components/config/GlobalConfigSubpageShell";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import MatrizComisionEditor from "./_matriz/MatrizComisionEditor";
 import {
   getUnknownErrorKeys,
   serializeUnknownError,
@@ -680,6 +681,10 @@ export default function ConfiguracionComisionesPage() {
           )}
         </div>
       )}
+
+      <div className="mt-6">
+        <MatrizComisionEditor />
+      </div>
     </GlobalConfigSubpageShell>
   );
 }

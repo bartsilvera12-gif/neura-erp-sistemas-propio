@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { puedeEnLaConversacion } from "@/lib/chat/puede-en-conversacion";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function POST(
       { status: 401 }
     );
   }
-  const { supabase, empresa_id, usuario_id } = ctx;
+  const { supabase, catalogSr, empresa_id, usuario_id } = ctx;
 
   const body = (await request.json().catch(() => null)) as { sticker_url?: string } | null;
   const stickerUrl = typeof body?.sticker_url === "string" ? body.sticker_url.trim() : "";
@@ -31,31 +32,26 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Se requiere sticker_url" }, { status: 400 });
   }
 
+  // Puede quien la tiene asignada, y quien la ve por su alcance omnicanal
+  // (supervisión, PM, administración). Exigir sólo lo primero dejaba a quien
+  // administra el chat mirando la conversación en la app sin poder contestar,
+  // mientras en el escritorio contestaba sin problema.
   try {
-    const { data: agRows } = await supabase
-      .from("chat_agents")
-      .select("id")
-      .eq("empresa_id", empresa_id)
-      .eq("usuario_id", usuario_id);
-    const agentIds = new Set((agRows ?? []).map((r) => String((r as { id: string }).id)));
-
-    const { data: conv } = await supabase
-      .from("chat_conversations")
-      .select("assigned_agent_id")
-      .eq("id", conversationId)
-      .eq("empresa_id", empresa_id)
-      .maybeSingle();
-
-    if (!conv) return NextResponse.json({ ok: false, error: "Conversación no encontrada" }, { status: 404 });
-    const assignedAgentId = (conv as { assigned_agent_id: string | null }).assigned_agent_id;
-    if (!assignedAgentId || !agentIds.has(String(assignedAgentId))) {
+    const veredicto = await puedeEnLaConversacion({
+      supabase,
+      catalogSr,
+      empresaId: empresa_id,
+      usuarioId: usuario_id,
+      conversationId,
+    });
+    if (!veredicto.ok) {
       return NextResponse.json(
-        { ok: false, error: "No autorizado para esta conversación", code: "forbidden" },
-        { status: 403 }
+        { ok: false, error: veredicto.error, ...(veredicto.code ? { code: veredicto.code } : {}) },
+        { status: veredicto.status }
       );
     }
   } catch (e) {
-    console.error("[mobile send-sticker] ownership check", e instanceof Error ? e.message : String(e));
+    console.error("[mobile send-sticker] permiso", e instanceof Error ? e.message : String(e));
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 

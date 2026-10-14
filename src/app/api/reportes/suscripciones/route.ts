@@ -48,6 +48,7 @@ type Agg = {
   por_cobrar_total: number; // deuda total: saldo de TODAS las cuotas impagas, cualquier mes
   por_cobrar_exigible: number; // de esa deuda, lo exigible al mes: vencido + lo que vence este mes (excluye cuotas de meses futuros ya emitidas)
   cuotas_impagas: number; // cantidad de cuotas con saldo pendiente (cualquier mes)
+  cuotas_exigibles: number; // cantidad de cuotas EXIGIBLES (vence ≤ este mes)
 };
 const emptyAgg = (): Agg => ({
   facturado_mes: 0,
@@ -58,6 +59,7 @@ const emptyAgg = (): Agg => ({
   por_cobrar_total: 0,
   por_cobrar_exigible: 0,
   cuotas_impagas: 0,
+  cuotas_exigibles: 0,
 });
 
 export async function GET(request: NextRequest) {
@@ -290,7 +292,10 @@ export async function GET(request: NextRequest) {
       // Mismo criterio que Seguimiento Cobranzas (no adelantar la cuota del próximo mes).
       const vencYm = String(f.fecha_vencimiento ?? "").slice(0, 7);
       const esExigible = !vencYm || vencYm <= ym;
-      if (esExigible) addAgg(tipo, "por_cobrar_exigible", saldo);
+      if (esExigible) {
+        addAgg(tipo, "por_cobrar_exigible", saldo);
+        addAgg(tipo, "cuotas_exigibles", 1);
+      }
       if (f.suscripcion_id) {
         const sub = String(f.suscripcion_id);
         adeudadoBySub.set(sub, (adeudadoBySub.get(sub) ?? 0) + saldo);

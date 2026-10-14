@@ -252,7 +252,9 @@ export async function GET(request: NextRequest) {
     };
     const factBySub = new Map<string, { estado: string; saldo: number; monto: number }>();
     const anuladaBySub = new Set<string>();
-    const adeudadoBySub = new Map<string, number>();
+    const adeudadoBySub = new Map<string, number>();          // saldo impago TOTAL (cualquier mes)
+    const adeudadoExigibleBySub = new Map<string, number>();  // de eso, lo EXIGIBLE (vence ≤ este mes)
+    const adelantadoBySub = new Map<string, number>();        // lo ADELANTADO (vence el mes que viene+)
     const cobradoBySub = new Map<string, number>();
 
     // Facturas del mes / mes anterior → facturado (emitido) por tipo + estado del mes por sub.
@@ -287,8 +289,14 @@ export async function GET(request: NextRequest) {
       // Exigible al mes: vencido o vence este mes (excluye cuotas de meses FUTUROS ya emitidas).
       // Mismo criterio que Seguimiento Cobranzas (no adelantar la cuota del próximo mes).
       const vencYm = String(f.fecha_vencimiento ?? "").slice(0, 7);
-      if (!vencYm || vencYm <= ym) addAgg(tipo, "por_cobrar_exigible", saldo);
-      if (f.suscripcion_id) adeudadoBySub.set(String(f.suscripcion_id), (adeudadoBySub.get(String(f.suscripcion_id)) ?? 0) + saldo);
+      const esExigible = !vencYm || vencYm <= ym;
+      if (esExigible) addAgg(tipo, "por_cobrar_exigible", saldo);
+      if (f.suscripcion_id) {
+        const sub = String(f.suscripcion_id);
+        adeudadoBySub.set(sub, (adeudadoBySub.get(sub) ?? 0) + saldo);
+        if (esExigible) adeudadoExigibleBySub.set(sub, (adeudadoExigibleBySub.get(sub) ?? 0) + saldo);
+        else adelantadoBySub.set(sub, (adelantadoBySub.get(sub) ?? 0) + saldo);
+      }
     }
     // Pagos de suscripción (caja) → cobrado del mes por tipo (cualquier mes de emisión).
     for (const p of pagos) {
@@ -346,7 +354,11 @@ export async function GET(request: NextRequest) {
           facturado_mes: Math.round(fact?.monto ?? 0),
           saldo_mes: Math.round(fact?.saldo ?? 0),
           cobrado_mes: Math.round(cobradoBySub.get(String(s.id)) ?? 0),
-          adeudado_total: Math.round(adeudadoBySub.get(String(s.id)) ?? 0),
+          // "Adeudado" de la tabla = lo EXIGIBLE (vence ≤ este mes). Lo que vence el mes que viene
+          // (adelantado) NO cuenta como deuda ni marca "Debe" (si no, un cliente nuevo con la cuota
+          // del próximo mes aparecería como deudor sin deberte nada todavía).
+          adeudado_total: Math.round(adeudadoExigibleBySub.get(String(s.id)) ?? 0),
+          adelantado: Math.round(adelantadoBySub.get(String(s.id)) ?? 0),
           anulada_mes: anuladaMes,
           moneda: String(s.moneda ?? "GS").toUpperCase() === "USD" ? "USD" : "GS",
           vendedor: (cli.vendedorUid ? nombrePorUid.get(cli.vendedorUid) : "") || cli.vendedorTexto || "—",

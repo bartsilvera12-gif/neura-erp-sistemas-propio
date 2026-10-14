@@ -37,7 +37,8 @@ type Row = {
   facturado_mes: number; // cuota emitida este mes (0 si no se emitió / anulada)
   saldo_mes: number; // saldo de la cuota de este mes
   cobrado_mes: number; // caja de esta sub este mes (cualquier mes de emisión)
-  adeudado_total: number; // deuda total de esta sub (todas las cuotas impagas)
+  adeudado_total: number; // deuda EXIGIBLE de esta sub (vence ≤ este mes); define "Debe"
+  adelantado?: number; // cuotas que vencen el mes que viene+ (no es deuda todavía)
   anulada_mes: boolean;
   moneda: string;
   vendedor: string;
@@ -498,7 +499,7 @@ export default function ReporteSuscripcionesPage() {
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Plan</th>
                   <SortHeader label="Mensual" col="mensual" orden={orden} onSort={toggleOrden} align="right" />
                   <SortHeader label="Cobrado del mes" col="cobrado" orden={orden} onSort={toggleOrden} align="right" />
-                  <SortHeader label="Adeudado total" col="adeudado" orden={orden} onSort={toggleOrden} align="right" />
+                  <SortHeader label="Adeudado" col="adeudado" orden={orden} onSort={toggleOrden} align="right" />
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Estado</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Vendedor</th>
                 </tr>
@@ -526,6 +527,10 @@ export default function ReporteSuscripcionesPage() {
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
                         {r.adeudado_total > 0 ? (
                           <span className="font-bold text-rose-700">{pref}{fmtGs(r.adeudado_total)}</span>
+                        ) : (r.adelantado ?? 0) > 0 ? (
+                          <span className="text-[11px] font-medium text-slate-400" title="Cuota que vence el mes que viene (no vence todavía)">
+                            {pref}{fmtGs(r.adelantado ?? 0)} adelantado
+                          </span>
                         ) : (
                           <span className="text-slate-300">—</span>
                         )}

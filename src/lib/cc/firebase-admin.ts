@@ -39,20 +39,54 @@ let cachedMessagingSecundario: Messaging | null | undefined;
  *
  * Es opcional: sin la variable configurada, todo se comporta como antes.
  */
+/** Para no repetir el mismo reclamo en cada envío. */
+let yaSeQuejoDelSecundario = false;
+
+/**
+ * La credencial del segundo proyecto.
+ *
+ * Acepta el JSON en base64 (lo normal) o pegado tal cual, y le saca los saltos
+ * de línea al base64 — copiarlo desde una terminal los mete, y Buffer los come,
+ * pero no todas las consolas los cortan en el mismo lugar.
+ *
+ * Y si la variable está pero no se puede leer, lo dice. Antes caía en el mismo
+ * `null` que "no está configurada", y las dos cosas terminaban en silencio: con
+ * una llave mal pegada, el ERP se comportaba exactamente como si nadie hubiera
+ * configurado nada. "No está" y "está pero está mal" son dos problemas
+ * distintos y se arreglan distinto.
+ */
 function resolveServiceAccountSecundario(): ServiceAccount | null {
-  const b64 = process.env.FIREBASE_SECUNDARIO_SERVICE_ACCOUNT_JSON_BASE64?.trim();
-  if (b64) {
+  const crudo = process.env.FIREBASE_SECUNDARIO_SERVICE_ACCOUNT_JSON_BASE64?.trim();
+  if (crudo) {
+    const texto = crudo.startsWith("{")
+      ? crudo
+      : Buffer.from(crudo.replace(/\s+/g, ""), "base64").toString("utf8");
     try {
-      const json = JSON.parse(Buffer.from(b64, "base64").toString("utf8")) as Record<string, string>;
+      const json = JSON.parse(texto) as Record<string, string>;
       if (json.project_id && json.client_email && json.private_key) {
         return {
           projectId: json.project_id,
           clientEmail: json.client_email,
-          privateKey: json.private_key,
+          // Una private_key con los `\n` escapados firma mal, y Firebase
+          // contesta un error de autenticación que no nombra la causa.
+          privateKey: json.private_key.replace(/\\n/g, "\n"),
         };
       }
+      if (!yaSeQuejoDelSecundario) {
+        yaSeQuejoDelSecundario = true;
+        console.error(
+          "[firebase] FIREBASE_SECUNDARIO_SERVICE_ACCOUNT_JSON_BASE64 se pudo leer pero le faltan " +
+            "campos (project_id, client_email, private_key). Es el JSON de la cuenta de servicio, completo.",
+        );
+      }
     } catch {
-      /* json inválido → se trata como no configurado */
+      if (!yaSeQuejoDelSecundario) {
+        yaSeQuejoDelSecundario = true;
+        console.error(
+          "[firebase] FIREBASE_SECUNDARIO_SERVICE_ACCOUNT_JSON_BASE64 está pero no se pudo leer: " +
+            "no es JSON ni base64 de un JSON. Los teléfonos del segundo proyecto NO van a recibir avisos.",
+        );
+      }
     }
   }
   const projectId = process.env.FIREBASE_SECUNDARIO_PROJECT_ID?.trim();

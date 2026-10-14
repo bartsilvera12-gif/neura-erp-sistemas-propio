@@ -223,16 +223,17 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
        */
       const deOtroProyecto: string[] = [];
       res.responses.forEach((r, i) => {
-        if (!r.success) {
-          const code = (r.error as { code?: string } | undefined)?.code ?? "";
-          if (code.includes("mismatched-credential")) {
-            deOtroProyecto.push(tokens[i]);
-          } else if (
-            code.includes("registration-token-not-registered") ||
-            code.includes("invalid-argument")
-          ) {
-            toDeactivate.push(tokens[i]);
-          }
+        if (r.success) return;
+        const code = (r.error as { code?: string } | undefined)?.code ?? "";
+        if (code.includes("registration-token-not-registered")) {
+          // Lo único que significa "este teléfono ya no existe".
+          toDeactivate.push(tokens[i]);
+        } else {
+          // Todo lo demás se reintenta con el otro proyecto. `invalid-argument`
+          // estaba en la lista de "muertos" y no corresponde: Firebase también
+          // lo devuelve para un token que no es de este proyecto, y ahí el
+          // teléfono está perfectamente vivo.
+          deOtroProyecto.push(tokens[i]);
         }
       });
 
@@ -260,16 +261,23 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
           exitos += res2.successCount;
           primerId = primerId ?? res2.responses.find((r) => r.success)?.messageId ?? null;
           res2.responses.forEach((r, i) => {
-            if (!r.success) {
-              const code = (r.error as { code?: string } | undefined)?.code ?? "";
-              // Acá sí: si el segundo proyecto tampoco lo reconoce, está muerto.
-              if (
-                code.includes("registration-token-not-registered") ||
-                code.includes("invalid-argument") ||
-                code.includes("mismatched-credential")
-              ) {
-                toDeactivate.push(deOtroProyecto[i]);
-              }
+            if (r.success) return;
+            const code = (r.error as { code?: string } | undefined)?.code ?? "";
+            /*
+             * Sólo por la única causa que lo justifica.
+             *
+             * Acá decía que si el segundo proyecto tampoco lo reconoce "está
+             * muerto", e incluía `mismatched-credential`. Era el mismo error
+             * que vine a arreglar, un nivel más abajo: con la credencial
+             * secundaria mal configurada, el reintento falla y se apaga el
+             * único teléfono al que no le llega nada. Después parece que nunca
+             * se registró, y no queda rastro de por qué.
+             *
+             * Un error de credencial es un problema del servidor. El teléfono
+             * no tiene la culpa y se deja como está.
+             */
+            if (code.includes("registration-token-not-registered")) {
+              toDeactivate.push(deOtroProyecto[i]);
             }
           });
           detail.push({

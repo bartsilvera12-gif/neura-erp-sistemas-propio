@@ -14,7 +14,9 @@ import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scop
  * Devuelve:
  *   { conversations: [{ id, status, last_message_at, last_message_preview,
  *                       unread_count, contact_nombre, contact_telefono, channel_name,
- *                       cola_nombre }] }
+ *                       cola_nombre }], hay_mas }
+ *
+ * Paginado con `offset` y `limit` (tope 100). Sin ellos se comporta como antes.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -29,6 +31,21 @@ export async function GET(request: NextRequest) {
     const onlyOpen = request.nextUrl.searchParams.get("only_open") !== "0";
     const statusList = onlyOpen ? ["open", "pending"] : ["open", "pending", "closed"];
 
+    /**
+     * Paginado. `offset` es cuántas conversaciones ya tiene el cliente.
+     *
+     * Antes devolvía 50 y no había forma de pedir las siguientes: una empresa
+     * con cientos de conversaciones abiertas veía sólo las 50 más recientes y
+     * el resto no existía para la app. Ni siquiera buscando, porque el buscador
+     * filtra lo que ya está cargado.
+     *
+     * Sin parámetros se comporta igual que antes: offset 0 y 50 por tanda.
+     */
+    const pedido = Number(request.nextUrl.searchParams.get("limit") ?? 50);
+    const limite = Number.isFinite(pedido) ? Math.min(Math.max(Math.trunc(pedido), 1), 100) : 50;
+    const crudoOffset = Number(request.nextUrl.searchParams.get("offset") ?? 0);
+    const offset = Number.isFinite(crudoOffset) ? Math.max(Math.trunc(crudoOffset), 0) : 0;
+
     type Row = {
       id: string;
       status: string;
@@ -42,7 +59,12 @@ export async function GET(request: NextRequest) {
 
     // Candidatas (ventana amplia) ordenadas por actividad. El scope omnicanal se aplica con el
     // mismo helper que el desktop (admin=bypass; agente=asignadas a él + sin-asignar de su cola),
-    // y recién después se recorta a 50. Antes este endpoint NO aplicaba scope (sobre-exposición).
+    // y recién después se recorta. Antes este endpoint NO aplicaba scope (sobre-exposición).
+    //
+    // La ventana crece con el offset porque el filtro de alcance corre acá y no
+    // en la consulta: hay que traer de más para que, después de descartar lo
+    // que esta persona no puede ver, siga alcanzando para la página pedida.
+    // Con los valores por defecto da 200, que es lo que pedía antes.
     const { data: convs, error } = await supabase
       .from("chat_conversations")
       .select(
@@ -51,7 +73,7 @@ export async function GET(request: NextRequest) {
       .eq("empresa_id", empresaId)
       .in("status", statusList)
       .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(200);
+      .limit(Math.min(offset + limite * 4, 1000));
 
     if (error) {
       return NextResponse.json(errorResponse(error.message), { status: 400 });
@@ -65,7 +87,12 @@ export async function GET(request: NextRequest) {
       usuarioId,
       candidatas.map((r) => r.id)
     );
-    const rows = candidatas.filter((r) => visibles.has(r.id)).slice(0, 50);
+    const enAlcance = candidatas.filter((r) => visibles.has(r.id));
+    const rows = enAlcance.slice(offset, offset + limite);
+    // `hay_mas` sale de lo que quedó DESPUÉS del alcance, no del total de la
+    // tabla: ofrecer "cargar más" y después devolver vacío es peor que no
+    // ofrecerlo.
+    const hayMas = enAlcance.length > offset + limite;
 
     const contactIds = [...new Set(rows.map((r) => r.contact_id).filter((id): id is string => !!id))];
     const channelIds = [...new Set(rows.map((r) => r.channel_id).filter((id): id is string => !!id))];
@@ -159,7 +186,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json(successResponse({ conversations }), {
+    return NextResponse.json(successResponse({ conversations, hay_mas: hayMas }), {
       headers: {
         // El cliente revalida con polling de 30s; permitimos servir cached con SWR.
         "Cache-Control": "private, max-age=0, stale-while-revalidate=15",

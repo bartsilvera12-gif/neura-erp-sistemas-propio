@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
@@ -186,7 +185,7 @@ function SortHeader({ label, col, orden, onSort, align = "left" }: {
   );
 }
 
-export default function ReporteSuscripcionesPage() {
+export default function DeudaSuscripcionesPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [tiposAgg, setTiposAgg] = useState<Record<string, TipoAgg>>({});
   const [totales, setTotales] = useState<Agg>(emptyAgg());
@@ -337,17 +336,12 @@ export default function ReporteSuscripcionesPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-4 p-4 sm:p-6">
-      {/* ── Encabezado ─────────────────────────────────────────── */}
+      {/* ── Encabezado (dentro de la pestaña del Dashboard) ─────── */}
       <div>
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          <Link href="/reportes" className="hover:text-[#4FAEB2]">Reportes</Link>
-          <span>/</span>
-          <span className="font-medium text-slate-700">Suscripciones</span>
-        </div>
-        <h1 className="mt-0.5 text-2xl font-extrabold tracking-tight text-slate-900">Suscripciones</h1>
+        <h2 className="text-lg font-bold tracking-tight text-slate-900">Deuda de suscripciones</h2>
         <p className="text-xs text-slate-500">
           Facturado y cobrado de{" "}
-          <span className="font-semibold text-slate-700">{periodo ? periodoLabel(periodo) : "este mes"}</span>, y la deuda total de suscripciones{tipo ? <> · <span className="font-semibold text-[#3F8E91]">{tipoLabelActual}</span></> : null}.
+          <span className="font-semibold text-slate-700">{periodo ? periodoLabel(periodo) : "este mes"}</span>, y la deuda de suscripciones{tipo ? <> · <span className="font-semibold text-[#3F8E91]">{tipoLabelActual}</span></> : null}.
         </p>
       </div>
 

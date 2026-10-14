@@ -1,7 +1,7 @@
 import "server-only";
 import { puedeNotificarAhora } from "@/lib/cc/horario-notificaciones";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { getFcmMessaging } from "@/lib/cc/firebase-admin";
+import { getFcmMessaging, getFcmMessagingSecundario } from "@/lib/cc/firebase-admin";
 
 /**
  * Despacho de las notificaciones push del Contact Center (agent_notification_events
@@ -188,12 +188,16 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
       // Sólo si hay conversación: con clave vacía colapsaríamos notificaciones de
       // conversaciones distintas entre sí, que es peor que no colapsar.
       const collapseId = ev.conversation_id ?? null;
-      const res = await fcm.messaging.sendEachForMulticast({
-        tokens,
+      // El mensaje se arma una vez y se reusa: si hay que reintentar con el
+      // otro proyecto de Firebase, tiene que irse exactamente el mismo.
+      const mensaje = {
         notification: { title, body },
         data: { conversationId: ev.conversation_id ?? "", route, type: ev.type, agentId: ev.agent_id ?? "" },
         android: {
-          priority: "high",
+          // `as const` porque el mensaje ahora se arma en una variable aparte
+          // para poder reusarlo en el reintento: sin esto TypeScript lo ve
+          // como `string` y deja de encajar en `MulticastMessage`.
+          priority: "high" as const,
           notification: { channelId: "neura_inbox", sound: "noti" },
           ...(collapseId ? { collapseKey: collapseId } : {}),
         },
@@ -205,24 +209,86 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
           payload: { aps: { sound: "default" } },
           ...(collapseId ? { headers: { "apns-collapse-id": collapseId } } : {}),
         },
-      });
+      };
+      const res = await fcm.messaging.sendEachForMulticast({ tokens, ...mensaje });
+
       const toDeactivate: string[] = [];
+      /**
+       * Los tokens de otro proyecto de Firebase.
+       *
+       * `mismatched-credential` NO es un token muerto: es un teléfono nuestro,
+       * de otra app, cuyo token emitió otro proyecto. Desactivarlo —como se
+       * hacía— era apagar el único dispositivo al que no le llegaba nada, y
+       * después parecía que nunca se había registrado.
+       */
+      const deOtroProyecto: string[] = [];
       res.responses.forEach((r, i) => {
         if (!r.success) {
           const code = (r.error as { code?: string } | undefined)?.code ?? "";
-          if (code.includes("registration-token-not-registered") || code.includes("invalid-argument")) {
+          if (code.includes("mismatched-credential")) {
+            deOtroProyecto.push(tokens[i]);
+          } else if (
+            code.includes("registration-token-not-registered") ||
+            code.includes("invalid-argument")
+          ) {
             toDeactivate.push(tokens[i]);
           }
         }
       });
+
+      let exitos = res.successCount;
+      let primerId = res.responses.find((r) => r.success)?.messageId ?? null;
+
+      /**
+       * El reintento con el segundo proyecto.
+       *
+       * No hace falta saber de antemano a qué proyecto pertenece cada token
+       * —no se puede leer del token, y una columna más habría que mantenerla
+       * sincronizada a mano—. Se manda con el proyecto de siempre y, cuando
+       * Firebase dice que la credencial no corresponde, se reintenta con el
+       * otro. Se corrige solo y no hay nada que recordar.
+       */
+      if (deOtroProyecto.length > 0) {
+        const alterno = await getFcmMessagingSecundario();
+        if (!alterno) {
+          console.warn(
+            `[dispatch] ${deOtroProyecto.length} token(s) de otro proyecto de Firebase y no hay uno secundario configurado. ` +
+              "Revisá FIREBASE_SECUNDARIO_SERVICE_ACCOUNT_JSON_BASE64.",
+          );
+        } else {
+          const res2 = await alterno.sendEachForMulticast({ tokens: deOtroProyecto, ...mensaje });
+          exitos += res2.successCount;
+          primerId = primerId ?? res2.responses.find((r) => r.success)?.messageId ?? null;
+          res2.responses.forEach((r, i) => {
+            if (!r.success) {
+              const code = (r.error as { code?: string } | undefined)?.code ?? "";
+              // Acá sí: si el segundo proyecto tampoco lo reconoce, está muerto.
+              if (
+                code.includes("registration-token-not-registered") ||
+                code.includes("invalid-argument") ||
+                code.includes("mismatched-credential")
+              ) {
+                toDeactivate.push(deOtroProyecto[i]);
+              }
+            }
+          });
+          detail.push({
+            event: ev.id.slice(0, 8),
+            result: "reintento_otro_proyecto",
+            tokens: deOtroProyecto.length,
+            ok: res2.successCount,
+          });
+        }
+      }
+
       if (toDeactivate.length > 0) {
         await sb
           .from("agent_device_tokens")
           .update({ is_active: false, updated_at: nowIso() })
           .in("fcm_token", toDeactivate);
       }
-      if (res.successCount > 0) {
-        const msgId = res.responses.find((r) => r.success)?.messageId ?? null;
+      if (exitos > 0) {
+        const msgId = primerId;
         const { error: upErr } = await sb
           .from("agent_notification_events")
           .update({ status: "sent", provider_message_id: msgId, sent_at: nowIso() })

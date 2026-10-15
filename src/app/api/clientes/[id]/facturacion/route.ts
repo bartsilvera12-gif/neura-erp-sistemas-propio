@@ -4,15 +4,40 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 
 
-/** Genera lista de meses desde fecha_inicio por duracion_meses. Formato YYYY-MM. */
-function generarMeses(fechaInicio: string, duracionMeses: number): string[] {
+/** Suma n meses a un período YYYY-MM. Devuelve YYYY-MM. */
+function addMeses(ym: string, n: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  const total = (y * 12 + (m - 1)) + n;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}`;
+}
+
+/**
+ * Cuántos meses proyectados (sin factura) se ofrecen SIEMPRE por delante del último
+ * período con factura (o del mes corriente, el que sea mayor). Así nunca te quedás sin
+ * filas "Emitir" para adelantar cuotas manualmente, sin importar `duracion_meses`.
+ */
+const HORIZONTE_PROYECCION = 12;
+
+/**
+ * Ventana RODANTE de meses a mostrar (YYYY-MM, ascendente):
+ *  - desde `fechaInicio` (historia completa de la suscripción)
+ *  - hasta `max(mes corriente, último mes facturado) + HORIZONTE_PROYECCION`
+ * Ya NO se usa `duracion_meses`: la emisión es abierta (el cron factura para siempre
+ * mientras la suscripción esté activa), así que la proyección también debe serlo.
+ */
+function generarMeses(fechaInicio: string, mesCorriente: string, ultimoMesFacturado: string | null): string[] {
+  const inicio = fechaInicio.slice(0, 7);
+  const ancla = ultimoMesFacturado && ultimoMesFacturado > mesCorriente ? ultimoMesFacturado : mesCorriente;
+  const fin = addMeses(ancla, HORIZONTE_PROYECCION);
+  // Si la fecha de inicio fuese posterior al fin (caso raro), al menos el propio inicio.
+  const desde = inicio < fin ? inicio : fin;
   const meses: string[] = [];
-  const [year, month] = fechaInicio.split("-").map(Number);
-  for (let i = 0; i < duracionMeses; i++) {
-    const m = month + i;
-    const y = year + Math.floor((m - 1) / 12);
-    const mesNum = ((m - 1) % 12) + 1;
-    meses.push(`${y}-${String(mesNum).padStart(2, "0")}`);
+  let cur = desde;
+  while (cur <= fin) {
+    meses.push(cur);
+    cur = addMeses(cur, 1);
   }
   return meses;
 }
@@ -59,11 +84,6 @@ export async function GET(
       );
     }
 
-    const meses = generarMeses(
-      suscripcion.fecha_inicio,
-      suscripcion.duracion_meses ?? 12
-    );
-
     const hoy = new Date().toISOString().slice(0, 10);
     const { data: facturas, error: errFact } = await supabase
       .from("facturas")
@@ -91,6 +111,11 @@ export async function GET(
         });
       }
     }
+
+    // Ventana rodante: desde el inicio hasta HORIZONTE meses por delante del último
+    // período facturado (o del mes corriente). Garantiza filas "proyectada" para emitir.
+    const ultimoMesFacturado = facturasPorMes.size > 0 ? [...facturasPorMes.keys()].sort().at(-1)! : null;
+    const meses = generarMeses(suscripcion.fecha_inicio, hoy.slice(0, 7), ultimoMesFacturado);
 
     // Cambio de plan PROGRAMADO: desde qué mes rige el precio nuevo (YYYY-MM). Así la proyección
     // muestra el plan/precio nuevo desde su mes de vigencia, en vez del plan viejo.

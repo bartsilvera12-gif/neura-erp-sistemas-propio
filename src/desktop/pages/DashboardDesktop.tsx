@@ -37,7 +37,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { etiquetaVisibleTipoServicio } from "@/lib/clientes/tipo-servicio-catalogo";
 import { useMapNombreTipoServicioCatalogo } from "@/lib/clientes/use-map-nombre-tipo-servicio";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
-import { getEtapas, getEtapaClasses, normalizeEtapaCodigo, type EtapaCrm } from "@/lib/crm/etapas";
+import { normalizeEtapaCodigo } from "@/lib/crm/etapas";
 import {
   isDashboardTabSlug,
   type DashboardTabSlug,
@@ -318,52 +318,6 @@ function listarDiasCalendarioYmd(desde: Date, hasta: Date): string[] {
 }
 
 // ── Componentes de gráficos ───────────────────────────────────────────────────
-
-/** Fila de pipeline: etiquetas y colores vienen de `crm_etapas` (getEtapas), no de listas fijas en el dashboard. */
-type PipelineBarRowZ = { rowKey: string; label: string; count: number; valor: number; dotClass: string; barClass: string };
-
-function PipelineBar({ data, tone = "light" }: { data: PipelineBarRowZ[]; tone?: "light" | "zentra" }) {
-  const maxC = Math.max(...data.map((d) => d.count), 1);
-  const z = tone === "zentra";
-  return (
-    <div className="space-y-3">
-      {data.map((d) => (
-        <div key={d.rowKey}>
-          <div className="mb-1 flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`h-2 w-2 shrink-0 rounded-full ${d.dotClass}`} />
-              <span
-                className={`text-xs font-medium truncate ${z ? "" : "text-gray-700"}`}
-                style={z ? { color: Z.text } : undefined}
-                title={d.label}
-              >
-                {d.label}
-              </span>
-            </div>
-            <div
-              className={`ml-2 flex shrink-0 items-center gap-4 text-xs ${z ? "" : "text-gray-500"}`}
-              style={z ? { color: Z.muted } : undefined}
-            >
-              <span className={`tabular-nums font-semibold ${z ? "" : "text-gray-700"}`} style={z ? { color: Z.text } : undefined}>
-                {d.count}
-              </span>
-              <span className="w-20 text-right tabular-nums">Gs. {formatGsM(d.valor)}</span>
-            </div>
-          </div>
-          <div
-            className={`h-5 overflow-hidden rounded-full ${z ? "" : "bg-gray-100"}`}
-            style={z ? { backgroundColor: "rgba(15,23,42,0.06)" } : undefined}
-          >
-            <div
-              className={`h-full rounded-full transition-all ${d.barClass}`}
-              style={{ width: `${d.count > 0 ? Math.max((d.count / maxC) * 100, 4) : 0}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function HBarChart({
   data,
@@ -752,11 +706,6 @@ function DashComercial({
   void _tipificaciones;
   const { desde, hasta } = useMemo(() => getRango(periodo), [periodo]);
 
-  const [etapasCrmCatalog, setEtapasCrmCatalog] = useState<EtapaCrm[]>([]);
-  useEffect(() => {
-    void getEtapas().then(setEtapasCrmCatalog);
-  }, []);
-
   // Mapa uuid→nombre de usuarios reales de la empresa (para resolver vendedor_usuario_id).
   const [vendedorNombrePorId, setVendedorNombrePorId] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -805,46 +754,6 @@ function DashComercial({
   ).length;
   const totalLeadsPeriodo = prospectosFilt.filter((p) => enRango(p.fecha_creacion, desde, hasta)).length;
   const tasaConversion = totalLeadsPeriodo > 0 ? (clientesGanados / totalLeadsPeriodo) * 100 : 0;
-
-  /** Misma fuente que el CRM Funnel: columnas = etapas activas en `crm_etapas` (orden + nombre a mostrar). */
-  const pipeline: PipelineBarRowZ[] = useMemo(() => {
-    const inFil = (cod: string) =>
-      prospectosFilt.filter((p) => normalizeEtapaCodigo(p.etapa) === normalizeEtapaCodigo(cod));
-    const actives = [...etapasCrmCatalog]
-      .filter((e) => e.activo)
-      .sort((a, b) => a.orden - b.orden);
-    const fromCatalog: PipelineBarRowZ[] = actives.map((e) => {
-      const { dot } = getEtapaClasses(e.color);
-      const list = inFil(e.codigo);
-      return {
-        rowKey: e.id,
-        label: e.nombre,
-        count: list.length,
-        valor: list.reduce((s, p) => s + (p.valor_estimado ?? 0), 0),
-        dotClass: dot,
-        // Usa el mismo color saturado del dot para la barra (más contraste sobre el track).
-        barClass: dot,
-      };
-    });
-    const catalogNorm = new Set(actives.map((e) => normalizeEtapaCodigo(e.codigo)));
-    const extraCodes = new Set<string>();
-    for (const p of prospectosFilt) {
-      const c = normalizeEtapaCodigo(p.etapa);
-      if (c && !catalogNorm.has(c)) extraCodes.add(c);
-    }
-    const fromExtras: PipelineBarRowZ[] = [...extraCodes].sort().map((code) => {
-      const list = inFil(code);
-      return {
-        rowKey: `x-${code}`,
-        label: code,
-        count: list.length,
-        valor: list.reduce((s, p) => s + (p.valor_estimado ?? 0), 0),
-        dotClass: "bg-gray-400",
-        barClass: "bg-gray-400",
-      };
-    });
-    return [...fromCatalog, ...fromExtras];
-  }, [etapasCrmCatalog, prospectosFilt]);
 
   const topPlanesEnNegociacion = useMemo(() => {
     const enNeg = prospectosFilt.filter((p) => normalizeEtapaCodigo(p.etapa) === "NEGOCIACION");
@@ -978,12 +887,16 @@ function DashComercial({
             {panelBar}
             <h3 className={titleClass} style={titleStyle}>
               {panelDot}
-              Pipeline CRM
+              Clientes nuevos por tipo
             </h3>
           </div>
-          <p className="mt-1 pl-3 text-[11px] text-slate-500">Distribución de prospectos por etapa</p>
+          <p className="mt-1 pl-3 text-[11px] text-slate-500">Distribución de altas en el período seleccionado</p>
           <div className="mt-5">
-            <PipelineBar data={pipeline} tone="zentra" />
+            {clientesNuevosPorTipo.length === 0 ? (
+              <p className="text-center text-sm text-slate-500">Sin altas en el período</p>
+            ) : (
+              <HBarChart data={clientesNuevosPorTipo} color="bg-[#4FAEB2]" tone="zentra" />
+            )}
           </div>
         </motion.div>
         <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
@@ -1000,24 +913,6 @@ function DashComercial({
           </div>
         </motion.div>
       </div>
-
-      <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
-        <div className="flex items-center gap-2">
-          {panelBar}
-          <h3 className={titleClass} style={titleStyle}>
-            {panelDot}
-            Clientes nuevos por tipo
-          </h3>
-        </div>
-        <p className="mt-1 pl-3 text-[11px] text-slate-500">Distribución de altas en el período seleccionado</p>
-        <div className="mt-5">
-          {clientesNuevosPorTipo.length === 0 ? (
-            <p className="text-center text-sm text-slate-500">Sin altas en el período</p>
-          ) : (
-            <HBarChart data={clientesNuevosPorTipo} color="bg-[#4FAEB2]" tone="zentra" />
-          )}
-        </div>
-      </motion.div>
 
       <motion.div whileHover={{ y: -2 }} className={panelClass} style={panelStyle}>
         <div className="flex items-center gap-2">

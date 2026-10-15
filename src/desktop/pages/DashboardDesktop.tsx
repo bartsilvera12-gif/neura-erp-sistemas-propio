@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import DeudaSuscripcionesPanel from "./DeudaSuscripcionesPanel";
 import { getConfig } from "@/lib/config/storage";
 import { getUsuarios } from "@/lib/usuarios/storage";
 import { getUsuariosActivosEmpresa } from "@/lib/usuarios/empresa";
@@ -2521,7 +2522,7 @@ const PERIODO_OPTS: { id: Periodo; label: string }[] = [
   { id: "anio", label: "Año"       },
 ];
 
-const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas"];
+const TAB_VALID: TabDash[] = ["comercial", "financiero", "inventario", "ventas", "deuda_suscripciones"];
 
 /*
  * Los cuatro tableros de proyectos —panel gerencial, Ejecutivo, PM y SLA— se
@@ -2676,6 +2677,7 @@ export default function DashboardPage() {
     financiero: { label: "Financiero", Icon: Icon.Financiero },
     inventario: { label: "Inventario", Icon: Icon.Inventario },
     ventas: { label: "Ventas", Icon: Icon.Ventas },
+    deuda_suscripciones: { label: "Deuda de suscripciones", Icon: Icon.Financiero },
   };
 
   if (!config) {
@@ -2886,6 +2888,8 @@ export default function DashboardPage() {
           periodo={periodo}
         />
       )}
+
+      {tab === "deuda_suscripciones" && <DeudaSuscripcionesPanel />}
 
     </div>
   );

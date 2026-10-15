@@ -240,6 +240,17 @@ export default function UsuarioDetalleClient({
       }));
       return;
     }
+    if (type === "checkbox" && name.startsWith("dash_")) {
+      const vid = (e.target as HTMLInputElement).value;
+      const checked = (e.target as HTMLInputElement).checked;
+      setForm((prev) => ({
+        ...prev,
+        dashboard_view_ids: checked
+          ? [...prev.dashboard_view_ids, vid]
+          : prev.dashboard_view_ids.filter((v) => v !== vid),
+      }));
+      return;
+    }
     if (type === "checkbox") {
       setForm((prev) => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
       return;

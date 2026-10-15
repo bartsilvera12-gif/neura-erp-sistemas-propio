@@ -346,6 +346,9 @@ export default function ObservacionesBoard({
   }
 
   async function toggleResuelto(obs: QAObservacion) {
+    // Marcar/reabrir una observación es potestad de QA. El servidor igual lo
+    // corta, pero acá se frena antes de tocar la UI para quien no puede.
+    if (permiso.vista !== "qa") return;
     const marcada = obs.estado === "resuelto" || obs.estado === "verificado";
     const destino: QAObservacionEstado = marcada ? "pendiente" : "resuelto";
     const snapshot = observaciones;
@@ -750,6 +753,7 @@ export default function ObservacionesBoard({
                     key={o.id}
                     obs={o}
                     seccion={o.seccion_id ? seccionesMap.get(o.seccion_id) ?? null : null}
+                    puedeResolver={permiso.vista === "qa"}
                     onAbrir={(obs) => setAbiertaId(obs.id)}
                     onToggleResuelto={(obs) => void toggleResuelto(obs)}
                   />

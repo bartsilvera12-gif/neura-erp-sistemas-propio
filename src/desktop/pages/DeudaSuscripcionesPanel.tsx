@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
@@ -14,6 +13,7 @@ type Agg = {
   por_cobrar_total: number; // DEUDA total: todas las cuotas impagas, de cualquier mes
   por_cobrar_exigible: number; // de esa deuda, lo exigible al mes (vencido + vence este mes)
   cuotas_impagas: number; // cantidad de cuotas con saldo pendiente
+  cuotas_exigibles: number; // cantidad de cuotas exigibles (vence ≤ este mes)
 };
 type TipoAgg = Agg & { label: string };
 const emptyAgg = (): Agg => ({
@@ -25,6 +25,7 @@ const emptyAgg = (): Agg => ({
   por_cobrar_total: 0,
   por_cobrar_exigible: 0,
   cuotas_impagas: 0,
+  cuotas_exigibles: 0,
 });
 
 type SortCol = "mensual" | "cobrado" | "adeudado";
@@ -37,7 +38,8 @@ type Row = {
   facturado_mes: number; // cuota emitida este mes (0 si no se emitió / anulada)
   saldo_mes: number; // saldo de la cuota de este mes
   cobrado_mes: number; // caja de esta sub este mes (cualquier mes de emisión)
-  adeudado_total: number; // deuda total de esta sub (todas las cuotas impagas)
+  adeudado_total: number; // deuda EXIGIBLE de esta sub (vence ≤ este mes); define "Debe"
+  adelantado?: number; // cuotas que vencen el mes que viene+ (no es deuda todavía)
   anulada_mes: boolean;
   moneda: string;
   vendedor: string;
@@ -183,7 +185,7 @@ function SortHeader({ label, col, orden, onSort, align = "left" }: {
   );
 }
 
-export default function ReporteSuscripcionesPage() {
+export default function DeudaSuscripcionesPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [tiposAgg, setTiposAgg] = useState<Record<string, TipoAgg>>({});
   const [totales, setTotales] = useState<Agg>(emptyAgg());
@@ -270,7 +272,8 @@ export default function ReporteSuscripcionesPage() {
   const cobradoMes = agg.cobrado_mes;
   const porCobrarTotal = agg.por_cobrar_total;
   const porCobrarExigible = agg.por_cobrar_exigible;
-  const cuotasImpagas = agg.cuotas_impagas;
+  const cuotasExigibles = agg.cuotas_exigibles;
+  const adelantadoTotal = Math.max(0, porCobrarTotal - porCobrarExigible);
   const pctCobrado = facturadoDelMes > 0 ? Math.round((cobradoMes / facturadoDelMes) * 100) : 0;
   const deltaEmitido = agg.facturado_mes_ant > 0 ? ((facturadoDelMes - agg.facturado_mes_ant) / agg.facturado_mes_ant) * 100 : facturadoDelMes > 0 ? 100 : 0;
   const deltaCobrado = agg.cobrado_mes_ant > 0 ? ((cobradoMes - agg.cobrado_mes_ant) / agg.cobrado_mes_ant) * 100 : cobradoMes > 0 ? 100 : 0;
@@ -333,17 +336,12 @@ export default function ReporteSuscripcionesPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-4 p-4 sm:p-6">
-      {/* ── Encabezado ─────────────────────────────────────────── */}
+      {/* ── Encabezado (dentro de la pestaña del Dashboard) ─────── */}
       <div>
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          <Link href="/reportes" className="hover:text-[#4FAEB2]">Reportes</Link>
-          <span>/</span>
-          <span className="font-medium text-slate-700">Suscripciones</span>
-        </div>
-        <h1 className="mt-0.5 text-2xl font-extrabold tracking-tight text-slate-900">Suscripciones</h1>
+        <h2 className="text-lg font-bold tracking-tight text-slate-900">Deuda de suscripciones</h2>
         <p className="text-xs text-slate-500">
           Facturado y cobrado de{" "}
-          <span className="font-semibold text-slate-700">{periodo ? periodoLabel(periodo) : "este mes"}</span>, y la deuda total de suscripciones{tipo ? <> · <span className="font-semibold text-[#3F8E91]">{tipoLabelActual}</span></> : null}.
+          <span className="font-semibold text-slate-700">{periodo ? periodoLabel(periodo) : "este mes"}</span>, y la deuda de suscripciones{tipo ? <> · <span className="font-semibold text-[#3F8E91]">{tipoLabelActual}</span></> : null}.
         </p>
       </div>
 
@@ -396,21 +394,17 @@ export default function ReporteSuscripcionesPage() {
           className={`${TILE} flex flex-col justify-between text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${estadoFiltro === "por_cobrar" ? "!border-amber-400 !ring-2 !ring-amber-300" : ""}`}
         >
           <div>
-            <span className={LBL}>Por cobrar · Total</span>
-            <div className="mt-3 text-[28px] font-extrabold leading-none tracking-tight tabular-nums text-amber-700">Gs. {fmtGs(porCobrarTotal)}</div>
-            <div className="mt-2 text-[11px] text-slate-400">{cuotasImpagas} cuota{cuotasImpagas === 1 ? "" : "s"} impaga{cuotasImpagas === 1 ? "" : "s"}</div>
-            <div className="mt-3 flex items-baseline gap-1.5 border-t border-slate-100 pt-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Exigible al mes</span>
-              <span className="text-[15px] font-bold tabular-nums text-slate-700">Gs. {fmtGs(porCobrarExigible)}</span>
-            </div>
-            {porCobrarTotal > porCobrarExigible ? (
-              <div className="mt-1 text-[10.5px] text-slate-400">
-                + Gs. {fmtGs(porCobrarTotal - porCobrarExigible)} adelantado (cuotas de meses futuros ya emitidas)
+            <span className={LBL}>Por cobrar · Este mes</span>
+            <div className="mt-3 text-[28px] font-extrabold leading-none tracking-tight tabular-nums text-amber-700">Gs. {fmtGs(porCobrarExigible)}</div>
+            <div className="mt-2 text-[11px] text-slate-400">{cuotasExigibles} cuota{cuotasExigibles === 1 ? "" : "s"} exigible{cuotasExigibles === 1 ? "" : "s"}</div>
+            {adelantadoTotal > 0 ? (
+              <div className="mt-3 border-t border-slate-100 pt-2 text-[10.5px] text-slate-400">
+                + Gs. {fmtGs(adelantadoTotal)} adelantado (ya emitido, vence más adelante — no se cobra este mes)
               </div>
             ) : null}
           </div>
           <div className="mt-6 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
-            Toda la deuda de suscripciones — de cualquier mes, no solo el actual.
+            Lo que tenés que cobrar este mes (vencido + vence este mes).
           </div>
         </button>
 
@@ -498,7 +492,7 @@ export default function ReporteSuscripcionesPage() {
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Plan</th>
                   <SortHeader label="Mensual" col="mensual" orden={orden} onSort={toggleOrden} align="right" />
                   <SortHeader label="Cobrado del mes" col="cobrado" orden={orden} onSort={toggleOrden} align="right" />
-                  <SortHeader label="Adeudado total" col="adeudado" orden={orden} onSort={toggleOrden} align="right" />
+                  <SortHeader label="Adeudado" col="adeudado" orden={orden} onSort={toggleOrden} align="right" />
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Estado</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">Vendedor</th>
                 </tr>
@@ -526,6 +520,10 @@ export default function ReporteSuscripcionesPage() {
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
                         {r.adeudado_total > 0 ? (
                           <span className="font-bold text-rose-700">{pref}{fmtGs(r.adeudado_total)}</span>
+                        ) : (r.adelantado ?? 0) > 0 ? (
+                          <span className="text-[11px] font-medium text-slate-400" title="Cuota que vence el mes que viene (no vence todavía)">
+                            {pref}{fmtGs(r.adelantado ?? 0)} adelantado
+                          </span>
                         ) : (
                           <span className="text-slate-300">—</span>
                         )}

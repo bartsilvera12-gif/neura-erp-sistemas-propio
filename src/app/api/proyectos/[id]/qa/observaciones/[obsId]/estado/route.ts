@@ -70,17 +70,23 @@ export async function POST(
     if (permiso.vista == null) {
       return NextResponse.json(errorResponse("No tenés acceso a QA en este proyecto."), { status: 403 });
     }
-    // "Verificado" y "Descartado" son el veredicto de QA. Sin este corte, el
-    // técnico podría cerrarse sus propias observaciones mandando el estado a
-    // mano, salteándose la revisión — que es justo lo que QA existe para evitar.
-    if (permiso.vista !== "qa" && (estado === "verificado" || estado === "descartado")) {
+    if (!prev) return NextResponse.json(errorResponse("Observación no encontrada"), { status: 404 });
+
+    // Cerrar una observación —marcarla resuelta, verificada o descartada— y
+    // reabrir una que ya estaba cerrada son potestad de QA. Sin este corte, el
+    // técnico podría cerrarse sus propias observaciones (o reabrir las que QA
+    // cerró) mandando el estado a mano, salteándose la revisión, que es justo lo
+    // que QA existe para evitar. El técnico sí puede mover entre "pendiente" y
+    // "en curso" para reflejar que está trabajando.
+    const estadoCierra = estado === "resuelto" || estado === "verificado" || estado === "descartado";
+    const prevCerrada =
+      prev.estado === "resuelto" || prev.estado === "verificado" || prev.estado === "descartado";
+    if (permiso.vista !== "qa" && (estadoCierra || prevCerrada)) {
       return NextResponse.json(
-        errorResponse("Verificar o descartar una observación es potestad de QA."),
+        errorResponse("Marcar como resuelta, reabrir, verificar o descartar es potestad de QA."),
         { status: 403 }
       );
     }
-
-    if (!prev) return NextResponse.json(errorResponse("Observación no encontrada"), { status: 404 });
 
     if (prev.estado === estado) {
       const [sinCambios] = await enriquecerObservaciones(sb, auth.empresaId, [prev]);

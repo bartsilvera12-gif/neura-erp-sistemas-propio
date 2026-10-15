@@ -280,19 +280,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    // Aviso al comercial y al PM del proyecto. Va después del update por la
-    // misma razón que el de QA: si falla, el movimiento ya está guardado y no
-    // se revierte.
+    // Aviso del cambio de estado. Va después del update por la misma razón que
+    // el de QA: si falla, el movimiento ya está guardado y no se revierte.
+    //
+    // En los movimientos de QA cambia a quién le llega: cuando el proyecto
+    // ENTRA a QA, o cuando QA lo DEVUELVE a Cambios solicitados, el aviso va al
+    // equipo técnico (PM + técnico/desarrollador) y NO al comercial, porque son
+    // movimientos internos que no le incumben. En el resto, como siempre, al
+    // comercial + PM.
     {
       const comercialId =
         (proyecto as { responsable_comercial_id?: string | null }).responsable_comercial_id ?? null;
       const pmId =
         (proyecto as { project_manager_id?: string | null }).project_manager_id ?? null;
+
+      const codigoAnteriorAviso = String(estadoAnteriorCodigo ?? "").trim().toLowerCase();
+      const entraAQaAviso = codigoNuevo === "qa" && codigoAnteriorAviso !== "qa";
+      const qaACambiosAviso = codigoAnteriorAviso === "qa" && codigoNuevo === "cambios_solicitados";
+      const movimientoDeQa = entraAQaAviso || qaACambiosAviso;
+
+      const tecnicoAviso = movimientoDeQa ? tecnicoSnapshot : null;
+      const incluirComercial = !movimientoDeQa;
+
       // El nombre del estado anterior se lee acá y no antes: sólo hace falta
       // para el texto del aviso, y evita una consulta cuando no hay a quién avisar.
       const hayAQuienAvisar =
-        (comercialId && comercialId !== auth.usuarioCatalogId) ||
-        (pmId && pmId !== auth.usuarioCatalogId);
+        (incluirComercial && comercialId && comercialId !== auth.usuarioCatalogId) ||
+        (pmId && pmId !== auth.usuarioCatalogId) ||
+        (tecnicoAviso && tecnicoAviso !== auth.usuarioCatalogId);
       let estadoAnteriorNombre: string | null = null;
       if (hayAQuienAvisar && anteriorId) {
         const { data: estAnt } = await sb
@@ -310,6 +325,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         tituloProyecto,
         comercialId,
         pmId,
+        tecnicoId: tecnicoAviso,
+        incluirComercial,
         actorId: auth.usuarioCatalogId,
         estadoAnteriorNombre,
         estadoNuevoNombre: (est.nombre ?? "").trim() || codigoNuevo || "otro estado",

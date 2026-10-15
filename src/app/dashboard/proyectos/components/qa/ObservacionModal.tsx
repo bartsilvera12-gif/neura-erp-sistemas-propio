@@ -449,6 +449,10 @@ export default function ObservacionModal({
     ? secciones.find((s) => s.id === obs.seccion_id) ?? null
     : null;
   const estadoActual = QA_ESTADOS.find((e) => e.codigo === obs.estado) ?? null;
+  // Observación cerrada = la resolvió/verificó/descartó QA. Reabrirla es
+  // potestad de QA: para el resto, los controles de estado quedan bloqueados.
+  const obsCerrada =
+    obs.estado === "resuelto" || obs.estado === "verificado" || obs.estado === "descartado";
 
   return (
     <div
@@ -668,18 +672,28 @@ export default function ObservacionModal({
                     */}
                     <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
                       {QA_ESTADOS.filter(
-                        (e) => vista === "qa" || (e.codigo !== "verificado" && e.codigo !== "descartado")
+                        (e) =>
+                          vista === "qa" ||
+                          (e.codigo !== "resuelto" &&
+                            e.codigo !== "verificado" &&
+                            e.codigo !== "descartado")
                       ).map((e) => {
                         const activo = obs.estado === e.codigo;
+                        // Un no-QA no puede reabrir lo que QA cerró: si la
+                        // observación está cerrada, los botones quedan inertes.
+                        const bloqueado = vista !== "qa" && obsCerrada;
                         return (
                           <button
                             key={e.codigo}
                             type="button"
-                            onClick={() => void cambiarEstado(e.codigo)}
+                            disabled={bloqueado}
+                            onClick={() => {
+                              if (!bloqueado) void cambiarEstado(e.codigo);
+                            }}
                             className={`truncate rounded-md px-1.5 py-1.5 text-[11px] font-semibold transition-colors ${
                               activo ? "text-white shadow-sm" : "text-slate-500 hover:bg-white hover:text-slate-700"
-                            }`}
-                            title={e.label}
+                            } ${bloqueado ? "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-slate-500" : ""}`}
+                            title={bloqueado ? "Solo QA puede reabrir una observación cerrada" : e.label}
                             style={activo ? { backgroundColor: e.color } : undefined}
                           >
                             {e.corto}
@@ -851,15 +865,6 @@ export default function ObservacionModal({
             >
               Cancelar
             </button>
-            {vista === "desarrollo" && obs.estado !== "resuelto" && obs.estado !== "verificado" ? (
-              <button
-                type="button"
-                onClick={() => void cambiarEstado("resuelto")}
-                className="rounded-lg bg-[#2F6E71] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#25585B]"
-              >
-                Enviar a revisión
-              </button>
-            ) : null}
             {vista === "qa" && obs.estado !== "verificado" ? (
               <button
                 type="button"

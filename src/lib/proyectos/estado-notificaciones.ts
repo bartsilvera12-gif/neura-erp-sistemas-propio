@@ -6,10 +6,17 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 /**
  * Notificaciones in-app del movimiento de un proyecto por el Kanban.
  *
- * Los destinatarios son el comercial y el project manager del proyecto: el
- * comercial le da la cara al cliente y el PM responde por que el proyecto
+ * Los destinatarios base son el comercial y el project manager del proyecto:
+ * el comercial le da la cara al cliente y el PM responde por que el proyecto
  * avance, y ninguno de los dos debería tener que mirar el tablero para
- * enterarse. El técnico no entra acá — el movimiento normalmente lo hace él.
+ * enterarse.
+ *
+ * En los movimientos de QA la cosa cambia: cuando el proyecto ENTRA a QA o QA
+ * lo DEVUELVE a Cambios solicitados, el aviso va al equipo técnico (PM +
+ * técnico/desarrollador) y NO al comercial, porque son movimientos internos
+ * que no le incumben. Para eso `tecnicoId` suma al desarrollador e
+ * `incluirComercial=false` saca al comercial. En el resto de los movimientos
+ * el técnico no entra —normalmente el movimiento lo hace él— y el comercial sí.
  *
  * Sólo al llegar a un estado final se suman los usuarios con
  * `notificar_entregas`, que reciben las entregas de toda la empresa. En los
@@ -58,6 +65,13 @@ export async function notificarCambioEstado(
     comercialId: string | null;
     /** Project manager del proyecto: responde por que avance. */
     pmId?: string | null;
+    /** Técnico/desarrollador del proyecto. Se suma como destinatario sólo
+     *  cuando el movimiento le incumbe (entra a QA, o QA lo devuelve a
+     *  Cambios solicitados). Por defecto no entra. */
+    tecnicoId?: string | null;
+    /** Si es false, el comercial NO recibe el aviso: se usa en los movimientos
+     *  de QA, que son internos y no le incumben. Por defecto true. */
+    incluirComercial?: boolean;
     /** Quién movió el proyecto: no se auto-notifica. */
     actorId: string | null;
     estadoAnteriorNombre: string | null;
@@ -82,10 +96,15 @@ export async function notificarCambioEstado(
       : `Pasó a ${args.estadoNuevoNombre}.`;
 
     const destinatarios = new Set<string>();
-    // El comercial recibe todos los movimientos de SUS proyectos.
-    if (args.comercialId) destinatarios.add(args.comercialId);
+    // El comercial recibe los movimientos de SUS proyectos, salvo en los
+    // movimientos de QA (incluirComercial=false), que son técnicos y no le
+    // incumben.
+    if (args.incluirComercial !== false && args.comercialId) destinatarios.add(args.comercialId);
     // Y el PM los de su cartera. Si es la misma persona, el `Set` lo resuelve.
     if (args.pmId) destinatarios.add(args.pmId);
+    // El técnico/desarrollador, cuando el movimiento le incumbe (entra a QA, o
+    // QA se lo devuelve a Cambios): tiene que enterarse sin mirar el tablero.
+    if (args.tecnicoId) destinatarios.add(args.tecnicoId);
     // Al entregar se suma quien coordina las entregas: recibe el aviso de TODOS
     // los proyectos, no sólo de los suyos. Sale del flag `notificar_entregas`
     // del catálogo y no de una lista fija en el código, porque quién ocupa ese

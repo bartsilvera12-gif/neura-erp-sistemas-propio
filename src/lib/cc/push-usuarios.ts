@@ -1,6 +1,6 @@
 import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { getFcmMessaging } from "@/lib/cc/firebase-admin";
+import { getFcmMessaging, getFcmMessagingSecundario } from "@/lib/cc/firebase-admin";
 
 /**
  * Push de los avisos de la campanita al celular (app nativa).
@@ -53,12 +53,14 @@ async function enviar(aviso: AvisoPush): Promise<void> {
   const tokens = [...new Set(((data ?? []) as { fcm_token: string }[]).map((t) => t.fcm_token).filter(Boolean))];
   if (tokens.length === 0) return;
 
-  const res = await fcm.messaging.sendEachForMulticast({
-    tokens,
+  // El mensaje se arma una vez: si hay que reintentar con el otro proyecto de
+  // Firebase, tiene que irse exactamente el mismo. `as const` en la prioridad
+  // porque fuera del literal TypeScript la ve como `string` y deja de encajar.
+  const mensaje = {
     notification: { title: aviso.titulo.slice(0, 120), body: aviso.cuerpo.slice(0, 240) },
     data: { ruta: aviso.ruta ?? "", tipo: "aviso" },
     android: {
-      priority: "high",
+      priority: "high" as const,
       notification: {
         channelId: "neura_inbox",
         sound: "noti",
@@ -69,16 +71,59 @@ async function enviar(aviso: AvisoPush): Promise<void> {
       payload: { aps: { sound: "default" } },
       ...(aviso.agrupar ? { headers: { "apns-collapse-id": aviso.agrupar.slice(0, 64) } } : {}),
     },
+  };
+
+  const res = await fcm.messaging.sendEachForMulticast({ tokens, ...mensaje });
+
+  /**
+   * Este camino es el que avisa a quien NO es asesor: supervisión, PM,
+   * administración. Y hasta ahora mandaba sólo con el proyecto de Firebase
+   * principal.
+   *
+   * Un token de FCM no es la dirección de un teléfono: es la de un teléfono
+   * DENTRO de un proyecto. La app Zentra tiene el suyo
+   * (`zentra-app-android`), así que todos sus teléfonos fallaban acá por más
+   * que estuvieran bien instalados y con el permiso dado. El arreglo de los dos
+   * proyectos se había hecho sólo en el despacho por `agent_id`, que es el otro
+   * camino — el de quien tiene la conversación asignada.
+   */
+  const muertos: string[] = [];
+  const paraReintentar: string[] = [];
+  res.responses.forEach((r, i) => {
+    if (r.success) return;
+    const code = (r.error as { code?: string } | undefined)?.code ?? "";
+    if (code.includes("registration-token-not-registered")) {
+      // Lo único que significa "este teléfono ya no existe".
+      muertos.push(tokens[i]);
+    } else {
+      // Todo lo demás —`mismatched-credential`, `invalid-argument`— puede ser
+      // un token de otro proyecto. Antes `invalid-argument` se tomaba como
+      // teléfono muerto y se apagaba, que es justo lo contrario de lo que hay
+      // que hacer: el teléfono está vivo y hay que mandarle por el otro lado.
+      paraReintentar.push(tokens[i]);
+    }
   });
 
-  // Token de un teléfono que borró la app: se apaga para no reintentar siempre.
-  const muertos = res.responses
-    .map((r, i) => (r.success ? null : tokens[i]))
-    .filter((t, i): t is string => {
-      if (!t) return false;
-      const code = (res.responses[i].error as { code?: string } | undefined)?.code ?? "";
-      return code.includes("registration-token-not-registered") || code.includes("invalid-argument");
-    });
+  if (paraReintentar.length > 0) {
+    const alterno = await getFcmMessagingSecundario();
+    if (!alterno) {
+      console.warn(
+        `[push-usuarios] ${paraReintentar.length} token(s) que el proyecto principal no reconoce, ` +
+          "y no hay un proyecto secundario configurado. Revisá FIREBASE_SECUNDARIO_SERVICE_ACCOUNT_JSON_BASE64.",
+      );
+    } else {
+      const res2 = await alterno.sendEachForMulticast({ tokens: paraReintentar, ...mensaje });
+      res2.responses.forEach((r, i) => {
+        if (r.success) return;
+        const code = (r.error as { code?: string } | undefined)?.code ?? "";
+        // Sólo acá se apaga, y sólo por la única causa que lo justifica. Un
+        // error de credencial es un problema del servidor: apagar el teléfono
+        // por eso deja a alguien sin avisos y sin rastro de por qué.
+        if (code.includes("registration-token-not-registered")) muertos.push(paraReintentar[i]);
+      });
+    }
+  }
+
   if (muertos.length > 0) {
     await sb
       .from("agent_device_tokens")

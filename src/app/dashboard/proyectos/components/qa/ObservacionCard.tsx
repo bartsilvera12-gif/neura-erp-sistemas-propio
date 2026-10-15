@@ -21,6 +21,9 @@ import {
 type Props = {
   obs: QAObservacion;
   seccion: QASeccion | null;
+  /** Solo QA puede marcar/reabrir una observación: para el resto el check es
+   *  de solo lectura (ve el estado pero no lo cambia). */
+  puedeResolver: boolean;
   onAbrir: (obs: QAObservacion) => void;
   onToggleResuelto: (obs: QAObservacion) => void;
 };
@@ -33,7 +36,7 @@ const ESTADO_CHIP: Record<string, string> = {
   descartado: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
-export default function ObservacionCard({ obs, seccion, onAbrir, onToggleResuelto }: Props) {
+export default function ObservacionCard({ obs, seccion, puedeResolver, onAbrir, onToggleResuelto }: Props) {
   const cerrada = obs.estado === "resuelto" || obs.estado === "verificado" || obs.estado === "descartado";
   const marcada = obs.estado === "resuelto" || obs.estado === "verificado";
   const portada = obs.archivos.find((a) => (a.mime_type ?? "").startsWith("image/") && a.url);
@@ -46,17 +49,32 @@ export default function ObservacionCard({ obs, seccion, onAbrir, onToggleResuelt
         cerrada ? "border-slate-200/70 opacity-70" : "border-slate-200 hover:border-[#4FAEB2]/50"
       }`}
     >
-      {/* Checkbox grande: resuelve (o reabre) de un solo click. */}
+      {/* Checkbox grande: resuelve (o reabre) de un solo click. Solo QA lo
+          opera; para el resto queda de solo lectura (muestra el estado pero no
+          deja marcar ni reabrir). */}
       <button
         type="button"
-        onClick={() => onToggleResuelto(obs)}
+        onClick={() => { if (puedeResolver) onToggleResuelto(obs); }}
+        disabled={!puedeResolver}
         aria-pressed={marcada}
-        aria-label={marcada ? `Reabrir ${qaCodigoObservacion(obs.numero)}` : `Marcar ${qaCodigoObservacion(obs.numero)} como resuelta`}
-        title={marcada ? "Reabrir" : "Marcar resuelta"}
+        aria-label={
+          !puedeResolver
+            ? `${qaCodigoObservacion(obs.numero)}: solo QA puede marcarla como resuelta`
+            : marcada
+              ? `Reabrir ${qaCodigoObservacion(obs.numero)}`
+              : `Marcar ${qaCodigoObservacion(obs.numero)} como resuelta`
+        }
+        title={!puedeResolver ? "Solo QA puede marcar como resuelta" : marcada ? "Reabrir" : "Marcar resuelta"}
         className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 transition-colors ${
           marcada
             ? "border-[#4FAEB2] bg-[#4FAEB2] text-white"
-            : "border-slate-300 text-transparent hover:border-[#4FAEB2] hover:text-[#4FAEB2]/40"
+            : "border-slate-300 text-transparent"
+        } ${
+          puedeResolver
+            ? marcada
+              ? ""
+              : "hover:border-[#4FAEB2] hover:text-[#4FAEB2]/40"
+            : "cursor-not-allowed opacity-70"
         }`}
       >
         <IconCheck size={15} />

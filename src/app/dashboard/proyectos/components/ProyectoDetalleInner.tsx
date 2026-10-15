@@ -1067,10 +1067,14 @@ const ComentarioImagen = memo(function ComentarioImagen({
   adjunto,
 }: {
   projectId: string;
-  adjunto: { path: string; nombre?: string };
+  adjunto: { path: string; nombre?: string; mime_type?: string };
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [falló, setFalló] = useState(false);
+  // Por mime y, si no viene, por la extensión: los comentarios viejos se guardaron sin él.
+  const esVideo =
+    (adjunto.mime_type ?? "").startsWith("video/") ||
+    /\.(mp4|mov|m4v|3gp|webm)$/i.test(adjunto.nombre ?? "");
 
   useEffect(() => {
     let cancel = false;
@@ -1110,7 +1114,16 @@ const ComentarioImagen = memo(function ComentarioImagen({
 
   return (
     <div className="group relative">
-      {url ? (
+      {url && esVideo ? (
+        // Los comentarios ahora aceptan videos cortos, no sólo fotos: en obra se graba un
+        // clip para mostrar un problema. Con `<img>` salía roto.
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          className="max-h-44 rounded-lg border border-slate-200"
+        />
+      ) : url ? (
         <a href={url} target="_blank" rel="noopener noreferrer" title="Ver imagen">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

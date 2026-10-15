@@ -43,12 +43,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     if (file.size > PROYECTOS_ARCHIVO_MAX_BYTES) {
       return NextResponse.json(
-        errorResponse(`La imagen supera el máximo de ${Math.round(PROYECTOS_ARCHIVO_MAX_BYTES / (1024 * 1024))} MB`),
+        errorResponse(`El archivo supera el máximo de ${Math.round(PROYECTOS_ARCHIVO_MAX_BYTES / (1024 * 1024))} MB`),
         { status: 400 }
       );
     }
     const mimeType = file.type || "application/octet-stream";
-    if (!mimeType.startsWith("image/")) {
+    // Imágenes y videos. Los videos se agregaron porque en obra se graban clips cortos para
+    // mostrar un problema, y antes había que subirlos como archivo del proyecto —fuera del
+    // hilo de la conversación— o no mandarlos.
+    if (!mimeType.startsWith("image/") && !mimeType.startsWith("video/")) {
       return NextResponse.json(errorResponse("Solo se pueden adjuntar imágenes"), { status: 400 });
     }
     const nombre = (file.name || "imagen").trim().slice(0, 200) || "imagen";

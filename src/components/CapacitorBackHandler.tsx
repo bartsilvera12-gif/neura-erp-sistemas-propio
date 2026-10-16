@@ -25,8 +25,24 @@ export default function CapacitorBackHandler() {
         const { App } = await import("@capacitor/app");
         if (cancelled) return;
 
+        // Rutas "raíz" de la app: desde acá el botón atrás minimiza en vez de volver.
+        // Sin esto, atrás desde /m/asesor termina llevando a /login (que estaba antes en
+        // history por el redirect de sesión), lo cual es confuso.
+        const isRootPath = (p: string): boolean => {
+          const path = p.split("?")[0]?.split("#")[0] ?? p;
+          return (
+            path === "/" ||
+            path === "/login" ||
+            path === "/m/asesor" ||
+            path === "/m/asesor/" ||
+            path === "/dashboard" ||
+            path === "/dashboard/"
+          );
+        };
+
         const sub = await App.addListener("backButton", ({ canGoBack }) => {
-          if (canGoBack) {
+          const path = window.location.pathname;
+          if (canGoBack && !isRootPath(path)) {
             window.history.back();
           } else {
             void App.minimizeApp().catch(() => {

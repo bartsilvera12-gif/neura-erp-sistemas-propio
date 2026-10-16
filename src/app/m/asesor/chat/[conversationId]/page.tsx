@@ -984,28 +984,36 @@ export default function MAsesorChatPage() {
 
   // Se cargan al abrir el modal, no al montar: son dos consultas caras que la mayoría
   // de las veces no se usan (el asesor entra a leer, no a transferir).
+  //
+  // Se invocan via endpoint HTTP (`/api/mobile/asesor/transfer-options`) y no como server
+  // actions directamente: en producción Next 15 rompía al serializar la respuesta de los
+  // server actions ("An error occurred in the Server Components render" enmascarado), y
+  // la misma función envuelta en una route HTTP + NextResponse.json anda sin problemas.
   const [transferError, setTransferError] = useState<string | null>(null);
   const openTransfer = useCallback(() => {
     setTransferOpen(true);
     setTransferLoading(true);
     setTransferError(null);
-    void Promise.all([
-      listTransferQueues().catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        setTransferError((prev) => prev ?? `Colas: ${msg}`);
-        return [] as ChatQueueListRow[];
-      }),
-      fetchTransferTargetAgents().catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        setTransferError((prev) => prev ?? `Agentes: ${msg}`);
-        return [] as SupervisorAgentLoadRow[];
-      }),
-    ])
-      .then(([qs, ags]) => {
-        setOpsQueues(qs);
-        setOpsAgents(ags);
-      })
-      .finally(() => setTransferLoading(false));
+    void (async () => {
+      try {
+        const r = await fetchWithSupabaseSession("/api/mobile/asesor/transfer-options", {
+          cache: "no-store",
+        });
+        const j = (await r.json().catch(() => null)) as
+          | { ok: boolean; queues?: ChatQueueListRow[]; agents?: SupervisorAgentLoadRow[]; error?: string }
+          | null;
+        if (!r.ok || !j?.ok) {
+          setTransferError(j?.error ?? `HTTP ${r.status}`);
+          return;
+        }
+        setOpsQueues(j.queues ?? []);
+        setOpsAgents(j.agents ?? []);
+      } catch (e) {
+        setTransferError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setTransferLoading(false);
+      }
+    })();
   }, []);
 
   const abrirFinalizar = useCallback(() => {

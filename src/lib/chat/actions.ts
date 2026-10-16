@@ -578,8 +578,14 @@ async function fetchChatConversationsUnsafe(
       const safe = qraw.replace(/[(),*]/g, " ").trim();
       const digits = qraw.replace(/\D/g, "");
       if (safe) {
-        const contactOr = [`name.ilike.*${safe}*`, `phone_number.ilike.*${safe}*`];
-        if (digits.length >= 3) contactOr.push(`phone_normalized.ilike.*${digits}*`);
+        const contactOrBase = [`name.ilike.*${safe}*`, `phone_number.ilike.*${safe}*`];
+        if (digits.length >= 3) contactOrBase.push(`phone_normalized.ilike.*${digits}*`);
+        // `telefono_real` (canal WhatsApp por QR, hoy solo neura): es el número que se MUESTRA
+        // cuando el chat entró con un @lid (el phone_number guardado es el código interno). Sin
+        // esto, buscar por el número real no encontraba nada. Drift-safe: si el tenant no tiene
+        // la columna, el query falla y se reintenta con el set base (abajo).
+        const contactOrReal = [...contactOrBase, `telefono_real.ilike.*${safe}*`];
+        if (digits.length >= 3) contactOrReal.push(`telefono_real.ilike.*${digits}*`);
         // Cap duro de contactos resueltos. Un término corto y numérico (p. ej. "982") matchea
         // cientos de teléfonos; meter todos en `contact_id.in.(...)` hacía una URL PostgREST tan
         // larga que el proxy devolvía 414 y el listado tiraba error (solo pasaba al buscar números).
@@ -588,13 +594,22 @@ async function fetchChatConversationsUnsafe(
         const CONTACT_MATCH_CAP = 100;
         let contactIds: string[] = [];
         try {
-          const { data: cRows } = await supabase
+          let res = await supabase
             .from("chat_contacts")
             .select("id")
             .eq("empresa_id", empresa_id)
-            .or(contactOr.join(","))
+            .or(contactOrReal.join(","))
             .limit(CONTACT_MATCH_CAP);
-          contactIds = (cRows ?? [])
+          if (res.error) {
+            // Tenant sin columna telefono_real → se reintenta con el set base.
+            res = await supabase
+              .from("chat_contacts")
+              .select("id")
+              .eq("empresa_id", empresa_id)
+              .or(contactOrBase.join(","))
+              .limit(CONTACT_MATCH_CAP);
+          }
+          contactIds = (res.data ?? [])
             .map((r) => String((r as { id?: string }).id ?? "").trim())
             .filter(Boolean)
             .slice(0, CONTACT_MATCH_CAP);

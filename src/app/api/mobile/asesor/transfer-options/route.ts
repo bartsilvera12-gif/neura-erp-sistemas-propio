@@ -14,13 +14,13 @@ export const dynamic = "force-dynamic";
  * (via NextResponse.json) andaban perfecto. Este endpoint es el camino HTTP equivalente
  * y evita la serialización de RSC.
  */
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
     const [queues, agents] = await Promise.all([
-      listTransferQueues().catch((e: unknown) => {
+      listTransferQueues(req).catch((e: unknown) => {
         throw new Error(`queues: ${e instanceof Error ? e.message : String(e)}`);
       }),
-      fetchTransferTargetAgents().catch((e: unknown) => {
+      fetchTransferTargetAgents(req).catch((e: unknown) => {
         throw new Error(`agents: ${e instanceof Error ? e.message : String(e)}`);
       }),
     ]);

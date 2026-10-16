@@ -588,8 +588,8 @@ export async function listChatQueues(): Promise<ChatQueueListRow[]> {
  *
  * Se devuelve el nombre y poco más: nada que no vea igual en el tablero.
  */
-export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
-  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
+export async function listTransferQueues(request?: Request | null): Promise<ChatQueueListRow[]> {
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole(request ?? undefined);
 
   const pool = getChatPostgresPool();
   if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
@@ -1616,8 +1616,8 @@ async function hasSoloTransferenciaQueue(
  * NO amplía la visibilidad de CONVERSACIONES del inbox (eso sigue scoped a "mine"); solo arma
  * la lista de destinos válidos. No toca el reparto automático ni `cc_assign_conversation`.
  */
-export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRow[]> {
-  const ctx = await requireEmpresaTenantServiceRole();
+export async function fetchTransferTargetAgents(request?: Request | null): Promise<SupervisorAgentLoadRow[]> {
+  const ctx = await requireEmpresaTenantServiceRole(request ?? undefined);
   const { supabase, catalogSr, empresa_id, usuario_id, dataSchema } = ctx;
   const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id, { tenantDataSchema: dataSchema });
   const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);

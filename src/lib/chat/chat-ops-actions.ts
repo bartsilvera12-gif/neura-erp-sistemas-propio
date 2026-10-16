@@ -472,9 +472,9 @@ export type ChatQueueListRow = {
   nombre: string;
   is_active: boolean;
   channel_type: string | null;
-  descripcion?: string | null;
-  distribution_strategy?: string;
-  priority?: number;
+  descripcion: string | null;
+  distribution_strategy: string | null;
+  priority: number | null;
 };
 
 export async function listChatQueues(): Promise<ChatQueueListRow[]> {
@@ -609,8 +609,8 @@ export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
         is_active: row.is_active !== false,
         channel_type: (row.channel_type as string | null) ?? null,
         descripcion: (row.descripcion as string | null) ?? null,
-        distribution_strategy: (row.distribution_strategy as string | undefined) ?? undefined,
-        priority: typeof row.priority === "number" ? row.priority : undefined,
+        distribution_strategy: (row.distribution_strategy as string | null) ?? null,
+        priority: typeof row.priority === "number" ? row.priority : null,
       })) as ChatQueueListRow[];
     } catch (e) {
       console.warn(
@@ -628,11 +628,23 @@ export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
     .order("priority", { ascending: false })
     .order("nombre", { ascending: true });
   if (error) {
-    console.error("[listTransferQueues][postgrest-error]", { empresa_id, dataSchema, msg: error.message });
     throw new Error(error.message);
   }
-  console.info("[listTransferQueues][out:postgrest]", { empresa_id, dataSchema, count: (data ?? []).length });
-  return (data ?? []) as ChatQueueListRow[];
+  // Normaliza undefined → null para que los server actions puedan serializar la respuesta.
+  // Sin esto, cualquier fila con priority/distribution_strategy undefined rompe el render
+  // de Server Components y Next tira "An error occurred in the Server Components render".
+  return (data ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: String(r.id ?? ""),
+      nombre: String(r.nombre ?? ""),
+      is_active: r.is_active !== false,
+      channel_type: (r.channel_type as string | null) ?? null,
+      descripcion: (r.descripcion as string | null) ?? null,
+      distribution_strategy: (r.distribution_strategy as string | null) ?? null,
+      priority: typeof r.priority === "number" ? r.priority : null,
+    };
+  }) as ChatQueueListRow[];
 }
 
 export type MonitoringPendingReplyItem = {

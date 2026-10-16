@@ -765,6 +765,17 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
 
   const [q, setQ] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  // Botón "En proceso": acceso rápido a los estados que están en el flujo de producción activo
+  // (desarrollo, QA, cambios solicitados, revisión cliente, publicado/pendiente de capacitación).
+  // Es un filtro CLIENTE sobre la lista ya cargada; no toca el fetch ni el select de estado.
+  const [enProceso, setEnProceso] = useState(false);
+  const CODIGOS_EN_PROCESO: ReadonlySet<string> = new Set([
+    "desarrollo",
+    "qa",
+    "cambios_solicitados",
+    "enviado_cliente",
+    "brief_cargado",
+  ]);
   const [filtroTipo, setFiltroTipo] = useState("");
   const [filtroRc, setFiltroRc] = useState("");
   const [filtroRt, setFiltroRt] = useState("");
@@ -1025,7 +1036,10 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
    *     título, tipo, estado y responsables—, sin acentos y por tokens sueltos.
    */
   const proyectosVisibles = useMemo(() => {
-    const base = proyectos.filter((p) => !fueraDelRango(p, entregaDesde, entregaHasta));
+    let base = proyectos.filter((p) => !fueraDelRango(p, entregaDesde, entregaHasta));
+    if (enProceso) {
+      base = base.filter((p) => CODIGOS_EN_PROCESO.has(p.proyecto_estado?.codigo ?? ""));
+    }
     if (tokensBusqueda.length === 0) return base;
     return base.filter((p) =>
       coincideBusqueda(
@@ -1043,7 +1057,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           .join(" ")
       )
     );
-  }, [proyectos, tokensBusqueda, entregaDesde, entregaHasta]);
+  }, [proyectos, tokensBusqueda, entregaDesde, entregaHasta, enProceso]);
 
   const estadoActivoIds = useMemo(() => new Set(estados.map((e) => e.id)), [estados]);
 
@@ -1363,6 +1377,21 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
               </button>
             </div>
           ) : null}
+          {/* Botón "En proceso": muestra solo los proyectos cuyo estado está en el flujo activo
+              de producción. Filtro client-side; no reemplaza al select de estado. */}
+          <button
+            type="button"
+            onClick={() => setEnProceso((v) => !v)}
+            aria-pressed={enProceso}
+            title="Solo proyectos en desarrollo, QA, cambios solicitados, revisión cliente o publicado/pendiente de capacitación"
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+              enProceso
+                ? "border-[#3F8E91] bg-[#3F8E91] text-white"
+                : "border-slate-200 bg-white text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            En proceso
+          </button>
           {/* Toggle de vista: Kanban (cards) | Lista (tabla). Mismo patrón que CRM Funnel. */}
           <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
             <button
@@ -1525,7 +1554,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
             className="w-[132px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
           />
         </div>
-        {(q || filtroEstado || filtroTipo || filtroRc || filtroRt || entregaDesde || entregaHasta) ? (
+        {(q || filtroEstado || filtroTipo || filtroRc || filtroRt || entregaDesde || entregaHasta || enProceso) ? (
           <button
             type="button"
             className="shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
@@ -1537,6 +1566,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
               setFiltroRt("");
               setEntregaDesde("");
               setEntregaHasta("");
+              setEnProceso(false);
             }}
           >
             Limpiar filtros

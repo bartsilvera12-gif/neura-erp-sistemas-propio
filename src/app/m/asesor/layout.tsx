@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import CapacitorPushRegister from "@/components/CapacitorPushRegister";
+import CapacitorBackHandler from "@/components/CapacitorBackHandler";
 
 /**
  * Layout de /m/asesor/*.
@@ -19,6 +20,7 @@ export default function MAsesorLayout({ children }: { children: ReactNode }) {
     <>
       {children}
       <CapacitorPushRegister />
+      <CapacitorBackHandler />
     </>
   );
 }

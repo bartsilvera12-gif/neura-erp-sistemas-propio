@@ -306,9 +306,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const maxBytes = 50 * 1024 * 1024;
+    // Tope duro: el del bucket donde se guarda. Más arriba de esto no hay nada que hacer,
+    // y conviene cortar acá y no después de subir 100 MB para que el storage los rechace.
+    const maxBytes = 100 * 1024 * 1024;
     if (file.size > maxBytes) {
-      return NextResponse.json({ ok: false, error: "Archivo demasiado grande (máx. 50 MB)" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Archivo demasiado grande (máx. 100 MB)" }, { status: 400 });
     }
 
     const supabase = await getChatServiceClientForEmpresa(auth.empresa_id);
@@ -461,7 +463,26 @@ export async function POST(request: NextRequest) {
     // Video en un formato que WhatsApp no acepta (grabación de pantalla .mov con HEVC, avi,
     // mkv, webm…): se pasa a MP4 H.264 + AAC. Antes salía tal cual y el cliente nunca lo
     // recibía: WhatsApp devolvía "rechazó el formato del archivo".
-    if (originalMime.startsWith("video/") && buf.length <= VIDEO_LIMIT_BYTES) {
+    // Los 16 MB son el tope de Meta, NO de WhatsApp: el canal por QR va por el mismo camino
+    // que WhatsApp Web y acepta bastante más.
+    const compresionObligatoria = provider !== "baileys";
+
+    // Por la API oficial se mantiene el tope de 50 MB de antes: arriba de eso hay que subirlo
+    // entero y después comprimirlo a 16, y eso tarda muchísimo y falla seguido. Mejor decirlo
+    // ahora que hacer esperar cinco minutos para fallar igual.
+    if (compresionObligatoria && file.size > 50 * 1024 * 1024) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "El video es demasiado grande para este canal (máx. 50 MB). Recortalo o compartí un enlace.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // La conversión de FORMATO va para todos los canales: un .mov con HEVC no lo reproduce
+    // nadie, salga por donde salga. Lo que cambia por canal es el tamaño, más abajo.
+    if (originalMime.startsWith("video/") && (!compresionObligatoria || buf.length <= VIDEO_LIMIT_BYTES)) {
       if (!(await videoYaCompatible(buf, originalMime))) {
         try {
           buf = await convertirVideoAMp4(buf);
@@ -486,7 +507,16 @@ export async function POST(request: NextRequest) {
 
     // Video que supera el límite de WhatsApp → lo comprimimos (máx 720p, ~15 MB). Si no,
     // Meta lo rechaza (la API no comprime sola como la app del celular).
-    if (originalMime.startsWith("video/") && buf.length > VIDEO_LIMIT_BYTES) {
+    //
+    // Sólo en la API oficial. Los 16 MB son el tope de Meta, NO de WhatsApp: el canal por QR
+    // va por el mismo camino que WhatsApp Web y acepta bastante más. Antes se comprimía sin
+    // mirar el canal, así que a los clientes del canal QR les llegaban videos recodificados a
+    // 720p sin ninguna necesidad.
+    if (
+      compresionObligatoria &&
+      originalMime.startsWith("video/") &&
+      buf.length > VIDEO_LIMIT_BYTES
+    ) {
       try {
         buf = await compressVideoUnder16MB(buf);
         origName = (origName.replace(/\.[^.]+$/, "") || "video") + ".mp4";

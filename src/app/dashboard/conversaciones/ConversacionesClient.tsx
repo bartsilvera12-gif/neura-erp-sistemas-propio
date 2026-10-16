@@ -1075,6 +1075,9 @@ export function ConversacionesClient({
 
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const conversationsRef = useRef<InboxConversation[]>([]);
+  /// Los mensajes del chat abierto, para leerlos desde callbacks sin volver a crearlos en
+  /// cada render. Se usa para saber por qué canal va la conversación.
+  const messagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
@@ -1108,6 +1111,9 @@ export function ConversacionesClient({
     red: "instagram" | "facebook" | "no_identificado";
   } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const [input, setInput] = useState("");
   /** Mensajes de texto en vuelo (envío optimista): aparecen al instante como "enviando…" y se
    * reconcilian con el server. Array separado para que loadMessages (que reemplaza `messages`)
@@ -1687,10 +1693,19 @@ export function ConversacionesClient({
     const cid = selectedIdRef.current;
     if (!cid || file.size < 1) return;
     const isVideo = file.type.startsWith("video/");
-    // Videos hasta 50 MB: el servidor los comprime a <16 MB (720p) antes de mandar. Más grande
-    // que eso, mejor un enlace (la subida + compresión se vuelve poco confiable).
-    if (isVideo && file.size > 50 * 1024 * 1024) {
-      setSendError("El video es demasiado grande (máx 50 MB). Recortalo o compartí un enlace.");
+    // El tope depende del canal. Por la API oficial el servidor tiene que comprimir a menos
+    // de 16 MB (límite de Meta) y arriba de 50 eso se vuelve poco confiable. Por el canal QR
+    // no hay compresión: va directo, igual que desde WhatsApp Web, y el único techo es el del
+    // almacenamiento.
+    const esCanalQR = messagesRef.current?.some((m) => {
+      const raw = m.raw_payload as Record<string, unknown> | null | undefined;
+      return raw?.source === "baileys" || Boolean(raw?.bridge);
+    });
+    const topeVideo = (esCanalQR ? 100 : 50) * 1024 * 1024;
+    if (isVideo && file.size > topeVideo) {
+      setSendError(
+        `El video es demasiado grande (máx ${esCanalQR ? 100 : 50} MB). Recortalo o compartí un enlace.`
+      );
       return;
     }
     setSendError(null);

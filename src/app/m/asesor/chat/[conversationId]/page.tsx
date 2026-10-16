@@ -1128,6 +1128,26 @@ export default function MAsesorChatPage() {
     [opsBusy, load]
   );
 
+  // Transfiere via endpoint HTTP (no server action): los server actions no reciben el
+  // Authorization: Bearer que manda la APK y fallan con "Usuario no autenticado".
+  const transferHttp = useCallback(
+    async (body: { queue_id?: string; agent_id?: string }) => {
+      const r = await fetchWithSupabaseSession(
+        `/api/mobile/asesor/conversations/${encodeURIComponent(conversationId)}/transfer`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+      const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!r.ok || !j?.ok) {
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+    },
+    [conversationId]
+  );
+
   const previewOf = (m: Msg) =>
     (m.content?.trim() || textoDeMensajeDeSistema(m.message_type) || `[${m.message_type}]`).slice(0, 160);
 
@@ -2363,7 +2383,7 @@ export default function MAsesorChatPage() {
                     type="button"
                     disabled={opsBusy || !transferQueue}
                     onClick={() =>
-                      void runOp(() => changeConversationQueue(conversationId, transferQueue))
+                      void runOp(() => transferHttp({ queue_id: transferQueue }))
                     }
                     className="shrink-0 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-[14px] font-semibold text-white active:bg-[#3F8E91] disabled:opacity-50"
                   >
@@ -2423,7 +2443,7 @@ export default function MAsesorChatPage() {
                               type="button"
                               disabled={opsBusy || isCurrent}
                               onClick={() =>
-                                void runOp(() => assignConversationToAgent(conversationId, a.id))
+                                void runOp(() => transferHttp({ agent_id: a.id }))
                               }
                               className="shrink-0 rounded-xl bg-[#4FAEB2] px-3 py-2 text-[13px] font-semibold text-white active:bg-[#3F8E91] disabled:bg-slate-200 disabled:text-slate-500"
                             >

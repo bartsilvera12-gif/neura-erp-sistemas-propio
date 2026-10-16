@@ -627,7 +627,11 @@ export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
     .eq("is_active", true)
     .order("priority", { ascending: false })
     .order("nombre", { ascending: true });
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error("[listTransferQueues][postgrest-error]", { empresa_id, dataSchema, msg: error.message });
+    throw new Error(error.message);
+  }
+  console.info("[listTransferQueues][out:postgrest]", { empresa_id, dataSchema, count: (data ?? []).length });
   return (data ?? []) as ChatQueueListRow[];
 }
 
@@ -1605,10 +1609,20 @@ export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRo
   const { supabase, catalogSr, empresa_id, usuario_id, dataSchema } = ctx;
   const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id, { tenantDataSchema: dataSchema });
   const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
+  console.info("[fetchTransferTargetAgents][in]", {
+    usuario_id,
+    empresa_id,
+    dataSchema,
+    scopeRole: scope.role,
+    scopeQueues: scope.queueIds.length,
+    bypass,
+  });
 
   // Admin/supervisor/bypass: mantener alcance existente (equipo o global).
   if (bypass || scope.role === "admin" || scope.role === "supervisor") {
-    return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+    const rows = await loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+    console.info("[fetchTransferTargetAgents][out:admin/sup]", { count: rows.length });
+    return rows;
   }
   // Tenants no expuestos (pool): sin regresión, comportamiento previo.
   const pool = getChatPostgresPool();

@@ -984,12 +984,22 @@ export default function MAsesorChatPage() {
 
   // Se cargan al abrir el modal, no al montar: son dos consultas caras que la mayoría
   // de las veces no se usan (el asesor entra a leer, no a transferir).
+  const [transferError, setTransferError] = useState<string | null>(null);
   const openTransfer = useCallback(() => {
     setTransferOpen(true);
     setTransferLoading(true);
+    setTransferError(null);
     void Promise.all([
-      listTransferQueues().catch(() => [] as ChatQueueListRow[]),
-      fetchTransferTargetAgents().catch(() => [] as SupervisorAgentLoadRow[]),
+      listTransferQueues().catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setTransferError((prev) => prev ?? `Colas: ${msg}`);
+        return [] as ChatQueueListRow[];
+      }),
+      fetchTransferTargetAgents().catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setTransferError((prev) => prev ?? `Agentes: ${msg}`);
+        return [] as SupervisorAgentLoadRow[];
+      }),
     ])
       .then(([qs, ags]) => {
         setOpsQueues(qs);
@@ -2370,6 +2380,10 @@ export default function MAsesorChatPage() {
                 </div>
                 {transferLoading ? (
                   <p className="py-6 text-center text-[13px] text-slate-500">Cargando agentes…</p>
+                ) : transferError ? (
+                  <p className="py-6 text-center text-[12px] text-red-600 break-words px-2">
+                    Error cargando datos: {transferError}
+                  </p>
                 ) : filteredAgents.length === 0 ? (
                   <p className="py-6 text-center text-[13px] text-slate-500">
                     No hay agentes para mostrar con estos filtros.

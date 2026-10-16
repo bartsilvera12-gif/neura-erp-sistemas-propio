@@ -472,9 +472,9 @@ export type ChatQueueListRow = {
   nombre: string;
   is_active: boolean;
   channel_type: string | null;
-  descripcion?: string | null;
-  distribution_strategy?: string;
-  priority?: number;
+  descripcion: string | null;
+  distribution_strategy: string | null;
+  priority: number | null;
 };
 
 export async function listChatQueues(): Promise<ChatQueueListRow[]> {
@@ -588,8 +588,8 @@ export async function listChatQueues(): Promise<ChatQueueListRow[]> {
  *
  * Se devuelve el nombre y poco más: nada que no vea igual en el tablero.
  */
-export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
-  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
+export async function listTransferQueues(request?: Request | null): Promise<ChatQueueListRow[]> {
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole(request ?? undefined);
 
   const pool = getChatPostgresPool();
   if (pool && isLikelyUnexposedTenantChatSchema(dataSchema)) {
@@ -609,8 +609,8 @@ export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
         is_active: row.is_active !== false,
         channel_type: (row.channel_type as string | null) ?? null,
         descripcion: (row.descripcion as string | null) ?? null,
-        distribution_strategy: (row.distribution_strategy as string | undefined) ?? undefined,
-        priority: typeof row.priority === "number" ? row.priority : undefined,
+        distribution_strategy: (row.distribution_strategy as string | null) ?? null,
+        priority: typeof row.priority === "number" ? row.priority : null,
       })) as ChatQueueListRow[];
     } catch (e) {
       console.warn(
@@ -627,8 +627,24 @@ export async function listTransferQueues(): Promise<ChatQueueListRow[]> {
     .eq("is_active", true)
     .order("priority", { ascending: false })
     .order("nombre", { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as ChatQueueListRow[];
+  if (error) {
+    throw new Error(error.message);
+  }
+  // Normaliza undefined → null para que los server actions puedan serializar la respuesta.
+  // Sin esto, cualquier fila con priority/distribution_strategy undefined rompe el render
+  // de Server Components y Next tira "An error occurred in the Server Components render".
+  return (data ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: String(r.id ?? ""),
+      nombre: String(r.nombre ?? ""),
+      is_active: r.is_active !== false,
+      channel_type: (r.channel_type as string | null) ?? null,
+      descripcion: (r.descripcion as string | null) ?? null,
+      distribution_strategy: (r.distribution_strategy as string | null) ?? null,
+      priority: typeof r.priority === "number" ? r.priority : null,
+    };
+  }) as ChatQueueListRow[];
 }
 
 export type MonitoringPendingReplyItem = {
@@ -1600,15 +1616,25 @@ async function hasSoloTransferenciaQueue(
  * NO amplía la visibilidad de CONVERSACIONES del inbox (eso sigue scoped a "mine"); solo arma
  * la lista de destinos válidos. No toca el reparto automático ni `cc_assign_conversation`.
  */
-export async function fetchTransferTargetAgents(): Promise<SupervisorAgentLoadRow[]> {
-  const ctx = await requireEmpresaTenantServiceRole();
+export async function fetchTransferTargetAgents(request?: Request | null): Promise<SupervisorAgentLoadRow[]> {
+  const ctx = await requireEmpresaTenantServiceRole(request ?? undefined);
   const { supabase, catalogSr, empresa_id, usuario_id, dataSchema } = ctx;
   const scope = await getOmnicanalScope(supabase, empresa_id, usuario_id, { tenantDataSchema: dataSchema });
   const bypass = await shouldBypassOmnicanalConversationScope(catalogSr, usuario_id, scope);
+  console.info("[fetchTransferTargetAgents][in]", {
+    usuario_id,
+    empresa_id,
+    dataSchema,
+    scopeRole: scope.role,
+    scopeQueues: scope.queueIds.length,
+    bypass,
+  });
 
   // Admin/supervisor/bypass: mantener alcance existente (equipo o global).
   if (bypass || scope.role === "admin" || scope.role === "supervisor") {
-    return loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+    const rows = await loadSupervisorAgentLoadsWithContext(ctx, scope, bypass, {});
+    console.info("[fetchTransferTargetAgents][out:admin/sup]", { count: rows.length });
+    return rows;
   }
   // Tenants no expuestos (pool): sin regresión, comportamiento previo.
   const pool = getChatPostgresPool();

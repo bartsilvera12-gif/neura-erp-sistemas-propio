@@ -984,18 +984,36 @@ export default function MAsesorChatPage() {
 
   // Se cargan al abrir el modal, no al montar: son dos consultas caras que la mayoría
   // de las veces no se usan (el asesor entra a leer, no a transferir).
+  //
+  // Se invocan via endpoint HTTP (`/api/mobile/asesor/transfer-options`) y no como server
+  // actions directamente: en producción Next 15 rompía al serializar la respuesta de los
+  // server actions ("An error occurred in the Server Components render" enmascarado), y
+  // la misma función envuelta en una route HTTP + NextResponse.json anda sin problemas.
+  const [transferError, setTransferError] = useState<string | null>(null);
   const openTransfer = useCallback(() => {
     setTransferOpen(true);
     setTransferLoading(true);
-    void Promise.all([
-      listTransferQueues().catch(() => [] as ChatQueueListRow[]),
-      fetchTransferTargetAgents().catch(() => [] as SupervisorAgentLoadRow[]),
-    ])
-      .then(([qs, ags]) => {
-        setOpsQueues(qs);
-        setOpsAgents(ags);
-      })
-      .finally(() => setTransferLoading(false));
+    setTransferError(null);
+    void (async () => {
+      try {
+        const r = await fetchWithSupabaseSession("/api/mobile/asesor/transfer-options", {
+          cache: "no-store",
+        });
+        const j = (await r.json().catch(() => null)) as
+          | { ok: boolean; queues?: ChatQueueListRow[]; agents?: SupervisorAgentLoadRow[]; error?: string }
+          | null;
+        if (!r.ok || !j?.ok) {
+          setTransferError(j?.error ?? `HTTP ${r.status}`);
+          return;
+        }
+        setOpsQueues(j.queues ?? []);
+        setOpsAgents(j.agents ?? []);
+      } catch (e) {
+        setTransferError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setTransferLoading(false);
+      }
+    })();
   }, []);
 
   const abrirFinalizar = useCallback(() => {
@@ -1108,6 +1126,26 @@ export default function MAsesorChatPage() {
       }
     },
     [opsBusy, load]
+  );
+
+  // Transfiere via endpoint HTTP (no server action): los server actions no reciben el
+  // Authorization: Bearer que manda la APK y fallan con "Usuario no autenticado".
+  const transferHttp = useCallback(
+    async (body: { queue_id?: string; agent_id?: string }) => {
+      const r = await fetchWithSupabaseSession(
+        `/api/mobile/asesor/conversations/${encodeURIComponent(conversationId)}/transfer`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+      const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!r.ok || !j?.ok) {
+        throw new Error(j?.error ?? `HTTP ${r.status}`);
+      }
+    },
+    [conversationId]
   );
 
   const previewOf = (m: Msg) =>
@@ -2345,7 +2383,7 @@ export default function MAsesorChatPage() {
                     type="button"
                     disabled={opsBusy || !transferQueue}
                     onClick={() =>
-                      void runOp(() => changeConversationQueue(conversationId, transferQueue))
+                      void runOp(() => transferHttp({ queue_id: transferQueue }))
                     }
                     className="shrink-0 rounded-xl bg-[#4FAEB2] px-4 py-2.5 text-[14px] font-semibold text-white active:bg-[#3F8E91] disabled:opacity-50"
                   >
@@ -2370,6 +2408,10 @@ export default function MAsesorChatPage() {
                 </div>
                 {transferLoading ? (
                   <p className="py-6 text-center text-[13px] text-slate-500">Cargando agentes…</p>
+                ) : transferError ? (
+                  <p className="py-6 text-center text-[12px] text-red-600 break-words px-2">
+                    Error cargando datos: {transferError}
+                  </p>
                 ) : filteredAgents.length === 0 ? (
                   <p className="py-6 text-center text-[13px] text-slate-500">
                     No hay agentes para mostrar con estos filtros.
@@ -2401,7 +2443,7 @@ export default function MAsesorChatPage() {
                               type="button"
                               disabled={opsBusy || isCurrent}
                               onClick={() =>
-                                void runOp(() => assignConversationToAgent(conversationId, a.id))
+                                void runOp(() => transferHttp({ agent_id: a.id }))
                               }
                               className="shrink-0 rounded-xl bg-[#4FAEB2] px-3 py-2 text-[13px] font-semibold text-white active:bg-[#3F8E91] disabled:bg-slate-200 disabled:text-slate-500"
                             >

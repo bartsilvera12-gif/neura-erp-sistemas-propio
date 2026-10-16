@@ -33,6 +33,9 @@ const NO_STORE_HEADERS = { "Cache-Control": "no-store, no-cache, must-revalidate
  */
 
 const ESTADOS_CLIENTE_INACTIVO = new Set(["inactivo", "baja", "dado de baja", "suspendido"]);
+// Facturas que NO son deuda a cobrar: anuladas, ya pagadas y corregidas por nota de crédito
+// (deuda condonada/cancelada). Mismo criterio que Seguimiento Cobranzas.
+const ESTADOS_FACTURA_NO_DEUDA = new Set(["anulado", "pagado", "corregida nc"]);
 // Tope de IDs por `.in(...)`: con ~90+ uuids la URL supera el límite del gateway → 502 → data vacío.
 const IN_CHUNK = 50;
 /** Bucket para facturas/suscripciones sin tipo de servicio definido (coincide con la UI). */
@@ -280,11 +283,17 @@ export async function GET(request: NextRequest) {
         addAgg(tipo, "facturado_mes_ant", monto);
       }
     }
-    // Deuda total: saldo de TODAS las cuotas de suscripción impagas, de cualquier mes.
+    // Deuda total: saldo de las cuotas de suscripción impagas, de cualquier mes. "Por cobrar"
+    // = lo que REALMENTE tenés que cobrar, así que se excluye:
+    //   • Clientes NO vigentes (dados de baja / inactivos / eliminados): dejaron de ser deuda a cobrar.
+    //   • Facturas que no son deuda real: anuladas, pagadas y corregidas por NC (deuda condonada/cancelada).
+    // Mismo universo que Seguimiento Cobranzas (clientes activos) → los números cierran entre sí.
     for (const f of factDeuda) {
-      if (String(f.estado ?? "").trim().toLowerCase() === "anulado") continue;
+      if (ESTADOS_FACTURA_NO_DEUDA.has(String(f.estado ?? "").trim().toLowerCase())) continue;
       const saldo = Number(f.saldo) || 0;
       if (saldo <= 0) continue;
+      const cli = f.cliente_id ? cliMap.get(String(f.cliente_id)) : null;
+      if (!cli || !cli.vigente) continue; // solo clientes vigentes: una baja ya no es algo a cobrar
       const tipo = tipoDeFactura(f.suscripcion_id, f.cliente_id);
       addAgg(tipo, "por_cobrar_total", saldo);
       addAgg(tipo, "cuotas_impagas", 1);

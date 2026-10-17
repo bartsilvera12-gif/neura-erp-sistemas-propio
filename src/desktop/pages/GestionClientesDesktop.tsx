@@ -16,6 +16,7 @@ import { RecibosFacturaModal } from "@/components/recibos/RecibosFacturaModal";
 import { ModalCambioPlanGestion } from "@/components/gestion-clientes/ModalCambioPlanGestion";
 import { ModalHistorialClienteGestion } from "@/components/gestion-clientes/ModalHistorialClienteGestion";
 import { ModalContactosCliente } from "@/components/gestion-clientes/ModalContactosCliente";
+import ClienteContactosResumen from "@/components/clientes/ClienteContactosResumen";
 import { ProyectosClienteGestion } from "@/components/gestion-clientes/ProyectosClienteGestion";
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import FacturarVentaModal from "@/components/facturacion/FacturarVentaModal";
@@ -735,6 +736,8 @@ function GestionClientesPageInner() {
   const [modalHistorialCliente, setModalHistorialCliente] = useState(false);
   const [modalProyectos, setModalProyectos] = useState(false);
   const [modalContactos, setModalContactos] = useState(false);
+  // Se bumpea al cerrar el modal para que la ficha vuelva a leer los contactos.
+  const [contactosRev, setContactosRev] = useState(0);
   const [facturaCobroModal, setFacturaCobroModal] = useState<Factura | null>(null);
   const [recibosFactura, setRecibosFactura] = useState<Factura | null>(null);
   const [facturasDetalleAbierto, setFacturasDetalleAbierto] = useState(true);
@@ -1128,6 +1131,12 @@ function GestionClientesPageInner() {
                   ))}
                 </div>
 
+                <ClienteContactosResumen
+                  clienteId={selected.id}
+                  refrescar={contactosRev}
+                  onAdministrar={() => setModalContactos(true)}
+                />
+
                 <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
                   <BotonOperativo label="Tipificación" icon="📋" activo href={`/clientes/${selected.id}/tipificacion`} />
                   <BotonOperativo label="Contactos" icon="👥" activo onClick={() => setModalContactos(true)} />
@@ -1405,7 +1414,10 @@ function GestionClientesPageInner() {
         <ModalContactosCliente
           clienteId={selected.id}
           clienteNombre={clienteNombre(selected)}
-          onClose={() => setModalContactos(false)}
+          onClose={() => {
+            setModalContactos(false);
+            setContactosRev((n) => n + 1);
+          }}
         />
       )}
       {modalHistorialCliente && selected && (

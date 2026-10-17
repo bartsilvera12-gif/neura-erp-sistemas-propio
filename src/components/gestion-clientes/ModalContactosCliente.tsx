@@ -187,8 +187,8 @@ export function ModalContactosCliente({
                   <input className={claseCampo} value={form.nombre} maxLength={150} onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Ej.: María Gómez" autoFocus />
                 </div>
                 <div>
-                  <span className={claseEtiqueta}>Cargo</span>
-                  <input className={claseCampo} value={form.cargo} maxLength={100} onChange={(e) => setForm((f) => ({ ...f, cargo: e.target.value }))} placeholder="Ej.: Administración" />
+                  <span className={claseEtiqueta}>Función</span>
+                  <input className={claseCampo} value={form.cargo} maxLength={100} onChange={(e) => setForm((f) => ({ ...f, cargo: e.target.value }))} placeholder="Ej.: Contador" />
                 </div>
                 <div>
                   <span className={claseEtiqueta}>Teléfono</span>

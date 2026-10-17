@@ -38,6 +38,7 @@ import { useBancosActivos } from "@/shared/hooks/useBancosActivos";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import MontoInput from "@/components/ui/MontoInput";
+import ClienteContactosSection from "@/components/clientes/ClienteContactosSection";
 import { getPlanes } from "@/lib/planes/storage";
 import { hoyYmdLocal, vencimientoPeriodo } from "@/lib/fechas/calendario";
 import type { Cliente, NotaCliente } from "@/lib/clientes/types";
@@ -1897,6 +1898,9 @@ export default function ClienteDetalleClient({
                   }}
                 />
               </section>
+
+              {/* Contactos secundarios: otras personas del cliente, su función y su teléfono */}
+              <ClienteContactosSection clienteId={cliente.id} clienteNombre={clienteNombre(cliente)} />
 
               {/* Digital */}
               <section className="space-y-4">

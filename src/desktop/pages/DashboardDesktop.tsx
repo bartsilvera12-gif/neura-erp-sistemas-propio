@@ -574,8 +574,8 @@ function KpiCard({
   icon?: React.ReactNode;
   variation?: number;
   variant?: "light" | "zentra";
-  /** `featured` aplica gradiente turquesa al chip y barra superior. */
-  accent?: "neutral" | "featured" | "warning" | "danger";
+  /** Color de acento: tiñe el chip del ícono y la barra superior de la card. */
+  accent?: "neutral" | "featured" | "warning" | "danger" | "info" | "success" | "recurrencia";
 }) {
   const chipCls =
     accent === "featured"
@@ -584,7 +584,25 @@ function KpiCard({
         ? "border-amber-200 bg-amber-50 text-amber-600"
         : accent === "danger"
           ? "border-rose-200 bg-rose-50 text-rose-600"
-          : "border-slate-200 bg-slate-50 text-slate-500";
+          : accent === "info"
+            ? "border-sky-200 bg-sky-50 text-sky-600"
+            : accent === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+              : accent === "recurrencia"
+                ? "border-violet-200 bg-violet-50 text-violet-600"
+                : "border-slate-200 bg-slate-50 text-slate-500";
+
+  // Barra superior de color por acento (le da identidad a cada card).
+  const accentBar: Record<string, string> = {
+    featured: "bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/70 to-[#4FAEB2]/30",
+    warning: "bg-gradient-to-r from-amber-400 via-amber-300 to-amber-200",
+    danger: "bg-gradient-to-r from-rose-400 via-rose-300 to-rose-200",
+    info: "bg-gradient-to-r from-sky-400 via-sky-300 to-sky-200",
+    success: "bg-gradient-to-r from-emerald-400 via-emerald-300 to-emerald-200",
+    recurrencia: "bg-gradient-to-r from-violet-400 via-violet-300 to-violet-200",
+    neutral: "",
+  };
+  const topBar = accentBar[accent] ?? "";
 
   const variationCls =
     variation === undefined
@@ -600,11 +618,8 @@ function KpiCard({
 
   return (
     <motion.div whileHover={{ y: -2 }} className={cardCls}>
-      {accent === "featured" ? (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#4FAEB2] via-[#4FAEB2]/70 to-[#4FAEB2]/30"
-        />
+      {topBar ? (
+        <span aria-hidden="true" className={`pointer-events-none absolute inset-x-0 top-0 h-[3px] ${topBar}`} />
       ) : null}
       <div className="flex items-start justify-between gap-3">
         {icon ? (
@@ -748,37 +763,55 @@ function DashComercial({
     (p) => normalizeEtapaCodigo(p.etapa) === "GANADO" && enRango(p.fecha_actualizacion, desde, hasta)
   ).length;
 
-  /**
-   * KPIs de plata del período (emisión en el rango, sin anuladas):
-   *  • Revenue nuevo del mes  = facturas que NO son suscripción (ventas/implementación puntuales).
-   *  • Suscripción del mes    = cuotas de suscripción facturadas (tipo = suscripcion).
-   * Son métricas separadas: el revenue nuevo no incluye la recurrencia.
-   */
-  const { revenueNuevoMes, suscripcionMes } = useMemo(() => {
+  // Revenue nuevo del mes = facturas emitidas en el rango que NO son suscripción
+  // (ventas/implementación puntuales), sin anuladas.
+  const revenueNuevoMes = useMemo(() => {
     let rev = 0;
-    let sus = 0;
     for (const f of facturas) {
       if (esFacturaAnulada(f.estado)) continue;
       if (!enRango(f.fecha, desde, hasta)) continue;
-      const monto = Number(f.monto) || 0;
-      if (String(f.tipo ?? "").trim().toLowerCase() === "suscripcion") sus += monto;
-      else rev += monto;
+      if (String(f.tipo ?? "").trim().toLowerCase() === "suscripcion") continue;
+      rev += Number(f.monto) || 0;
     }
-    return { revenueNuevoMes: rev, suscripcionMes: sus };
+    return rev;
   }, [facturas, desde, hasta]);
 
-  const topPlanesEnNegociacion = useMemo(() => {
-    const enNeg = prospectosFilt.filter((p) => normalizeEtapaCodigo(p.etapa) === "NEGOCIACION");
-    const porPlan: Record<string, number> = {};
-    for (const p of enNeg) {
-      const plan = (p.servicio ?? "").trim() || "Otros";
-      porPlan[plan] = (porPlan[plan] ?? 0) + (p.valor_estimado ?? 0);
+  // Suscripción NUEVA del mes (recurrencia): cuota de los clientes SaaS/Mixto dados de alta
+  // en el rango — lo NUEVO generado, no la suscripción acumulada/facturada. Mismo criterio
+  // que la "Recurrencia nueva del mes" de Comisiones.
+  const suscripcionNuevaMes = useMemo(() => {
+    const nuevos = new Set(
+      clientes
+        .filter((c) => enRango(c.created_at, desde, hasta))
+        .filter((c) => {
+          const t = (c.tipo_servicio_cliente ?? "").trim().toLowerCase();
+          return t === "saas" || t === "mixto";
+        })
+        .map((c) => String(c.id))
+    );
+    let total = 0;
+    for (const s of suscripciones) {
+      if (nuevos.has(String(s.cliente_id))) total += Number(s.precio) || 0;
     }
-    return Object.entries(porPlan)
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
-  }, [prospectosFilt]);
+    return total;
+  }, [clientes, suscripciones, desde, hasta]);
+
+  // Suscripción emitida por mes (año en curso): total facturado en cuotas de suscripción por
+  // mes de emisión. Es lo que se genera el 01 de cada mes de los clientes recurrentes (acumulado).
+  const suscripcionPorMesAno = useMemo(() => {
+    const year = String(new Date().getFullYear());
+    const etiquetas = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    const tot = new Array(12).fill(0);
+    for (const f of facturas) {
+      if (esFacturaAnulada(f.estado)) continue;
+      if (String(f.tipo ?? "").trim().toLowerCase() !== "suscripcion") continue;
+      const fch = String(f.fecha ?? "");
+      if (fch.slice(0, 4) !== year) continue;
+      const m = parseInt(fch.slice(5, 7), 10);
+      if (m >= 1 && m <= 12) tot[m - 1] += Number(f.monto) || 0;
+    }
+    return etiquetas.map((label, i) => ({ label, value: tot[i] }));
+  }, [facturas]);
 
   /** Clientes nuevos del período (alta = clientes.created_at en rango). Base de las cards comerciales por cliente. */
   const clientesNuevosPeriodo = useMemo(
@@ -866,7 +899,8 @@ function DashComercial({
           icon={<Icon.Target className="h-4 w-4" />}
           label="Leads nuevos"
           value={String(leadsNuevos)}
-          color="text-slate-900"
+          color="text-sky-700"
+          accent="info"
           variation={12}
         />
         <KpiCard
@@ -874,7 +908,8 @@ function DashComercial({
           label="Revenue nuevo del mes"
           value={`₲ ${formatGsFull(revenueNuevoMes)}`}
           sub="Ventas facturadas · sin suscripción"
-          color="text-slate-900"
+          color="text-emerald-700"
+          accent="success"
         />
         <KpiCard
           icon={<Icon.CheckCircle className="h-4 w-4" />}
@@ -886,10 +921,11 @@ function DashComercial({
         />
         <KpiCard
           icon={<Icon.TrendUp className="h-4 w-4" />}
-          label="Suscripción del mes"
-          value={`₲ ${formatGsFull(suscripcionMes)}`}
-          sub="Cuotas de suscripción facturadas"
-          color="text-[#3F8E91]"
+          label="Suscripción nueva del mes"
+          value={`₲ ${formatGsFull(suscripcionNuevaMes)}`}
+          sub="Nuevo recurrente · SaaS/Mixto dados de alta"
+          color="text-violet-700"
+          accent="recurrencia"
         />
       </div>
 
@@ -931,28 +967,15 @@ function DashComercial({
           {panelBar}
           <h3 className={titleClass} style={titleStyle}>
             {panelDot}
-            Top planes en negociación
+            Suscripción emitida por mes
           </h3>
         </div>
-        {topPlanesEnNegociacion.length === 0 ? (
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Sin prospectos en negociación
-          </p>
-        ) : (
-          <div className="mt-6">
-            <DonutChart
-              variant="zentra"
-              legendDetail
-              segments={topPlanesEnNegociacion.map((d, i) => ({
-                label: d.label,
-                value: d.value,
-                color: ["#F59E0B", "#F97316", "#FB923C", "#FDBA74", "#FED7AA"][i] ?? "#9ca3af",
-              }))}
-              centerLabel="monto total"
-              formatValue={(v) => formatGsM(v)}
-            />
-          </div>
-        )}
+        <p className="mt-1 pl-3 text-[11px] text-slate-500">
+          Total facturado en cuotas de suscripción por mes de emisión · {new Date().getFullYear()}
+        </p>
+        <div className="mt-6">
+          <AreaChart data={suscripcionPorMesAno} color="#7C3AED" />
+        </div>
       </motion.div>
 
       <motion.div

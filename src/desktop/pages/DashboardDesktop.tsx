@@ -353,11 +353,36 @@ function HBarChart({
   );
 }
 
+/** Valor compacto de 2 cifras para etiquetar puntos: 35.317.000 → "35M", 790.000 → "790K". */
+function compactNum(n: number): string {
+  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return `${Math.round(n)}`;
+}
+
 function AreaChart({
-  data, color = "#6366f1",
-}: { data: { label: string; value: number }[]; color?: string }) {
+  data,
+  color = "#6366f1",
+  fullWidth = false,
+  hideYAxis = false,
+  showPointValues = false,
+}: {
+  data: { label: string; value: number }[];
+  color?: string;
+  /** Ocupa todo el ancho del contenedor (alto proporcional). */
+  fullWidth?: boolean;
+  /** Oculta los montos del eje Y (y sus líneas guía). */
+  hideYAxis?: boolean;
+  /** Muestra el valor (2 cifras) arriba de cada punto. */
+  showPointValues?: boolean;
+}) {
   if (data.length < 2) return <p className="text-xs text-gray-400 py-8 text-center">Sin datos suficientes</p>;
-  const W = 480, H = 130, PL = 48, PR = 8, PT = 8, PB = 24;
+  const W = fullWidth ? 1000 : 480;
+  const H = fullWidth ? 200 : 130;
+  const PL = hideYAxis ? 12 : 48;
+  const PR = fullWidth ? 16 : 8;
+  const PT = showPointValues ? 30 : 10;
+  const PB = 24;
   const cW = W - PL - PR, cH = H - PT - PB;
   const max = Math.max(...data.map(d => d.value), 1);
   const pts = data.map((d, i) => ({
@@ -369,23 +394,45 @@ function AreaChart({
   const yTicks = [0, Math.floor(max / 2), max];
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
-      {yTicks.map((v, i) => {
-        const y = PT + cH - (v / max) * cH;
-        return (
-          <g key={i}>
-            <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="#f3f4f6" strokeWidth="1" />
-            <text x={PL - 4} y={y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">
-              {formatGsM(v)}
-            </text>
-          </g>
-        );
-      })}
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full"
+      preserveAspectRatio="xMidYMid meet"
+      style={fullWidth ? { height: "auto" } : { height: H }}
+    >
+      {!hideYAxis &&
+        yTicks.map((v, i) => {
+          const y = PT + cH - (v / max) * cH;
+          return (
+            <g key={i}>
+              <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="#f3f4f6" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              <text x={PL - 4} y={y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">
+                {formatGsM(v)}
+              </text>
+            </g>
+          );
+        })}
       <path d={area} fill={color} fillOpacity="0.12" />
-      <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={color} />)}
+      <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={fullWidth ? 3 : 2.5} fill={color} />)}
+      {showPointValues &&
+        pts.map((p, i) =>
+          data[i].value > 0 ? (
+            <text
+              key={`v-${i}`}
+              x={p.x}
+              y={p.y - 8}
+              textAnchor="middle"
+              fontSize="11"
+              fontWeight="600"
+              fill={color}
+            >
+              {compactNum(data[i].value)}
+            </text>
+          ) : null
+        )}
       {data.map((d, i) =>
-        i % 2 === 0 ? (
+        fullWidth || i % 2 === 0 ? (
           <text key={i} x={pts[i].x} y={H - 4} textAnchor="middle" fontSize="9" fill="#9ca3af">
             {d.label}
           </text>
@@ -974,7 +1021,7 @@ function DashComercial({
           Total facturado en cuotas de suscripción por mes de emisión · {new Date().getFullYear()}
         </p>
         <div className="mt-6">
-          <AreaChart data={suscripcionPorMesAno} color="#7C3AED" />
+          <AreaChart data={suscripcionPorMesAno} color="#7C3AED" fullWidth hideYAxis showPointValues />
         </div>
       </motion.div>
 

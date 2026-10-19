@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { POST as enviarReaccion } from "@/app/api/chat/react/route";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { puedeEnLaConversacion } from "@/lib/chat/puede-en-conversacion";
 
@@ -65,15 +66,21 @@ export async function POST(
     if (auth) headers.authorization = auth;
     if (cookie) headers.cookie = cookie;
 
-    const res = await fetch(new URL("/api/chat/react", request.url), {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ conversation_id: conversationId, target_wa_message_id: target, emoji }),
-    });
+    const res = await enviarReaccion(
+      new NextRequest(new URL("/api/chat/react", request.url), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ conversation_id: conversationId, target_wa_message_id: target, emoji }),
+      })
+    );
     const data = await res.json().catch(() => ({ ok: false, error: "react_failed" }));
     return NextResponse.json(data, { status: res.status });
   } catch (e) {
     console.error("[mobile react] forward", e instanceof Error ? e.message : String(e));
-    return NextResponse.json({ ok: false, error: "No se pudo reaccionar" }, { status: 502 });
+    const detalle = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { ok: false, error: `No se pudo reaccionar: ${detalle.slice(0, 120)}` },
+      { status: 502 }
+    );
   }
 }

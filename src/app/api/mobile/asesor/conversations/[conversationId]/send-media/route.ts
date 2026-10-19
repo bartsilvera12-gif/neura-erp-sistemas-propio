@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { POST as enviarMedia } from "@/app/api/chat/send-media/route";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { puedeEnLaConversacion } from "@/lib/chat/puede-en-conversacion";
 
@@ -61,8 +62,10 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 
-  // 2) Reenviar el multipart a /api/chat/send-media (Storage + ventana 24h + persistencia + WhatsApp).
-  //    Reenviamos auth/cookie; NO seteamos content-type (fetch arma el boundary del FormData).
+  // 2) Entregarlo a /api/chat/send-media (Storage + ventana 24h + persistencia + WhatsApp).
+  //    Se llama al handler EN PROCESO (no por HTTP contra uno mismo): un salto de red acá
+  //    fallaba sin dejar motivo y el asesor veía un 502 pelado al mandar una nota de voz.
+  //    Se le pasa la auth/cookie del asesor; sin content-type, lo arma el FormData.
   try {
     const fwd = new FormData();
     fwd.set("conversation_id", conversationId);
@@ -75,15 +78,21 @@ export async function POST(
     if (auth) headers.authorization = auth;
     if (cookie) headers.cookie = cookie;
 
-    const res = await fetch(new URL("/api/chat/send-media", request.url), {
-      method: "POST",
-      headers,
-      body: fwd,
-    });
+    const res = await enviarMedia(
+      new NextRequest(new URL("/api/chat/send-media", request.url), {
+        method: "POST",
+        headers,
+        body: fwd,
+      })
+    );
     const data = await res.json().catch(() => ({ ok: false, error: "send_media_failed" }));
     return NextResponse.json(data, { status: res.status });
   } catch (e) {
     console.error("[mobile send-media] forward", e instanceof Error ? e.message : String(e));
-    return NextResponse.json({ ok: false, error: "No se pudo enviar el audio" }, { status: 502 });
+    const detalle = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { ok: false, error: `No se pudo enviar el audio: ${detalle.slice(0, 120)}` },
+      { status: 502 }
+    );
   }
 }

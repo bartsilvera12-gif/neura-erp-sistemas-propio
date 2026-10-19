@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { POST as enviarSticker } from "@/app/api/chat/send-sticker/route";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { puedeEnLaConversacion } from "@/lib/chat/puede-en-conversacion";
 
@@ -62,15 +63,21 @@ export async function POST(
     if (auth) headers.authorization = auth;
     if (cookie) headers.cookie = cookie;
 
-    const res = await fetch(new URL("/api/chat/send-sticker", request.url), {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ conversation_id: conversationId, sticker_url: stickerUrl }),
-    });
+    const res = await enviarSticker(
+      new NextRequest(new URL("/api/chat/send-sticker", request.url), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ conversation_id: conversationId, sticker_url: stickerUrl }),
+      })
+    );
     const data = await res.json().catch(() => ({ ok: false, error: "send_sticker_failed" }));
     return NextResponse.json(data, { status: res.status });
   } catch (e) {
     console.error("[mobile send-sticker] forward", e instanceof Error ? e.message : String(e));
-    return NextResponse.json({ ok: false, error: "No se pudo enviar el sticker" }, { status: 502 });
+    const detalle = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { ok: false, error: `No se pudo enviar el sticker: ${detalle.slice(0, 120)}` },
+      { status: 502 }
+    );
   }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { POST as enviarTexto } from "@/app/api/chat/send/route";
 import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { puedeEnLaConversacion } from "@/lib/chat/puede-en-conversacion";
 
@@ -73,20 +74,26 @@ export async function POST(
   if (auth) headers.authorization = auth;
   if (cookie) headers.cookie = cookie;
   try {
-    const res = await fetch(new URL("/api/chat/send", request.url), {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
+    const res = await enviarTexto(
+      new NextRequest(new URL("/api/chat/send", request.url), {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
         conversation_id: conversationId,
         message,
         ...(replyToWamid ? { reply_to_wamid: replyToWamid } : {}),
         ...(replyContext ? { reply_context: replyContext } : {}),
-      }),
-    });
+        }),
+      })
+    );
     const data = await res.json().catch(() => ({ ok: false, error: "send_failed" }));
     return NextResponse.json(data, { status: res.status });
   } catch (e) {
     console.error("[mobile send] forward", e instanceof Error ? e.message : String(e));
-    return NextResponse.json({ ok: false, error: "No se pudo enviar" }, { status: 502 });
+    const detalle = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { ok: false, error: `No se pudo enviar: ${detalle.slice(0, 120)}` },
+      { status: 502 }
+    );
   }
 }

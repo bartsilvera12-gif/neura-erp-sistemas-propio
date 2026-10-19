@@ -323,6 +323,95 @@ function ACobrarBloqueVendedor({
   );
 }
 
+// ── Recurrencia nueva (verde): qué clientes SaaS/Mixto suman en la recurrencia del mes ───────
+// Espejo verde del bloque amarillo "A cobrar". Métrica SEPARADA del revenue: hoy NO paga comisión,
+// solo da visibilidad de qué altas nuevas están moviendo el número de "Recurrencia nueva del mes".
+const TIPO_RECURRENCIA_LABEL: Record<string, string> = { saas: "SaaS", mixto: "Mixto" };
+
+function RecurrenciaTablaVendedor({ items, total }: { items: RecurrenciaItem[]; total: number }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead className="border-b border-slate-200 bg-slate-50/70">
+          <tr>
+            {(
+              [
+                ["Cliente", "left"],
+                ["Alta", "left"],
+                ["Tipo", "left"],
+                ["Plan", "left"],
+                ["Cuota mensual", "right"],
+              ] as [string, "left" | "right"][]
+            ).map(([h, align]) => (
+              <th
+                key={h}
+                className={`whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 ${
+                  align === "right" ? "text-right" : "text-left"
+                }`}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {items.map((it) => (
+            <tr key={it.suscripcion_id} className="hover:bg-emerald-50/40">
+              <td className="max-w-[240px] truncate px-3 py-2 font-medium text-slate-800" title={it.cliente}>
+                {it.cliente}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-500">{formatDate(it.fecha)}</td>
+              <td className="whitespace-nowrap px-3 py-2">
+                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                  {TIPO_RECURRENCIA_LABEL[it.tipo_cliente] ?? it.tipo_cliente}
+                </span>
+              </td>
+              <td className="max-w-[200px] truncate px-3 py-2 text-slate-500" title={it.plan ?? ""}>
+                {it.plan ?? <span className="text-slate-300">—</span>}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-emerald-700">
+                {it.moneda === "USD" ? "USD" : "₲"} {fmtMoney(it.monto)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="border-t border-slate-200 bg-slate-50/70">
+          <tr>
+            <td className="px-3 py-2 text-xs font-semibold text-slate-600" colSpan={4}>
+              {items.length} cliente{items.length === 1 ? "" : "s"} nuevo{items.length === 1 ? "" : "s"} SaaS/Mixto este mes
+            </td>
+            <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold tabular-nums text-emerald-800">
+              ₲ {fmtMoney(total)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+/** Bloque verde "Recurrencia nueva del mes": qué clientes SaaS/Mixto la componen. */
+function RecurrenciaBloqueVendedor({ items, total }: { items: RecurrenciaItem[]; total: number }) {
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-3">
+      <div className="mb-2">
+        <p className="text-xs font-semibold text-slate-800">Recurrencia nueva del mes — quiénes suman</p>
+        <p className="text-[11px] text-slate-500">
+          El detalle de la &quot;Recurrencia nueva del mes&quot; de arriba: clientes SaaS/Mixto dados de alta este mes,
+          con su cuota de suscripción. Métrica aparte: no suma al revenue ni paga comisión.
+        </p>
+      </div>
+      {items.length > 0 ? (
+        <RecurrenciaTablaVendedor items={items} total={total} />
+      ) : (
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">
+          Sin clientes nuevos SaaS/Mixto este mes.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Panel "A cobrar (comisionable)". `sellerView`=true → un solo asesor (tabla plana);
  * admin → agrupado por asesor.
@@ -613,8 +702,6 @@ function TotalsStrip({ row }: { row: VendedorRow }) {
     </div>
   );
 }
-
-/** Detalle de la recurrencia nueva del mes: qué clientes SaaS/Mixto la componen. Siempre visible. */
 
 export type OverrideCtx = {
   canOverride: boolean;
@@ -1120,7 +1207,13 @@ function renderVendedorView({
   const sellerACobrarTotal = aCobrar[0]?.total_a_cobrar ?? 0;
   // Fila enriquecida para reutilizar los MISMOS componentes que la vista admin (TotalsStrip, etc.).
   const sellerRowView: VendedorRow | null = sellerRow
-    ? { ...sellerRow, a_cobrar_total: sellerACobrarTotal, recurrencia_mes: recurrencia?.total_recurrencia ?? 0 }
+    ? {
+        ...sellerRow,
+        a_cobrar_total: sellerACobrarTotal,
+        recurrencia_mes: recurrencia?.total_recurrencia ?? 0,
+        // En vista asesor el API ya viene scopeado a él → el único vendedor del payload es el propio.
+        recurrencia_items: recurrencia?.por_vendedor?.[0]?.items ?? [],
+      }
     : null;
   return (
     <div className="space-y-6 pb-10">
@@ -1228,6 +1321,10 @@ function renderVendedorView({
           </section>
 
           <ACobrarBloqueVendedor aCobrar={aCobrar[0] ?? null} onCobrar={onCobrar} />
+          <RecurrenciaBloqueVendedor
+            items={sellerRowView.recurrencia_items ?? []}
+            total={sellerRowView.recurrencia_mes ?? 0}
+          />
         </>
       )}
     </div>
@@ -1534,6 +1631,10 @@ function renderAdminView({
                     <ACobrarBloqueVendedor
                       aCobrar={aCobrar.find((a) => a.vendedor_usuario_id === r.vendedor_usuario_id) ?? null}
                       onCobrar={onCobrar}
+                    />
+                    <RecurrenciaBloqueVendedor
+                      items={r.recurrencia_items ?? []}
+                      total={r.recurrencia_mes ?? 0}
                     />
                   </div>
                 </details>

@@ -687,7 +687,6 @@ function DashComercial({
   tipificaciones: _tipificaciones,
   usuario,
   periodo,
-  config,
   facturas,
   notasCredito,
   suscripciones,
@@ -698,7 +697,6 @@ function DashComercial({
   tipificaciones: TipificacionRaw[];
   usuario: Usuario | null;
   periodo: Periodo;
-  config: ConfigGlobal;
   facturas: FacturaRaw[];
   notasCredito: NotaCreditoDashRow[];
   suscripciones: SuscripcionDashRow[];
@@ -746,14 +744,28 @@ function DashComercial({
   );
 
   const leadsNuevos = prospectosFilt.filter((p) => enRango(p.fecha_creacion, desde, hasta)).length;
-  const enNegociacion = prospectosFilt.filter(
-    (p) => normalizeEtapaCodigo(p.etapa) === "NEGOCIACION"
-  ).length;
   const clientesGanados = prospectosFilt.filter(
     (p) => normalizeEtapaCodigo(p.etapa) === "GANADO" && enRango(p.fecha_actualizacion, desde, hasta)
   ).length;
-  const totalLeadsPeriodo = prospectosFilt.filter((p) => enRango(p.fecha_creacion, desde, hasta)).length;
-  const tasaConversion = totalLeadsPeriodo > 0 ? (clientesGanados / totalLeadsPeriodo) * 100 : 0;
+
+  /**
+   * KPIs de plata del período (emisión en el rango, sin anuladas):
+   *  • Revenue nuevo del mes  = facturas que NO son suscripción (ventas/implementación puntuales).
+   *  • Suscripción del mes    = cuotas de suscripción facturadas (tipo = suscripcion).
+   * Son métricas separadas: el revenue nuevo no incluye la recurrencia.
+   */
+  const { revenueNuevoMes, suscripcionMes } = useMemo(() => {
+    let rev = 0;
+    let sus = 0;
+    for (const f of facturas) {
+      if (esFacturaAnulada(f.estado)) continue;
+      if (!enRango(f.fecha, desde, hasta)) continue;
+      const monto = Number(f.monto) || 0;
+      if (String(f.tipo ?? "").trim().toLowerCase() === "suscripcion") sus += monto;
+      else rev += monto;
+    }
+    return { revenueNuevoMes: rev, suscripcionMes: sus };
+  }, [facturas, desde, hasta]);
 
   const topPlanesEnNegociacion = useMemo(() => {
     const enNeg = prospectosFilt.filter((p) => normalizeEtapaCodigo(p.etapa) === "NEGOCIACION");
@@ -858,11 +870,11 @@ function DashComercial({
           variation={12}
         />
         <KpiCard
-          icon={<Icon.Chat className="h-4 w-4" />}
-          label="En negociación"
-          value={String(enNegociacion)}
-          color="text-amber-600"
-          accent="warning"
+          icon={<Icon.Financiero className="h-4 w-4" />}
+          label="Revenue nuevo del mes"
+          value={`₲ ${formatGsFull(revenueNuevoMes)}`}
+          sub="Ventas facturadas · sin suscripción"
+          color="text-slate-900"
         />
         <KpiCard
           icon={<Icon.CheckCircle className="h-4 w-4" />}
@@ -874,10 +886,10 @@ function DashComercial({
         />
         <KpiCard
           icon={<Icon.TrendUp className="h-4 w-4" />}
-          label="Tasa de conversión"
-          value={`${tasaConversion.toFixed(1)}%`}
-          color={tasaConversion >= config.meta_conversion_leads ? "text-emerald-600" : "text-slate-900"}
-          variation={tasaConversion >= config.meta_conversion_leads ? 5 : -2}
+          label="Suscripción del mes"
+          value={`₲ ${formatGsFull(suscripcionMes)}`}
+          sub="Cuotas de suscripción facturadas"
+          color="text-[#3F8E91]"
         />
       </div>
 
@@ -2750,7 +2762,6 @@ export default function DashboardPage() {
           tipificaciones={tipificaciones}
           usuario={usuarioActivo}
           periodo={periodo}
-          config={config}
           facturas={facturas}
           notasCredito={notasCredito}
           suscripciones={suscripciones}

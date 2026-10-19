@@ -705,29 +705,29 @@ function KpiCard({
 
 // ── Dashboard Comercial ───────────────────────────────────────────────────────
 
-/** Valor comercial del cliente en el período: 1) facturas netas (NC aprobadas) en período, 2) suscripción alta/inicio en período. */
+/**
+ * Valor comercial (VENTA PUNTUAL) del cliente nuevo en el período: suma de sus facturas emitidas
+ * en el rango que NO son suscripción (neto de NC aprobadas; excluye anuladas/corregidas por NC).
+ * La recurrencia (cuota de suscripción) se mide aparte en su card y NO se cuenta acá para no
+ * doble-contarla. Un cliente nuevo que solo trajo suscripción → venta puntual 0.
+ */
 function valorComercialClienteEnPeriodo(
   clienteId: string | number,
   facturas: FacturaRaw[],
   ncPorFactura: Map<string, number>,
-  suscripciones: SuscripcionDashRow[],
   desde: Date,
   hasta: Date
-): { monto: number; fuente: "facturas" | "suscripcion" | "sin_dato" } {
+): { monto: number; fuente: "facturas" | "sin_dato" } {
   const id = String(clienteId);
   const sumF = facturas
-    .filter((f) => String(f.cliente_id) === id && enRango(f.fecha, desde, hasta))
+    .filter(
+      (f) =>
+        String(f.cliente_id) === id &&
+        enRango(f.fecha, desde, hasta) &&
+        String(f.tipo ?? "").trim().toLowerCase() !== "suscripcion"
+    )
     .reduce((s, f) => s + montoFacturaNetoValorComercial(f, ncPorFactura), 0);
   if (sumF > 0) return { monto: sumF, fuente: "facturas" };
-
-  let sumS = 0;
-  for (const s of suscripciones) {
-    if (String(s.cliente_id) !== id) continue;
-    if (enRango(s.fecha_inicio, desde, hasta) || enRango(s.created_at, desde, hasta)) {
-      sumS += Number(s.precio) || 0;
-    }
-  }
-  if (sumS > 0) return { monto: sumS, fuente: "suscripcion" };
   return { monto: 0, fuente: "sin_dato" };
 }
 
@@ -906,7 +906,6 @@ function DashComercial({
           c.id,
           facturas,
           ncPorFactura,
-          suscripciones,
           desde,
           hasta
         );
@@ -922,7 +921,7 @@ function DashComercial({
         };
       })
       .sort((a, b) => new Date(b.fechaAlta).getTime() - new Date(a.fechaAlta).getTime());
-  }, [clientesNuevosPeriodo, facturas, ncPorFactura, suscripciones, desde, hasta, mapNombreTipoServicio, resolverVendedorCliente]);
+  }, [clientesNuevosPeriodo, facturas, ncPorFactura, desde, hasta, mapNombreTipoServicio, resolverVendedorCliente]);
 
   const totalValorClientesNuevos = filasClientesPeriodo.reduce((s, r) => s + r.monto, 0);
   const nClientesNuevos = filasClientesPeriodo.length;
@@ -1041,11 +1040,11 @@ function DashComercial({
               Clientes del período
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">
-              Altas con <strong className="text-slate-700">fecha de creación</strong> en el rango del filtro. Valor: suma de{" "}
-              <strong className="text-slate-700">facturas emitidas en el período</strong> por cliente (neto de{" "}
-              <strong className="text-slate-700">notas de crédito aprobadas</strong> por SET vinculadas a esas facturas; se excluyen
-              anuladas y corregidas por NC); si no hay, suma de{" "}
-              <strong className="text-slate-700">precio de suscripción</strong> con alta o inicio en el período.
+              Altas con <strong className="text-slate-700">fecha de creación</strong> en el rango del filtro. Valor ={" "}
+              <strong className="text-slate-700">venta puntual</strong>: suma de las facturas emitidas en el período que{" "}
+              <strong className="text-slate-700">no son suscripción</strong> (neto de{" "}
+              <strong className="text-slate-700">notas de crédito aprobadas</strong> por SET; se excluyen anuladas y corregidas por NC).
+              La recurrencia se mide aparte en su propia tarjeta y no se cuenta acá.
             </p>
           </div>
         </div>
@@ -1117,10 +1116,8 @@ function DashComercial({
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: Z.muted }}>
                       {row.fuente === "facturas"
-                        ? "Facturas período"
-                        : row.fuente === "suscripcion"
-                          ? "Suscripción"
-                          : "Sin factura / susc. en período"}
+                        ? "Venta facturada"
+                        : "Sin venta puntual · solo suscripción"}
                     </td>
                     <td className="max-w-[120px] truncate px-4 py-3 text-xs" style={{ color: Z.muted }} title={row.vendedor}>
                       {row.vendedor}

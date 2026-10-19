@@ -331,7 +331,7 @@ const TIPO_RECURRENCIA_LABEL: Record<string, string> = { saas: "SaaS", mixto: "M
 function RecurrenciaTablaVendedor({ items, total }: { items: RecurrenciaItem[]; total: number }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="w-full min-w-[980px] text-sm">
         <thead className="border-b border-slate-200 bg-slate-50/70">
           <tr>
             {(
@@ -340,6 +340,9 @@ function RecurrenciaTablaVendedor({ items, total }: { items: RecurrenciaItem[]; 
                 ["Alta", "left"],
                 ["Tipo", "left"],
                 ["Plan", "left"],
+                ["Tipo de proyecto", "left"],
+                ["Estado", "left"],
+                ["En estado", "left"],
                 ["Cuota mensual", "right"],
               ] as [string, "left" | "right"][]
             ).map(([h, align]) => (
@@ -366,8 +369,29 @@ function RecurrenciaTablaVendedor({ items, total }: { items: RecurrenciaItem[]; 
                   {TIPO_RECURRENCIA_LABEL[it.tipo_cliente] ?? it.tipo_cliente}
                 </span>
               </td>
-              <td className="max-w-[200px] truncate px-3 py-2 text-slate-500" title={it.plan ?? ""}>
+              <td className="max-w-[180px] truncate px-3 py-2 text-slate-500" title={it.plan ?? ""}>
                 {it.plan ?? <span className="text-slate-300">—</span>}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-500">
+                {it.proyecto?.tipo_nombre ?? <span className="text-slate-300">—</span>}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2">
+                {it.proyecto ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    style={{ backgroundColor: `${it.proyecto.estado_color}18`, color: it.proyecto.estado_color }}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: it.proyecto.estado_color }} />
+                    {it.proyecto.estado_nombre}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-300" title="El cliente no tiene un proyecto asociado">
+                    Sin proyecto
+                  </span>
+                )}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-500">
+                {it.proyecto ? fmtDur(it.proyecto.tiempo_en_estado_ms) : <span className="text-slate-300">—</span>}
               </td>
               <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-emerald-700">
                 {it.moneda === "USD" ? "USD" : "₲"} {fmtMoney(it.monto)}
@@ -377,7 +401,7 @@ function RecurrenciaTablaVendedor({ items, total }: { items: RecurrenciaItem[]; 
         </tbody>
         <tfoot className="border-t border-slate-200 bg-slate-50/70">
           <tr>
-            <td className="px-3 py-2 text-xs font-semibold text-slate-600" colSpan={4}>
+            <td className="px-3 py-2 text-xs font-semibold text-slate-600" colSpan={7}>
               {items.length} cliente{items.length === 1 ? "" : "s"} nuevo{items.length === 1 ? "" : "s"} SaaS/Mixto este mes
             </td>
             <td className="whitespace-nowrap px-3 py-2 text-right text-sm font-bold tabular-nums text-emerald-800">
@@ -1658,6 +1682,12 @@ type RecurrenciaItem = {
   monto: number;
   moneda: string;
   fecha: string | null;
+  proyecto?: {
+    tipo_nombre: string | null;
+    estado_nombre: string;
+    estado_color: string;
+    tiempo_en_estado_ms: number | null;
+  } | null;
 };
 type RecurrenciaVendedor = {
   vendedor_id: string | null;

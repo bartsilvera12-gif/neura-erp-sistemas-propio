@@ -5,6 +5,7 @@ import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 import { nombreClienteDisplay } from "@/lib/clientes/display-name";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { TZ_PY } from "@/lib/format/hora-py";
+import { cargarDataset } from "@/lib/proyectos/dashboard/shared";
 
 // Reporte en vivo: nunca cachear.
 export const dynamic = "force-dynamic";
@@ -43,6 +44,12 @@ function parseMesYm(request: Request): string {
     .slice(0, 7);
 }
 
+type ItemProyecto = {
+  tipo_nombre: string | null; // tipo de proyecto (Web / SaaS / ERP…)
+  estado_nombre: string;
+  estado_color: string;
+  tiempo_en_estado_ms: number | null; // hace cuánto está en ese estado (reloj laboral)
+};
 type ItemRecurrencia = {
   suscripcion_id: string;
   cliente: string;
@@ -51,6 +58,7 @@ type ItemRecurrencia = {
   monto: number;
   moneda: string;
   fecha: string | null; // created_at (fecha de venta)
+  proyecto: ItemProyecto | null; // proyecto del cliente (estado/tipo/tiempo), null si no tiene
 };
 type VendedorRecurrencia = {
   vendedor_id: string | null;
@@ -132,6 +140,32 @@ export async function GET(request: Request) {
       }
     }
 
+    // 3.5) Proyecto de cada cliente nuevo (estado, tipo y hace cuánto está en ese estado),
+    //      cruzado por `proyectos.cliente_id`. Mismo dataset del tablero de Proyectos (reloj
+    //      laboral, herencia de PM, fallback de columnas). Drift-safe: si el tenant no tiene
+    //      proyectos, las columnas quedan vacías. Si un cliente tiene más de uno, se toma el
+    //      primero del dataset (los clientes nuevos suelen tener un único proyecto).
+    const proyPorCliente = new Map<string, ItemProyecto>();
+    if (clienteIds.length > 0) {
+      try {
+        const ds = await cargarDataset(sb, empresaId, {
+          desde: null, hasta: null, tipoId: null, estadoId: null, tecnicoId: null, pmId: null,
+        });
+        for (const p of ds.proyectos) {
+          const cid = p.cliente_id ?? "";
+          if (!cid || !cli.has(cid) || proyPorCliente.has(cid)) continue;
+          proyPorCliente.set(cid, {
+            tipo_nombre: p.tipo_nombre ?? null,
+            estado_nombre: p.estado_nombre,
+            estado_color: p.estado_color,
+            tiempo_en_estado_ms: p.tiempo_en_estado_ms,
+          });
+        }
+      } catch {
+        // Sin módulo Proyectos / tenant sin tablas: se devuelve sin enriquecer.
+      }
+    }
+
     // 4) Agregar por vendedor (un item por CLIENTE nuevo, con su cuota total).
     const porVendedor = new Map<string, VendedorRecurrencia>();
     for (const [cid, c] of cli.entries()) {
@@ -154,6 +188,7 @@ export async function GET(request: Request) {
         monto,
         moneda,
         fecha: c.fecha,
+        proyecto: proyPorCliente.get(cid) ?? null,
       });
       porVendedor.set(key, entry);
     }

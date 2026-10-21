@@ -59,6 +59,7 @@ export async function avisarSoporte(
       cuerpo: args.cuerpo,
       ruta: `/dashboard/soporte/tickets/${args.ticketId}`,
       agrupar: `ticket-${args.ticketId}`,
+      categoria: "soporte",
     });
   } catch (e) {
     console.error("[soporte] no se pudo avisar", e);

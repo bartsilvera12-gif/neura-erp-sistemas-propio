@@ -139,6 +139,7 @@ export async function notificarCambioEstado(
       cuerpo,
       ruta: `/m/asesor/proyectos/${args.proyectoId}`,
       agrupar: `proyecto-${args.proyectoId}`,
+      categoria: "proyectos",
     });
   } catch (e) {
     console.error("[estado-notificaciones] no se pudo notificar el cambio de estado", e);

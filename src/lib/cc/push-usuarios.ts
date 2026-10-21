@@ -13,6 +13,9 @@ import { getFcmMessaging, getFcmMessagingSecundario } from "@/lib/cc/firebase-ad
  * y esto solo lo repite en el teléfono. Si falla, se pierde el push pero NUNCA el aviso: la
  * campanita y la pantalla de Avisos lo siguen mostrando. Por eso nada de esto lanza.
  */
+/** Categorías que el asesor puede apagar en /m/asesor/configuracion/notificaciones. */
+export type CategoriaNoti = "chat" | "avisos" | "soporte" | "proyectos";
+
 export type AvisoPush = {
   empresaId: string;
   usuarioIds: (string | null | undefined)[];
@@ -22,6 +25,8 @@ export type AvisoPush = {
   ruta?: string | null;
   /** Misma clave = la notificación nueva reemplaza a la anterior en vez de apilarse. */
   agrupar?: string | null;
+  /** Categoría de preferencia: si el usuario la apagó, se omite ese destinatario. */
+  categoria?: CategoriaNoti;
 };
 
 export async function avisarPorPush(aviso: AvisoPush): Promise<void> {
@@ -33,13 +38,35 @@ export async function avisarPorPush(aviso: AvisoPush): Promise<void> {
 }
 
 async function enviar(aviso: AvisoPush): Promise<void> {
-  const usuarios = [...new Set(aviso.usuarioIds.filter((u): u is string => Boolean(u)))];
+  let usuarios = [...new Set(aviso.usuarioIds.filter((u): u is string => Boolean(u)))];
   if (usuarios.length === 0) return;
 
   const fcm = await getFcmMessaging();
   if (!fcm.ok) return; // sin credenciales no hay push; el aviso ya está guardado
 
   const sb = createServiceRoleClient();
+
+  // Filtra destinatarios por su preferencia de categoría. Default (sin fila) = recibe todo,
+  // mismo comportamiento histórico. Afecta solo al usuario con la pref off — los demás del
+  // listado siguen recibiendo el push normal.
+  if (aviso.categoria) {
+    const campo = `${aviso.categoria}_enabled` as const;
+    const { data: prefs } = await sb
+      .from("agente_notification_prefs")
+      .select(`usuario_id, ${campo}`)
+      .eq("empresa_id", aviso.empresaId)
+      .in("usuario_id", usuarios);
+    const apagados = new Set(
+      ((prefs ?? []) as Array<Record<string, unknown>>)
+        .filter((r) => r[campo] === false)
+        .map((r) => String(r.usuario_id))
+    );
+    if (apagados.size > 0) {
+      usuarios = usuarios.filter((u) => !apagados.has(u));
+      if (usuarios.length === 0) return;
+    }
+  }
+
   const { data, error } = await sb
     .from("agent_device_tokens")
     .select("fcm_token")

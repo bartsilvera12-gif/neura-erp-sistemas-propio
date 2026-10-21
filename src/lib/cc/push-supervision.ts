@@ -90,6 +90,7 @@ export async function avisarSupervisionPorPush(args: {
       cuerpo: args.preview || "Nuevo mensaje",
       ruta: `/m/asesor/chat/${args.conversationId}`,
       agrupar: `chat-${args.conversationId}`,
+      categoria: "chat",
     });
   } catch (e) {
     console.warn("[push-supervision]", e instanceof Error ? e.message : String(e));

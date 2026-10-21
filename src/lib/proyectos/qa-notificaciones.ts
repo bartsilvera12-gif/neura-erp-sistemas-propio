@@ -77,6 +77,7 @@ export async function notificarEntradaQA(
       cuerpo,
       ruta: `/m/asesor/proyectos/${args.proyectoId}`,
       agrupar: `proyecto-${args.proyectoId}`,
+      categoria: 'proyectos',
     });
     const { error } = await sb.from("usuario_notificaciones").insert({
       empresa_id: args.empresaId,
@@ -257,6 +258,7 @@ async function upsertNovedad(
     cuerpo: cuerpoUltima,
     ruta: `/m/asesor/proyectos/${args.proyectoId}`,
     agrupar: `proyecto-${args.proyectoId}`,
+      categoria: 'proyectos',
   });
 
   if (await actualizar()) return;
@@ -380,6 +382,7 @@ export async function notificarVeredictoQA(
         cuerpo: fila.cuerpo,
         ruta: `/m/asesor/proyectos/${args.proyectoId}`,
         agrupar: `proyecto-${args.proyectoId}`,
+      categoria: 'proyectos',
       });
     }
   } catch (e) {

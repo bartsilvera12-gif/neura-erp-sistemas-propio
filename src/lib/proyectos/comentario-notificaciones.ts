@@ -183,6 +183,7 @@ export async function notificarComentarioProyecto(
         cuerpo: fila.cuerpo,
         ruta: `/m/asesor/proyectos/${args.proyectoId}`,
         agrupar: `proyecto-${args.proyectoId}`,
+        categoria: "proyectos",
       });
     }
   } catch (e) {

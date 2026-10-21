@@ -121,8 +121,33 @@ export default function MAsesorInboxPage() {
         // iOS: respetar la barra de estado (notch). env(safe-area-inset-top)=0 en Android/web.
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
       >
-        <h1 className="text-base font-semibold">{supervision ? "Conversaciones" : "Mis conversaciones"}</h1>
-        <p className="text-[11px] text-white/80">Contact Center · Neura</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold">{supervision ? "Conversaciones" : "Mis conversaciones"}</h1>
+            <p className="text-[11px] text-white/80">Contact Center · Neura</p>
+          </div>
+          <Link
+            href="/m/asesor/configuracion/notificaciones"
+            aria-label="Configuración de notificaciones"
+            title="Configuración"
+            className="shrink-0 grid h-9 w-9 place-items-center rounded-full text-white/90 active:bg-white/15"
+          >
+            {/* Ícono engranaje — inline para no sumar dependencia */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-5 w-5"
+              aria-hidden
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </Link>
+        </div>
         <input
           type="search"
           inputMode="search"

@@ -18,6 +18,24 @@ const TITLES: Record<string, string> = {
   sla_warning: "Lead sin responder",
 };
 
+/**
+ * Mapea el tipo de evento a la categoría de preferencias de notificación que configura el
+ * asesor en /m/asesor/configuracion/notificaciones. Devuelve null si el tipo no corresponde a
+ * ninguna categoría conocida (en ese caso no se filtra por pref, se manda).
+ *
+ * Los tipos actuales de agent_notification_events son todos de chat. Avisos, soporte y
+ * proyectos quedan listos acá para cuando se agreguen sus propios tipos.
+ */
+function categoriaDelTipo(tipo: string): "chat" | "avisos" | "soporte" | "proyectos" | null {
+  if (tipo === "new_message" || tipo === "new_lead" || tipo === "reassigned" || tipo === "sla_warning") {
+    return "chat";
+  }
+  if (tipo.startsWith("aviso_")) return "avisos";
+  if (tipo.startsWith("soporte_") || tipo.startsWith("ticket_")) return "soporte";
+  if (tipo.startsWith("proyecto_")) return "proyectos";
+  return null;
+}
+
 export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean; limit?: number } = {}): Promise<{ status: number; body: Record<string, unknown> }> {
   const dryRun = Boolean(opts.dryRun);
   const limit = Math.min(500, Math.max(1, opts.limit ?? 100));
@@ -95,6 +113,38 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
       skipped++;
       detail.push({ event: ev.id.slice(0, 8), result: "fuera_de_horario" });
       continue;
+    }
+
+    // Preferencias de categoría: si el asesor apagó la categoría a la que corresponde este
+    // evento, se saltea. Afecta solo a este usuario. Default (sin fila) = todo encendido,
+    // mismo comportamiento histórico. Si no se puede leer la pref, se manda.
+    if (tokens.length > 0 && usuarioDelAgente) {
+      const categoria = categoriaDelTipo(ev.type);
+      if (categoria) {
+        const { data: prefRow } = await sb
+          .from("agente_notification_prefs")
+          .select("chat_enabled, avisos_enabled, soporte_enabled, proyectos_enabled")
+          .eq("usuario_id", usuarioDelAgente)
+          .maybeSingle();
+        const pref = prefRow as {
+          chat_enabled?: boolean;
+          avisos_enabled?: boolean;
+          soporte_enabled?: boolean;
+          proyectos_enabled?: boolean;
+        } | null;
+        const campo = `${categoria}_enabled` as keyof NonNullable<typeof pref>;
+        if (pref && pref[campo] === false) {
+          if (!dryRun) {
+            await sb
+              .from("agent_notification_events")
+              .update({ status: "skipped", error_message: `categoria_apagada:${categoria}` })
+              .eq("id", ev.id);
+          }
+          skipped++;
+          detail.push({ event: ev.id.slice(0, 8), result: `categoria_apagada:${categoria}` });
+          continue;
+        }
+      }
     }
     if (tokens.length === 0) {
       if (!dryRun) {

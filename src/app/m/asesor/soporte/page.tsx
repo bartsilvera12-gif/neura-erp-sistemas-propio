@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Clock, Plus, Search, Ticket } from "lucide-react";
-import { apiSoporte } from "@/app/dashboard/soporte/_ui/api";
+import { apiSoporte, obtenerCatalogos } from "@/app/dashboard/soporte/_ui/api";
 import { numeroTicket } from "@/lib/soporte/dominio";
 import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
 import AsesorTabBar from "../AsesorTabBar";
@@ -43,6 +43,46 @@ export default function MAsesorSoportePage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pedido = useRef(0);
+
+  // "Tomar" un ticket desde la lista — mismo criterio que el escritorio (Desarrollo/QA).
+  // Si no cumple, el botón ni aparece. Al tocar, PATCH responsable_id y refresca la tarjeta.
+  type Yo = { id: string; nombre: string | null; es_tecnico: boolean; es_qa: boolean };
+  const [yo, setYo] = useState<Yo | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    void obtenerCatalogos()
+      .then((cat) => {
+        if (!vivo) return;
+        const p = cat.personas.find((x) => x.id === cat.usuario_id);
+        if (p) setYo({ id: p.id, nombre: p.nombre, es_tecnico: !!p.es_tecnico, es_qa: !!p.es_qa });
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  const puedoTomar = useMemo(() => !!yo && (yo.es_tecnico || yo.es_qa), [yo]);
+  const [tomando, setTomando] = useState<string | null>(null);
+  const tomar = useCallback(
+    async (ticketId: string) => {
+      if (!yo) return;
+      setTomando(ticketId);
+      try {
+        await apiSoporte(`/api/soporte/tickets/${ticketId}`, {
+          method: "PATCH",
+          json: { responsable_id: yo.id },
+        });
+        setTickets((prev) =>
+          prev.map((t) => (t.id === ticketId ? { ...t, responsable: { id: yo.id, nombre: yo.nombre } } : t))
+        );
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo tomar el ticket");
+      } finally {
+        setTomando(null);
+      }
+    },
+    [yo]
+  );
 
   const cargar = useCallback(async () => {
     const n = ++pedido.current;
@@ -197,9 +237,28 @@ export default function MAsesorSoportePage() {
                       {slaVencido(t) ? <Clock className="ml-auto h-3.5 w-3.5 text-rose-500" aria-label="SLA vencido" /> : null}
                     </div>
                     <p className="mt-1.5 line-clamp-2 text-[15px] font-semibold leading-snug text-slate-900">{t.asunto ?? "Sin asunto"}</p>
-                    <p className="mt-1 truncate text-[12px] text-slate-500">
-                      {[t.cliente_nombre, t.responsable?.nombre].filter(Boolean).join(" · ")}
-                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="truncate text-[12px] text-slate-500">
+                        {[t.cliente_nombre, t.responsable?.nombre].filter(Boolean).join(" · ") || "Sin asignar"}
+                      </p>
+                      {puedoTomar &&
+                      t.responsable?.id !== yo?.id &&
+                      t.estado_codigo !== "cerrado" &&
+                      t.estado_codigo !== "cancelado" ? (
+                        <button
+                          type="button"
+                          disabled={tomando === t.id}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void tomar(t.id);
+                          }}
+                          className="shrink-0 rounded-full border border-[#3F8E91] bg-[#3F8E91] px-2.5 py-0.5 text-[11px] font-semibold text-white active:scale-95 disabled:opacity-50"
+                        >
+                          {tomando === t.id ? "…" : "Tomar"}
+                        </button>
+                      ) : null}
+                    </div>
                   </Link>
                 </li>
               );

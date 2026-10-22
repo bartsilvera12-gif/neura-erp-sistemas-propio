@@ -9,6 +9,7 @@ import {
   ticketDeEmpresa,
   tocarTicket,
 } from "@/lib/soporte/servidor";
+import { avisarSeguidoresMovilesSoporte } from "@/lib/soporte/notificar-seguidores-moviles";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -89,6 +90,23 @@ export async function POST(request: Request, { params }: Params) {
       eventos: [{ tipo_evento: "comentario", metadata: { comentario_id: data.id } }],
     });
     await tocarTicket(auth.sb, auth.empresaId, id, auth.usuarioId);
+    // Push al "seguimiento móvil especial" (Karen, Milagros). Excluye al autor para que
+    // no se auto-notifique. Respeta la pref 'soporte'.
+    const { data: tk } = await auth.sb
+      .from("soporte_tickets")
+      .select("numero, asunto")
+      .eq("empresa_id", auth.empresaId)
+      .eq("id", id)
+      .maybeSingle();
+    const numero = (tk as { numero?: number } | null)?.numero ?? null;
+    const asunto = ((tk as { asunto?: string } | null)?.asunto ?? "").trim();
+    void avisarSeguidoresMovilesSoporte({
+      empresaId: auth.empresaId,
+      ticketId: id,
+      titulo: `Nuevo comentario${numero ? ` · T-${numero}` : ""}`,
+      cuerpo: asunto ? `${asunto}: ${contenido.slice(0, 160)}` : contenido.slice(0, 200),
+      excluirUsuarioId: auth.usuarioId,
+    });
     return ok(data);
   } catch (e) {
     return errorInesperado(e);

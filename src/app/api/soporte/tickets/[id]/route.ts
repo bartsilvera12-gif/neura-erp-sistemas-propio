@@ -27,6 +27,7 @@ import {
 } from "@/lib/soporte/servidor";
 import { enriquecerTickets } from "@/lib/soporte/tickets-servidor";
 import { abrirRevisionQa, avisarEstadoAPMs, subtareasSinFinalizar } from "@/lib/soporte/subtareas";
+import { avisarSeguidoresMovilesSoporte } from "@/lib/soporte/notificar-seguidores-moviles";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -292,6 +293,36 @@ export async function PATCH(request: Request, { params }: Params) {
         { id, numero: actual.numero, asunto: (patch.asunto as string | undefined) ?? actual.asunto },
         patch.estado_codigo
       );
+    }
+    // Push al 'seguimiento móvil especial' (Karen, Milagros) por cambios relevantes:
+    // responsable o estado. Comentarios tienen su propio aviso en POST /comentarios.
+    // Excluye al autor del cambio para no auto-notificar. Respeta la pref 'soporte'.
+    const asuntoFinal = (patch.asunto as string | undefined) ?? actual.asunto;
+    const numeroEt = `T-${actual.numero}`;
+    if (patch.responsable_id !== undefined) {
+      const nuevoResp = patch.responsable_id as string | null;
+      let nombreResp = "sin asignar";
+      if (nuevoResp) {
+        const equipo = await personasDeEmpresa(auth.empresaId);
+        nombreResp = equipo.find((u) => u.id === nuevoResp)?.nombre ?? "nuevo responsable";
+      }
+      void avisarSeguidoresMovilesSoporte({
+        empresaId: auth.empresaId,
+        ticketId: id,
+        titulo: `Responsable cambiado · ${numeroEt}`,
+        cuerpo: `${asuntoFinal ?? "Ticket"}: ahora a cargo de ${nombreResp}`,
+        excluirUsuarioId: auth.usuarioId,
+      });
+    }
+    if (typeof patch.estado_codigo === "string") {
+      const nombreEstado = cat.estados.find((e) => e.codigo === patch.estado_codigo)?.nombre ?? patch.estado_codigo;
+      void avisarSeguidoresMovilesSoporte({
+        empresaId: auth.empresaId,
+        ticketId: id,
+        titulo: `${nombreEstado} · ${numeroEt}`,
+        cuerpo: asuntoFinal ?? "Cambió el estado del ticket",
+        excluirUsuarioId: auth.usuarioId,
+      });
     }
     return ok({ actualizado: true, eventos: eventos.map((e) => e.tipo_evento) });
   } catch (e) {

@@ -93,6 +93,8 @@ type Data = {
     project_manager_id: string | null;
     /** Asesor comercial responsable (columna del tablero). */
     asesor: string;
+    /** Fecha de inicio = primera vez que entró a "En desarrollo" (ISO). Reemplaza la columna PM. */
+    fecha_inicio: string | null;
     /** El proyecto no tiene una factura asociada todavía. */
     sin_factura: boolean;
     /** La factura asociada al proyecto tiene saldo por cobrar. */
@@ -206,7 +208,7 @@ type OrdenCol =
   | "tipo_nombre"
   | "estado_nombre"
   | "tecnico"
-  | "pm"
+  | "fecha_inicio"
   | "asesor"
   | "deuda_monto"
   | "tiempo_en_estado_ms";
@@ -230,6 +232,15 @@ function cmpOrden(
     if (av == null) return 1;
     if (bv == null) return -1;
     return (av - bv) * mul;
+  }
+  if (col === "fecha_inicio") {
+    // Sin fecha de inicio (nunca entró a desarrollo) va siempre al final.
+    const av = a.fecha_inicio;
+    const bv = b.fecha_inicio;
+    if (!av && !bv) return 0;
+    if (!av) return 1;
+    if (!bv) return -1;
+    return av.localeCompare(bv) * mul;
   }
   if (col === "deuda_monto") {
     // Sin deuda va siempre al final, ordene como ordene.
@@ -782,7 +793,7 @@ export default function DashboardEjecutivoClient() {
                           {th("Tipo", "tipo_nombre")}
                           {th("Estado", "estado_nombre")}
                           {th("Técnico", "tecnico")}
-                          {th("PM", "pm")}
+                          {th("Fecha de inicio", "fecha_inicio")}
                           {th("Asesor", "asesor")}
                           {th("Deuda", "deuda_monto")}
                           {th("En estado", "tiempo_en_estado_ms", "")}
@@ -853,8 +864,26 @@ export default function DashboardEjecutivoClient() {
                             <td className="max-w-[110px] truncate py-1.5 pr-2 text-slate-500">
                               {nombreCorto(c.tecnico)}
                             </td>
-                            <td className="max-w-[120px] truncate py-1.5 pr-2 text-slate-500" title={c.pm}>
-                              {c.pm && c.pm !== "—" ? nombreCorto(c.pm) : <span className="text-slate-300">—</span>}
+                            <td
+                              className="whitespace-nowrap py-1.5 pr-2 tabular-nums text-slate-500"
+                              title={
+                                c.fecha_inicio
+                                  ? `Inició desarrollo: ${new Date(c.fecha_inicio).toLocaleString("es-PY")}`
+                                  : "Todavía no entró a desarrollo"
+                              }
+                            >
+                              {c.fecha_inicio ? (
+                                new Date(c.fecha_inicio).toLocaleString("es-PY", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: false,
+                                })
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
                             </td>
                             <td className="max-w-[120px] truncate py-1.5 pr-2 text-slate-500" title={c.asesor}>
                               {c.asesor && c.asesor !== "—" ? nombreCorto(c.asesor) : <span className="text-slate-300">—</span>}

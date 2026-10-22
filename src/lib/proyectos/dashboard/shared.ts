@@ -89,6 +89,8 @@ export type ProyectoMetrica = {
   responsable_comercial_id: string | null;
   project_manager_id: string | null;
   fecha_ingreso: string | null;
+  /** Primera vez que el proyecto entró a "En desarrollo" (ISO) o null si nunca. */
+  fecha_inicio: string | null;
   fecha_prometida: string | null;
   fecha_entrega: string | null;
   /** Días hasta la fecha prometida. Negativo = vencido. `null` = sin fecha. */
@@ -480,6 +482,21 @@ export async function cargarDataset(
       (typeof row.created_at === "string" ? row.created_at : null);
     const tiempoEnEstado = estadoDesde ? msLaborables(estadoDesde, refIso) : null;
 
+    // Fecha de inicio = la PRIMERA vez que el proyecto entró a "En desarrollo"
+    // (su arranque real). Se toma el entered_at más temprano de los segmentos
+    // cuyo estado es el de desarrollo; si nunca estuvo en desarrollo, queda null.
+    let fechaInicio: string | null = null;
+    for (const f of filas) {
+      if (
+        f.estado_nuevo_id != null &&
+        estadoById.get(f.estado_nuevo_id)?.codigo === CODIGO_DESARROLLO &&
+        typeof f.entered_at === "string" &&
+        (fechaInicio == null || f.entered_at < fechaInicio)
+      ) {
+        fechaInicio = f.entered_at;
+      }
+    }
+
     const entregaRaw =
       (typeof row.primera_entrega_at === "string" ? row.primera_entrega_at : null) ??
       (typeof row.fecha_entrega === "string" ? row.fecha_entrega : null);
@@ -598,6 +615,8 @@ export async function cargarDataset(
       project_manager_id:
         (typeof row.project_manager_id === "string" ? row.project_manager_id : null) ?? cli?.pm ?? null,
       fecha_ingreso: typeof row.fecha_ingreso === "string" ? row.fecha_ingreso : null,
+      // Primera vez en "En desarrollo" (columna "Fecha de inicio" del tablero).
+      fecha_inicio: fechaInicio,
       fecha_prometida: typeof row.fecha_prometida === "string" ? row.fecha_prometida : null,
       fecha_entrega: entregaRaw,
       dias_restantes: diasRestantes,

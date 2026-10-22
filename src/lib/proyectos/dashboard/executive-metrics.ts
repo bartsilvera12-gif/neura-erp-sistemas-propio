@@ -155,6 +155,9 @@ export function construirDashboardEjecutivo(ds: Dataset) {
       responsable_tecnico_id: p.responsable_tecnico_id,
       // PM del proyecto (para filtrar la tabla desde las cards "Por PM").
       project_manager_id: p.project_manager_id,
+      // Fecha de inicio = primera vez que el proyecto entró a "En desarrollo"
+      // (columna "Fecha de inicio" del tablero, reemplaza a la de PM).
+      fecha_inicio: p.fecha_inicio,
       entregado: p.entregado,
       demorado: !p.entregado && p.estancado,
       buckets: p.entregado ? [] : bucketsDeProyecto(p),

@@ -671,6 +671,8 @@ export default function MAsesorChatPage() {
   const [finSubId, setFinSubId] = useState("");
   const [finRubros, setFinRubros] = useState<{ id: string; label: string }[]>([]);
   const [finRubroId, setFinRubroId] = useState("");
+  const [finProxAt, setFinProxAt] = useState("");
+  const [finProxDesc, setFinProxDesc] = useState("");
   const [finComentario, setFinComentario] = useState("");
   const [finCargando, setFinCargando] = useState(false);
   const [finGuardando, setFinGuardando] = useState(false);
@@ -1024,6 +1026,8 @@ export default function MAsesorChatPage() {
     setFinEstadoId("");
     setFinSubId("");
     setFinRubroId("");
+    setFinProxAt("");
+    setFinProxDesc("");
     setFinComentario("");
     setFinCargando(true);
     void (async () => {
@@ -1087,6 +1091,8 @@ export default function MAsesorChatPage() {
             comment: comentario,
             rubro_id: rubro?.id ?? null,
             rubro_label: rubro?.label ?? null,
+            proxima_accion_at: finProxAt ? `${finProxAt}:00-03:00` : null,
+            proxima_accion_desc: finProxDesc.trim() || null,
           }),
         }
       );
@@ -1106,7 +1112,7 @@ export default function MAsesorChatPage() {
     } finally {
       setFinGuardando(false);
     }
-  }, [conversationId, finEstados, finEstadoId, finSubId, finRubros, finRubroId, finComentario, router]);
+  }, [conversationId, finEstados, finEstadoId, finSubId, finRubros, finRubroId, finProxAt, finProxDesc, finComentario, router]);
 
   // Mismo filtrado que el desktop: la cola acota, el texto busca en nombre, email y cola.
   const filteredAgents = (() => {
@@ -2338,6 +2344,25 @@ export default function MAsesorChatPage() {
                       className="resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
                     />
                   </label>
+
+                  <div className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Próxima acción <span className="font-normal normal-case text-slate-400">(opcional)</span>
+                    </span>
+                    <input
+                      type="datetime-local"
+                      value={finProxAt}
+                      onChange={(e) => setFinProxAt(e.target.value)}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+                    />
+                    <input
+                      type="text"
+                      value={finProxDesc}
+                      onChange={(e) => setFinProxDesc(e.target.value)}
+                      placeholder="Qué vas a hacer (ej. llamar, enviar propuesta…)"
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+                    />
+                  </div>
                 </>
               )}
 

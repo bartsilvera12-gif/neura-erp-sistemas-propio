@@ -77,6 +77,8 @@ export async function POST(
         comment: comentario,
         rubroId: txt(body?.rubro_id) || null,
         rubroLabel: txt(body?.rubro_label) || null,
+        proximaAccionAt: txt(body?.proxima_accion_at) || null,
+        proximaAccionDesc: txt(body?.proxima_accion_desc) || null,
       });
       if (!r.ok) {
         return NextResponse.json({ ok: false, error: r.error }, { status: 400 });

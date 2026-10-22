@@ -91,6 +91,11 @@ export async function listarCierresRapido(
   const asignadoA = filtros.assigned_usuario_id?.trim();
   if (asignadoA) agregar("ag.usuario_id = $?::uuid", asignadoA);
 
+  // Modo "Seguimientos": solo cierres con próxima acción pendiente (no marcados hechos).
+  if (filtros.solo_seguimientos) {
+    cond.push("cl.proxima_accion_at IS NOT NULL AND cl.seguimiento_hecho_at IS NULL");
+  }
+
   // Búsqueda por nombre o número, sin tildes y por palabras en AND: cada
   // palabra que se agrega acota, que es lo que uno espera al seguir escribiendo.
   const q = filtros.q?.trim();
@@ -131,6 +136,9 @@ export async function listarCierresRapido(
            COALESCE(cl.rubro_label, '')      AS rubro_label,
            COALESCE(cl.comment, '')          AS comment,
            co.last_message_preview           AS last_preview,
+           cl.proxima_accion_at              AS proxima_accion_at,
+           cl.proxima_accion_desc            AS proxima_accion_desc,
+           cl.seguimiento_hecho_at           AS seguimiento_hecho_at,
            count(*) OVER ()                  AS total
       FROM ${T("chat_conversation_closures")} cl
       JOIN ${T("chat_conversations")} co ON co.id = cl.conversation_id
@@ -141,7 +149,7 @@ export async function listarCierresRapido(
       LEFT JOIN ${T("usuarios")} ua       ON ua.id = ag.usuario_id
       LEFT JOIN ${T("usuarios")} uc       ON uc.id = cl.closed_by_usuario_id
      WHERE ${cond.join("\n       AND ")}
-     ORDER BY cl.closed_at DESC
+     ORDER BY ${filtros.solo_seguimientos ? "cl.proxima_accion_at ASC NULLS LAST" : "cl.closed_at DESC"}
      LIMIT $${i} OFFSET $${i + 1}`;
 
   const r = await pool.query(sql, params);
@@ -169,6 +177,15 @@ export async function listarCierresRapido(
     rubro_label: String(f.rubro_label ?? ""),
     comment: String(f.comment ?? ""),
     last_preview: (f.last_preview as string | null) ?? null,
+    proxima_accion_at:
+      f.proxima_accion_at instanceof Date
+        ? f.proxima_accion_at.toISOString()
+        : (f.proxima_accion_at as string | null) ?? null,
+    proxima_accion_desc: (f.proxima_accion_desc as string | null) ?? null,
+    seguimiento_hecho_at:
+      f.seguimiento_hecho_at instanceof Date
+        ? f.seguimiento_hecho_at.toISOString()
+        : (f.seguimiento_hecho_at as string | null) ?? null,
   }));
 
   return { rows, total, page: Math.max(1, pagina), page_size: porPagina };

@@ -32,6 +32,10 @@ export type FinalizedClosureListRow = {
   rubro_label: string;
   comment: string;
   last_preview: string | null;
+  /** Próxima acción (seguimiento): fecha-hora ISO + descripción; y cuándo se marcó hecho. */
+  proxima_accion_at: string | null;
+  proxima_accion_desc: string | null;
+  seguimiento_hecho_at: string | null;
 };
 
 export type FinalizedClosuresFilters = {
@@ -46,6 +50,8 @@ export type FinalizedClosuresFilters = {
   state_label?: string | null;
   substate_label?: string | null;
   q?: string | null;
+  /** Modo "Seguimientos": solo cierres con próxima acción pendiente (proxima_accion_at NOT NULL y no marcados hechos). */
+  solo_seguimientos?: boolean | null;
 };
 
 export type FinalizedClosuresListResult = {
@@ -120,6 +126,9 @@ type ClosureRow = {
   comment: string;
   closed_at: string;
   closed_by_usuario_id: string;
+  proxima_accion_at?: string | null;
+  proxima_accion_desc?: string | null;
+  seguimiento_hecho_at?: string | null;
 };
 
 async function loadFinalizedFilterOptionsAllEmpresa(
@@ -777,7 +786,7 @@ export async function listFinalizedClosures(
       let q = supabase
         .from("chat_conversation_closures")
         .select(
-          "id, conversation_id, queue_id, closure_state_label, closure_substate_label, rubro_label, comment, closed_at, closed_by_usuario_id"
+          "id, conversation_id, queue_id, closure_state_label, closure_substate_label, rubro_label, comment, closed_at, closed_by_usuario_id, proxima_accion_at, proxima_accion_desc, seguimiento_hecho_at"
         )
         .eq("empresa_id", empresa_id)
         .in("conversation_id", slice);
@@ -787,6 +796,7 @@ export async function listFinalizedClosures(
       if (filters.closed_by_usuario_id?.trim()) q = q.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
       if (filters.state_label?.trim()) q = q.eq("closure_state_label", filters.state_label.trim());
       if (filters.substate_label?.trim()) q = q.eq("closure_substate_label", filters.substate_label.trim());
+      if (filters.solo_seguimientos) q = q.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
       const { data, error } = await q.limit(5000);
       if (error) {
         if (isMissingClosureTable(error)) return { rows: [], total: 0, page: p, page_size: ps };
@@ -800,7 +810,12 @@ export async function listFinalizedClosures(
         }
       }
     }
-    gathered.sort((a, b) => String(b.closed_at ?? "").localeCompare(String(a.closed_at ?? "")));
+    if (filters.solo_seguimientos) {
+      // Seguimientos: el más próximo primero (vencidos/hoy arriba).
+      gathered.sort((a, b) => String(a.proxima_accion_at ?? "").localeCompare(String(b.proxima_accion_at ?? "")));
+    } else {
+      gathered.sort((a, b) => String(b.closed_at ?? "").localeCompare(String(a.closed_at ?? "")));
+    }
     total = gathered.length;
     cl = gathered.slice(from, to + 1);
   } else {
@@ -819,6 +834,9 @@ export async function listFinalizedClosures(
     if (filters.substate_label?.trim()) {
       countQuery = countQuery.eq("closure_substate_label", filters.substate_label.trim());
     }
+    if (filters.solo_seguimientos) {
+      countQuery = countQuery.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
+    }
     const { count, error: cErr } = await countQuery;
     if (cErr) {
       if (isMissingClosureTable(cErr)) return { rows: [], total: 0, page: p, page_size: ps };
@@ -829,10 +847,13 @@ export async function listFinalizedClosures(
     let dataQuery = supabase
       .from("chat_conversation_closures")
       .select(
-        "id, conversation_id, queue_id, closure_state_label, closure_substate_label, rubro_label, comment, closed_at, closed_by_usuario_id"
+        "id, conversation_id, queue_id, closure_state_label, closure_substate_label, rubro_label, comment, closed_at, closed_by_usuario_id, proxima_accion_at, proxima_accion_desc, seguimiento_hecho_at"
       )
       .eq("empresa_id", empresa_id)
-      .order("closed_at", { ascending: false })
+      .order(filters.solo_seguimientos ? "proxima_accion_at" : "closed_at", {
+        ascending: Boolean(filters.solo_seguimientos),
+        nullsFirst: false,
+      })
       .range(from, to);
     if (df) dataQuery = dataQuery.gte("closed_at", startOfDayIso(df));
     if (dt) dataQuery = dataQuery.lte("closed_at", endOfDayIso(dt));
@@ -843,6 +864,9 @@ export async function listFinalizedClosures(
     if (filters.state_label?.trim()) dataQuery = dataQuery.eq("closure_state_label", filters.state_label.trim());
     if (filters.substate_label?.trim()) {
       dataQuery = dataQuery.eq("closure_substate_label", filters.substate_label.trim());
+    }
+    if (filters.solo_seguimientos) {
+      dataQuery = dataQuery.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
     }
     const { data: closures, error: dErr } = await dataQuery;
     if (dErr) {
@@ -990,8 +1014,44 @@ export async function listFinalizedClosures(
       rubro_label: String(row.rubro_label ?? ""),
       comment: row.comment,
       last_preview: conv?.last_message_preview ?? null,
+      proxima_accion_at: row.proxima_accion_at ?? null,
+      proxima_accion_desc: row.proxima_accion_desc ?? null,
+      seguimiento_hecho_at: row.seguimiento_hecho_at ?? null,
     };
   });
 
   return { rows, total, page: p, page_size: ps };
+}
+
+/**
+ * Marca un seguimiento como HECHO (sale del modo "Seguimientos").
+ * Scope por empresa: la vista "Mis seguimientos" del asesor ya solo lista los suyos,
+ * y el admin ve todos; acá solo confirmamos que el cierre es de la empresa.
+ */
+export async function marcarSeguimientoHecho(
+  closureId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = closureId?.trim();
+  if (!id) return { ok: false, error: "Cierre inválido." };
+  let supabase: Awaited<ReturnType<typeof requireEmpresaTenantServiceRole>>["supabase"];
+  let empresa_id: string;
+  let usuario_id: string;
+  try {
+    const ctx = await requireEmpresaTenantServiceRole();
+    supabase = ctx.supabase;
+    empresa_id = ctx.empresa_id;
+    usuario_id = ctx.usuario_id;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo autenticar." };
+  }
+  const { error } = await supabase
+    .from("chat_conversation_closures")
+    .update({ seguimiento_hecho_at: new Date().toISOString(), seguimiento_hecho_por: usuario_id })
+    .eq("id", id)
+    .eq("empresa_id", empresa_id);
+  if (error) {
+    console.error("[marcarSeguimientoHecho]", error.message);
+    return { ok: false, error: "No se pudo marcar el seguimiento como hecho." };
+  }
+  return { ok: true };
 }

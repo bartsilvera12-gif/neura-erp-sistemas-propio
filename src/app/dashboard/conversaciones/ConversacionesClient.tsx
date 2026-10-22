@@ -1353,6 +1353,8 @@ export function ConversacionesClient({
   const [finalizeSubstateId, setFinalizeSubstateId] = useState("");
   const [finalizeComment, setFinalizeComment] = useState("");
   const [finalizeRubroId, setFinalizeRubroId] = useState("");
+  const [finalizeProxAt, setFinalizeProxAt] = useState("");
+  const [finalizeProxDesc, setFinalizeProxDesc] = useState("");
   const [finalizeModalError, setFinalizeModalError] = useState<string | null>(null);
 
   const inboxFilterKey = searchParams?.toString() ?? "";
@@ -2641,6 +2643,8 @@ export function ConversacionesClient({
     }
     // Rubro es OPCIONAL: arranca sin selección.
     setFinalizeRubroId("");
+    setFinalizeProxAt("");
+    setFinalizeProxDesc("");
   }
 
   async function openFinalizeModal() {
@@ -2652,6 +2656,8 @@ export function ConversacionesClient({
     setFinalizeSubstateId("");
     setFinalizeComment("");
     setFinalizeRubroId("");
+    setFinalizeProxAt("");
+    setFinalizeProxDesc("");
 
     // Si ya lo tenemos —de esta conversación o de otra de la misma cola— el
     // modal aparece INSTANTÁNEO.
@@ -2716,6 +2722,8 @@ export function ConversacionesClient({
         comment,
         rubroId: rubro?.id ?? null,
         rubroLabel: rubro?.label ?? null,
+        proximaAccionAt: finalizeProxAt ? `${finalizeProxAt}:00-03:00` : null,
+        proximaAccionDesc: finalizeProxDesc.trim() || null,
       });
       if (!r.ok) {
         setFinalizeModalError(r.error || "No se pudo finalizar la conversación.");
@@ -3347,6 +3355,26 @@ export function ConversacionesClient({
                     onChange={(e) => setFinalizeComment(e.target.value)}
                     placeholder="Resumí el resultado o próximos pasos para el equipo."
                   />
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
+                    Próxima acción <span className="font-normal text-slate-400">(opcional — queda en Seguimientos)</span>
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="datetime-local"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm sm:w-[220px]"
+                      value={finalizeProxAt}
+                      onChange={(e) => setFinalizeProxAt(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="w-full flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                      value={finalizeProxDesc}
+                      onChange={(e) => setFinalizeProxDesc(e.target.value)}
+                      placeholder="Qué vas a hacer (ej. llamar, enviar propuesta…)"
+                    />
+                  </div>
                 </div>
                 {finalizeOptions.source === "fallback" ? (
                   <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">

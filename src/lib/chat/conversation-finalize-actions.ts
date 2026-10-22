@@ -280,6 +280,9 @@ export async function finalizeConversationWithClosure(input: {
   /** Rubro del cliente (opcional, por cola). */
   rubroId?: string | null;
   rubroLabel?: string | null;
+  /** Próxima acción / recontacto (opcional, todas las colas): fecha-hora ISO + descripción. */
+  proximaAccionAt?: string | null;
+  proximaAccionDesc?: string | null;
 }): Promise<FinalizeConversationResult> {
   let supabase: Awaited<ReturnType<typeof requireEmpresaTenantServiceRole>>["supabase"];
   let empresa_id: string;
@@ -398,6 +401,17 @@ export async function finalizeConversationWithClosure(input: {
       rubroLabel = null;
     }
 
+    // Próxima acción (opcional, todas las colas). Si viene fecha, se valida.
+    const proximaAccionDesc = input.proximaAccionDesc?.trim() || null;
+    let proximaAccionAt: string | null = null;
+    if (input.proximaAccionAt?.trim()) {
+      const d = new Date(input.proximaAccionAt.trim());
+      if (Number.isNaN(d.getTime())) {
+        return { ok: false, error: "La fecha/hora de próxima acción es inválida." };
+      }
+      proximaAccionAt = d.toISOString();
+    }
+
     const now = new Date().toISOString();
 
     const { error: insErr } = await supabase.from("chat_conversation_closures").insert({
@@ -413,6 +427,8 @@ export async function finalizeConversationWithClosure(input: {
       closed_by_usuario_id: usuario_id,
       rubro_id: rubroId,
       rubro_label: rubroLabel,
+      proxima_accion_at: proximaAccionAt,
+      proxima_accion_desc: proximaAccionDesc,
     });
     if (insErr) {
       // Log server-side con todo el contexto; el client solo recibe un

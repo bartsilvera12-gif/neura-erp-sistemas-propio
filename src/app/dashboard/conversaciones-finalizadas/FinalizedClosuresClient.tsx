@@ -6,6 +6,7 @@ import { X, MessageSquarePlus, Download, SlidersHorizontal } from "lucide-react"
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   listFinalizedClosures,
+  marcarSeguimientoHecho,
   type FinalizedClosureListRow,
   type FinalizedClosuresFilters,
   type FinalizedFilterOptions,
@@ -138,6 +139,21 @@ function formatDateTime(iso: string): string {
   });
 }
 
+/** Semáforo del seguimiento por día de calendario: vencido (rojo) / hoy (ámbar) / próximo (verde). */
+function seguimientoSemaforo(iso: string | null): { label: string; cls: string } | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const dia = new Date(d);
+  dia.setHours(0, 0, 0, 0);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const diff = dia.getTime() - hoy.getTime();
+  if (diff < 0) return { label: "Vencido", cls: "bg-red-100 text-red-700 border border-red-200" };
+  if (diff === 0) return { label: "Hoy", cls: "bg-amber-100 text-amber-700 border border-amber-200" };
+  return { label: "Próximo", cls: "bg-emerald-100 text-emerald-700 border border-emerald-200" };
+}
+
 function escapeCsvCell(value: string): string {
   const s = String(value).replace(/"/g, '""');
   if (/[",\n\r]/.test(s)) return `"${s}"`;
@@ -159,6 +175,9 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
     "Estado",
     "Subestado",
     "Rubro",
+    "Próxima acción (fecha)",
+    "Próxima acción (detalle)",
+    "Seguimiento hecho",
     "Comentario de cierre",
     "Último mensaje / resumen",
   ];
@@ -181,6 +200,9 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
         escapeCsvCell(r.state_label),
         escapeCsvCell(r.substate_label),
         escapeCsvCell(r.rubro_label ?? ""),
+        escapeCsvCell(r.proxima_accion_at ? formatDateTime(r.proxima_accion_at) : ""),
+        escapeCsvCell(r.proxima_accion_desc ?? ""),
+        escapeCsvCell(r.seguimiento_hecho_at ? "Sí" : r.proxima_accion_at ? "Pendiente" : ""),
         escapeCsvCell(r.comment ?? ""),
         escapeCsvCell(r.last_preview ?? ""),
       ].join(",")
@@ -245,6 +267,9 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
   const [q, setQ] = useState("");
 
   const [applied, setApplied] = useState<FinalizedClosuresFilters>({});
+  /** Modo de la vista: historial completo o solo seguimientos pendientes. */
+  const [modo, setModo] = useState<"historial" | "seguimientos">("historial");
+  const [marcando, setMarcando] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(25);
@@ -270,8 +295,9 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     if (applied.state_label?.trim()) f.state_label = applied.state_label.trim();
     if (applied.substate_label?.trim()) f.substate_label = applied.substate_label.trim();
     if (applied.q?.trim()) f.q = applied.q.trim();
+    if (modo === "seguimientos") f.solo_seguimientos = true;
     return f;
-  }, [applied]);
+  }, [applied, modo]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -293,6 +319,23 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
   useEffect(() => {
     void load();
   }, [load]);
+
+  const marcarHecho = useCallback(async (closureId: string) => {
+    setMarcando(closureId);
+    setError(null);
+    try {
+      const r = await marcarSeguimientoHecho(closureId);
+      if (r.ok) {
+        // En modo seguimientos sale de la lista; en historial solo deja de ser pendiente.
+        setRows((prev) => prev.filter((x) => x.closure_id !== closureId));
+        setTotal((t) => Math.max(0, t - 1));
+      } else {
+        setError(r.error);
+      }
+    } finally {
+      setMarcando(null);
+    }
+  }, []);
 
   const applyFilters = () => {
     setInfo(null);
@@ -410,6 +453,28 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           <Download className="h-4 w-4" />
           Descargar Excel (CSV)
         </button>
+      </div>
+
+      <div className="inline-flex w-fit rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm font-semibold">
+        {([
+          { key: "historial", label: "Historial" },
+          { key: "seguimientos", label: "Seguimientos" },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => {
+              if (modo === t.key) return;
+              setModo(t.key);
+              setPage(1);
+            }}
+            className={`rounded-lg px-4 py-1.5 transition-colors ${
+              modo === t.key ? "bg-white text-[#2F6E71] shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {error && (
@@ -568,6 +633,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                 <th className="px-3 py-3">Estado</th>
                 <th className="px-3 py-3">Subestado</th>
                 <th className="px-3 py-3">Rubro</th>
+                <th className="px-3 py-3 min-w-[180px]">Próxima acción</th>
                 <th className="px-3 py-3 min-w-[140px]">Comentario</th>
                 <th className="px-3 py-3 min-w-[160px]">Último mensaje</th>
               </tr>
@@ -575,13 +641,13 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={13} className="px-3 py-10 text-center text-slate-400">
                     Cargando…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
+                  <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
                     No hay conversaciones finalizadas con estos filtros.
                   </td>
                 </tr>
@@ -601,8 +667,48 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                     <td className="px-3 py-2.5 text-slate-700">{r.closed_by_nombre ?? "—"}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.state_label}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.substate_label}</td>
-                    <td className="px-3 py-2.5 text-slate-700">{r.rubro_label || "—"}</td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate" title={r.comment}>
+                    <td className="px-3 py-2.5 text-slate-700 align-top">
+                      {r.proxima_accion_at ? (
+                        (() => {
+                          const sem = seguimientoSemaforo(r.proxima_accion_at);
+                          const hecho = Boolean(r.seguimiento_hecho_at);
+                          return (
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                {hecho ? (
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 border border-slate-200">
+                                    Hecho
+                                  </span>
+                                ) : sem ? (
+                                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${sem.cls}`}>
+                                    {sem.label}
+                                  </span>
+                                ) : null}
+                                <span className="tabular-nums text-xs text-slate-600">{formatDateTime(r.proxima_accion_at)}</span>
+                              </div>
+                              {r.proxima_accion_desc ? (
+                                <span className="text-xs text-slate-500 max-w-[200px] truncate" title={r.proxima_accion_desc}>
+                                  {r.proxima_accion_desc}
+                                </span>
+                              ) : null}
+                              {!hecho ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void marcarHecho(r.closure_id)}
+                                  disabled={marcando === r.closure_id}
+                                  className="mt-0.5 w-fit rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                                >
+                                  {marcando === r.closure_id ? "…" : "Marcar hecho"}
+                                </button>
+                              ) : null}
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate align-top" title={r.comment}>
                       {r.comment || "—"}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 max-w-[220px] truncate" title={r.last_preview ?? ""}>

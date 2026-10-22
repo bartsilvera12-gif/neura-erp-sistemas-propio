@@ -5,6 +5,7 @@ import { prepararTicket, registrarAltaTicket } from "@/lib/soporte/crear-ticket"
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import { clientesPorId, leerCatalogos, personasDeEmpresa } from "@/lib/soporte/servidor";
 import { avisarSoporte } from "@/lib/soporte/subtareas";
+import { avisarPorPush } from "@/lib/cc/push-usuarios";
 import { enFranjaDeGuardia, puedeEstarACargo } from "@/lib/soporte/dominio";
 import { enHorarioLaboral, TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
 import { lunesDe } from "@/lib/guardias/semana";
@@ -143,6 +144,17 @@ async function avisarAltaASeguimientoMovil(
       }))
     );
     if (insertError) console.error("[soporte] no se pudo avisar al seguimiento móvil", insertError.message);
+    // Push nativo al celular. El insert anterior ya hizo que la campanita in-app los
+    // muestre; esto los avisa aunque la app esté cerrada. Respeta la pref 'soporte'.
+    void avisarPorPush({
+      empresaId: soporte.empresaId,
+      usuarioIds: destinatarios,
+      titulo: args.titulo,
+      cuerpo: args.cuerpo,
+      ruta: `/m/asesor/soporte/${args.ticketId}`,
+      agrupar: `ticket-${args.ticketId}`,
+      categoria: "soporte",
+    });
   } catch (e) {
     console.error("[soporte] no se pudo avisar al seguimiento móvil", e);
   }

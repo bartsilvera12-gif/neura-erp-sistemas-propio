@@ -218,16 +218,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     ],
     [filterOptions.agents]
   );
-  const opcionesCanal = useMemo(
-    () => [
-      { value: "", label: "Todos" },
-      ...filterOptions.channels.map((c) => ({
-        value: c.id,
-        label: (c.nombre ?? c.type).trim() || c.type,
-      })),
-    ],
-    [filterOptions.channels]
-  );
   const opcionesEstado = useMemo(
     () => [
       { value: "", label: "Todos" },
@@ -471,18 +461,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               onChange={setAssignedUsuarioId}
               placeholder="Todos"
               options={opcionesAgente}
-            />
-          </label>
-          )}
-          {!esAsesor && (
-          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
-            Canal
-            <FancySelect
-              ariaLabel="Canal"
-              value={channelId}
-              onChange={setChannelId}
-              placeholder="Todos"
-              options={opcionesCanal}
             />
           </label>
           )}

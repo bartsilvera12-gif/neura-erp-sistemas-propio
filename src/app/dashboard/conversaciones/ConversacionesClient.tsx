@@ -262,7 +262,10 @@ function displayFilenameForAttachment(message: ChatMessage): string {
   const raw = (message.content ?? "").trim();
   const m = /^\[documento\]\s*(.+)$/i.exec(raw);
   if (m?.[1]?.trim()) return m[1].trim();
-  if (raw && !raw.startsWith("[")) return raw.slice(0, 120);
+  // Antes, sin nombre de archivo, se usaba el texto del mensaje recortado a 120
+  // caracteres: el cliente veía su propio comentario cortado a la mitad haciéndose
+  // pasar por el nombre del adjunto. El texto ya se muestra entero debajo de la
+  // tarjeta, así que acá basta con decir qué es.
   return message.message_type === "video" ? "Video" : "Archivo";
 }
 

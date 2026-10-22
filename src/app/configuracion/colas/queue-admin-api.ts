@@ -5,6 +5,8 @@ import type {
   QueueClosureStateRow,
   QueueClosureTaxonomyInput,
   QueueEditorChatChannelRow,
+  QueueRubroRow,
+  QueueRubroInput,
   UsuarioPickRow,
 } from "@/lib/chat/queue-admin-repo";
 
@@ -43,6 +45,7 @@ export type QueueEditorBootstrap = {
   agents: QueueAgentRow[];
   usuarios: UsuarioPickRow[];
   closure_taxonomy: QueueClosureStateRow[];
+  rubros: QueueRubroRow[];
   bootstrapWarnings?: string[];
 };
 
@@ -174,5 +177,19 @@ export async function apiSaveClosureTaxonomy(queueId: string, states: QueueClosu
   const json = parseJson<ApiOk<boolean> | ApiErr>(await res.json());
   if (!res.ok || !json.success) {
     throw new Error(!json.success ? json.error : "Error al guardar estados de cierre");
+  }
+}
+
+export async function apiSaveQueueRubros(queueId: string, rubros: QueueRubroInput[]): Promise<void> {
+  const q = encodeURIComponent(queueId.trim());
+  const res = await fetchWithSupabaseSession(`/api/configuracion/colas-queues/${q}/rubros-config`, {
+    method: "PUT",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rubros }),
+  });
+  const json = parseJson<ApiOk<boolean> | ApiErr>(await res.json());
+  if (!res.ok || !json.success) {
+    throw new Error(!json.success ? json.error : "Error al guardar rubros");
   }
 }

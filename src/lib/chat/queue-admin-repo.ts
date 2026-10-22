@@ -80,6 +80,14 @@ export type QueueClosureStateRow = {
   substates: QueueClosureSubstateRow[];
 };
 
+/** Rubro de cierre por cola (clasificación del cliente). Catálogo plano, por cola. */
+export type QueueRubroRow = {
+  id: string;
+  label: string;
+  sort_order: number;
+  is_active: boolean;
+};
+
 function mapChatChannelRow(r: Record<string, unknown>): QueueEditorChatChannelRow {
   const mp = r.meta_phone_number_id;
   return {
@@ -694,6 +702,73 @@ export async function repoReplaceQueueClosureTaxonomy(
   }
 }
 
+/** Rubros (catálogo plano) de una cola. Mismo patrón que la taxonomía de cierre, sin subniveles. */
+export async function repoListQueueRubros(
+  ctx: QueueAdminTenantContext,
+  queueId: string
+): Promise<QueueRubroRow[]> {
+  const qid = queueId.trim();
+  if (!qid) return [];
+  const { data, error } = await ctx.supabase
+    .from("chat_queue_rubros")
+    .select("id, label, sort_order, is_active")
+    .eq("empresa_id", ctx.empresa_id)
+    .eq("queue_id", qid)
+    .order("sort_order", { ascending: true });
+  if (error) {
+    console.error("[repoListQueueRubros] chat_queue_rubros:", error.message);
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    label: String((r as { label?: string }).label ?? ""),
+    sort_order: Number((r as { sort_order?: number }).sort_order ?? 0),
+    is_active: (r as { is_active?: boolean }).is_active !== false,
+  }));
+}
+
+export type QueueRubroInput = { label: string; sort_order: number };
+
+/** Reemplazo completo (igual que la taxonomía): borra los rubros de la cola y re-inserta en orden. */
+export async function repoReplaceQueueRubros(
+  ctx: QueueAdminTenantContext,
+  queueId: string,
+  rubros: QueueRubroInput[]
+): Promise<void> {
+  const qid = queueId.trim();
+  if (!qid) throw new Error("Cola inválida");
+  const { data: queue, error: qe } = await ctx.supabase
+    .from("chat_queues")
+    .select("id, empresa_id")
+    .eq("id", qid)
+    .eq("empresa_id", ctx.empresa_id)
+    .maybeSingle();
+  if (qe) throw new Error(qe.message);
+  if (!queue) throw new Error("Cola no encontrada");
+  const empresaId = (queue as { empresa_id: string }).empresa_id;
+
+  const { error: dErr } = await ctx.supabase
+    .from("chat_queue_rubros")
+    .delete()
+    .eq("empresa_id", empresaId)
+    .eq("queue_id", qid);
+  if (dErr) throw new Error(dErr.message);
+
+  let o = 0;
+  for (const r of rubros) {
+    const label = r.label.trim();
+    if (!label) continue;
+    const { error: insErr } = await ctx.supabase.from("chat_queue_rubros").insert({
+      empresa_id: empresaId,
+      queue_id: qid,
+      label,
+      sort_order: r.sort_order ?? o++,
+      is_active: true,
+    });
+    if (insErr) throw new Error(insErr.message);
+  }
+}
+
 export async function repoLoadQueueEditorBootstrap(ctx: QueueAdminTenantContext, queueId: string): Promise<{
   queue: ChatQueueAdminRow | null;
   channels: QueueEditorChatChannelRow[];
@@ -701,6 +776,7 @@ export async function repoLoadQueueEditorBootstrap(ctx: QueueAdminTenantContext,
   agents: QueueAgentRow[];
   usuarios: UsuarioPickRow[];
   closure_taxonomy: QueueClosureStateRow[];
+  rubros: QueueRubroRow[];
   /** Errores parciales (p. ej. tabla chat_queue_channels ausente); la cola igual puede cargarse. */
   bootstrapWarnings: string[];
 }> {
@@ -713,6 +789,7 @@ export async function repoLoadQueueEditorBootstrap(ctx: QueueAdminTenantContext,
       agents: [],
       usuarios: [],
       closure_taxonomy: [],
+      rubros: [],
       bootstrapWarnings: [],
     };
   }
@@ -726,6 +803,7 @@ export async function repoLoadQueueEditorBootstrap(ctx: QueueAdminTenantContext,
       agents: [],
       usuarios: [],
       closure_taxonomy: [],
+      rubros: [],
       bootstrapWarnings: [],
     };
   }
@@ -736,6 +814,7 @@ export async function repoLoadQueueEditorBootstrap(ctx: QueueAdminTenantContext,
     repoListAgentsForQueue(ctx, qid),
     repoListUsuariosForQueuePick(ctx),
     repoListQueueClosureTaxonomy(ctx, qid),
+    repoListQueueRubros(ctx, qid),
   ]);
 
   const channels = settled[0].status === "fulfilled" ? settled[0].value : [];
@@ -743,6 +822,7 @@ export async function repoLoadQueueEditorBootstrap(ctx: QueueAdminTenantContext,
   const agents = settled[2].status === "fulfilled" ? settled[2].value : [];
   const usuarios = settled[3].status === "fulfilled" ? settled[3].value : [];
   const closure_taxonomy = settled[4].status === "fulfilled" ? settled[4].value : [];
+  const rubros = settled[5].status === "fulfilled" ? settled[5].value : [];
 
   const bootstrapWarnings: string[] = [];
   const coreAuxFailed = [0, 1, 2, 3].some((i) => settled[i]?.status === "rejected");
@@ -759,5 +839,5 @@ export async function repoLoadQueueEditorBootstrap(ctx: QueueAdminTenantContext,
     );
   }
 
-  return { queue, channels, linked, agents, usuarios, closure_taxonomy, bootstrapWarnings };
+  return { queue, channels, linked, agents, usuarios, closure_taxonomy, rubros, bootstrapWarnings };
 }

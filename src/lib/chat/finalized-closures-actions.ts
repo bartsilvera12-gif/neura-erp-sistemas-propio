@@ -28,6 +28,8 @@ export type FinalizedClosureListRow = {
   closed_by_nombre: string | null;
   state_label: string;
   substate_label: string;
+  /** Rubro del cliente (opcional, por cola). "" si la cola no usa rubros o no se eligió. */
+  rubro_label: string;
   comment: string;
   last_preview: string | null;
 };
@@ -114,6 +116,7 @@ type ClosureRow = {
   queue_id: string | null;
   closure_state_label: string;
   closure_substate_label: string;
+  rubro_label?: string | null;
   comment: string;
   closed_at: string;
   closed_by_usuario_id: string;
@@ -774,7 +777,7 @@ export async function listFinalizedClosures(
       let q = supabase
         .from("chat_conversation_closures")
         .select(
-          "id, conversation_id, queue_id, closure_state_label, closure_substate_label, comment, closed_at, closed_by_usuario_id"
+          "id, conversation_id, queue_id, closure_state_label, closure_substate_label, rubro_label, comment, closed_at, closed_by_usuario_id"
         )
         .eq("empresa_id", empresa_id)
         .in("conversation_id", slice);
@@ -826,7 +829,7 @@ export async function listFinalizedClosures(
     let dataQuery = supabase
       .from("chat_conversation_closures")
       .select(
-        "id, conversation_id, queue_id, closure_state_label, closure_substate_label, comment, closed_at, closed_by_usuario_id"
+        "id, conversation_id, queue_id, closure_state_label, closure_substate_label, rubro_label, comment, closed_at, closed_by_usuario_id"
       )
       .eq("empresa_id", empresa_id)
       .order("closed_at", { ascending: false })
@@ -984,6 +987,7 @@ export async function listFinalizedClosures(
       closed_by_nombre: usuarioNombre.get(row.closed_by_usuario_id) ?? null,
       state_label: row.closure_state_label,
       substate_label: row.closure_substate_label,
+      rubro_label: String(row.rubro_label ?? ""),
       comment: row.comment,
       last_preview: conv?.last_message_preview ?? null,
     };

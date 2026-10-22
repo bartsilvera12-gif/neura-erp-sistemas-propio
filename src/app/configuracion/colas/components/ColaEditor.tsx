@@ -22,6 +22,7 @@ import {
   apiRemoveQueueAgent,
   apiSaveClosureTaxonomy,
   apiSaveQueue,
+  apiSaveQueueRubros,
   apiSetQueueChannelLinks,
   apiUpdateQueueAgent,
 } from "../queue-admin-api";
@@ -92,6 +93,8 @@ export default function ColaEditor({
   const [routing, setRouting] = useState<QueueRoutingConfig>(DEFAULT_QUEUE_ROUTING_CONFIG);
   const [closureDraft, setClosureDraft] = useState<{ label: string; substates: { label: string }[] }[]>([]);
   const [closureSaving, setClosureSaving] = useState(false);
+  const [rubrosDraft, setRubrosDraft] = useState<{ label: string }[]>([]);
+  const [rubrosSaving, setRubrosSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!queueId) return;
@@ -124,6 +127,7 @@ export default function ColaEditor({
           substates: (s.substates ?? []).map((sub) => ({ label: sub.label })),
         })),
       );
+      setRubrosDraft((boot.rubros ?? []).map((r) => ({ label: r.label })));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar");
     } finally {
@@ -186,6 +190,23 @@ export default function ColaEditor({
       setError(e instanceof Error ? e.message : "Error al guardar estados de cierre");
     } finally {
       setClosureSaving(false);
+    }
+  }
+
+  async function handleSaveRubros() {
+    if (!queueId) return;
+    setRubrosSaving(true);
+    setError(null);
+    try {
+      const rubros = rubrosDraft
+        .map((r, i) => ({ label: r.label.trim(), sort_order: i }))
+        .filter((r) => r.label.length > 0);
+      await apiSaveQueueRubros(queueId, rubros);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al guardar rubros");
+    } finally {
+      setRubrosSaving(false);
     }
   }
 
@@ -770,6 +791,55 @@ export default function ColaEditor({
             onClick={() => setClosureDraft((d) => [...d, { label: "", substates: [] }])}
           >
             + Agregar estado
+          </button>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-[#4FAEB2]/45 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Rubros del cliente</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">
+              Lista de rubros/actividades que el asesor podrá elegir al finalizar un chat de esta cola (opcional). Si no
+              cargás ninguno, el campo «Rubro» no aparece en el modal de finalización ni en Finalizadas para esta cola.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={rubrosSaving || !queueId}
+            onClick={() => void handleSaveRubros()}
+            className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {rubrosSaving ? "Guardando…" : "Guardar rubros"}
+          </button>
+        </div>
+        <div className="space-y-2">
+          {rubrosDraft.map((row, ri) => (
+            <div key={ri} className="flex items-center gap-2">
+              <input
+                type="text"
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+                value={row.label}
+                onChange={(e) =>
+                  setRubrosDraft((d) => d.map((x, i) => (i === ri ? { label: e.target.value } : x)))
+                }
+                placeholder="Ej. Panadería / Farmacia / Ferretería…"
+              />
+              <button
+                type="button"
+                className="text-xs font-medium text-red-700 hover:underline"
+                onClick={() => setRubrosDraft((d) => d.filter((_, i) => i !== ri))}
+              >
+                Quitar
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="text-sm font-medium text-[#4FAEB2] hover:underline"
+            onClick={() => setRubrosDraft((d) => [...d, { label: "" }])}
+          >
+            + Agregar rubro
           </button>
         </div>
       </section>

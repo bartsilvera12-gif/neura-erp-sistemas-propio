@@ -20,6 +20,8 @@ export type FinalizeOptionState = {
 export type FinalizeOptionsResult = {
   source: "queue" | "fallback";
   states: FinalizeOptionState[];
+  /** Rubros (clasificación del cliente) de la cola. Vacío = la cola no usa rubros → no se muestra el campo. */
+  rubros: { id: string; label: string }[];
 };
 
 function fallbackOptions(): FinalizeOptionsResult {
@@ -30,6 +32,7 @@ function fallbackOptions(): FinalizeOptionsResult {
       label: s.label,
       substates: s.substates.map((x) => ({ id: x.id, label: x.label })),
     })),
+    rubros: [],
   };
 }
 
@@ -42,6 +45,7 @@ function emergencyModalFallbackOptions(): FinalizeOptionsResult {
       label: s.label,
       substates: s.substates.map((x) => ({ id: x.id, label: x.label })),
     })),
+    rubros: [],
   };
 }
 
@@ -108,6 +112,25 @@ async function loadFinalizeOptionsFromPg(
       return fallbackOptions();
     }
 
+    // Rubros de la cola (opcional). Si la cola no tiene rubros, el array queda vacío
+    // y el modal no muestra el campo. No debe tumbar la carga de opciones si falla.
+    let rubros: { id: string; label: string }[] = [];
+    try {
+      const rbT = quoteSchemaTable(schema, "chat_queue_rubros");
+      const rr = await pool.query(
+        `SELECT id::text, label::text FROM ${rbT}
+          WHERE empresa_id = $1::uuid AND queue_id = $2::uuid AND COALESCE(is_active, true) = true
+          ORDER BY sort_order ASC NULLS LAST`,
+        [empresaId, qid]
+      );
+      rubros = (rr.rows ?? []).map((x) => ({
+        id: String((x as { id?: string }).id ?? ""),
+        label: String((x as { label?: string }).label ?? ""),
+      }));
+    } catch (e) {
+      console.error("[loadFinalizeOptionsFromPg] rubros:", e instanceof Error ? e.message : e);
+    }
+
     return {
       source: "queue",
       states: orden.map((id) => ({
@@ -115,6 +138,7 @@ async function loadFinalizeOptionsFromPg(
         label: etiqueta.get(id) ?? "",
         substates: subs.get(id) ?? [],
       })),
+      rubros,
     };
   } catch (e) {
     if (e instanceof Error && e.message.includes("finalizada")) throw e;
@@ -191,6 +215,23 @@ export async function loadFinalizeOptionsForConversation(conversationId: string)
       byState.set(sid, arr);
     }
 
+    let rubros: { id: string; label: string }[] = [];
+    try {
+      const { data: rb } = await supabase
+        .from("chat_queue_rubros")
+        .select("id, label")
+        .eq("empresa_id", empresa_id)
+        .eq("queue_id", qid)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+      rubros = ((rb ?? []) as { id: string; label: string | null }[]).map((r) => ({
+        id: String(r.id),
+        label: String(r.label ?? ""),
+      }));
+    } catch (e) {
+      console.error("[loadFinalizeOptionsForConversation] rubros:", e instanceof Error ? e.message : e);
+    }
+
     return {
       source: "queue",
       states: st.map((s) => ({
@@ -198,6 +239,7 @@ export async function loadFinalizeOptionsForConversation(conversationId: string)
         label: s.label,
         substates: byState.get(s.id) ?? [],
       })),
+      rubros,
     };
   } catch (e) {
     console.error("[loadFinalizeOptionsForConversation]", e);
@@ -235,6 +277,9 @@ export async function finalizeConversationWithClosure(input: {
   closureStateLabel: string;
   closureSubstateLabel: string;
   comment: string;
+  /** Rubro del cliente (opcional, por cola). */
+  rubroId?: string | null;
+  rubroLabel?: string | null;
 }): Promise<FinalizeConversationResult> {
   let supabase: Awaited<ReturnType<typeof requireEmpresaTenantServiceRole>>["supabase"];
   let empresa_id: string;
@@ -331,6 +376,28 @@ export async function finalizeConversationWithClosure(input: {
     if (!stateLabel.trim()) return { ok: false, error: "Elegí un estado de cierre." };
     if (!substateLabel) substateLabel = "—";
 
+    // Rubro (opcional): clasificación del cliente, por cola. Si viene, se valida contra la cola del chat.
+    let rubroId: string | null = input.rubroId?.trim() || null;
+    let rubroLabel: string | null = input.rubroLabel?.trim() || null;
+    if (rubroId) {
+      const { data: rb, error: rbErr } = await supabase
+        .from("chat_queue_rubros")
+        .select("id, label, queue_id")
+        .eq("id", rubroId)
+        .eq("empresa_id", empresa_id)
+        .maybeSingle();
+      if (rbErr) return { ok: false, error: `No se pudo leer el rubro: ${rbErr.message}` };
+      if (!rb) return { ok: false, error: "Rubro no encontrado." };
+      if (queueId && (rb as { queue_id: string }).queue_id !== queueId) {
+        return { ok: false, error: "El rubro elegido pertenece a otra cola." };
+      }
+      rubroLabel = String((rb as { label: string }).label).trim() || rubroLabel;
+    } else {
+      // Rubro opcional: sin selección no se guarda ni id ni etiqueta.
+      rubroId = null;
+      rubroLabel = null;
+    }
+
     const now = new Date().toISOString();
 
     const { error: insErr } = await supabase.from("chat_conversation_closures").insert({
@@ -344,6 +411,8 @@ export async function finalizeConversationWithClosure(input: {
       comment,
       closed_at: now,
       closed_by_usuario_id: usuario_id,
+      rubro_id: rubroId,
+      rubro_label: rubroLabel,
     });
     if (insErr) {
       // Log server-side con todo el contexto; el client solo recibe un

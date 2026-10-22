@@ -1349,6 +1349,7 @@ export function ConversacionesClient({
   const [finalizeStateId, setFinalizeStateId] = useState("");
   const [finalizeSubstateId, setFinalizeSubstateId] = useState("");
   const [finalizeComment, setFinalizeComment] = useState("");
+  const [finalizeRubroId, setFinalizeRubroId] = useState("");
   const [finalizeModalError, setFinalizeModalError] = useState<string | null>(null);
 
   const inboxFilterKey = searchParams?.toString() ?? "";
@@ -2635,6 +2636,8 @@ export function ConversacionesClient({
       setFinalizeStateId(first.id);
       setFinalizeSubstateId(first.substates[0]?.id ?? "");
     }
+    // Rubro es OPCIONAL: arranca sin selección.
+    setFinalizeRubroId("");
   }
 
   async function openFinalizeModal() {
@@ -2645,6 +2648,7 @@ export function ConversacionesClient({
     setFinalizeStateId("");
     setFinalizeSubstateId("");
     setFinalizeComment("");
+    setFinalizeRubroId("");
 
     // Si ya lo tenemos —de esta conversación o de otra de la misma cola— el
     // modal aparece INSTANTÁNEO.
@@ -2697,6 +2701,7 @@ export function ConversacionesClient({
       return;
     }
     const sub = st.substates.find((x) => x.id === finalizeSubstateId);
+    const rubro = finalizeRubroId ? finalizeOptions.rubros.find((x) => x.id === finalizeRubroId) : null;
     setFinalizeSaving(true);
     try {
       const r = await finalizeConversationWithClosure({
@@ -2706,6 +2711,8 @@ export function ConversacionesClient({
         closureStateLabel: st.label,
         closureSubstateLabel: sub?.label ?? (st.substates.length > 0 ? "" : "—"),
         comment,
+        rubroId: rubro?.id ?? null,
+        rubroLabel: rubro?.label ?? null,
       });
       if (!r.ok) {
         setFinalizeModalError(r.error || "No se pudo finalizar la conversación.");
@@ -3310,6 +3317,25 @@ export function ConversacionesClient({
                     </div>
                   );
                 })()}
+                {finalizeOptions.rubros.length > 0 ? (
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
+                      Rubro <span className="font-normal text-slate-400">(opcional)</span>
+                    </label>
+                    <select
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                      value={finalizeRubroId}
+                      onChange={(e) => setFinalizeRubroId(e.target.value)}
+                    >
+                      <option value="">— Sin rubro —</option>
+                      {finalizeOptions.rubros.map((rb) => (
+                        <option key={rb.id} value={rb.id}>
+                          {rb.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div>
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Comentario</label>
                   <textarea

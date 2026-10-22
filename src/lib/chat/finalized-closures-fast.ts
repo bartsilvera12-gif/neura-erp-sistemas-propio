@@ -128,6 +128,7 @@ export async function listarCierresRapido(
            uc.nombre                         AS closed_by_nombre,
            COALESCE(cl.closure_state_label, '')     AS state_label,
            COALESCE(cl.closure_substate_label, '')  AS substate_label,
+           COALESCE(cl.rubro_label, '')      AS rubro_label,
            COALESCE(cl.comment, '')          AS comment,
            co.last_message_preview           AS last_preview,
            count(*) OVER ()                  AS total
@@ -165,6 +166,7 @@ export async function listarCierresRapido(
     closed_by_nombre: (f.closed_by_nombre as string | null) ?? null,
     state_label: String(f.state_label ?? ""),
     substate_label: String(f.substate_label ?? ""),
+    rubro_label: String(f.rubro_label ?? ""),
     comment: String(f.comment ?? ""),
     last_preview: (f.last_preview as string | null) ?? null,
   }));

@@ -669,6 +669,8 @@ export default function MAsesorChatPage() {
   >([]);
   const [finEstadoId, setFinEstadoId] = useState("");
   const [finSubId, setFinSubId] = useState("");
+  const [finRubros, setFinRubros] = useState<{ id: string; label: string }[]>([]);
+  const [finRubroId, setFinRubroId] = useState("");
   const [finComentario, setFinComentario] = useState("");
   const [finCargando, setFinCargando] = useState(false);
   const [finGuardando, setFinGuardando] = useState(false);
@@ -1021,6 +1023,7 @@ export default function MAsesorChatPage() {
     setFinError(null);
     setFinEstadoId("");
     setFinSubId("");
+    setFinRubroId("");
     setFinComentario("");
     setFinCargando(true);
     void (async () => {
@@ -1030,7 +1033,11 @@ export default function MAsesorChatPage() {
           { cache: "no-store" }
         );
         const j = (await res.json().catch(() => null)) as
-          | { ok: true; states: { id: string; label: string; substates: { id: string; label: string }[] }[] }
+          | {
+              ok: true;
+              states: { id: string; label: string; substates: { id: string; label: string }[] }[];
+              rubros?: { id: string; label: string }[];
+            }
           | { ok: false; error?: string }
           | null;
         if (!res.ok || !j || j.ok !== true) {
@@ -1038,6 +1045,7 @@ export default function MAsesorChatPage() {
           return;
         }
         setFinEstados(j.states ?? []);
+        setFinRubros(j.rubros ?? []);
       } catch {
         setFinError("No se pudieron cargar las opciones de cierre");
       } finally {
@@ -1065,6 +1073,7 @@ export default function MAsesorChatPage() {
     setFinError(null);
     try {
       const sub = st.substates.find((x) => x.id === finSubId);
+      const rubro = finRubroId ? finRubros.find((x) => x.id === finRubroId) : null;
       const res = await fetchWithSupabaseSession(
         `/api/mobile/asesor/conversations/${encodeURIComponent(conversationId)}/finalizar`,
         {
@@ -1076,6 +1085,8 @@ export default function MAsesorChatPage() {
             closure_state_label: st.label,
             closure_substate_label: sub?.label ?? (st.substates.length > 0 ? "" : "—"),
             comment: comentario,
+            rubro_id: rubro?.id ?? null,
+            rubro_label: rubro?.label ?? null,
           }),
         }
       );
@@ -1095,7 +1106,7 @@ export default function MAsesorChatPage() {
     } finally {
       setFinGuardando(false);
     }
-  }, [conversationId, finEstados, finEstadoId, finSubId, finComentario, router]);
+  }, [conversationId, finEstados, finEstadoId, finSubId, finRubros, finRubroId, finComentario, router]);
 
   // Mismo filtrado que el desktop: la cola acota, el texto busca en nombre, email y cola.
   const filteredAgents = (() => {
@@ -2294,6 +2305,26 @@ export default function MAsesorChatPage() {
                       </label>
                     );
                   })()}
+
+                  {finRubros.length > 0 ? (
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Rubro <span className="font-normal normal-case text-slate-400">(opcional)</span>
+                      </span>
+                      <select
+                        value={finRubroId}
+                        onChange={(e) => setFinRubroId(e.target.value)}
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/40"
+                      >
+                        <option value="">— Sin rubro —</option>
+                        {finRubros.map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
 
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">

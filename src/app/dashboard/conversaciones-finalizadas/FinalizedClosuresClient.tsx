@@ -158,6 +158,7 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
     "Cerrado por",
     "Estado",
     "Subestado",
+    "Rubro",
     "Comentario de cierre",
     "Último mensaje / resumen",
   ];
@@ -179,6 +180,7 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
         escapeCsvCell(r.closed_by_nombre ?? ""),
         escapeCsvCell(r.state_label),
         escapeCsvCell(r.substate_label),
+        escapeCsvCell(r.rubro_label ?? ""),
         escapeCsvCell(r.comment ?? ""),
         escapeCsvCell(r.last_preview ?? ""),
       ].join(",")
@@ -565,6 +567,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                 <th className="px-3 py-3">Cerrado por</th>
                 <th className="px-3 py-3">Estado</th>
                 <th className="px-3 py-3">Subestado</th>
+                <th className="px-3 py-3">Rubro</th>
                 <th className="px-3 py-3 min-w-[140px]">Comentario</th>
                 <th className="px-3 py-3 min-w-[160px]">Último mensaje</th>
               </tr>
@@ -572,13 +575,13 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={12} className="px-3 py-10 text-center text-slate-400">
                     Cargando…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-10 text-center text-slate-500">
+                  <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
                     No hay conversaciones finalizadas con estos filtros.
                   </td>
                 </tr>
@@ -598,6 +601,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                     <td className="px-3 py-2.5 text-slate-700">{r.closed_by_nombre ?? "—"}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.state_label}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.substate_label}</td>
+                    <td className="px-3 py-2.5 text-slate-700">{r.rubro_label || "—"}</td>
                     <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate" title={r.comment}>
                       {r.comment || "—"}
                     </td>

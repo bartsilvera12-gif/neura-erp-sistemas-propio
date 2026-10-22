@@ -75,6 +75,8 @@ export async function POST(
         closureStateLabel: txt(body?.closure_state_label),
         closureSubstateLabel: txt(body?.closure_substate_label) || "—",
         comment: comentario,
+        rubroId: txt(body?.rubro_id) || null,
+        rubroLabel: txt(body?.rubro_label) || null,
       });
       if (!r.ok) {
         return NextResponse.json({ ok: false, error: r.error }, { status: 400 });

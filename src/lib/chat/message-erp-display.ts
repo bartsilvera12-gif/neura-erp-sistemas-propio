@@ -12,8 +12,15 @@ export function getErpAttachmentPublicUrl(raw: RawPayload): string | null {
 export function getErpAttachmentFilename(raw: RawPayload): string | null {
   const erp = raw?.erp;
   if (!erp || typeof erp !== "object" || Array.isArray(erp)) return null;
-  const fn = (erp as { filename?: string }).filename;
-  return typeof fn === "string" && fn.trim() ? fn.trim() : null;
+  // Dos nombres para lo mismo: la media que sale del ERP guarda `filename`, y la que
+  // entra por el canal QR guardaba `file_name`. Al leer solo el primero, el documento
+  // de un cliente se quedaba sin nombre y la tarjeta terminaba mostrando el texto del
+  // mensaje como si fuera el archivo. Se aceptan los dos para no perder lo ya guardado.
+  const campos = erp as { filename?: unknown; file_name?: unknown };
+  for (const fn of [campos.filename, campos.file_name]) {
+    if (typeof fn === "string" && fn.trim()) return fn.trim();
+  }
+  return null;
 }
 
 export function getErpAttachmentCaption(raw: RawPayload): string | null {

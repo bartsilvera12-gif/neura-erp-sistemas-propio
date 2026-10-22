@@ -4823,6 +4823,24 @@ export function ConversacionesClient({
                                       Abrir
                                     </a>
                                   </div>
+                                  {/* El texto que mandó el cliente junto con el archivo.
+                                      Antes se colaba como título de la tarjeta porque el
+                                      nombre del archivo no se encontraba; ahora va acá,
+                                      que es su lugar. */}
+                                  {(() => {
+                                    const cap = attachmentCaptionForDisplay(m.content);
+                                    if (!cap || cap.startsWith("[")) return null;
+                                    if (cap === displayFilenameForAttachment(m)) return null;
+                                    return (
+                                      <p
+                                        className={`mt-2 whitespace-pre-wrap break-words text-sm ${
+                                          m.from_me ? "text-white/90" : "text-slate-700"
+                                        }`}
+                                      >
+                                        {cap}
+                                      </p>
+                                    );
+                                  })()}
                                 </div>
                               ) : (
                                 <div>

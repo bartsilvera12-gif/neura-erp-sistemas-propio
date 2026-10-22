@@ -43,9 +43,30 @@ const EXT_POR_MIME: Record<string, string> = {
   "audio/aac": "aac",
   "audio/amr": "amr",
   "application/pdf": "pdf",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-powerpoint": "ppt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "application/zip": "zip",
+  "application/x-rar-compressed": "rar",
+  "application/vnd.rar": "rar",
+  "application/x-7z-compressed": "7z",
+  "text/plain": "txt",
+  "text/csv": "csv",
 };
 
-function extensionPara(mime: string, tipo: string): string {
+/**
+ * Extensión con la que se guarda el archivo.
+ *
+ * Manda la del nombre original: WhatsApp lo trae tal cual lo mandó el cliente y es más
+ * confiable que adivinar por el mime. Sin esto, cualquier documento que no fuera PDF se
+ * guardaba como `.bin` y el asesor se bajaba un archivo que su computadora no sabía abrir.
+ */
+function extensionPara(mime: string, tipo: string, nombre?: string | null): string {
+  const delNombre = /\.([a-z0-9]{2,5})$/i.exec((nombre ?? "").trim());
+  if (delNombre) return delNombre[1].toLowerCase();
   const limpio = mime.split(";")[0].trim().toLowerCase();
   if (EXT_POR_MIME[limpio]) return EXT_POR_MIME[limpio];
   const porTipo: Record<string, string> = {
@@ -113,7 +134,7 @@ export async function POST(request: NextRequest) {
 
     const mime = (file.type || "application/octet-stream").split(";")[0].trim().toLowerCase();
     const bytes = Buffer.from(await file.arrayBuffer());
-    const ruta = `${empresaId}/${mensaje.conversation_id}/in_${mensaje.id}.${extensionPara(mime, tipo)}`;
+    const ruta = `${empresaId}/${mensaje.conversation_id}/in_${mensaje.id}.${extensionPara(mime, tipo, file.name)}`;
 
     const subida = await supabase.storage
       .from(CHAT_MEDIA_BUCKET)
@@ -159,6 +180,7 @@ export async function POST(request: NextRequest) {
             public_url: publicUrl,
             storage_path: ruta,
             mime_type: mime,
+            filename: file.name || null,
             file_name: file.name || null,
             rehosted: true,
           },

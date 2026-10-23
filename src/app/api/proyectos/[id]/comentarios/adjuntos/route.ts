@@ -36,10 +36,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const form = await request.formData().catch(() => null);
     const file = form?.get("file");
     if (!(file instanceof File)) {
-      return NextResponse.json(errorResponse("Imagen requerida"), { status: 400 });
+      return NextResponse.json(errorResponse("Archivo requerido"), { status: 400 });
     }
     if (file.size === 0) {
-      return NextResponse.json(errorResponse("La imagen está vacía"), { status: 400 });
+      return NextResponse.json(errorResponse("El archivo está vacío"), { status: 400 });
     }
     if (file.size > PROYECTOS_ARCHIVO_MAX_BYTES) {
       return NextResponse.json(
@@ -48,13 +48,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
     const mimeType = file.type || "application/octet-stream";
-    // Imágenes y videos. Los videos se agregaron porque en obra se graban clips cortos para
-    // mostrar un problema, y antes había que subirlos como archivo del proyecto —fuera del
-    // hilo de la conversación— o no mandarlos.
-    if (!mimeType.startsWith("image/") && !mimeType.startsWith("video/")) {
-      return NextResponse.json(errorResponse("Solo se pueden adjuntar imágenes"), { status: 400 });
-    }
-    const nombre = (file.name || "imagen").trim().slice(0, 200) || "imagen";
+    // Se acepta CUALQUIER tipo de archivo, igual que en "Archivos" del proyecto: las
+    // imágenes y los videos se muestran en el hilo y el resto queda como adjunto
+    // descargable. El tope de tamaño es el mismo (PROYECTOS_ARCHIVO_MAX_BYTES).
+    const nombre = (file.name || "archivo").trim().slice(0, 200) || "archivo";
 
     const sb = await getChatServiceClientForEmpresa(auth.empresaId);
 

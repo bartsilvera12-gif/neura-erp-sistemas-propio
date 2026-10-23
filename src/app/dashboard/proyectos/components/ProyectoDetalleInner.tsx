@@ -986,14 +986,29 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
       </div>
       {imagenes.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {imagenes.map((f, i) => (
+          {imagenes.map((f, i) => {
+            const esImg = f.type.startsWith("image/");
+            return (
             <div key={i} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previews[i]}
-                alt={f.name}
-                className="h-20 w-20 rounded-lg border border-slate-200 object-cover"
-              />
+              {esImg ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previews[i]}
+                  alt={f.name}
+                  className="h-20 w-20 rounded-lg border border-slate-200 object-cover"
+                />
+              ) : (
+                <div
+                  className="flex h-20 w-28 flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2"
+                  title={f.name}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-slate-400">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  <span className="w-full truncate text-center text-[10px] text-slate-500">{f.name}</span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setImagenes((prev) => prev.filter((_, idx) => idx !== i))}
@@ -1005,22 +1020,26 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
                 <span className="text-xs leading-none">×</span>
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
         multiple
         className="hidden"
         onChange={(e) => {
-          const files = Array.from(e.target.files ?? []).filter(esImagenElegida);
+          const elegidos = Array.from(e.target.files ?? []);
           e.target.value = "";
-          if (files.length === 0) return;
-          // Las fotos de iPhone (HEIC) se pasan a JPG acá: los navegadores no las muestran.
-          void normalizarImagenes(files).then(({ listos, fallaron }) => {
-            if (listos.length > 0) setImagenes((prev) => [...prev, ...listos].slice(0, 10));
+          if (elegidos.length === 0) return;
+          // Se acepta cualquier tipo de archivo. Las fotos de iPhone (HEIC) se pasan a
+          // JPG acá (los navegadores no las muestran); el resto de los archivos pasa igual.
+          const imgs = elegidos.filter(esImagenElegida);
+          const otros = elegidos.filter((f) => !esImagenElegida(f));
+          void normalizarImagenes(imgs).then(({ listos, fallaron }) => {
+            const nuevos = [...listos, ...otros];
+            if (nuevos.length > 0) setImagenes((prev) => [...prev, ...nuevos].slice(0, 10));
             if (fallaron.length > 0) {
               window.alert(
                 `No se pudieron leer estas fotos: ${fallaron.join(", ")}.\n` +
@@ -1043,14 +1062,12 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
           onClick={() => fileRef.current?.click()}
           disabled={enviando}
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:cursor-not-allowed disabled:opacity-60"
-          title="Adjuntar imagen"
+          title="Adjuntar archivo"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="9" cy="9" r="2" />
-            <path d="m21 15-3.5-3.5a2 2 0 0 0-2.8 0L6 21" />
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
           </svg>
-          Imagen
+          Archivo
         </button>
       </div>
     </form>
@@ -1071,12 +1088,18 @@ const ComentarioImagen = memo(function ComentarioImagen({
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [falló, setFalló] = useState(false);
+  const nombre = adjunto.nombre ?? "archivo";
+  const mime = adjunto.mime_type ?? "";
   // Por mime y, si no viene, por la extensión: los comentarios viejos se guardaron sin él.
-  const esVideo =
-    (adjunto.mime_type ?? "").startsWith("video/") ||
-    /\.(mp4|mov|m4v|3gp|webm)$/i.test(adjunto.nombre ?? "");
+  const esVideo = mime.startsWith("video/") || /\.(mp4|mov|m4v|3gp|webm)$/i.test(nombre);
+  const esImagen = mime.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)$/i.test(nombre);
+  // Imagen o video se muestran en el hilo; cualquier otro archivo (pdf, doc, planilla,
+  // zip…) se muestra como ficha descargable.
+  const esMedia = esVideo || esImagen;
 
   useEffect(() => {
+    // Los archivos no-media no necesitan vista previa: la ficha se descarga al tocarla.
+    if (!esMedia) return;
     let cancel = false;
     (async () => {
       try {
@@ -1094,7 +1117,7 @@ const ComentarioImagen = memo(function ComentarioImagen({
     return () => {
       cancel = true;
     };
-  }, [projectId, adjunto.path]);
+  }, [projectId, adjunto.path, esMedia]);
 
   async function descargar() {
     const res = await fetchWithSupabaseSession(
@@ -1110,6 +1133,29 @@ const ComentarioImagen = memo(function ComentarioImagen({
       a.click();
       a.remove();
     }
+  }
+
+  // Archivo genérico (no imagen ni video): ficha con ícono + nombre que descarga al tocar.
+  if (!esMedia) {
+    return (
+      <button
+        type="button"
+        onClick={() => void descargar()}
+        title={`Descargar ${nombre}`}
+        className="inline-flex max-w-[220px] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-left transition-colors hover:border-[#4FAEB2]/60 hover:bg-white"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-slate-400">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-700">{nombre}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-slate-400">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      </button>
+    );
   }
 
   return (
@@ -1128,7 +1174,7 @@ const ComentarioImagen = memo(function ComentarioImagen({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
-            alt={adjunto.nombre ?? "imagen"}
+            alt={nombre}
             className="max-h-44 rounded-lg border border-slate-200 object-cover"
           />
         </a>

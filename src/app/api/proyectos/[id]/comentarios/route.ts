@@ -240,7 +240,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       texto:
         texto ||
         (reenvio ? String(reenvio.texto ?? "") : "") ||
-        (adjuntos.length > 0 ? "📷 Imagen" : ""),
+        (adjuntos.length > 0
+          ? adjuntos.every((a) => (a.mime_type ?? "").startsWith("image/"))
+            ? "📷 Imagen"
+            : "📎 Archivo"
+          : ""),
       esReenvio,
       menciones,
     });

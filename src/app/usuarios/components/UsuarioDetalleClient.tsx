@@ -610,27 +610,27 @@ export default function UsuarioDetalleClient({
               </div>
             </div>
           </div>
-          {!editing && (
-            <div className="flex shrink-0 items-center gap-2">
-              {/* Dar de baja / Reactivar: no se muestra en el propio perfil (no auto-bloquearse). */}
-              {miUsuarioId !== null && miUsuarioId !== id ? (
-                <button
-                  type="button"
-                  onClick={() => void handleToggleEstado()}
-                  disabled={togglingEstado}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-semibold shadow-sm transition-colors disabled:opacity-60 ${
-                    (usuario.estado ?? "activo") === "activo"
-                      ? "border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
-                      : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
-                  }`}
-                >
-                  {togglingEstado
-                    ? "Guardando…"
-                    : (usuario.estado ?? "activo") === "activo"
-                      ? "Dar de baja"
-                      : "Reactivar"}
-                </button>
-              ) : null}
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Dar de baja / Reactivar: visible en vista Y edición; nunca en el propio perfil. */}
+            {miUsuarioId !== null && miUsuarioId !== id ? (
+              <button
+                type="button"
+                onClick={() => void handleToggleEstado()}
+                disabled={togglingEstado}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-semibold shadow-sm transition-colors disabled:opacity-60 ${
+                  (usuario.estado ?? "activo") === "activo"
+                    ? "border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                    : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                }`}
+              >
+                {togglingEstado
+                  ? "Guardando…"
+                  : (usuario.estado ?? "activo") === "activo"
+                    ? "Dar de baja"
+                    : "Reactivar"}
+              </button>
+            ) : null}
+            {!editing && (
               <button
                 type="button"
                 onClick={() => setEditing(true)}
@@ -641,8 +641,8 @@ export default function UsuarioDetalleClient({
                 </svg>
                 Editar
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

@@ -188,6 +188,8 @@ export default function UsuarioDetalleClient({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [togglingEstado, setTogglingEstado] = useState(false);
+  const [miUsuarioId, setMiUsuarioId] = useState<string | null>(null);
 
   const [pwdNew, setPwdNew] = useState("");
   const [pwdNew2, setPwdNew2] = useState("");
@@ -201,6 +203,20 @@ export default function UsuarioDetalleClient({
 
   const [modulosCollapsed, setModulosCollapsed] = useState(false);
   const [modulosSearch, setModulosSearch] = useState("");
+
+  // Quién soy (para no permitir darse de baja a uno mismo).
+  useEffect(() => {
+    let cancel = false;
+    fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancel) setMiUsuarioId((d?.usuario?.id as string | null) ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -263,6 +279,39 @@ export default function UsuarioDetalleClient({
 
   function handleSelectChange(name: string, value: string) {
     setForm((prev) => ({ ...prev, [name]: value } as UsuarioFormValues));
+  }
+
+  // Dar de baja / Reactivar: usa el MISMO endpoint que la ficha (que además banea/desbanea el
+  // login al cambiar `estado`). No borra nada: el historial del usuario se conserva.
+  async function handleToggleEstado() {
+    if (!usuario) return;
+    const darDeBaja = (usuario.estado ?? "activo") === "activo";
+    const nuevoEstado = darDeBaja ? "inactivo" : "activo";
+    const confirmMsg = darDeBaja
+      ? `¿Dar de baja a ${usuario.nombre ?? "este usuario"}? No va a poder iniciar sesión. Su historial se conserva y podés reactivarlo después.`
+      : `¿Reactivar a ${usuario.nombre ?? "este usuario"}? Va a poder iniciar sesión de nuevo.`;
+    if (!window.confirm(confirmMsg)) return;
+    setFormError(null);
+    setSuccessMessage(null);
+    setTogglingEstado(true);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/empresas/usuarios/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? `Error (${res.status})`);
+      setUsuario((prev) => (prev ? { ...prev, estado: nuevoEstado } : prev));
+      setSuccessMessage(
+        darDeBaja ? "Usuario dado de baja. Ya no puede iniciar sesión." : "Usuario reactivado."
+      );
+      onUpdated?.();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "No se pudo cambiar el estado.");
+    } finally {
+      setTogglingEstado(false);
+    }
   }
 
   async function handleGuardar(e: React.FormEvent) {
@@ -562,16 +611,37 @@ export default function UsuarioDetalleClient({
             </div>
           </div>
           {!editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/45 bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/10"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                <path d="M2.695 14.763l-1.262 3.154a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.885L17.5 5.5a2.121 2.121 0 0 0-3-3L3.58 13.42a4 4 0 0 0-.885 1.343Z" />
-              </svg>
-              Editar
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Dar de baja / Reactivar: no se muestra en el propio perfil (no auto-bloquearse). */}
+              {miUsuarioId !== null && miUsuarioId !== id ? (
+                <button
+                  type="button"
+                  onClick={() => void handleToggleEstado()}
+                  disabled={togglingEstado}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-semibold shadow-sm transition-colors disabled:opacity-60 ${
+                    (usuario.estado ?? "activo") === "activo"
+                      ? "border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                      : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                  }`}
+                >
+                  {togglingEstado
+                    ? "Guardando…"
+                    : (usuario.estado ?? "activo") === "activo"
+                      ? "Dar de baja"
+                      : "Reactivar"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#4FAEB2]/45 bg-white px-3.5 py-2 text-sm font-semibold text-[#3F8E91] shadow-sm transition-colors hover:bg-[#4FAEB2]/10"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                  <path d="M2.695 14.763l-1.262 3.154a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.885L17.5 5.5a2.121 2.121 0 0 0-3-3L3.58 13.42a4 4 0 0 0-.885 1.343Z" />
+                </svg>
+                Editar
+              </button>
+            </div>
           )}
         </div>
       </div>

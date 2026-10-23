@@ -219,9 +219,25 @@ const VISIBLE_TAB_IDS = TAB_IDS.filter((t) => !HIDDEN_TABS.includes(t));
  * Mientras el resumen no llegó (`null`) la pestaña se muestra: ocultarla y
  * volverla a aparecer haría un salto en la barra en cada apertura.
  */
-function tabsPara(resumen: QAResumen | null): readonly TabId[] {
-  if (resumen && resumen.puede_ver_qa === false) return VISIBLE_TAB_IDS.filter((t) => t !== "qa");
-  return VISIBLE_TAB_IDS;
+// Desde esta fecha los proyectos NUEVOS ya no tienen el apartado "Archivos": los
+// adjuntos se cargan dentro de los comentarios. Los proyectos creados ANTES lo
+// conservan (comparando contra su `created_at`). Para esconderlo en todos, bajar
+// el corte; para volver a mostrarlo en todos, subirlo muy al futuro.
+const ARCHIVOS_CORTE_MS = Date.parse("2026-10-23T18:20:00Z");
+
+function proyectoMuestraArchivos(proyecto: unknown): boolean {
+  const c = (proyecto as { created_at?: unknown } | null | undefined)?.created_at;
+  const ts = typeof c === "string" ? Date.parse(c) : Number.NaN;
+  // Sin fecha legible se muestra (conservador: no esconder el apartado en proyectos
+  // viejos a los que, por lo que sea, no les llegó el created_at).
+  return !Number.isFinite(ts) || ts < ARCHIVOS_CORTE_MS;
+}
+
+function tabsPara(resumen: QAResumen | null, mostrarArchivos: boolean): readonly TabId[] {
+  let tabs = VISIBLE_TAB_IDS;
+  if (resumen && resumen.puede_ver_qa === false) tabs = tabs.filter((t) => t !== "qa");
+  if (!mostrarArchivos) tabs = tabs.filter((t) => t !== "archivos");
+  return tabs;
 }
 
 function normalizeTab(raw: string | null | undefined): TabId {
@@ -2675,6 +2691,8 @@ export default function ProyectoDetalleInner({
   }, [data?.sla]);
 
   const proyecto = data?.proyecto;
+  // Apartado "Archivos": solo para proyectos creados antes del corte (los nuevos no).
+  const mostrarArchivos = proyectoMuestraArchivos(proyecto);
   const codigoTipo = proyecto?.proyecto_tipo?.codigo ?? "";
   // El tipo mixto muestra los dos bloques de brief a la vez.
   const esWeb = tipoIncluyeWeb(codigoTipo);
@@ -2916,7 +2934,7 @@ export default function ProyectoDetalleInner({
             : "border-b border-slate-200 pb-2"
         }`}
       >
-        {tabsPara(qaResumen).map((t) => {
+        {tabsPara(qaResumen, mostrarArchivos).map((t) => {
           const active = tab === t;
           return (
             <button
@@ -4044,7 +4062,7 @@ export default function ProyectoDetalleInner({
           </div>
         ) : null}
 
-        {tab === "archivos" ? (() => {
+        {tab === "archivos" && mostrarArchivos ? (() => {
           const archivosAll = data.archivos ?? [];
           const esConfirmacionCliente = (a: Record<string, unknown>) => a.confirmacion_cliente === true;
           // Las marcadas como confirmación del cliente se discriminan del resto:

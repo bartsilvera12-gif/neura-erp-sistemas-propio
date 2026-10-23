@@ -997,18 +997,18 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
                   alt={f.name}
                   className="h-20 w-20 rounded-lg border border-slate-200 object-cover"
                 />
-              ) : (
-                <div
-                  className="flex h-20 w-28 flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2"
-                  title={f.name}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-slate-400">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
-                  <span className="w-full truncate text-center text-[10px] text-slate-500">{f.name}</span>
-                </div>
-              )}
+              ) : (() => {
+                const tipo = etiquetaArchivo(f.name, f.type);
+                return (
+                  <div
+                    className="flex h-20 w-28 flex-col items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2"
+                    title={f.name}
+                  >
+                    <span className={`rounded px-2 py-0.5 text-[11px] font-bold ${tipo.cls}`}>{tipo.ext}</span>
+                    <span className="w-full truncate text-center text-[10px] text-slate-500">{f.name}</span>
+                  </div>
+                );
+              })()}
               <button
                 type="button"
                 onClick={() => setImagenes((prev) => prev.filter((_, idx) => idx !== i))}
@@ -1079,6 +1079,30 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
  * duración por su path (validado en el server), muestra la vista previa —click =
  * abrir en grande— y permite descargar.
  */
+/**
+ * Etiqueta corta + color para un adjunto no-media, según su extensión (o mime).
+ * Sirve para distinguir de un vistazo si es Excel, PDF, Word, etc.
+ */
+function etiquetaArchivo(nombre: string, mime?: string): { ext: string; cls: string } {
+  const n = (nombre || "").toLowerCase();
+  const m = (mime || "").toLowerCase();
+  const raw = n.match(/\.([a-z0-9]+)$/)?.[1] ?? "";
+  const es = (...exts: string[]) => exts.includes(raw);
+  if (es("xlsx", "xls", "xlsm", "xlsb", "ods", "csv") || m.includes("spreadsheet") || m.includes("excel") || m.includes("csv"))
+    return { ext: (raw || "xls").toUpperCase(), cls: "bg-emerald-100 text-emerald-700" };
+  if (es("doc", "docx", "rtf", "odt") || m.includes("word"))
+    return { ext: (raw || "doc").toUpperCase(), cls: "bg-blue-100 text-blue-700" };
+  if (es("pdf") || m.includes("pdf")) return { ext: "PDF", cls: "bg-rose-100 text-rose-700" };
+  if (es("ppt", "pptx", "odp") || m.includes("presentation") || m.includes("powerpoint"))
+    return { ext: (raw || "ppt").toUpperCase(), cls: "bg-orange-100 text-orange-700" };
+  if (es("zip", "rar", "7z", "gz", "tar") || m.includes("zip") || m.includes("compressed"))
+    return { ext: (raw || "zip").toUpperCase(), cls: "bg-amber-100 text-amber-700" };
+  if (es("json", "xml", "yml", "yaml")) return { ext: raw.toUpperCase(), cls: "bg-violet-100 text-violet-700" };
+  if (es("txt", "md", "log") || m.startsWith("text/"))
+    return { ext: (raw || "txt").toUpperCase(), cls: "bg-slate-200 text-slate-600" };
+  return { ext: (raw || "file").toUpperCase(), cls: "bg-slate-200 text-slate-600" };
+}
+
 const ComentarioImagen = memo(function ComentarioImagen({
   projectId,
   adjunto,
@@ -1137,6 +1161,7 @@ const ComentarioImagen = memo(function ComentarioImagen({
 
   // Archivo genérico (no imagen ni video): ficha con ícono + nombre que descarga al tocar.
   if (!esMedia) {
+    const tipo = etiquetaArchivo(nombre, mime);
     return (
       <button
         type="button"
@@ -1144,10 +1169,7 @@ const ComentarioImagen = memo(function ComentarioImagen({
         title={`Descargar ${nombre}`}
         className="inline-flex max-w-[220px] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-left transition-colors hover:border-[#4FAEB2]/60 hover:bg-white"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-slate-400">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
+        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${tipo.cls}`}>{tipo.ext}</span>
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-700">{nombre}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-slate-400">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

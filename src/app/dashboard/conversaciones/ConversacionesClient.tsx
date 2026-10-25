@@ -927,12 +927,16 @@ function parseInboxFilters(sp: URLSearchParams): ChatInboxFilters | undefined {
     statusRaw && ["open", "pending", "closed"].includes(statusRaw) ? statusRaw : null;
   const priority =
     priorityRaw && ["low", "medium", "high"].includes(priorityRaw) ? priorityRaw : null;
+  const bandejaRaw = sp.get("bandeja")?.trim().toLowerCase() || null;
+  const tab: ChatInboxFilters["tab"] =
+    bandejaRaw === "sin_responder" || bandejaRaw === "no_leidos" ? bandejaRaw : null;
   const has =
     assignment !== "all" ||
     (queue_id && queue_id.length > 0) ||
     (assigned_agent_id && assigned_agent_id.length > 0) ||
     status !== null ||
     priority !== null ||
+    tab !== null ||
     (channel_id && channel_id.length > 0);
   if (!has) return undefined;
   return {
@@ -941,6 +945,7 @@ function parseInboxFilters(sp: URLSearchParams): ChatInboxFilters | undefined {
     assigned_agent_id: assigned_agent_id && assigned_agent_id.length > 0 ? assigned_agent_id : null,
     status,
     priority,
+    tab,
     channel_id: channel_id && channel_id.length > 0 ? channel_id : null,
   };
 }
@@ -1372,6 +1377,11 @@ export function ConversacionesClient({
   const [inboxAgents, setInboxAgents] = useState<{ id: string; nombre: string }[]>([]);
 
   const urlCanal = searchParams?.get("canal")?.trim() ?? "";
+  // Bandeja/tab activa: "" (Todos) | "sin_responder" | "no_leidos".
+  const bandejaActiva = (searchParams?.get("bandeja")?.trim().toLowerCase() ?? "") as
+    | ""
+    | "sin_responder"
+    | "no_leidos";
   const urlCola = searchParams?.get("cola")?.trim() ?? "";
   const urlAsesor = searchParams?.get("asesor")?.trim() ?? "";
   const urlAsignacionRaw = searchParams?.get("asignacion")?.trim();
@@ -3930,6 +3940,33 @@ export function ConversacionesClient({
             >
               Ocultar
             </button>
+          </div>
+          {/* Bandejas: Todos / Sin responder / No leídos (basadas en la dirección del último
+              mensaje; una respuesta desde el WhatsApp Web también cuenta porque el puente la espeja). */}
+          <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-200 bg-white shrink-0 overflow-x-auto">
+            {(
+              [
+                { v: "", label: "Todos" },
+                { v: "sin_responder", label: "Sin responder" },
+                { v: "no_leidos", label: "No leídos" },
+              ] as const
+            ).map((t) => {
+              const active = bandejaActiva === t.v;
+              return (
+                <button
+                  key={t.v || "todos"}
+                  type="button"
+                  onClick={() => patchInboxQuery({ bandeja: t.v || null })}
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    active
+                      ? "bg-[#4FAEB2] text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
             {loadingList ? (

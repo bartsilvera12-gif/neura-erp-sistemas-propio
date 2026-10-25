@@ -90,6 +90,12 @@ export type ChatInboxAssignmentFilter = "all" | "mine" | "unassigned";
 
 export type ChatInboxFilters = {
   assignment?: ChatInboxAssignmentFilter;
+  /**
+   * Bandeja/tab de la lista: "sin_responder" (último mensaje del cliente → espera nuestra
+   * respuesta) o "no_leidos" (además sin abrir en el ERP, unread_count>0). Se basa en
+   * `last_message_from_me` (columna solo-neura, mantenida por trigger). "todos"/null = sin filtro.
+   */
+  tab?: "todos" | "sin_responder" | "no_leidos" | null;
   queue_id?: string | null;
   status?: string | null;
   priority?: string | null;
@@ -466,6 +472,9 @@ async function fetchChatConversationsUnsafe(
     `;
 
   /** Ver `appendOmnicanalConversationScopeToQuery`: el builder PostgREST no debe devolverse “crudo” desde async. */
+  // Se apaga si el tenant no tiene la columna `last_message_from_me` (solo-neura): en ese caso
+  // la ejecución reintenta sin el filtro de bandeja (ver abajo). Drift-safe.
+  let tabFilterSkip = false;
   const buildFilteredConversationQuery = async (selectStr: string) => {
     let qb = supabase.from("chat_conversations").select(selectStr).eq("empresa_id", empresa_id);
 
@@ -572,6 +581,19 @@ async function fetchChatConversationsUnsafe(
       qb = qb.eq("channel_id", fch);
     }
 
+    // Bandeja (tab): "Sin responder" / "No leídos", basadas en la dirección del último mensaje.
+    // last_message_from_me=false → el cliente escribió último y espera respuesta (sea del ERP o
+    // del WhatsApp Web, que el puente espeja como saliente). "No leídos" además exige unread_count>0
+    // (ni siquiera abierto en el ERP). Drift-safe: si la columna falta, se reintenta con skip.
+    if (!tabFilterSkip) {
+      const ftab = filters?.tab?.trim();
+      if (ftab === "sin_responder") {
+        qb = qb.eq("last_message_from_me", false);
+      } else if (ftab === "no_leidos") {
+        qb = qb.eq("last_message_from_me", false).gt("unread_count", 0);
+      }
+    }
+
     // Búsqueda server-side: teléfono / nombre de contacto / preview. Pre-resuelve contact_ids.
     const qraw = filters?.q?.trim();
     if (qraw) {
@@ -636,6 +658,16 @@ async function fetchChatConversationsUnsafe(
   let { data: convs, error } = await q
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(pageLimit);
+
+  // Drift-safe: si el tenant no tiene `last_message_from_me` (columna solo-neura), el filtro de
+  // bandeja rompe el query → se reintenta con el filtro apagado (el inbox sigue funcionando).
+  if (error && isMissingColumnError(error.message, "last_message_from_me")) {
+    tabFilterSkip = true;
+    q = (await buildFilteredConversationQuery(convSelectWithWait)).builder;
+    ({ data: convs, error } = await q
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(pageLimit));
+  }
 
   if (error && isMissingColumnError(error.message, "assignment_wait_code")) {
     console.warn("[fetchChatConversations] assignment_wait_code ausente; reintento sin columna");

@@ -24,6 +24,8 @@ import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema, isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
 import { contactCenterV1Enabled } from "@/lib/chat/contact-center-inbound";
 
+export const runtime = "nodejs";
+
 /**
  * POST /api/chat/send
  * Envía texto por WhatsApp (Meta Graph o YCloud) y persiste mensaje saliente.
@@ -187,9 +189,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!sendResult.ok) {
+      // 422 y no 502 a propósito: 502 es lo que devuelve el proxy cuando el pedido se
+      // muere antes de contestar, y en pantalla los dos casos quedaban como el mismo
+      // "Error al enviar (HTTP 502)". Con códigos distintos se sabe de una si rechazó
+      // WhatsApp (y por qué) o si el problema es nuestro.
       return NextResponse.json(
-        { ok: false, error: sendResult.error, meta: sendResult.raw },
-        { status: 502 }
+        { ok: false, error: sendResult.error, code: sendResult.code, meta: sendResult.raw },
+        { status: 422 }
       );
     }
 

@@ -2806,7 +2806,12 @@ export function ConversacionesClient({
             ? json.error
             : res.status === 401
               ? "Sesión expirada o no autenticado"
-              : `Error al enviar (HTTP ${res.status})`;
+              : res.status === 502 || res.status === 504
+                // Sin cuerpo y con 502/504: no contestó nuestra ruta sino el proxy, porque
+                // el pedido murió en el camino. No sabemos si WhatsApp llegó a recibirlo,
+                // y decirlo importa: reenviar a ciegas puede duplicarle el mensaje al cliente.
+                ? "El servidor cortó la conexión antes de responder. Revisá el chat antes de reenviar: el mensaje pudo haber salido igual."
+                : `Error al enviar (HTTP ${res.status})`;
         throw new Error(base);
       }
       if (selectedIdRef.current === cid) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mensajeDeBaseOcupada } from "@/lib/chat/error-base-ocupada";
 import { getAuthWithRol } from "@/lib/middleware/auth";
 import { getChatServiceClientForEmpresa } from "@/app/api/chat/_chat-service-client";
 import {
@@ -293,6 +294,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (e) {
     console.error("[api/chat/send]", e);
+    // Una fila ocupada no es un error interno: es algo que se resuelve reintentando, y
+    // decirlo evita que el asesor crea que el sistema se rompió.
+    const ocupada = mensajeDeBaseOcupada(e);
+    if (ocupada) return NextResponse.json({ ok: false, error: ocupada }, { status: 503 });
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 }

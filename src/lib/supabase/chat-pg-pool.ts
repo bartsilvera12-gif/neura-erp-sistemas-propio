@@ -107,6 +107,18 @@ export function getChatPostgresPool(): pg.Pool | null {
       allowExitOnIdle: true,
       ssl: url.includes("supabase") ? { rejectUnauthorized: false } : undefined,
     });
+    // Topes por conexión. Sin esto una consulta que choca con una fila bloqueada espera
+    // PARA SIEMPRE: el pedido web se cuelga y el proxy lo corta a los 60 s con un 502 sin
+    // cuerpo. El asesor veía "Error al enviar (HTTP 502)" —un número pelado— y en los logs
+    // no quedaba nada. Con esto la consulta se rinde rápido y con un motivo que se puede
+    // mostrar. Los valores son holgados para el chat, donde nada legítimo tarda tanto.
+    pool.on("connect", (client) => {
+      client
+        .query("SET lock_timeout = '5s'; SET statement_timeout = '20s'; SET idle_in_transaction_session_timeout = '30s'")
+        .catch((err: unknown) => {
+          console.warn("[pg-pool][sin-topes]", err instanceof Error ? err.message : String(err));
+        });
+    });
     pool.on("error", (err) => {
       console.error("[pg-pool][idle-client-error]", err instanceof Error ? err.message : String(err));
     });

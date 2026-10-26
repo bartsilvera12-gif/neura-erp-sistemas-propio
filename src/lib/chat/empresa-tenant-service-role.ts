@@ -1,8 +1,34 @@
-import { getUsuarioCatalogFromRequest } from "@/lib/auth/usuario-catalog-from-server-session";
+import {
+  getUsuarioCatalogFromRequestConMotivo,
+  type MotivoSinUsuario,
+} from "@/lib/auth/usuario-catalog-from-server-session";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-schema";
 import { resolveEmpresaDataSchema, type AppSupabaseClient } from "@/lib/supabase/schema";
 import { cacheSchemaEmpresa } from "@/lib/auth/cache-sesion-servidor";
+
+/**
+ * Falla de sesión con su motivo, para no mandar a "iniciar sesión" a quien ya
+ * la inició. Un asesor sin alta en el ERP o sin empresa asignada puede cerrar y
+ * abrir sesión mil veces: no es eso lo que le falta.
+ */
+export class ErrorDeSesion extends Error {
+  constructor(readonly motivo: MotivoSinUsuario) {
+    super(MENSAJE_POR_MOTIVO[motivo]);
+    this.name = "ErrorDeSesion";
+  }
+}
+
+const MENSAJE_POR_MOTIVO: Record<MotivoSinUsuario, string> = {
+  sin_sesion: "Iniciá sesión",
+  sin_alta_erp: "Tu usuario no está dado de alta en el ERP. Avisale a soporte.",
+  sin_empresa: "Tu usuario no tiene empresa asignada. Avisale a soporte.",
+};
+
+/** El texto que ve la persona. Cualquier otra falla sigue pidiendo iniciar sesión. */
+export function mensajeDeSesion(e: unknown): string {
+  return e instanceof ErrorDeSesion ? e.message : "Iniciá sesión";
+}
 
 export type EmpresaTenantSrContext = {
   /** Service role en el schema de datos operativos de la empresa. */
@@ -26,8 +52,9 @@ export type EmpresaTenantSrContext = {
 export async function requireEmpresaTenantServiceRole(
   request?: Request | null
 ): Promise<EmpresaTenantSrContext> {
-  const u = await getUsuarioCatalogFromRequest(request);
-  if (!u) throw new Error("Usuario no autenticado o sin empresa");
+  const r = await getUsuarioCatalogFromRequestConMotivo(request);
+  if (!r.ok) throw new ErrorDeSesion(r.motivo);
+  const u = r.usuario;
 
   const catalogSr = createServiceRoleClient();
 

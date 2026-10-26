@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
-import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { fetchChatChannels, fetchChatConversations } from "@/lib/chat/actions";
 import { getMyAgentOperationalPresence, listChatQueues } from "@/lib/chat/chat-ops-actions";
 
@@ -28,9 +28,9 @@ async function manejar(request: Request) {
   // 1) Sesión.
   try {
     await requireEmpresaTenantServiceRole();
-  } catch {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: "Iniciá sesión", code: "unauthenticated" },
+      { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
       { status: 401 }
     );
   }

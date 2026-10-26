@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
-import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import {
   horarioDeUsuario,
   limpiarFranjas,
@@ -36,8 +36,8 @@ export async function GET(request: NextRequest) {
     let ctx;
     try {
       ctx = await requireEmpresaTenantServiceRole(request);
-    } catch {
-      return NextResponse.json({ ok: false, error: "Iniciá sesión" }, { status: 401 });
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: mensajeDeSesion(e) }, { status: 401 });
     }
     const horario = await horarioDeUsuario(ctx.supabase as unknown as SupabaseAdmin, ctx.usuario_id);
     return NextResponse.json({ ok: true, horario: horario ?? HORARIO_POR_DEFECTO });
@@ -50,8 +50,8 @@ export async function PUT(request: NextRequest) {
     let ctx;
     try {
       ctx = await requireEmpresaTenantServiceRole(request);
-    } catch {
-      return NextResponse.json({ ok: false, error: "Iniciá sesión" }, { status: 401 });
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: mensajeDeSesion(e) }, { status: 401 });
     }
     const horario = limpiar(body);
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { POST as enviarReaccion } from "@/app/api/chat/react/route";
-import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { puedeEnLaConversacion } from "@/lib/chat/puede-en-conversacion";
 
 export const runtime = "nodejs";
@@ -21,9 +21,9 @@ export async function POST(
   let ctx;
   try {
     ctx = await requireEmpresaTenantServiceRole(request);
-  } catch {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: "Iniciá sesión", code: "unauthenticated" },
+      { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
       { status: 401 }
     );
   }

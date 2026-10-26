@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
   let ctx;
   try {
     ctx = await requireEmpresaTenantServiceRole(req);
-  } catch {
-    return NextResponse.json({ ok: false, error: "Iniciá sesión" }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: mensajeDeSesion(e) }, { status: 401 });
   }
   const { supabase, empresa_id, usuario_id } = ctx;
   const { data } = await supabase
@@ -55,8 +55,8 @@ export async function PUT(req: NextRequest) {
   let ctx;
   try {
     ctx = await requireEmpresaTenantServiceRole(req);
-  } catch {
-    return NextResponse.json({ ok: false, error: "Iniciá sesión" }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: mensajeDeSesion(e) }, { status: 401 });
   }
   const { supabase, empresa_id, usuario_id } = ctx;
   const body = (await req.json().catch(() => null)) as Partial<Prefs> | null;

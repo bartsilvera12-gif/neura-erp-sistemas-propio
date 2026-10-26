@@ -5,7 +5,7 @@ import {
   finalizeConversationWithClosure,
   loadFinalizeOptionsForConversation,
 } from "@/lib/chat/conversation-finalize-actions";
-import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 
 export const runtime = "nodejs";
@@ -102,9 +102,9 @@ async function verificarAcceso(conversationId: string): Promise<NextResponse | n
   let ctx;
   try {
     ctx = await requireEmpresaTenantServiceRole();
-  } catch {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: "Iniciá sesión", code: "unauthenticated" },
+      { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
       { status: 401 }
     );
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
-import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 import { puedeVerCierreAjeno } from "@/lib/chat/finalizados-visibilidad";
 import { cargarConversacionMovil, detalleConversacionMovil } from "@/lib/chat/mobile-conversation-detail";
@@ -29,9 +29,9 @@ async function manejar(request: NextRequest, conversationId: string) {
   let ctx;
   try {
     ctx = await requireEmpresaTenantServiceRole(request);
-  } catch {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: "Iniciá sesión", code: "unauthenticated" },
+      { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
       { status: 401 }
     );
   }

@@ -419,6 +419,21 @@ function ContactCardsView({ message, fromMe }: { message: ChatMessage; fromMe: b
 }
 
 /** Nombre de archivo para descargar, asegurando una extensión razonable según el tipo. */
+/**
+ * Un pedazo del cuerpo crudo cuando la respuesta no era JSON.
+ *
+ * Sin esto, un error que no deja rastro en los logs tampoco deja rastro en pantalla:
+ * queda un número de HTTP y nada más. Con las primeras palabras de lo que contestó
+ * alcanza para saber si respondió el proxy o la aplicación.
+ */
+function pistaDelCuerpo(cuerpo: string): string {
+  const limpio = cuerpo
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return limpio ? ` — el servidor dijo: "${limpio.slice(0, 120)}"` : "";
+}
+
 function downloadFilenameFor(message: ChatMessage): string {
   const base = (displayFilenameForAttachment(message) || "archivo").trim();
   if (/\.[a-z0-9]{2,5}$/i.test(base)) return base;
@@ -2799,7 +2814,16 @@ export function ConversacionesClient({
         credentials: "same-origin",
         body: JSON.stringify(bodyObj),
       });
-      const json = (await res.json().catch(() => ({}))) as { error?: string; meta?: unknown };
+      // Se lee como texto y recién después se intenta parsear: si la respuesta NO es
+      // nuestra (un 502 del proxy, por ejemplo) el cuerpo crudo dice quién contestó, y
+      // ese dato es justo el que falta cuando el error no deja rastro en ningún lado.
+      const cuerpo = await res.text().catch(() => "");
+      let json: { error?: string; meta?: unknown } = {};
+      try {
+        json = cuerpo ? (JSON.parse(cuerpo) as { error?: string; meta?: unknown }) : {};
+      } catch {
+        json = {};
+      }
       if (!res.ok) {
         const base =
           typeof json.error === "string"
@@ -2810,8 +2834,9 @@ export function ConversacionesClient({
                 // Sin cuerpo y con 502/504: no contestó nuestra ruta sino el proxy, porque
                 // el pedido murió en el camino. No sabemos si WhatsApp llegó a recibirlo,
                 // y decirlo importa: reenviar a ciegas puede duplicarle el mensaje al cliente.
-                ? "El servidor cortó la conexión antes de responder. Revisá el chat antes de reenviar: el mensaje pudo haber salido igual."
-                : `Error al enviar (HTTP ${res.status})`;
+                ? "El servidor cortó la conexión antes de responder. Revisá el chat antes de reenviar: el mensaje pudo haber salido igual." +
+                  pistaDelCuerpo(cuerpo)
+                : `Error al enviar (HTTP ${res.status})` + pistaDelCuerpo(cuerpo);
         throw new Error(base);
       }
       if (selectedIdRef.current === cid) {

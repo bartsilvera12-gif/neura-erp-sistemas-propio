@@ -1,6 +1,7 @@
 "use client";
 
 import ImagenPegada, { imagenDelPortapapeles } from "@/components/chat/ImagenPegada";
+import TextoConEnlaces from "@/components/chat/TextoConEnlaces";
 import { textoDeMensajeDeSistema, textoDeVistaPrevia } from "@/lib/chat/message-erp-display";
 import { wamidCitado } from "@/lib/chat/message-quote";
 import { agruparReacciones, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat/message-reactions";
@@ -4935,7 +4936,7 @@ export function ConversacionesClient({
                                           m.from_me ? "text-white/90" : "text-slate-700"
                                         }`}
                                       >
-                                        {cap}
+                                        <TextoConEnlaces texto={cap} />
                                       </p>
                                     );
                                   })()}
@@ -4995,7 +4996,9 @@ export function ConversacionesClient({
                                     </button>
                                   ) : null}
                                   {parsed.caption ? (
-                                    <p className="whitespace-pre-wrap break-words">{parsed.caption}</p>
+                                    <p className="whitespace-pre-wrap break-words">
+                                      <TextoConEnlaces texto={parsed.caption} />
+                                    </p>
                                   ) : null}
                                   {!parsed.url && !parsed.caption ? (
                                     <p className="whitespace-pre-wrap break-words">
@@ -5011,9 +5014,12 @@ export function ConversacionesClient({
                             // "[reaction]" y "[revoke]" son rótulos internos del ERP; al
                             // asesor hay que decirle qué pasó, no mostrarle el código.
                             <p className="whitespace-pre-wrap break-words">
-                              {textoDeMensajeDeSistema(m.message_type) ??
-                                textoDeVistaPrevia(m.content) ??
-                                m.content}
+                              {(() => {
+                                const sistema = textoDeMensajeDeSistema(m.message_type);
+                                if (sistema) return sistema;
+                                const texto = textoDeVistaPrevia(m.content) ?? m.content ?? "";
+                                return <TextoConEnlaces texto={texto} />;
+                              })()}
                             </p>
                           )}
                           <p

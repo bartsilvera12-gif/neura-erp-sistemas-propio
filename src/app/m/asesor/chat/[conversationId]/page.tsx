@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { esSesionVencida, irAIniciarSesion } from "@/lib/api/sesion-vencida";
+import TextoConEnlaces from "@/components/chat/TextoConEnlaces";
 import { getStickerFavoritos, toggleStickerFavorito } from "@/lib/chat/sticker-favorites";
 import { esLidWhatsapp, nombreOTelefonoParaMostrar } from "@/lib/chat/wa-phone";
 import {
@@ -424,7 +425,11 @@ function MessageBody({
   onToggleFav: (url: string) => void;
 }) {
   if (m.message_type === "text") {
-    return <span className="whitespace-pre-wrap break-words">{m.content}</span>;
+    return (
+      <span className="whitespace-pre-wrap break-words">
+        <TextoConEnlaces texto={m.content ?? ""} />
+      </span>
+    );
   }
   // "Eliminar para todos" y demás avisos de WhatsApp: no tienen contenido propio.
   const sistema = textoDeMensajeDeSistema(m.message_type);
@@ -463,7 +468,11 @@ function MessageBody({
         ) : (
           <span className="italic opacity-80">[imagen]</span>
         )}
-        {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+        {caption ? (
+          <p className="whitespace-pre-wrap break-words">
+            <TextoConEnlaces texto={caption} />
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -569,7 +578,11 @@ function MessageBody({
             <span className="block text-[11px] opacity-70">Tocá para abrir</span>
           </span>
         </button>
-        {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+        {caption ? (
+          <p className="whitespace-pre-wrap break-words">
+            <TextoConEnlaces texto={caption} />
+          </p>
+        ) : null}
       </div>
     );
   }

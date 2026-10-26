@@ -119,6 +119,10 @@ export async function persistYCloudInboundMessagePg(input: YCloudPersistPgInput)
       `SELECT id::text, status, unread_count, flow_code, flow_current_node, flow_status, human_taken_over, active_flow_session_id
        FROM ${convT}
        WHERE contact_id = $1::uuid AND channel_id = $2::uuid
+       -- Ordenado a propósito: si el contacto quedó con dos conversaciones en el mismo
+       -- canal, sin ORDER BY la base elige cualquiera y los mensajes de una misma persona
+       -- se reparten entre los dos chats al azar. Gana la de actividad más reciente.
+       ORDER BY last_message_at DESC NULLS LAST, created_at DESC
        LIMIT 1`,
       [contactId, input.channel_id]
     );

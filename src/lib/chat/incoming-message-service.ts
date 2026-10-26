@@ -371,16 +371,30 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
     }
   }
 
-  const { data: existingConvRaw } = await supabase
+  // `maybeSingle()` NO servía acá: si el contacto quedó con dos conversaciones en el
+  // mismo canal, PostgREST devuelve error ("more than one row") y `data` en null. Como el
+  // error no se miraba, el código creía que no existía ninguna y creaba otra más. Es decir
+  // que un duplicado generaba el siguiente, y el siguiente: por eso se multiplicaban.
+  //
+  // Se pide una sola fila, y ordenada: sin `ORDER BY` la base elige cualquiera de las dos
+  // y los mensajes de una misma persona se reparten entre los dos chats al azar. Gana la
+  // de actividad más reciente, que es la que el asesor tiene a la vista.
+  const { data: convFilas, error: errConv } = await supabase
     .from("chat_conversations")
     .select(
       "id, status, unread_count, flow_code, flow_current_node, flow_status, human_taken_over, active_flow_session_id"
     )
     .eq("contact_id", contactId)
     .eq("channel_id", channelId)
-    .maybeSingle();
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (errConv) {
+    console.warn("[incoming-message] buscar_conversacion", errConv.message);
+  }
 
-  let existingConv: ConversationRowLite | null = existingConvRaw as ConversationRowLite | null;
+  let existingConv: ConversationRowLite | null =
+    ((convFilas ?? [])[0] as ConversationRowLite | undefined) ?? null;
 
   if (!existingConv) {
     if (channel.type === "whatsapp") {

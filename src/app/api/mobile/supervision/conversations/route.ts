@@ -3,7 +3,7 @@ import { conBearer } from "@/lib/auth/bearer-contexto";
 import { extractBearerTokenFromRequest } from "@/lib/auth/get-auth-user-for-api-route";
 import { fetchChatChannels, fetchChatConversations } from "@/lib/chat/actions";
 import { listChatQueues } from "@/lib/chat/chat-ops-actions";
-import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { codigoDeSesion, mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       await requireEmpresaTenantServiceRole();
     } catch (e) {
       return NextResponse.json(
-        { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
+        { ok: false, error: mensajeDeSesion(e), code: codigoDeSesion(e) },
         { status: 401 }
       );
     }

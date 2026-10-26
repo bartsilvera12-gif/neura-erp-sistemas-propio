@@ -5,7 +5,7 @@ import {
   finalizeConversationWithClosure,
   loadFinalizeOptionsForConversation,
 } from "@/lib/chat/conversation-finalize-actions";
-import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { codigoDeSesion, mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 
 export const runtime = "nodejs";
@@ -104,7 +104,7 @@ async function verificarAcceso(conversationId: string): Promise<NextResponse | n
     ctx = await requireEmpresaTenantServiceRole();
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
+      { ok: false, error: mensajeDeSesion(e), code: codigoDeSesion(e) },
       { status: 401 }
     );
   }

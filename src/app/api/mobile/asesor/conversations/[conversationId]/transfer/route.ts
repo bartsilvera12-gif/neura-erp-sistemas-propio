@@ -7,7 +7,7 @@ import {
   fetchTransferTargetAgents,
   listTransferQueues,
 } from "@/lib/chat/chat-ops-actions";
-import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { codigoDeSesion, mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 
 export const runtime = "nodejs";
@@ -91,7 +91,7 @@ async function verificarPertenencia(conversationId: string): Promise<NextRespons
     ctx = await requireEmpresaTenantServiceRole();
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
+      { ok: false, error: mensajeDeSesion(e), code: codigoDeSesion(e) },
       { status: 401 }
     );
   }

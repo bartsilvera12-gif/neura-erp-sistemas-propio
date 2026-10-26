@@ -25,6 +25,17 @@ const MENSAJE_POR_MOTIVO: Record<MotivoSinUsuario, string> = {
   sin_empresa: "Tu usuario no tiene empresa asignada. Avisale a soporte.",
 };
 
+/**
+ * Código para el cliente.
+ *
+ * `unauthenticated` significa "volvé a iniciar sesión" y la app la manda al login.
+ * Los otros dos NO se arreglan con eso, así que llevan otro código: mandarla al login
+ * sería un paseo en círculos.
+ */
+export function codigoDeSesion(e: unknown): "unauthenticated" | "sin_acceso" {
+  return e instanceof ErrorDeSesion && e.motivo !== "sin_sesion" ? "sin_acceso" : "unauthenticated";
+}
+
 /** El texto que ve la persona. Cualquier otra falla sigue pidiendo iniciar sesión. */
 export function mensajeDeSesion(e: unknown): string {
   return e instanceof ErrorDeSesion ? e.message : "Iniciá sesión";

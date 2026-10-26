@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
+import { codigoDeSesion, mensajeDeSesion, requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-service-role";
 import { cargarConversacionMovil, detalleConversacionMovil } from "@/lib/chat/mobile-conversation-detail";
 
 export const runtime = "nodejs";
@@ -22,7 +22,7 @@ export async function GET(
     ctx = await requireEmpresaTenantServiceRole(request);
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: mensajeDeSesion(e), code: "unauthenticated" },
+      { ok: false, error: mensajeDeSesion(e), code: codigoDeSesion(e) },
       { status: 401 }
     );
   }

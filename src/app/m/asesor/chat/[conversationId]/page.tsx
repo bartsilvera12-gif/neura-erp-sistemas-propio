@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { esSesionVencida, irAIniciarSesion } from "@/lib/api/sesion-vencida";
 import { getStickerFavoritos, toggleStickerFavorito } from "@/lib/chat/sticker-favorites";
 import { esLidWhatsapp, nombreOTelefonoParaMostrar } from "@/lib/chat/wa-phone";
 import {
@@ -738,6 +739,12 @@ export default function MAsesorChatPage() {
           { cache: "no-store" }
         );
         const data = await res.json().catch(() => ({}));
+        // Sesión vencida: no sirve mostrar "Iniciá sesión" y dejarla ahí mirando. Se la
+        // manda a iniciarla de verdad.
+        if (esSesionVencida(res, data)) {
+          void irAIniciarSesion();
+          return;
+        }
         if (res.status === 403) {
           setErr("No tenés acceso a esta conversación.");
           return;

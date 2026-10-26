@@ -32,6 +32,8 @@ export type FinalizedClosureListRow = {
   rubro_label: string;
   comment: string;
   last_preview: string | null;
+  /** Último mensaje del ASESOR (outbound agente) en esa conversación; null si nunca escribió. */
+  last_agent_message_at: string | null;
   /** Próxima acción (seguimiento): fecha-hora ISO + descripción; y cuándo se marcó hecho. */
   proxima_accion_at: string | null;
   proxima_accion_desc: string | null;
@@ -886,7 +888,7 @@ export async function listFinalizedClosures(
   const convRows = await selectInChunks(convIds, async (slice) => {
     const { data, error } = await supabase
       .from("chat_conversations")
-      .select("id, contact_id, channel_id, last_message_preview, assigned_agent_id")
+      .select("id, contact_id, channel_id, last_message_preview, assigned_agent_id, last_agent_message_at")
       .eq("empresa_id", empresa_id)
       .in("id", slice);
     if (error) throw new Error(error.message);
@@ -896,6 +898,7 @@ export async function listFinalizedClosures(
       channel_id: string;
       last_message_preview: string | null;
       assigned_agent_id: string | null;
+      last_agent_message_at: string | null;
     }[];
   });
   const convById = new Map(convRows.map((row) => [row.id, row] as const));
@@ -1014,6 +1017,7 @@ export async function listFinalizedClosures(
       rubro_label: String(row.rubro_label ?? ""),
       comment: row.comment,
       last_preview: conv?.last_message_preview ?? null,
+      last_agent_message_at: conv?.last_agent_message_at ?? null,
       proxima_accion_at: row.proxima_accion_at ?? null,
       proxima_accion_desc: row.proxima_accion_desc ?? null,
       seguimiento_hecho_at: row.seguimiento_hecho_at ?? null,

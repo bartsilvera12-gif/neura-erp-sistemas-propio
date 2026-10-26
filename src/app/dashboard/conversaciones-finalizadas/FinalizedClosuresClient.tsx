@@ -154,6 +154,23 @@ function seguimientoSemaforo(iso: string | null): { label: string; cls: string }
   return { label: "Próximo", cls: "bg-emerald-100 text-emerald-700 border border-emerald-200" };
 }
 
+/** Días desde el último mensaje del asesor, con semáforo: verde ≤2 / ámbar 3-6 / rojo ≥7. */
+function frescuraAsesor(iso: string | null): { texto: string; dias: number; cls: string } | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const dia = new Date(d);
+  dia.setHours(0, 0, 0, 0);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const dias = Math.max(0, Math.round((hoy.getTime() - dia.getTime()) / 86400000));
+  const texto = dias === 0 ? "Hoy" : dias === 1 ? "Ayer" : `hace ${dias} días`;
+  let cls = "bg-emerald-100 text-emerald-700 border border-emerald-200";
+  if (dias >= 7) cls = "bg-red-100 text-red-700 border border-red-200";
+  else if (dias >= 3) cls = "bg-amber-100 text-amber-700 border border-amber-200";
+  return { texto, dias, cls };
+}
+
 function escapeCsvCell(value: string): string {
   const s = String(value).replace(/"/g, '""');
   if (/[",\n\r]/.test(s)) return `"${s}"`;
@@ -179,6 +196,7 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
     "Próxima acción (detalle)",
     "Seguimiento hecho",
     "Comentario de cierre",
+    "Días s/ mensaje del asesor",
     "Último mensaje / resumen",
   ];
   const lines = [headers.join(",")];
@@ -204,6 +222,7 @@ function buildCsv(rows: FinalizedClosureListRow[]): string {
         escapeCsvCell(r.proxima_accion_desc ?? ""),
         escapeCsvCell(r.seguimiento_hecho_at ? "Sí" : r.proxima_accion_at ? "Pendiente" : ""),
         escapeCsvCell(r.comment ?? ""),
+        escapeCsvCell(frescuraAsesor(r.last_agent_message_at)?.dias?.toString() ?? ""),
         escapeCsvCell(r.last_preview ?? ""),
       ].join(",")
     );
@@ -610,19 +629,20 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                 <th className="px-3 py-3">Rubro</th>
                 <th className="px-3 py-3 min-w-[180px]">Próxima acción</th>
                 <th className="px-3 py-3 min-w-[140px]">Comentario</th>
+                <th className="px-3 py-3 whitespace-nowrap">Últ. msg asesor</th>
                 <th className="px-3 py-3 min-w-[160px]">Último mensaje</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={13} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={14} className="px-3 py-10 text-center text-slate-400">
                     Cargando…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
+                  <td colSpan={14} className="px-3 py-10 text-center text-slate-500">
                     No hay conversaciones finalizadas con estos filtros.
                   </td>
                 </tr>
@@ -686,7 +706,21 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                     <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate align-top" title={r.comment}>
                       {r.comment || "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[220px] truncate" title={r.last_preview ?? ""}>
+                    <td className="px-3 py-2.5 align-top">
+                      {(() => {
+                        const fr = frescuraAsesor(r.last_agent_message_at);
+                        if (!fr) return <span className="text-slate-400">—</span>;
+                        return (
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${fr.cls}`}
+                            title={r.last_agent_message_at ? formatDateTime(r.last_agent_message_at) : ""}
+                          >
+                            {fr.texto}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600 max-w-[220px] truncate align-top" title={r.last_preview ?? ""}>
                       {r.last_preview ?? "—"}
                     </td>
                   </tr>

@@ -136,6 +136,7 @@ export async function listarCierresRapido(
            COALESCE(cl.rubro_label, '')      AS rubro_label,
            COALESCE(cl.comment, '')          AS comment,
            co.last_message_preview           AS last_preview,
+           co.last_agent_message_at          AS last_agent_message_at,
            cl.proxima_accion_at              AS proxima_accion_at,
            cl.proxima_accion_desc            AS proxima_accion_desc,
            cl.seguimiento_hecho_at           AS seguimiento_hecho_at,
@@ -177,6 +178,10 @@ export async function listarCierresRapido(
     rubro_label: String(f.rubro_label ?? ""),
     comment: String(f.comment ?? ""),
     last_preview: (f.last_preview as string | null) ?? null,
+    last_agent_message_at:
+      f.last_agent_message_at instanceof Date
+        ? f.last_agent_message_at.toISOString()
+        : (f.last_agent_message_at as string | null) ?? null,
     proxima_accion_at:
       f.proxima_accion_at instanceof Date
         ? f.proxima_accion_at.toISOString()

@@ -983,20 +983,29 @@ export async function GET(request: Request) {
           tecnicoId: null,
           pmId: null,
         });
+        const toACobrarProyecto = (p: (typeof dsProy.proyectos)[number]): ACobrarProyecto => ({
+          estado_nombre: p.estado_nombre,
+          estado_color: p.estado_color,
+          pm_nombre: p.project_manager_id ? dsProy.nombreUsuario(p.project_manager_id) : null,
+          tiempo_en_estado_ms: p.tiempo_en_estado_ms,
+          tipo_nombre: p.tipo_nombre ?? null,
+        });
         const proyPorFactura = new Map<string, ACobrarProyecto>();
+        // Fallback por CLIENTE: cuando la factura comisionable que se persigue no es la que tiene
+        // asociado el proyecto (p. ej. el cliente tiene 2 facturas y el proyecto apunta a la otra,
+        // o a ninguna), igual se muestra el proyecto del cliente. El match por factura tiene
+        // prioridad; para el fallback se guarda el primer proyecto por cliente.
+        const proyPorCliente = new Map<string, ACobrarProyecto>();
         for (const p of dsProy.proyectos) {
-          if (!p.factura_id) continue;
-          proyPorFactura.set(p.factura_id, {
-            estado_nombre: p.estado_nombre,
-            estado_color: p.estado_color,
-            pm_nombre: p.project_manager_id ? dsProy.nombreUsuario(p.project_manager_id) : null,
-            tiempo_en_estado_ms: p.tiempo_en_estado_ms,
-            tipo_nombre: p.tipo_nombre ?? null,
-          });
+          if (p.factura_id) proyPorFactura.set(p.factura_id, toACobrarProyecto(p));
+          const cid = p.cliente_id ?? "";
+          if (cid && !proyPorCliente.has(cid)) proyPorCliente.set(cid, toACobrarProyecto(p));
         }
         for (const agg of aCobrarPorVendor.values()) {
           for (const item of agg.items) {
-            item.proyecto = proyPorFactura.get(item.factura_id) ?? null;
+            item.proyecto =
+              proyPorFactura.get(item.factura_id) ??
+              (item.cliente_id ? proyPorCliente.get(item.cliente_id) ?? null : null);
           }
         }
       } catch {

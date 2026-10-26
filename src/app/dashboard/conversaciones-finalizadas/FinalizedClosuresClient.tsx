@@ -267,8 +267,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
   const [q, setQ] = useState("");
 
   const [applied, setApplied] = useState<FinalizedClosuresFilters>({});
-  /** Modo de la vista: historial completo o solo seguimientos pendientes. */
-  const [modo, setModo] = useState<"historial" | "seguimientos">("historial");
   const [marcando, setMarcando] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
@@ -295,9 +293,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     if (applied.state_label?.trim()) f.state_label = applied.state_label.trim();
     if (applied.substate_label?.trim()) f.substate_label = applied.substate_label.trim();
     if (applied.q?.trim()) f.q = applied.q.trim();
-    if (modo === "seguimientos") f.solo_seguimientos = true;
     return f;
-  }, [applied, modo]);
+  }, [applied]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -432,7 +429,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     r.channel_nombre?.trim() ? `${r.channel_nombre} (${r.channel_type})` : r.channel_type;
 
   return (
-    <div className="flex flex-col gap-6 pb-12 px-4 md:px-6 max-w-[1400px] mx-auto">
+    <div className="flex flex-col gap-6 pb-12 px-4 md:px-8 max-w-[1920px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4 pt-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Conversaciones finalizadas</h1>
@@ -453,28 +450,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
           <Download className="h-4 w-4" />
           Descargar Excel (CSV)
         </button>
-      </div>
-
-      <div className="inline-flex w-fit rounded-xl border border-slate-200 bg-slate-50 p-1 text-sm font-semibold">
-        {([
-          { key: "historial", label: "Historial" },
-          { key: "seguimientos", label: "Seguimientos" },
-        ] as const).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => {
-              if (modo === t.key) return;
-              setModo(t.key);
-              setPage(1);
-            }}
-            className={`rounded-lg px-4 py-1.5 transition-colors ${
-              modo === t.key ? "bg-white text-[#2F6E71] shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
       </div>
 
       {error && (

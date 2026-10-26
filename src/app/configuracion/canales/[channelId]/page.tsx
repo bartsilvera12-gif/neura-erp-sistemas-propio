@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import PasarAQrPanel from "@/components/chat/PasarAQrPanel";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ChannelBadge, channelTypeLabel } from "@/components/chat/ChannelBadge";
@@ -188,6 +189,10 @@ export default function EditarCanalPage() {
               cancelHref="/configuracion/canales"
               onSaved={() => void load()}
             />
+            {/* El cambio a QR no vivía en ninguna pantalla y había que hacerlo en la base. */}
+            <div className="mt-6 border-t border-slate-100 pt-5">
+              <PasarAQrPanel channelId={row.id} onListo={() => void load()} />
+            </div>
           </>
         ) : (
           <div className="space-y-5">

@@ -1814,6 +1814,88 @@ export type YCloudWhatsappChannelInput = {
 };
 
 /** WhatsApp vía YCloud (coexistencia). Sin ruta omnicanal Meta. */
+/**
+ * Pasa un canal de WhatsApp a conectarse por QR (Baileys).
+ *
+ * Existe porque el cambio no se podía hacer desde ninguna pantalla: el formulario de
+ * WhatsApp solo ofrece Meta y YCloud, y el panel del QR aparece únicamente cuando el canal
+ * YA es por QR. Huevo y gallina — había que entrar a la base a mano para arrancar.
+ *
+ * NO borra las credenciales viejas: quedan en `config` por si hay que volver atrás en el
+ * ERP. (Volver de verdad igual exige re-verificar el número en Meta, eso no lo arregla
+ * ningún botón.)
+ */
+export async function pasarCanalWhatsappAQr(input: {
+  channelId: string;
+  bridgeUrl: string;
+}): Promise<string> {
+  const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
+  const pool = getChatPostgresPool();
+  const tenantPg = isLikelyUnexposedTenantChatSchema(dataSchema) && pool != null;
+
+  const channelId = input.channelId.trim();
+  if (!channelId) throw new Error("Canal no válido.");
+
+  const bridgeUrl = input.bridgeUrl.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(bridgeUrl)) {
+    throw new Error("La URL del puente tiene que empezar con http:// o https://");
+  }
+
+  let prevRaw: unknown = null;
+  let nombre = "WhatsApp (QR)";
+  if (tenantPg) {
+    prevRaw = await pgSelectChatChannelConfig(pool!, dataSchema, empresa_id, channelId);
+  }
+  const { data: prevRow, error: prevErr } = await supabase
+    .from("chat_channels")
+    .select("nombre, config")
+    .eq("id", channelId)
+    .eq("empresa_id", empresa_id)
+    .maybeSingle();
+  if (prevErr && !tenantPg) throw postgrestMutationError(dataSchema, prevErr.message);
+  if (prevRow?.nombre) nombre = String(prevRow.nombre);
+  if (!tenantPg) prevRaw = prevRow?.config;
+
+  const prev =
+    prevRaw && typeof prevRaw === "object" && !Array.isArray(prevRaw)
+      ? ({ ...(prevRaw as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  const config: Record<string, unknown> = { ...prev, baileys_bridge_url: bridgeUrl };
+
+  const base = {
+    nombre,
+    type: "whatsapp",
+    provider: "baileys",
+    provider_channel_id: null as string | null,
+    activo: true,
+    connection_mode: "qr",
+    config_status: "active",
+    config,
+  };
+  const updatedAt = new Date().toISOString();
+
+  if (tenantPg) {
+    const updated = await pgUpdateYCloudWhatsappChannel(pool!, dataSchema, empresa_id, channelId, {
+      ...base,
+      updated_at: updatedAt,
+    });
+    if (!updated) throw new Error("No se pudo actualizar el canal.");
+  } else {
+    const { data: updated, error } = await supabase
+      .from("chat_channels")
+      .update({ ...base, updated_at: updatedAt })
+      .eq("id", channelId)
+      .eq("empresa_id", empresa_id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw postgrestMutationError(dataSchema, error.message);
+    if (!updated) throw new Error("No se pudo actualizar el canal.");
+  }
+
+  await mirrorTenantChatChannelToCentralCatalog(dataSchema, empresa_id, channelId);
+  return channelId;
+}
+
 export async function saveYCloudWhatsappChannel(input: YCloudWhatsappChannelInput): Promise<string> {
   const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();
   const pool = getChatPostgresPool();

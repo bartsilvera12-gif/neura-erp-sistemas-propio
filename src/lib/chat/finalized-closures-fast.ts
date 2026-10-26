@@ -91,6 +91,27 @@ export async function listarCierresRapido(
   const asignadoA = filtros.assigned_usuario_id?.trim();
   if (asignadoA) agregar("ag.usuario_id = $?::uuid", asignadoA);
 
+  const rubro = filtros.rubro_label?.trim();
+  if (rubro) agregar("cl.rubro_label = $?", rubro);
+
+  // Semáforo de frescura del último mensaje del asesor (verde ≤2 / ámbar 3-6 / rojo ≥7 / sin respuesta).
+  switch (filtros.frescura_asesor) {
+    case "sin":
+      cond.push("co.last_agent_message_at IS NULL");
+      break;
+    case "verde":
+      cond.push("co.last_agent_message_at::date >= CURRENT_DATE - 2");
+      break;
+    case "ambar":
+      cond.push("co.last_agent_message_at::date BETWEEN CURRENT_DATE - 6 AND CURRENT_DATE - 3");
+      break;
+    case "rojo":
+      cond.push("co.last_agent_message_at::date <= CURRENT_DATE - 7");
+      break;
+    default:
+      break;
+  }
+
   // Modo "Seguimientos": solo cierres con próxima acción pendiente (no marcados hechos).
   if (filtros.solo_seguimientos) {
     cond.push("cl.proxima_accion_at IS NOT NULL AND cl.seguimiento_hecho_at IS NULL");
@@ -215,7 +236,7 @@ export async function listarEtiquetasRapido(
   schema: string,
   empresaId: string,
   alcance: AlcanceCierres
-): Promise<{ state_labels: string[]; substate_labels: string[]; closed_by_ids: string[] }> {
+): Promise<{ state_labels: string[]; substate_labels: string[]; rubro_labels: string[]; closed_by_ids: string[] }> {
   const T = (t: string) => quoteSchemaTable(schema, t);
 
   const cond: string[] = ["cl.empresa_id = $1::uuid"];
@@ -223,7 +244,7 @@ export async function listarEtiquetasRapido(
 
   if (alcance.tipo === "agentes") {
     if (alcance.chatAgentIds.length === 0) {
-      return { state_labels: [], substate_labels: [], closed_by_ids: [] };
+      return { state_labels: [], substate_labels: [], rubro_labels: [], closed_by_ids: [] };
     }
     cond.push("co.assigned_agent_id = ANY($2::uuid[])");
     params.push(alcance.chatAgentIds);
@@ -233,6 +254,7 @@ export async function listarEtiquetasRapido(
     SELECT DISTINCT
            NULLIF(btrim(cl.closure_state_label), '')    AS estado,
            NULLIF(btrim(cl.closure_substate_label), '') AS subestado,
+           NULLIF(btrim(cl.rubro_label), '')            AS rubro,
            cl.closed_by_usuario_id::text                AS cerro
       FROM ${T("chat_conversation_closures")} cl
       JOIN ${T("chat_conversations")} co ON co.id = cl.conversation_id
@@ -241,19 +263,23 @@ export async function listarEtiquetasRapido(
   const r = await pool.query(sql, params);
   const estados = new Set<string>();
   const subs = new Set<string>();
+  const rubros = new Set<string>();
   const cerraron = new Set<string>();
   for (const f of (r.rows ?? []) as Record<string, unknown>[]) {
     const e = f.estado as string | null;
     const s = f.subestado as string | null;
+    const rb = f.rubro as string | null;
     const c = f.cerro as string | null;
     if (e) estados.add(e);
     if (s) subs.add(s);
+    if (rb) rubros.add(rb);
     if (c) cerraron.add(c);
   }
   const ordenar = (v: Set<string>) => [...v].sort((a, b) => a.localeCompare(b, "es"));
   return {
     state_labels: ordenar(estados),
     substate_labels: ordenar(subs),
+    rubro_labels: ordenar(rubros),
     closed_by_ids: [...cerraron],
   };
 }

@@ -275,6 +275,23 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     ],
     [filterOptions.substate_labels]
   );
+  const opcionesRubro = useMemo(
+    () => [
+      { value: "", label: "Todos" },
+      ...(filterOptions.rubro_labels ?? []).map((x) => ({ value: x, label: x })),
+    ],
+    [filterOptions.rubro_labels]
+  );
+  const opcionesFrescura = useMemo(
+    () => [
+      { value: "", label: "Todos" },
+      { value: "verde", label: "🟢 Fresco (≤2 días)" },
+      { value: "ambar", label: "🟡 Atención (3-6 días)" },
+      { value: "rojo", label: "🔴 Frío (7+ días)" },
+      { value: "sin", label: "Sin mensaje del asesor" },
+    ],
+    []
+  );
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [queueId, setQueueId] = useState("");
@@ -283,6 +300,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
   const [channelId, setChannelId] = useState("");
   const [stateLabel, setStateLabel] = useState("");
   const [substateLabel, setSubstateLabel] = useState("");
+  const [rubroLabel, setRubroLabel] = useState("");
+  const [frescura, setFrescura] = useState<"" | "verde" | "ambar" | "rojo" | "sin">("");
   const [q, setQ] = useState("");
 
   const [applied, setApplied] = useState<FinalizedClosuresFilters>({});
@@ -311,6 +330,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     if (applied.channel_id?.trim()) f.channel_id = applied.channel_id.trim();
     if (applied.state_label?.trim()) f.state_label = applied.state_label.trim();
     if (applied.substate_label?.trim()) f.substate_label = applied.substate_label.trim();
+    if (applied.rubro_label?.trim()) f.rubro_label = applied.rubro_label.trim();
+    if (applied.frescura_asesor) f.frescura_asesor = applied.frescura_asesor;
     if (applied.q?.trim()) f.q = applied.q.trim();
     return f;
   }, [applied]);
@@ -364,6 +385,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
       channel_id: channelId || null,
       state_label: stateLabel || null,
       substate_label: substateLabel || null,
+      rubro_label: rubroLabel || null,
+      frescura_asesor: frescura || null,
       q: q || null,
     });
     setPage(1);
@@ -547,6 +570,26 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               options={opcionesSubestado}
             />
           </label>
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
+            Rubro
+            <FancySelect
+              ariaLabel="Rubro"
+              value={rubroLabel}
+              onChange={setRubroLabel}
+              placeholder="Todos"
+              options={opcionesRubro}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
+            Semáforo (últ. msg asesor)
+            <FancySelect
+              ariaLabel="Semáforo del último mensaje del asesor"
+              value={frescura}
+              onChange={(v) => setFrescura(v as "" | "verde" | "ambar" | "rojo" | "sin")}
+              placeholder="Todos"
+              options={opcionesFrescura}
+            />
+          </label>
           <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71] sm:col-span-2">
             Nombre o número
             <input
@@ -580,6 +623,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               setChannelId("");
               setStateLabel("");
               setSubstateLabel("");
+              setRubroLabel("");
+              setFrescura("");
               setQ("");
               setInfo(null);
               setError(null);
@@ -619,6 +664,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               <tr>
                 <th className="px-3 py-3 whitespace-nowrap">Finalización</th>
                 <th className="px-3 py-3">Contacto</th>
+                <th className="px-3 py-3 whitespace-nowrap">Últ. msg asesor</th>
                 <th className="px-3 py-3 whitespace-nowrap">Número</th>
                 <th className="px-3 py-3">Canal</th>
                 <th className="px-3 py-3">Cola</th>
@@ -629,20 +675,18 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                 <th className="px-3 py-3">Rubro</th>
                 <th className="px-3 py-3 min-w-[180px]">Próxima acción</th>
                 <th className="px-3 py-3 min-w-[140px]">Comentario</th>
-                <th className="px-3 py-3 whitespace-nowrap">Últ. msg asesor</th>
-                <th className="px-3 py-3 min-w-[160px]">Último mensaje</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={14} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={13} className="px-3 py-10 text-center text-slate-400">
                     Cargando…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-3 py-10 text-center text-slate-500">
+                  <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
                     No hay conversaciones finalizadas con estos filtros.
                   </td>
                 </tr>
@@ -655,6 +699,20 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                   >
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-700">{formatDateTime(r.closed_at)}</td>
                     <td className="px-3 py-2.5 text-slate-900 font-medium">{r.contact_name ?? "—"}</td>
+                    <td className="px-3 py-2.5 align-top">
+                      {(() => {
+                        const fr = frescuraAsesor(r.last_agent_message_at);
+                        if (!fr) return <span className="text-slate-400">—</span>;
+                        return (
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${fr.cls}`}
+                            title={r.last_agent_message_at ? formatDateTime(r.last_agent_message_at) : ""}
+                          >
+                            {fr.texto}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-600">{r.phone_number}</td>
                     <td className="px-3 py-2.5 text-slate-700">{channelLabel(r)}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.queue_nombre ?? "—"}</td>
@@ -662,6 +720,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                     <td className="px-3 py-2.5 text-slate-700">{r.closed_by_nombre ?? "—"}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.state_label}</td>
                     <td className="px-3 py-2.5 text-slate-700">{r.substate_label}</td>
+                    <td className="px-3 py-2.5 text-slate-700">{r.rubro_label || "—"}</td>
                     <td className="px-3 py-2.5 text-slate-700 align-top">
                       {r.proxima_accion_at ? (
                         (() => {
@@ -703,25 +762,8 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                         <span className="text-slate-400">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate align-top" title={r.comment}>
+                    <td className="px-3 py-2.5 text-slate-600 max-w-[240px] truncate align-top" title={r.comment}>
                       {r.comment || "—"}
-                    </td>
-                    <td className="px-3 py-2.5 align-top">
-                      {(() => {
-                        const fr = frescuraAsesor(r.last_agent_message_at);
-                        if (!fr) return <span className="text-slate-400">—</span>;
-                        return (
-                          <span
-                            className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${fr.cls}`}
-                            title={r.last_agent_message_at ? formatDateTime(r.last_agent_message_at) : ""}
-                          >
-                            {fr.texto}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[220px] truncate align-top" title={r.last_preview ?? ""}>
-                      {r.last_preview ?? "—"}
                     </td>
                   </tr>
                 ))

@@ -51,6 +51,10 @@ export type FinalizedClosuresFilters = {
   channel_id?: string | null;
   state_label?: string | null;
   substate_label?: string | null;
+  /** Filtro por rubro del cliente (closure.rubro_label). */
+  rubro_label?: string | null;
+  /** Filtro por semáforo de frescura del último mensaje del asesor. */
+  frescura_asesor?: "verde" | "ambar" | "rojo" | "sin" | null;
   q?: string | null;
   /** Modo "Seguimientos": solo cierres con próxima acción pendiente (proxima_accion_at NOT NULL y no marcados hechos). */
   solo_seguimientos?: boolean | null;
@@ -74,6 +78,8 @@ export type FinalizedFilterOptions = {
   closed_by_users: { id: string; nombre: string }[];
   state_labels: string[];
   substate_labels: string[];
+  /** Rubros usados en cierres (combo "Rubro"). */
+  rubro_labels: string[];
   /** `team` = combos acotados al alcance omnicanal (p. ej. supervisor). */
   ux_scope: FinalizedFilterUxScope;
 };
@@ -145,6 +151,7 @@ async function loadFinalizedFilterOptionsAllEmpresa(
     closed_by_users: [],
     state_labels: [],
     substate_labels: [],
+    rubro_labels: [],
     ux_scope: "full",
   };
 
@@ -183,7 +190,7 @@ async function loadFinalizedFilterOptionsAllEmpresa(
 
   const { data: closureSample, error: ce } = await supabase
     .from("chat_conversation_closures")
-    .select("closed_by_usuario_id, closure_state_label, closure_substate_label")
+    .select("closed_by_usuario_id, closure_state_label, closure_substate_label, rubro_label")
     .eq("empresa_id", empresa_id)
     .order("closed_at", { ascending: false })
     .limit(4000);
@@ -209,11 +216,14 @@ async function loadFinalizedFilterOptionsAllEmpresa(
   ];
   const states = new Set<string>();
   const subs = new Set<string>();
+  const rubros = new Set<string>();
   for (const r of closureSample ?? []) {
     const st = String((r as { closure_state_label?: string }).closure_state_label ?? "").trim();
     const su = String((r as { closure_substate_label?: string }).closure_substate_label ?? "").trim();
+    const rb = String((r as { rubro_label?: string }).rubro_label ?? "").trim();
     if (st) states.add(st);
     if (su) subs.add(su);
+    if (rb) rubros.add(rb);
   }
 
   let closed_by_users: { id: string; nombre: string }[] = [];
@@ -238,6 +248,7 @@ async function loadFinalizedFilterOptionsAllEmpresa(
     closed_by_users,
     state_labels: [...states].sort((a, b) => a.localeCompare(b, "es")),
     substate_labels: [...subs].sort((a, b) => a.localeCompare(b, "es")),
+    rubro_labels: [...rubros].sort((a, b) => a.localeCompare(b, "es")),
     ux_scope: "full",
   };
 }
@@ -255,6 +266,7 @@ async function loadFinalizedFilterOptionsScopedTeam(
     closed_by_users: [],
     state_labels: [],
     substate_labels: [],
+    rubro_labels: [],
     ux_scope: "team",
   };
 
@@ -334,6 +346,7 @@ async function loadFinalizedFilterOptionsScopedTeam(
 
   const states = new Set<string>();
   const subs = new Set<string>();
+  const rubros = new Set<string>();
   const closerIdSet = new Set<string>();
   // Lotes de ID_IN_CHUNK (50), no de 120: con 120 uuids la URL pasa los ~3,7 KB
   // que aguanta el gateway y la respuesta es un 502 que acá se ignoraba en
@@ -343,7 +356,7 @@ async function loadFinalizedFilterOptionsScopedTeam(
     const slice = convIds.slice(i, i + chunk);
     const { data: closureSample, error: ce } = await supabase
       .from("chat_conversation_closures")
-      .select("closed_by_usuario_id, closure_state_label, closure_substate_label")
+      .select("closed_by_usuario_id, closure_state_label, closure_substate_label, rubro_label")
       .eq("empresa_id", empresa_id)
       .in("conversation_id", slice)
       .limit(4000);
@@ -356,8 +369,10 @@ async function loadFinalizedFilterOptionsScopedTeam(
       if (cl) closerIdSet.add(cl);
       const st = String((r as { closure_state_label?: string }).closure_state_label ?? "").trim();
       const su = String((r as { closure_substate_label?: string }).closure_substate_label ?? "").trim();
+      const rb = String((r as { rubro_label?: string }).rubro_label ?? "").trim();
       if (st) states.add(st);
       if (su) subs.add(su);
+      if (rb) rubros.add(rb);
     }
   }
 
@@ -384,6 +399,7 @@ async function loadFinalizedFilterOptionsScopedTeam(
     closed_by_users,
     state_labels: [...states].sort((a, b) => a.localeCompare(b, "es")),
     substate_labels: [...subs].sort((a, b) => a.localeCompare(b, "es")),
+    rubro_labels: [...rubros].sort((a, b) => a.localeCompare(b, "es")),
     ux_scope: "team",
   };
 }
@@ -408,6 +424,7 @@ async function loadFinalizedFilterOptionsOwn(
     closed_by_users: [],
     state_labels: [],
     substate_labels: [],
+    rubro_labels: [],
     ux_scope: "own",
   };
 
@@ -427,7 +444,7 @@ async function loadFinalizedFilterOptionsOwn(
         tipo: "agentes",
         chatAgentIds: ownFkIds,
       });
-      return { ...base, state_labels: et.state_labels, substate_labels: et.substate_labels };
+      return { ...base, state_labels: et.state_labels, substate_labels: et.substate_labels, rubro_labels: et.rubro_labels };
     } catch (e) {
       console.warn(
         "[loadFinalizedFilterOptions] etiquetas rápidas fallaron, se usa PostgREST:",
@@ -454,12 +471,13 @@ async function loadFinalizedFilterOptionsOwn(
 
   const states = new Set<string>();
   const subs = new Set<string>();
+  const rubros = new Set<string>();
   const chunk = ID_IN_CHUNK;
   for (let i = 0; i < convIds.length; i += chunk) {
     const slice = convIds.slice(i, i + chunk);
     const { data: closureSample, error: ce } = await supabase
       .from("chat_conversation_closures")
-      .select("closure_state_label, closure_substate_label")
+      .select("closure_state_label, closure_substate_label, rubro_label")
       .eq("empresa_id", empresa_id)
       .in("conversation_id", slice)
       .limit(4000);
@@ -470,8 +488,10 @@ async function loadFinalizedFilterOptionsOwn(
     for (const r of closureSample ?? []) {
       const st = String((r as { closure_state_label?: string }).closure_state_label ?? "").trim();
       const su = String((r as { closure_substate_label?: string }).closure_substate_label ?? "").trim();
+      const rb = String((r as { rubro_label?: string }).rubro_label ?? "").trim();
       if (st) states.add(st);
       if (su) subs.add(su);
+      if (rb) rubros.add(rb);
     }
   }
 
@@ -479,6 +499,7 @@ async function loadFinalizedFilterOptionsOwn(
     ...base,
     state_labels: [...states].sort((a, b) => a.localeCompare(b, "es")),
     substate_labels: [...subs].sort((a, b) => a.localeCompare(b, "es")),
+    rubro_labels: [...rubros].sort((a, b) => a.localeCompare(b, "es")),
   };
 }
 
@@ -798,6 +819,8 @@ export async function listFinalizedClosures(
       if (filters.closed_by_usuario_id?.trim()) q = q.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
       if (filters.state_label?.trim()) q = q.eq("closure_state_label", filters.state_label.trim());
       if (filters.substate_label?.trim()) q = q.eq("closure_substate_label", filters.substate_label.trim());
+      if (filters.rubro_label?.trim()) q = q.eq("rubro_label", filters.rubro_label.trim());
+      // El semáforo de frescura (last_agent_message_at) solo se aplica en el camino rápido (PG).
       if (filters.solo_seguimientos) q = q.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
       const { data, error } = await q.limit(5000);
       if (error) {
@@ -836,6 +859,7 @@ export async function listFinalizedClosures(
     if (filters.substate_label?.trim()) {
       countQuery = countQuery.eq("closure_substate_label", filters.substate_label.trim());
     }
+    if (filters.rubro_label?.trim()) countQuery = countQuery.eq("rubro_label", filters.rubro_label.trim());
     if (filters.solo_seguimientos) {
       countQuery = countQuery.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
     }
@@ -867,6 +891,7 @@ export async function listFinalizedClosures(
     if (filters.substate_label?.trim()) {
       dataQuery = dataQuery.eq("closure_substate_label", filters.substate_label.trim());
     }
+    if (filters.rubro_label?.trim()) dataQuery = dataQuery.eq("rubro_label", filters.rubro_label.trim());
     if (filters.solo_seguimientos) {
       dataQuery = dataQuery.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
     }

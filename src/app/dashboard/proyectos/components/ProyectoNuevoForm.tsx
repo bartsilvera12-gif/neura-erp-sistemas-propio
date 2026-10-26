@@ -61,6 +61,9 @@ export default function ProyectoNuevoForm({
   const [estadoId, setEstadoId] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [facturaId, setFacturaId] = useState("");
+  // Cuántas facturas tiene el cliente elegido (lo reporta FacturaSelect). Si tiene ≥1,
+  // asociar la factura pasa a ser obligatorio; si no tiene (promo), queda opcional.
+  const [numFacturasCliente, setNumFacturasCliente] = useState(0);
   const [titulo, setTitulo] = useState("");
   const [prioridad, setPrioridad] = useState("normal");
   const [rc, setRc] = useState("");
@@ -210,6 +213,12 @@ export default function ProyectoNuevoForm({
     // El dominio a usar es obligatorio en proyectos web y mixtos.
     if (esWeb && !(brief.dominio_usar ?? "").trim()) {
       setErr("Indicá el dominio a usar.");
+      return;
+    }
+    // Factura obligatoria cuando el cliente TIENE facturas: así el proyecto nace vinculado
+    // y se estira en "A cobrar"/Deuda. Si el cliente no tiene ninguna (promo), no se exige.
+    if ((esWeb || esSaas) && numFacturasCliente > 0 && !facturaId) {
+      setErr("Asociá la factura de la venta de este proyecto.");
       return;
     }
     setSaving(true);
@@ -465,16 +474,30 @@ export default function ProyectoNuevoForm({
             </label>
             {/* Fila 3: Cliente (todo el ancho) */}
             <ClienteSearchSelect clientes={clientes} value={clienteId} onChange={handleClienteChange} required />
-            {/* Factura de la venta asociada (opcional): la deuda del proyecto sale de su saldo. */}
+            {/* Factura de la venta: obligatoria si el cliente tiene facturas (así el proyecto
+                siempre nace vinculado y la tabla "A cobrar"/Deuda lo estira). Si el cliente no
+                tiene ninguna factura (p. ej. promo sin factura inicial), queda opcional. */}
             <label className="block text-sm sm:col-span-2">
               <span className={LABEL_CLS}>
-                Factura de la venta <span className="font-normal text-slate-400">(opcional)</span>
+                Factura de la venta{" "}
+                {numFacturasCliente > 0 ? (
+                  <span className="text-rose-500">*</span>
+                ) : (
+                  <span className="font-normal text-slate-400">(opcional)</span>
+                )}
               </span>
               <div className="mt-1.5">
-                <FacturaSelect clienteId={clienteId} value={facturaId} onChange={setFacturaId} />
+                <FacturaSelect
+                  clienteId={clienteId}
+                  value={facturaId}
+                  onChange={setFacturaId}
+                  onCount={setNumFacturasCliente}
+                />
               </div>
               <span className="mt-1 block text-[11px] text-slate-400">
-                Asociá la factura de esta venta. La deuda del proyecto en el tablero sale de su saldo.
+                {numFacturasCliente > 0
+                  ? "Asociá la factura de esta venta (obligatoria). La deuda del proyecto en el tablero sale de su saldo."
+                  : "Asociá la factura de esta venta. La deuda del proyecto en el tablero sale de su saldo."}
               </span>
             </label>
             {/* Fila 4: Fecha ingreso | WhatsApp */}

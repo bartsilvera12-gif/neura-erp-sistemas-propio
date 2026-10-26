@@ -28,11 +28,14 @@ export function FacturaSelect({
   value,
   onChange,
   currentLabel,
+  onCount,
 }: {
   clienteId: string;
   value: string;
   onChange: (facturaId: string) => void;
   currentLabel?: string | null;
+  /** Reporta cuántas facturas tiene el cliente (para gatear si la factura es obligatoria). */
+  onCount?: (n: number) => void;
 }) {
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -40,6 +43,7 @@ export function FacturaSelect({
   useEffect(() => {
     if (!clienteId) {
       setFacturas([]);
+      onCount?.(0);
       return;
     }
     let cancelado = false;
@@ -47,10 +51,16 @@ export function FacturaSelect({
     fetchWithSupabaseSession(`/api/proyectos/facturas-pendientes?cliente_id=${encodeURIComponent(clienteId)}`)
       .then((r) => r.json())
       .then((j) => {
-        if (!cancelado) setFacturas(Array.isArray(j?.data) ? (j.data as FacturaPendiente[]) : []);
+        if (cancelado) return;
+        const arr = Array.isArray(j?.data) ? (j.data as FacturaPendiente[]) : [];
+        setFacturas(arr);
+        onCount?.(arr.length);
       })
       .catch(() => {
-        if (!cancelado) setFacturas([]);
+        if (!cancelado) {
+          setFacturas([]);
+          onCount?.(0);
+        }
       })
       .finally(() => {
         if (!cancelado) setCargando(false);
@@ -58,6 +68,8 @@ export function FacturaSelect({
     return () => {
       cancelado = true;
     };
+    // onCount es estable (setState del padre); no se incluye para no re-fetchar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId]);
 
   const fmt = (n: number) => `Gs ${Math.round(n).toLocaleString("es-PY")}`;

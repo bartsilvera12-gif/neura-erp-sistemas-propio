@@ -5,6 +5,12 @@ import Link from "next/link";
 import { X, MessageSquarePlus, Download, SlidersHorizontal } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
+  getErpAttachmentPublicUrl,
+  getWhatsAppMediaUrlFromRawPayload,
+  getErpAttachmentFilename,
+  getErpAttachmentCaption,
+} from "@/lib/chat/message-erp-display";
+import {
   listFinalizedClosures,
   marcarSeguimientoHecho,
   type FinalizedClosureListRow,
@@ -236,7 +242,69 @@ type ChatMessageRow = {
   message_type: string;
   content: string | null;
   created_at: string;
+  raw_payload?: Record<string, unknown> | null;
 };
+
+/**
+ * Contenido de un mensaje en el historial de Finalizadas: si es media (imagen/audio/video/doc)
+ * y tiene URL en raw_payload, la renderiza de verdad (antes mostraba solo "[imagen]"/"[audio]").
+ * Si no hay URL, cae al texto. Reusa los helpers del inbox (ERP rehosteado + WhatsApp).
+ */
+function MensajeContenido({ m }: { m: ChatMessageRow }) {
+  const raw = (m.raw_payload ?? null) as Record<string, unknown> | null;
+  const mediaUrl = getErpAttachmentPublicUrl(raw) ?? getWhatsAppMediaUrlFromRawPayload(raw);
+  const tipo = (m.message_type ?? "").toLowerCase();
+  const caption = getErpAttachmentCaption(raw);
+
+  if (mediaUrl) {
+    if (tipo === "image" || tipo === "sticker") {
+      return (
+        <div className="space-y-1">
+          <a href={mediaUrl} target="_blank" rel="noopener noreferrer">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={mediaUrl}
+              alt={caption ?? "imagen"}
+              loading="lazy"
+              className="max-h-64 max-w-full rounded-lg border border-slate-200 object-contain"
+            />
+          </a>
+          {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+        </div>
+      );
+    }
+    if (tipo === "audio" || tipo === "voice" || tipo === "ptt") {
+      return <audio controls preload="none" src={mediaUrl} className="max-w-full" />;
+    }
+    if (tipo === "video") {
+      return (
+        <div className="space-y-1">
+          <video
+            controls
+            preload="none"
+            src={mediaUrl}
+            className="max-h-64 max-w-full rounded-lg border border-slate-200"
+          />
+          {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+        </div>
+      );
+    }
+    // Documento u otro tipo con archivo → link para abrir/descargar.
+    const nombre = getErpAttachmentFilename(raw) ?? "Abrir archivo";
+    return (
+      <a
+        href={mediaUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 break-all text-[#3F8E91] underline"
+      >
+        {nombre}
+      </a>
+    );
+  }
+
+  return <p className="whitespace-pre-wrap break-words">{m.content ?? "—"}</p>;
+}
 
 export default function FinalizedClosuresClient({ filterOptions }: { filterOptions: FinalizedFilterOptions }) {
   const { scrollRef, borde, alMover, alSalir } = useBordesQueDesplazan();
@@ -942,7 +1010,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
                           <span className="rounded bg-slate-200/80 px-1.5 py-0.5 text-slate-700">{m.message_type}</span>
                           <span>{m.from_me ? "Saliente" : "Entrante"}</span>
                         </div>
-                        <p className="whitespace-pre-wrap break-words">{m.content ?? "—"}</p>
+                        <MensajeContenido m={m} />
                       </li>
                     ))}
                   </ul>

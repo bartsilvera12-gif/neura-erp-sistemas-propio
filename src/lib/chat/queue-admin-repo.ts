@@ -729,7 +729,13 @@ export async function repoListQueueRubros(
 
 export type QueueRubroInput = { label: string; sort_order: number };
 
-/** Reemplazo completo (igual que la taxonomía): borra los rubros de la cola y re-inserta en orden. */
+/**
+ * Guardado ID-ESTABLE de los rubros de la cola: conserva el id de los rubros cuyo label no cambió
+ * (solo actualiza orden/estado), inserta los nuevos y borra únicamente los que se sacaron. A
+ * diferencia de un "borrar todo + re-insertar", esto NO cambia los ids en cada guardado, así no
+ * rompe referencias ni cachés en vuelo (p. ej. el modal de Finalizar que ya tenía cargado un rubro
+ * y daba "Rubro no encontrado" al cerrar). El match es por label (la clave humana dentro de la cola).
+ */
 export async function repoReplaceQueueRubros(
   ctx: QueueAdminTenantContext,
   queueId: string,
@@ -747,25 +753,70 @@ export async function repoReplaceQueueRubros(
   if (!queue) throw new Error("Cola no encontrada");
   const empresaId = (queue as { empresa_id: string }).empresa_id;
 
-  const { error: dErr } = await ctx.supabase
+  // Estado actual, para matchear por label y conservar ids.
+  const { data: existing, error: exErr } = await ctx.supabase
     .from("chat_queue_rubros")
-    .delete()
+    .select("id, label")
     .eq("empresa_id", empresaId)
     .eq("queue_id", qid);
-  if (dErr) throw new Error(dErr.message);
+  if (exErr) throw new Error(exErr.message);
+  const existingByLabel = new Map<string, string>();
+  for (const row of (existing ?? []) as { id: string; label: string | null }[]) {
+    const key = String(row.label ?? "").trim().toLowerCase();
+    if (key && !existingByLabel.has(key)) existingByLabel.set(key, String(row.id));
+  }
 
+  // Deseado (deduplicado por label, respetando orden de llegada).
+  const desired: { label: string; sort_order: number }[] = [];
+  const seen = new Set<string>();
   let o = 0;
   for (const r of rubros) {
     const label = r.label.trim();
     if (!label) continue;
-    const { error: insErr } = await ctx.supabase.from("chat_queue_rubros").insert({
-      empresa_id: empresaId,
-      queue_id: qid,
-      label,
-      sort_order: r.sort_order ?? o++,
-      is_active: true,
-    });
-    if (insErr) throw new Error(insErr.message);
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    desired.push({ label, sort_order: r.sort_order ?? o });
+    o++;
+  }
+
+  // Upsert: conservar id si el label ya existía (solo actualizar), insertar si es nuevo.
+  const keepIds = new Set<string>();
+  for (const d of desired) {
+    const key = d.label.toLowerCase();
+    const prevId = existingByLabel.get(key);
+    if (prevId) {
+      keepIds.add(prevId);
+      const { error: upErr } = await ctx.supabase
+        .from("chat_queue_rubros")
+        .update({ label: d.label, sort_order: d.sort_order, is_active: true })
+        .eq("id", prevId)
+        .eq("empresa_id", empresaId);
+      if (upErr) throw new Error(upErr.message);
+    } else {
+      const { error: insErr } = await ctx.supabase.from("chat_queue_rubros").insert({
+        empresa_id: empresaId,
+        queue_id: qid,
+        label: d.label,
+        sort_order: d.sort_order,
+        is_active: true,
+      });
+      if (insErr) throw new Error(insErr.message);
+    }
+  }
+
+  // Borrar solo los que ya no están.
+  const toDelete = ((existing ?? []) as { id: string }[])
+    .map((r) => String(r.id))
+    .filter((id) => !keepIds.has(id));
+  if (toDelete.length > 0) {
+    const { error: dErr } = await ctx.supabase
+      .from("chat_queue_rubros")
+      .delete()
+      .eq("empresa_id", empresaId)
+      .eq("queue_id", qid)
+      .in("id", toDelete);
+    if (dErr) throw new Error(dErr.message);
   }
 }
 

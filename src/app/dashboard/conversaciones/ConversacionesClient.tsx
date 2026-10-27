@@ -1490,6 +1490,11 @@ export function ConversacionesClient({
   const prefetchedRef = useRef<Set<string>>(new Set());
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Secuencia de cargas del listado: cada carga toma un ticket; si sale una más nueva (cambió el
+  // filtro/vista) antes de que una vieja termine, la vieja se descarta al volver. Sin esto, un
+  // fetch lento con filtros viejos pisaba el resultado del filtro actual (el filtro "no se aplicaba"
+  // a la 2da/3ra vez hasta refrescar).
+  const listLoadGenRef = useRef(0);
   const loadConversations = useCallback(
     async (opts?: { silent?: boolean }) => {
       const silent = opts?.silent ?? false;
@@ -1504,6 +1509,7 @@ export function ConversacionesClient({
         // pero SOLO junto a un término de búsqueda (así el inbox normal no muestra finalizadas).
         include_closed: sp.get("cerradas") === "1" && Boolean(qNow),
       };
+      const ticket = ++listLoadGenRef.current;
       const previousCount = conversationsRef.current.length;
       if (silent) {
         chatListUiLog("refetch-start", {
@@ -1520,6 +1526,8 @@ export function ConversacionesClient({
           base_row_count: baseRowCount,
           transient_list_error: transientListError,
         } = await fetchChatConversations(vista, filters);
+        // Carga superada por una más nueva (cambió el filtro/vista mientras traíamos esto) → descartar.
+        if (ticket !== listLoadGenRef.current) return;
         if (silent) {
           chatListUiLog("refetch-result", {
             activeTab: vista,
@@ -1578,6 +1586,8 @@ export function ConversacionesClient({
           );
         }
       } catch (e) {
+        // Error de una carga superada → no pisar el estado del filtro actual.
+        if (ticket !== listLoadGenRef.current) return;
         chatListUiLog("refetch-result", {
           activeTab: vista,
           previous_count: previousCount,
@@ -1588,7 +1598,8 @@ export function ConversacionesClient({
         });
         setListError(e instanceof Error ? e.message : "Error al cargar conversaciones");
       } finally {
-        if (!silent) {
+        // Solo la carga vigente apaga el spinner (una vieja no debe apagarlo mientras la nueva sigue).
+        if (!silent && ticket === listLoadGenRef.current) {
           setLoadingList(false);
           inboxSoundPrimedRef.current = true;
         }

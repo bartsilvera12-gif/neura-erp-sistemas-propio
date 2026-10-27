@@ -1175,24 +1175,75 @@ const ComentarioImagen = memo(function ComentarioImagen({
     }
   }
 
-  // Archivo genérico (no imagen ni video): ficha con ícono + nombre que descarga al tocar.
+  // Vista previa: pide el signed URL SIN `download=1` y lo abre inline en otra
+  // pestaña (el navegador muestra PDF, texto, imagen…). La pestaña se abre en el
+  // mismo click —antes del await— porque abrirla después la frena el bloqueador
+  // de popups; recién cuando llega la URL se la cargamos.
+  async function verPreview() {
+    const w = window.open("about:blank", "_blank");
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/proyectos/${projectId}/comentarios/adjuntos?path=${encodeURIComponent(adjunto.path)}`,
+        { cache: "no-store" }
+      );
+      const j = (await res.json()) as { success?: boolean; data?: { url?: string } };
+      if (res.ok && j.success && j.data?.url) {
+        if (w) w.location.href = j.data.url;
+        else window.open(j.data.url, "_blank", "noopener,noreferrer");
+      } else if (w) {
+        w.close();
+      }
+    } catch {
+      if (w) w.close();
+    }
+  }
+
+  // Archivo genérico (no imagen ni video): ficha con etiqueta + nombre. Si el
+  // navegador puede mostrarlo (PDF, texto, audio…) el nombre abre la VISTA PREVIA;
+  // si no, cae a descarga. El ícono de descarga está siempre disponible aparte.
   if (!esMedia) {
     const tipo = etiquetaArchivo(nombre, mime);
+    const puedePrevisualizar =
+      isPreviewableMime(mime) || /\.(pdf|txt|md|log|csv|json|xml|ya?ml)$/i.test(nombre);
     return (
-      <button
-        type="button"
-        onClick={() => void descargar()}
-        title={`Descargar ${nombre}`}
-        className="inline-flex max-w-[220px] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-left transition-colors hover:border-[#4FAEB2]/60 hover:bg-white"
-      >
+      <div className="inline-flex max-w-[240px] items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 transition-colors hover:border-[#4FAEB2]/60 hover:bg-white">
         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${tipo.cls}`}>{tipo.ext}</span>
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-700">{nombre}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-slate-400">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-      </button>
+        <button
+          type="button"
+          onClick={() => void (puedePrevisualizar ? verPreview() : descargar())}
+          title={puedePrevisualizar ? `Vista previa de ${nombre}` : `Descargar ${nombre}`}
+          className="min-w-0 flex-1 truncate text-left text-[12px] font-medium text-slate-700 hover:text-[#3F8E91]"
+        >
+          {nombre}
+        </button>
+        {puedePrevisualizar ? (
+          <button
+            type="button"
+            onClick={() => void verPreview()}
+            aria-label="Vista previa"
+            title="Vista previa"
+            className="shrink-0 text-slate-400 transition-colors hover:text-[#3F8E91]"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void descargar()}
+          aria-label="Descargar"
+          title={`Descargar ${nombre}`}
+          className="shrink-0 text-slate-400 transition-colors hover:text-[#3F8E91]"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+      </div>
     );
   }
 

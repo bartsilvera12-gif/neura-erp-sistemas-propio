@@ -944,9 +944,37 @@ async function loadMonitoringDashboardForContext(
   if (pendingHumanRes.error) {
     console.warn("[fetchMonitoringDashboard] pendientes primera respuesta:", pendingHumanRes.error.message);
   }
-  const pendingRows = (!pendingHumanRes.error && pendingHumanRes.data
+  const pendingRowsRaw = (!pendingHumanRes.error && pendingHumanRes.data
     ? (pendingHumanRes.data as Record<string, unknown>[])
     : []) as Record<string, unknown>[];
+
+  // GUARD contra el flag reseteado: `first_human_response_at` se pone en NULL cada vez que se
+  // deriva/reasigna el chat (para reiniciar el reloj de SLA del nuevo dueño), así que por sí solo
+  // deja chats YA respondidos por el asesor apareciendo como "sin primera respuesta humana". La
+  // verdad la dan los MENSAJES: si la conversación tiene al menos un saliente humano real
+  // (from_me=true + sender_type='human'), el asesor SÍ respondió → se excluye del listado y del KPI.
+  const candidateIds = pendingRowsRaw.map((r) => String(r.id ?? "").trim()).filter(Boolean);
+  const convsConRespuestaHumana = new Set<string>();
+  for (let i = 0; i < candidateIds.length; i += IN_CHUNK) {
+    const chunk = candidateIds.slice(i, i + IN_CHUNK);
+    const { data: hm, error: hmErr } = await supabase
+      .from("chat_messages")
+      .select("conversation_id")
+      .eq("empresa_id", empresa_id)
+      .in("conversation_id", chunk)
+      .eq("from_me", true)
+      .eq("sender_type", "human");
+    if (hmErr) {
+      console.warn("[fetchMonitoringDashboard] chequeo respuesta humana:", hmErr.message);
+      continue;
+    }
+    for (const row of (hm ?? []) as { conversation_id?: string }[]) {
+      const cid = String(row.conversation_id ?? "").trim();
+      if (cid) convsConRespuestaHumana.add(cid);
+    }
+  }
+  const pendingRows = pendingRowsRaw.filter((r) => !convsConRespuestaHumana.has(String(r.id ?? "").trim()));
+
   const pendingConvIds = pendingRows.map((r) => String(r.id ?? "").trim()).filter(Boolean);
   const pendingVisible = await filterConversationIdsByOmnicanalScope(
     supabase,
@@ -1107,7 +1135,9 @@ async function loadMonitoringDashboardForContext(
     unassigned_chats: unassignedRes.count ?? 0,
     pending_chats: pendingRes.count ?? 0,
     active_channels: channelsRes.count ?? 0,
-    awaiting_first_response: awaitingFirstRes.count ?? 0,
+    // Mismo criterio que el listado: cuenta real tras excluir los que ya tienen respuesta humana
+    // (no el flag, que se resetea al derivar). Acotado al tope del candidato (limit 150).
+    awaiting_first_response: pendingRows.length,
     pending_human_reply_groups,
     unassigned_recent,
   };

@@ -276,22 +276,40 @@ export async function POST(request: NextRequest) {
     // ni aunque viniera un fromPhone distinto por algún borde.
     const esLidEntrante = fromJid.endsWith("@lid") && normalizeWaPhone(fromJid) === fromDigits;
     if (fromPhone && fromPhone !== fromDigits && esLidEntrante) {
-      await guardarTelefonoRealDelContacto(supabase, empresaId, direccionContacto, fromPhone);
-
-      // Auto-fusión por número resuelto: si este @lid tiene un teléfono real conocido y YA existe
-      // un contacto con ese número (ej. uno creado por "Nuevo mensaje", que WhatsApp después
-      // responde como @lid), se vincula el @lid como alias del contacto real. Así la respuesta cae
-      // en la MISMA conversación en vez de partirse en dos. Conservador: solo si hay EXACTAMENTE
-      // un contacto real con ese número y el @lid no es alias todavía. Idempotente. Drift-safe.
       try {
         const { data: lidC } = await supabase
           .from("chat_contacts")
-          .select("id, alias_de_contact_id")
+          .select("id, alias_de_contact_id, telefono_real")
           .eq("empresa_id", empresaId)
           .eq("phone_number", direccionContacto)
           .maybeSingle();
-        const lidRow = lidC as { id?: string; alias_de_contact_id?: string | null } | null;
-        if (lidRow?.id && !lidRow.alias_de_contact_id) {
+        const lidRow = lidC as
+          | { id?: string; alias_de_contact_id?: string | null; telefono_real?: string | null }
+          | null;
+
+        // GUARD anti-flapeo: si este @lid YA tenía un telefono_real resuelto y AHORA el puente
+        // manda uno DISTINTO, la resolución del LID es inestable (pasó con dos clientes "Normi":
+        // un mismo @lid se resolvió primero a un número y después a otro, re-fusionando mal dos
+        // contactos). Ante el conflicto NO se pisa el telefono_real NI se fusiona: se deja como
+        // estaba y se loguea. Así un @lid ya separado no se vuelve a mergear por una resolución
+        // errática. (La primera resolución de un @lid sin telefono_real previo sigue igual.)
+        const telPrevio = lidRow?.telefono_real ? normalizeWaPhone(lidRow.telefono_real) : "";
+        if (telPrevio && telPrevio !== fromPhone) {
+          console.warn(LOG, "lid_telefono_conflicto_no_refusiona", {
+            lid: direccionContacto,
+            telPrevio,
+            fromPhone,
+          });
+        } else {
+          await guardarTelefonoRealDelContacto(supabase, empresaId, direccionContacto, fromPhone);
+
+          // Auto-fusión por número resuelto: si este @lid tiene un teléfono real conocido y YA
+          // existe un contacto con ese número (ej. uno creado por "Nuevo mensaje", que WhatsApp
+          // después responde como @lid), se vincula el @lid como alias del contacto real. Así la
+          // respuesta cae en la MISMA conversación en vez de partirse en dos. Conservador: solo si
+          // hay EXACTAMENTE un contacto real con ese número y el @lid no es alias todavía.
+          // Idempotente. Drift-safe.
+          if (lidRow?.id && !lidRow.alias_de_contact_id) {
           const { data: realesData } = await supabase
             .from("chat_contacts")
             .select("id, alias_de_contact_id")
@@ -313,6 +331,7 @@ export async function POST(request: NextRequest) {
             });
             if (rpcErr) console.warn(LOG, "auto_alias_por_telefono_fallo", rpcErr.message);
             else console.info(LOG, "auto_alias_lid_a_real", { lidId: lidRow.id, realId: reales[0].id });
+          }
           }
         }
       } catch (e) {

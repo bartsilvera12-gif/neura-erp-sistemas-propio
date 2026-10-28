@@ -675,6 +675,13 @@ export type MonitoringDashboard = {
   awaiting_first_response: number;
   /** Detalle de chats pendientes de primera respuesta humana (por agente). */
   pending_human_reply_groups: MonitoringPendingReplyAgentGroup[];
+  /**
+   * Chats donde el asesor YA respondió antes pero el cliente escribió último y espera
+   * una nueva respuesta ("enganchó y lo dejó colgado"). Complementario a los de primera
+   * respuesta (no se pisan). Total + detalle por agente.
+   */
+  awaiting_reply: number;
+  pending_reply_groups: MonitoringPendingReplyAgentGroup[];
   /** Chats abiertos/pendientes sin agente (orden por última actividad). */
   unassigned_recent: MonitoringUnassignedRow[];
 };
@@ -1100,6 +1107,161 @@ async function loadMonitoringDashboardForContext(
   );
   pending_human_reply_groups.sort((a, b) => b.pending_count - a.pending_count || a.agent_name.localeCompare(b.agent_name));
 
+  // ── Sección 2: "Chats esperando respuesta" ───────────────────────────────────────────────
+  // El cliente escribió ÚLTIMO (last_message_from_me=false) y el asesor YA había respondido
+  // antes (tiene al menos un saliente humano) → enganchó pero lo dejó colgado esperando una
+  // nueva respuesta. Es COMPLEMENTARIO a "sin primera respuesta" (esos nunca tuvieron humano),
+  // así no se pisan. Por agente, mismo formato que el otro widget.
+
+  // Arma grupos por agente a partir de filas de conversación (resuelve canal/contacto/agente).
+  const construirGruposPorAgente = async (
+    rows: Record<string, unknown>[]
+  ): Promise<MonitoringPendingReplyAgentGroup[]> => {
+    const chIds = [
+      ...new Set(rows.map((c) => (c.channel_id as string | null)?.trim()).filter((x): x is string => !!x)),
+    ];
+    const coIds = [
+      ...new Set(rows.map((c) => (c.contact_id as string | null)?.trim()).filter((x): x is string => !!x)),
+    ];
+    const agIds = [
+      ...new Set(rows.map((r) => (r.assigned_agent_id as string | null)?.trim()).filter((x): x is string => !!x)),
+    ];
+    const chRows = await selectByIdChunks<{ id: string; type?: string; nombre?: string | null }>(
+      "chat_channels",
+      "id, type, nombre",
+      chIds
+    );
+    const chMeta: Record<string, { type: string; nombre: string | null }> = Object.fromEntries(
+      chRows.map((r) => [r.id, { type: r.type ?? "whatsapp", nombre: r.nombre ?? null }])
+    );
+    const coRows = await selectByIdChunks<{ id: string; phone_number?: string | null; name?: string | null }>(
+      "chat_contacts",
+      "id, phone_number, name",
+      coIds
+    );
+    const coById: Record<string, { phone_number: string | null; name: string | null }> = Object.fromEntries(
+      coRows.map((r) => [r.id, { phone_number: r.phone_number ?? null, name: r.name ?? null }])
+    );
+    let agUsuario: Record<string, string> = {};
+    if (agIds.length > 0) {
+      const { data: ar, error: ae } = await supabase
+        .from("chat_agents")
+        .select("id, usuario_id")
+        .eq("empresa_id", empresa_id)
+        .in("id", agIds);
+      if (!ae && ar) {
+        agUsuario = Object.fromEntries((ar ?? []).map((row) => [row.id as string, (row as { usuario_id: string }).usuario_id]));
+      }
+    }
+    const uIds = [...new Set(Object.values(agUsuario))];
+    let uNombre: Record<string, { nombre: string | null; email: string | null }> = {};
+    if (uIds.length > 0) {
+      const { data: ur, error: ue } = await catalogSr.from("usuarios").select("id, nombre, email").in("id", uIds);
+      if (!ue && ur) {
+        uNombre = Object.fromEntries(
+          (ur ?? []).map((u) => [
+            u.id as string,
+            { nombre: (u as { nombre?: string | null }).nombre ?? null, email: (u as { email?: string | null }).email ?? null },
+          ])
+        );
+      }
+    }
+    const gmap = new Map<string, MonitoringPendingReplyItem[]>();
+    for (const row of rows) {
+      const aid = String((row.assigned_agent_id as string | null) ?? "").trim();
+      if (!aid) continue;
+      const ctid = String((row.contact_id as string | null) ?? "").trim();
+      const chid = String((row.channel_id as string | null) ?? "").trim();
+      const contact = ctid ? coById[ctid] : undefined;
+      const ch = chid ? chMeta[chid] : undefined;
+      const created = (row.created_at as string) ?? new Date().toISOString();
+      const last = (row.last_message_at as string | null) ?? null;
+      const item: MonitoringPendingReplyItem = {
+        conversation_id: row.id as string,
+        contact_name: contact?.name ?? null,
+        contact_phone: contact?.phone_number ?? null,
+        channel_label: ch?.nombre?.trim() || ch?.type || null,
+        waiting_since: last ?? created,
+        last_preview: (row.last_message_preview as string | null) ?? null,
+      };
+      const arr = gmap.get(aid) ?? [];
+      arr.push(item);
+      gmap.set(aid, arr);
+    }
+    const groups = [...gmap.entries()].map(([assigned_agent_id, items]) => {
+      const uid = agUsuario[assigned_agent_id];
+      const u = uid ? uNombre[uid] : undefined;
+      return {
+        assigned_agent_id,
+        agent_name: (u?.nombre?.trim() || u?.email?.trim() || "Agente") as string,
+        agent_email: (u?.email as string) ?? "",
+        pending_count: items.length,
+        items,
+      };
+    });
+    groups.sort((a, b) => b.pending_count - a.pending_count || a.agent_name.localeCompare(b.agent_name));
+    return groups;
+  };
+
+  let esperandoRows: Record<string, unknown>[] = [];
+  try {
+    let qEsp = supabase
+      .from("chat_conversations")
+      .select(
+        "id, last_message_at, created_at, last_message_preview, assigned_agent_id, contact_id, channel_id, status"
+      )
+      .eq("empresa_id", empresa_id)
+      .not("assigned_agent_id", "is", null)
+      .eq("last_message_from_me", false) // el cliente escribió último → espera respuesta
+      .in("status", ["open", "pending"]);
+    qEsp = (await scopedConv(qEsp)).builder;
+    const rEsp = await qEsp.order("last_message_at", { ascending: false, nullsFirst: false }).limit(150);
+    if (rEsp.error) {
+      // Tenant sin columna last_message_from_me (canal QR, hoy neura) → sección vacía, no rompe.
+      if (!isMissingColumnError(rEsp.error.message, "last_message_from_me")) {
+        console.warn("[loadMonitoringDashboard] esperando respuesta:", rEsp.error.message);
+      }
+    } else {
+      esperandoRows = (rEsp.data ?? []) as Record<string, unknown>[];
+    }
+  } catch (e) {
+    console.warn("[loadMonitoringDashboard] esperando respuesta exc:", e instanceof Error ? e.message : e);
+  }
+
+  // Dejar SOLO los que ya tienen saliente humano (el asesor enganchó). Los que no, ya salen en
+  // "sin primera respuesta" → no duplicar.
+  const esperandoIds = esperandoRows.map((r) => String(r.id ?? "").trim()).filter(Boolean);
+  const esperandoConHumano = new Set<string>();
+  for (let i = 0; i < esperandoIds.length; i += IN_CHUNK) {
+    const chunk = esperandoIds.slice(i, i + IN_CHUNK);
+    const { data: hm, error: hmErr } = await supabase
+      .from("chat_messages")
+      .select("conversation_id")
+      .eq("empresa_id", empresa_id)
+      .in("conversation_id", chunk)
+      .eq("from_me", true)
+      .eq("sender_type", "human");
+    if (hmErr) {
+      console.warn("[loadMonitoringDashboard] esperando respuesta humano:", hmErr.message);
+      continue;
+    }
+    for (const row of (hm ?? []) as { conversation_id?: string }[]) {
+      const cid = String(row.conversation_id ?? "").trim();
+      if (cid) esperandoConHumano.add(cid);
+    }
+  }
+  const esperandoConHumanoRows = esperandoRows.filter((r) => esperandoConHumano.has(String(r.id ?? "").trim()));
+  const espVisible = await filterConversationIdsByOmnicanalScope(
+    supabase,
+    catalogSr,
+    empresa_id,
+    usuario_id,
+    esperandoConHumanoRows.map((r) => String(r.id ?? "").trim())
+  );
+  const esperandoFiltered = esperandoConHumanoRows.filter((r) => espVisible.has(String(r.id ?? "").trim()));
+  const pending_reply_groups = await construirGruposPorAgente(esperandoFiltered);
+  const awaiting_reply = esperandoFiltered.length;
+
   const unassigned_recent: MonitoringUnassignedRow[] = convList.map((row: Record<string, unknown>) => {
     const qid = (row.queue_id as string | null)?.trim() || null;
     const cid = (row.channel_id as string | null)?.trim() || null;
@@ -1139,6 +1301,8 @@ async function loadMonitoringDashboardForContext(
     // (no el flag, que se resetea al derivar). Acotado al tope del candidato (limit 150).
     awaiting_first_response: pendingRows.length,
     pending_human_reply_groups,
+    awaiting_reply,
+    pending_reply_groups,
     unassigned_recent,
   };
 }

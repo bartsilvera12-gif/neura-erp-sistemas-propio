@@ -64,6 +64,19 @@ body {
 }
 
 /**
+ * Doble scrollbar en el ERP desktop: el shell (#neura-app-shell) ocupa h-svh y scrollea
+ * SOLO por su <main>; pero la raíz (html/body) mostraba una barra fantasma extra por el
+ * redondeo sub-pixel de svh, así que en pantallas con contenido largo se veían DOS scrolls.
+ * Se bloquea el scroll de la raíz únicamente cuando ese shell está montado (:has), para no
+ * tocar /login ni la app móvil (/m/*), que usan otro shell o ninguno. Si el navegador no
+ * soporta :has(), la regla se ignora y queda el comportamiento anterior (no rompe nada).
+ */
+html:has(#neura-app-shell),
+html:has(#neura-app-shell) body {
+  overflow: hidden;
+}
+
+/**
  * Impresión cupones físicos (/sorteos/[id]/imprimir-cupones): el AppShell usa h-svh + overflow
  * oculto en ancestros; en @media print eso suele dejar casi en blanco la hoja salvo cabecera/pie del navegador.
  * La clase la agrega PhysicalCouponsPrintClient al montar.

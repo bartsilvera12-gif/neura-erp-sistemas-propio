@@ -372,7 +372,10 @@ export async function POST(request: NextRequest) {
     // la descarga de bytes.
 
     // Ventana 24h + asignación por equidad (mismo patrón que el webhook YCloud).
-    if (contactCenterV1Enabled()) {
+    // SOLO entrantes del cliente: `last_customer_message_at` es "último mensaje DEL CLIENTE" y la
+    // asignación por equidad es para leads entrantes. Un saliente espejado (fromMe, eco del propio
+    // negocio por WhatsApp Web) NO debe marcar ventana de cliente ni disparar reparto.
+    if (contactCenterV1Enabled() && !fromMe) {
       const schema = await fetchDataSchemaForEmpresaId(empresaId);
       const pool = getChatPostgresPool();
       if (pool && isLikelyUnexposedTenantChatSchema(schema)) {

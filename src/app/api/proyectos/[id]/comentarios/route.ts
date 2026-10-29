@@ -85,7 +85,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Adjuntos (imágenes ya subidas): se validan y se quedan sólo los paths de
     // ESTE proyecto/comentarios, para no referenciar archivos de otro lado.
     const prefijoAdjuntos = comentarioAdjuntoPrefix(auth.empresaId, pid);
-    const adjuntos = Array.isArray(body?.adjuntos)
+    let adjuntos = Array.isArray(body?.adjuntos)
       ? body.adjuntos
           .filter(
             (a) =>
@@ -136,7 +136,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (esReenvio) {
       const { data: orig } = await sb
         .from("proyecto_comentarios")
-        .select("id, usuario_id, comentario, created_at, canal")
+        .select("id, usuario_id, comentario, created_at, canal, adjuntos")
         .eq("empresa_id", auth.empresaId)
         .eq("proyecto_id", pid)
         .eq("id", reenviarDe)
@@ -150,6 +150,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         comentario: string;
         created_at: string;
         canal?: string | null;
+        adjuntos?: Array<{ path?: string; nombre?: string; mime_type?: string; size_bytes?: number }> | null;
       };
       const canalOrigen = o.canal ?? "comercial";
       // Debe poder ver el canal del comentario que reenvía.
@@ -172,6 +173,33 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         fecha: o.created_at,
         canal_origen: canalOrigen,
       };
+
+      // Los adjuntos viajan con el reenvío. El snapshot `reenvio` sólo llevaba
+      // autor/texto/fecha, así que las imágenes del original se perdían. Se copian
+      // al comentario nuevo (mismo proyecto → mismo prefijo de storage, siguen
+      // siendo accesibles) y la UI los muestra igual que cualquier adjunto.
+      const origAdjuntos = Array.isArray(o.adjuntos)
+        ? o.adjuntos
+            .filter((a) => a && typeof a.path === "string" && a.path.startsWith(prefijoAdjuntos))
+            .map((a) => ({
+              path: String(a.path),
+              nombre: typeof a.nombre === "string" ? a.nombre.slice(0, 200) : "imagen",
+              mime_type: typeof a.mime_type === "string" ? a.mime_type : "image/*",
+              size_bytes: typeof a.size_bytes === "number" ? a.size_bytes : 0,
+            }))
+        : [];
+      if (origAdjuntos.length > 0) {
+        // Original primero, luego los que el que reenvía haya agregado; sin
+        // duplicar por path y respetando el tope de 10.
+        const vistos = new Set<string>();
+        const combinados: typeof adjuntos = [];
+        for (const a of [...origAdjuntos, ...adjuntos]) {
+          if (vistos.has(a.path)) continue;
+          vistos.add(a.path);
+          combinados.push(a);
+        }
+        adjuntos = combinados.slice(0, 10);
+      }
     }
 
     // Sólo se puede mencionar a quien PUEDE VER el canal. Se valida acá y no en

@@ -848,6 +848,10 @@ async function loadMonitoringDashboardForContext(
         // conversaciones "outbound-only" (campañas masivas donde el contacto nunca respondió),
         // que antes ensuciaban esta vista tras el reparto de campañas.
         .not("last_customer_message_at", "is", null)
+        // Y que REALMENTE tengan mensajes: hay conversaciones "fantasma" (inbound donde CC marcó
+        // la ventana y asignó, pero el mensaje no se persistió → 0 msgs, last_message_at NULL).
+        // Sin esto aparecían en el widget y al abrirlas decían "Sin mensajes".
+        .not("last_message_at", "is", null)
         .in("status", ["open", "pending"]);
       q = (await scopedConv(q)).builder;
       return await q;
@@ -865,6 +869,8 @@ async function loadMonitoringDashboardForContext(
         // conversaciones "outbound-only" (campañas masivas donde el contacto nunca respondió),
         // que antes ensuciaban esta vista tras el reparto de campañas.
         .not("last_customer_message_at", "is", null)
+        // Y que REALMENTE tengan mensajes (ver nota arriba: conversaciones fantasma sin msgs).
+        .not("last_message_at", "is", null)
         .in("status", ["open", "pending"]);
       q = (await scopedConv(q)).builder;
       const r = await q.order("last_message_at", { ascending: false, nullsFirst: false }).limit(150);

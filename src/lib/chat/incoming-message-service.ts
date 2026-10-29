@@ -396,6 +396,11 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
   let existingConv: ConversationRowLite | null =
     ((convFilas ?? [])[0] as ConversationRowLite | undefined) ?? null;
 
+  // ¿La conversación ya existía o la vamos a crear ahora? Se usa abajo: si el mensaje resulta
+  // ser un duplicado que ya vive en OTRA conversación (colisión @lid↔teléfono por doble reenvío
+  // del puente), una conversación recién creada acá quedaría vacía (fantasma) → la borramos.
+  const convYaExistia = Boolean(existingConv);
+
   if (!existingConv) {
     if (channel.type === "whatsapp") {
       const { conv, error: bootErr } = await createWhatsappConversationWithActiveFlow(
@@ -540,11 +545,40 @@ export async function saveIncomingMessage(params: SaveIncomingMessageParams): Pr
   } else if (persist.duplicate) {
     const { data: exRow } = await supabase
       .from("chat_messages")
-      .select("id")
+      .select("id, conversation_id")
       .eq("wa_message_id", ext)
       .maybeSingle();
     persistedMessageId = (exRow as { id?: string } | null)?.id ?? null;
+    const exConvId = (exRow as { conversation_id?: string } | null)?.conversation_id ?? null;
     if (!persistedMessageId) {
+      return { ok: true, skipped_duplicate: true };
+    }
+    // Colisión @lid↔teléfono: el mismo mensaje (mismo wa_message_id, UNIQUE global) ya vive en
+    // OTRA conversación (el puente reenvió el eco del saliente bajo las dos identidades del mismo
+    // contacto). Si acabamos de CREAR esta conversación para el 2º reenvío, quedó vacía → es un
+    // fantasma. Cortamos acá como duplicado: así NO corre el CC (asignación + ventana) sobre una
+    // conversación sin mensajes, y la CERRAMOS (si sigue sin mensajes) para que no ensucie el inbox
+    // ni figure en Monitoreo. No la BORRAMOS: recién creada ya puede tener hijos (flow session del
+    // bootstrap, mirror central) con FK, así que cerrar es lo seguro. El mensaje ya quedó capturado
+    // en la conversación original. Si la conversación YA existía, no se toca (puede tener historial).
+    if (exConvId && exConvId !== conversationId && !convYaExistia) {
+      const { count } = await supabase
+        .from("chat_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .eq("empresa_id", empresaId);
+      if ((count ?? 0) === 0) {
+        await supabase
+          .from("chat_conversations")
+          .update({ status: "closed", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", conversationId)
+          .eq("empresa_id", empresaId);
+        console.info("[saveIncomingMessage] conv_fantasma_cerrada_por_duplicado_cross_conv", {
+          phantom: conversationId,
+          original: exConvId,
+          wa_message_id: ext,
+        });
+      }
       return { ok: true, skipped_duplicate: true };
     }
   } else {

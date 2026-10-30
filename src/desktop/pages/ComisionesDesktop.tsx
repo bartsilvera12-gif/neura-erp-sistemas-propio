@@ -1718,8 +1718,12 @@ export default function ComisionesPage() {
   // Cobro desde la lista "A cobrar": reutiliza el modal de pago del ERP (respeta oldest-first).
   const [cobrarRef, setCobrarRef] = useState<RegistrarPagoFacturaRef | null>(null);
 
-  const load = useCallback(async (opts?: { mes?: string }) => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { mes?: string; silent?: boolean }) => {
+    // `silent`: refresco en segundo plano (p. ej. tras registrar un cobro) que NO debe
+    // prender el skeleton de pantalla completa. Si lo prendiera, el componente hace
+    // early-return y DESMONTA el modal de cobro → se pierde su mensaje de confirmación
+    // y el asesor cree que no se envió (y a veces re-carga, duplicando el pendiente).
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const qs = opts?.mes ? `?mes=${encodeURIComponent(opts.mes)}` : "";
@@ -1744,7 +1748,7 @@ export default function ComisionesPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
@@ -1919,7 +1923,9 @@ export default function ComisionesPage() {
       open={cobrarRef != null}
       factura={cobrarRef}
       onClose={() => setCobrarRef(null)}
-      onExito={() => load(selectedMonthValue ? { mes: selectedMonthValue } : undefined)}
+      onExito={() =>
+        load(selectedMonthValue ? { mes: selectedMonthValue, silent: true } : { silent: true })
+      }
     />
   );
 

@@ -145,11 +145,15 @@ export function RegistrarPagoModal({
         setErrorMsg(j?.error || "No se pudo registrar el cobro. Verificá los datos y volvé a intentar.");
         return;
       }
-      await Promise.resolve(onExito());
+      // Mostrar la confirmación ANTES de refrescar al padre. Si `onExito` re-renderiza
+      // u oculta el modal (p. ej. un refetch que prende un skeleton), el ✅ no se pierde
+      // y el asesor no vuelve a cargar el cobro pensando que no se envió. El refresh del
+      // padre corre en segundo plano (no bloquea la confirmación).
       setDoneMsg(
         j.data?.warning ||
           `${seleccionadas.length} ${seleccionadas.length === 1 ? "factura enviada" : "facturas enviadas"} a aprobación en Conciliación bancaria. El saldo se actualiza cuando un administrador lo apruebe.`
       );
+      void Promise.resolve(onExito()).catch(() => {});
     } catch (err) {
       setGuardando(false);
       setErrorMsg(err instanceof Error ? err.message : "Error de red. Volvé a intentar.");

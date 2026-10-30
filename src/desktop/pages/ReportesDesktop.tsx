@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Tags } from "lucide-react";
+import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Tags, ShieldCheck } from "lucide-react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
 
 type ReporteCard = {
@@ -91,6 +91,14 @@ const REPORTES: ReporteCard[] = [
       "Volumen de tipificaciones por Estado (Solicitud, Reclamo, Consulta…) con desglose en sub-estados y ranking por usuario. Marca cuántas generaron un ticket de Soporte. Filtrable por fecha, cliente y usuario.",
     icon: Tags,
     href: "/reportes/tipificaciones",
+  },
+  {
+    title: "Guardias",
+    subtitle: "Atención",
+    description:
+      "Quién estuvo de guardia cada semana (PM, soporte principal y suplente), los cambios de dev con su motivo, y los tickets que resolvieron durante su guardia con link a cada uno. Agrupado por mes.",
+    icon: ShieldCheck,
+    href: "/reportes/guardias",
   },
 ];
 

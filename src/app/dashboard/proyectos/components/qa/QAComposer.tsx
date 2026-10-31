@@ -262,6 +262,8 @@ export default function QAComposer({
                 {p.file.type.startsWith("image/") ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.preview} alt={p.file.name} className="h-full w-full object-cover" />
+                ) : p.file.type.startsWith("video/") ? (
+                  <video src={p.preview} muted preload="metadata" className="h-full w-full object-cover" />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center px-1 text-[9px] text-slate-500">
                     {p.file.name.slice(-12)}

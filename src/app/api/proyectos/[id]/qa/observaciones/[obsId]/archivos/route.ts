@@ -20,10 +20,10 @@ import {
   type QAObservacionArchivoRow,
 } from "@/lib/proyectos/qa-shared";
 
-/** La galería de QA es de capturas: sólo imágenes y PDFs. */
+/** La galería de QA es de capturas: imágenes, videos y PDFs. */
 function mimeAceptado(mime: string): boolean {
   const m = mime.toLowerCase();
-  return m.startsWith("image/") || m === "application/pdf";
+  return m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf";
 }
 
 export async function POST(
@@ -58,7 +58,7 @@ export async function POST(
 
     const mimeType = file.type || "application/octet-stream";
     if (!mimeAceptado(mimeType)) {
-      return NextResponse.json(errorResponse("Solo se aceptan imágenes o PDF"), { status: 400 });
+      return NextResponse.json(errorResponse("Solo se aceptan imágenes, videos o PDF"), { status: 400 });
     }
     const nombre = (file.name || "captura").trim().slice(0, 200) || "captura";
 

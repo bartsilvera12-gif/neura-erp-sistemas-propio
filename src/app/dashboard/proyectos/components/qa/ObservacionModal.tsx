@@ -172,12 +172,21 @@ export default function ObservacionModal({
     [comentarios]
   );
 
-  const imagenes = useMemo(
-    () => obs.archivos.filter((a) => (a.mime_type ?? "").startsWith("image/")),
+  // Capturas = imágenes y videos (ambos se ven en la galería con preview).
+  const capturas = useMemo(
+    () =>
+      obs.archivos.filter((a) => {
+        const t = (a.mime_type ?? "").toLowerCase();
+        return t.startsWith("image/") || t.startsWith("video/");
+      }),
     [obs.archivos]
   );
   const adjuntosNoImagen = useMemo(
-    () => obs.archivos.filter((a) => !(a.mime_type ?? "").startsWith("image/")),
+    () =>
+      obs.archivos.filter((a) => {
+        const t = (a.mime_type ?? "").toLowerCase();
+        return !t.startsWith("image/") && !t.startsWith("video/");
+      }),
     [obs.archivos]
   );
 
@@ -561,19 +570,37 @@ export default function ObservacionModal({
               </Tarjeta>
 
               <Tarjeta titulo="Capturas">
-                {imagenes.length > 0 ? (
+                {capturas.length > 0 ? (
                   <ul className="mb-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {imagenes.map((a, idx) => (
+                    {capturas.map((a, idx) => (
                       <li key={a.id} className="group relative">
                         <button
                           type="button"
                           onClick={() => setLightboxIdx(idx)}
-                          className="block aspect-square w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                          className="relative block aspect-square w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                           aria-label={`Ver ${a.nombre}`}
                         >
                           {a.url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={a.url} alt={a.nombre} className="h-full w-full object-cover" />
+                            (a.mime_type ?? "").toLowerCase().startsWith("video/") ? (
+                              <>
+                                <video
+                                  src={a.url}
+                                  muted
+                                  preload="metadata"
+                                  className="h-full w-full object-cover"
+                                />
+                                <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  </span>
+                                </span>
+                              </>
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={a.url} alt={a.nombre} className="h-full w-full object-cover" />
+                            )
                           ) : (
                             <span className="flex h-full w-full items-center justify-center text-slate-300">
                               <IconImage size={20} />
@@ -878,9 +905,9 @@ export default function ObservacionModal({
         </div>
       </div>
 
-      {lightboxIdx !== null && imagenes[lightboxIdx] ? (
+      {lightboxIdx !== null && capturas[lightboxIdx] ? (
         <Lightbox
-          imagenes={imagenes}
+          imagenes={capturas}
           indice={lightboxIdx}
           onIndice={setLightboxIdx}
           onCerrar={() => setLightboxIdx(null)}
@@ -1230,12 +1257,21 @@ function Lightbox({
       }}
     >
       {actual.url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={actual.url}
-          alt={actual.nombre}
-          className="max-h-[80vh] max-w-full rounded-lg object-contain"
-        />
+        (actual.mime_type ?? "").toLowerCase().startsWith("video/") ? (
+          <video
+            src={actual.url}
+            controls
+            autoPlay
+            className="max-h-[80vh] max-w-full rounded-lg object-contain"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={actual.url}
+            alt={actual.nombre}
+            className="max-h-[80vh] max-w-full rounded-lg object-contain"
+          />
+        )
       ) : null}
       <div className="flex items-center gap-3 text-xs text-white/80">
         {total > 1 ? (

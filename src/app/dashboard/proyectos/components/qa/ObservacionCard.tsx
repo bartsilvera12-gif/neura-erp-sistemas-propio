@@ -39,7 +39,9 @@ const ESTADO_CHIP: Record<string, string> = {
 export default function ObservacionCard({ obs, seccion, puedeResolver, onAbrir, onToggleResuelto }: Props) {
   const cerrada = obs.estado === "resuelto" || obs.estado === "verificado" || obs.estado === "descartado";
   const marcada = obs.estado === "resuelto" || obs.estado === "verificado";
-  const portada = obs.archivos.find((a) => (a.mime_type ?? "").startsWith("image/") && a.url);
+  const portada =
+    obs.archivos.find((a) => (a.mime_type ?? "").startsWith("image/") && a.url) ??
+    obs.archivos.find((a) => (a.mime_type ?? "").startsWith("video/") && a.url);
   const vencida = !cerrada && estaVencida(obs.fecha_limite);
   const colorSeccion = seccion?.color ?? null;
 
@@ -185,12 +187,25 @@ export default function ObservacionCard({ obs, seccion, puedeResolver, onAbrir, 
         <button
           type="button"
           onClick={() => onAbrir(obs)}
-          className="hidden h-14 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 sm:block"
+          className="relative hidden h-14 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 sm:block"
           aria-label="Ver capturas"
         >
           {/* Signed URL de Supabase: el optimizador de Next no tiene este host configurado. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={portada.url} alt="" className="h-full w-full object-cover" />
+          {(portada.mime_type ?? "").startsWith("video/") ? (
+            <>
+              <video src={portada.url} muted preload="metadata" className="h-full w-full object-cover" />
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </span>
+              </span>
+            </>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={portada.url} alt="" className="h-full w-full object-cover" />
+          )}
         </button>
       ) : null}
     </li>

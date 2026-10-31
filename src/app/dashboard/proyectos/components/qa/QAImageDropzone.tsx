@@ -15,7 +15,7 @@ type Props = {
   compacto?: boolean;
 };
 
-const ACEPTADOS = "image/*,application/pdf";
+const ACEPTADOS = "image/*,video/*,application/pdf";
 
 /**
  * Lo que más se usa en QA: pegar el screenshot con Ctrl/Cmd+V y escribir al lado.

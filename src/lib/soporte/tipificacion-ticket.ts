@@ -13,6 +13,10 @@ import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { numeroTicket } from "@/lib/soporte/dominio";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
+import { sendConversationText } from "@/lib/chat/send-conversation-text";
+import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
+import { isLikelyUnexposedTenantChatSchema } from "@/lib/supabase/chat-data-schema";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
 
 /**
  * Tipos de gestión que crean un ticket de Soporte, y el tipo de ticket de cada uno.
@@ -285,6 +289,57 @@ export async function crearTipificacionConTicket(
     titulo: tituloAviso,
     cuerpo: cuerpoAviso,
   });
+
+  // Aviso al cliente por WhatsApp: SÓLO cuando el ticket nació de una conversación
+  // (ahí tenemos canal y contacto). Le confirmamos el número y el plazo estimado
+  // (SLA de la clasificación). Best-effort: nunca hace fallar el alta ni la revierte
+  // (si la ventana de 24h está cerrada, el envío sólo se loguea).
+  if (args.conversationId) {
+    try {
+      const { data: convRow } = await soporte.sb
+        .from("chat_conversations")
+        .select("contact_id, channel_id")
+        .eq("empresa_id", soporte.empresaId)
+        .eq("id", args.conversationId)
+        .maybeSingle();
+      const contactId = ((convRow as { contact_id?: string | null } | null)?.contact_id ?? "").trim();
+      const channelId = ((convRow as { channel_id?: string | null } | null)?.channel_id ?? "").trim();
+      if (contactId && channelId) {
+        const slaH = prep.ticket.fila.sla_horas;
+        const horas = typeof slaH === "number" ? Math.round(slaH) : 0;
+        const plazo =
+          horas > 0 ? `en un plazo aproximado de ${horas} ${horas === 1 ? "hora" : "horas"}` : "a la brevedad";
+        const texto =
+          `Estimado cliente, hemos registrado su solicitud bajo el número ${numeroTicket(r.numero)}. ` +
+          `Nuestro equipo de soporte ya se encuentra trabajando en ella y estimamos resolverla ${plazo}. ` +
+          `Le mantendremos informado sobre cualquier novedad. Gracias por su confianza.`;
+        const dataSchema = await fetchDataSchemaForEmpresaId(soporte.empresaId);
+        const pool = getChatPostgresPool();
+        const tenantPg = Boolean(pool && isLikelyUnexposedTenantChatSchema(dataSchema));
+        const envio = await sendConversationText({
+          supabase: soporte.sb,
+          pool,
+          tenantPg,
+          dataSchema,
+          empresaId: soporte.empresaId,
+          conversationId: args.conversationId,
+          contactId,
+          channelId,
+          text: texto,
+          senderType: "system",
+          automationSource: "ticket_creado",
+        });
+        if (!envio.ok) {
+          console.warn("[crearTipificacionConTicket] aviso de ticket al cliente no enviado:", envio.error);
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "[crearTipificacionConTicket] aviso de ticket al cliente error:",
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  }
 
   return { ok: true, tipificacion_id: r.tipificacion_id, ticket_id: r.ticket_id, numero: r.numero };
 }

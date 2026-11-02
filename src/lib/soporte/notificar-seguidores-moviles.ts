@@ -2,6 +2,7 @@ import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
 import { avisarPorPush } from "@/lib/cc/push-usuarios";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 /**
  * Avisa por push a los usuarios con "acceso móvil especial" (ver
@@ -17,6 +18,8 @@ import { avisarPorPush } from "@/lib/cc/push-usuarios";
  * /m/asesor/configuracion/notificaciones, avisarPorPush lo saltea.
  */
 export async function avisarSeguidoresMovilesSoporte(args: {
+  /** Cliente de datos del tenant, para insertar la campanita in-app. */
+  sb: AppSupabaseClient;
   empresaId: string;
   ticketId: string;
   titulo: string;
@@ -35,6 +38,21 @@ export async function avisarSeguidoresMovilesSoporte(args: {
       .map((u) => u.id)
       .filter((id) => id !== args.excluirUsuarioId);
     if (destinatarios.length === 0) return;
+
+    // Campanita in-app: igual que el alta, para que no sea solo push. Reusa el
+    // tipo permitido 'soporte_revision' (abre el ticket desde la campana).
+    const { error: insError } = await args.sb.from("usuario_notificaciones").insert(
+      destinatarios.map((usuarioId) => ({
+        empresa_id: args.empresaId,
+        usuario_id: usuarioId,
+        tipo: "soporte_revision",
+        titulo: args.titulo.slice(0, 200),
+        cuerpo: args.cuerpo.slice(0, 300),
+        actor_id: args.excluirUsuarioId ?? null,
+        metadata: { ticket_id: args.ticketId },
+      })),
+    );
+    if (insError) console.warn("[avisarSeguidoresMovilesSoporte] campanita:", insError.message);
 
     await avisarPorPush({
       empresaId: args.empresaId,

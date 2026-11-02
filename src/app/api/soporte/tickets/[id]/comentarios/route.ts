@@ -101,6 +101,7 @@ export async function POST(request: Request, { params }: Params) {
     const numero = (tk as { numero?: number } | null)?.numero ?? null;
     const asunto = ((tk as { asunto?: string } | null)?.asunto ?? "").trim();
     void avisarSeguidoresMovilesSoporte({
+      sb: auth.sb,
       empresaId: auth.empresaId,
       ticketId: id,
       titulo: `Nuevo comentario${numero ? ` · T-${numero}` : ""}`,

@@ -307,6 +307,7 @@ export async function PATCH(request: Request, { params }: Params) {
         nombreResp = equipo.find((u) => u.id === nuevoResp)?.nombre ?? "nuevo responsable";
       }
       void avisarSeguidoresMovilesSoporte({
+        sb: auth.sb,
         empresaId: auth.empresaId,
         ticketId: id,
         titulo: `Responsable cambiado · ${numeroEt}`,
@@ -317,6 +318,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (typeof patch.estado_codigo === "string") {
       const nombreEstado = cat.estados.find((e) => e.codigo === patch.estado_codigo)?.nombre ?? patch.estado_codigo;
       void avisarSeguidoresMovilesSoporte({
+        sb: auth.sb,
         empresaId: auth.empresaId,
         ticketId: id,
         titulo: `${nombreEstado} · ${numeroEt}`,

@@ -7,6 +7,8 @@ import type {
   QueueEditorChatChannelRow,
   QueueRubroRow,
   QueueRubroInput,
+  QueueQuickReplyRow,
+  QueueQuickReplyInput,
   UsuarioPickRow,
 } from "@/lib/chat/queue-admin-repo";
 
@@ -46,6 +48,7 @@ export type QueueEditorBootstrap = {
   usuarios: UsuarioPickRow[];
   closure_taxonomy: QueueClosureStateRow[];
   rubros: QueueRubroRow[];
+  quick_replies: QueueQuickReplyRow[];
   bootstrapWarnings?: string[];
 };
 
@@ -191,5 +194,22 @@ export async function apiSaveQueueRubros(queueId: string, rubros: QueueRubroInpu
   const json = parseJson<ApiOk<boolean> | ApiErr>(await res.json());
   if (!res.ok || !json.success) {
     throw new Error(!json.success ? json.error : "Error al guardar rubros");
+  }
+}
+
+export async function apiSaveQueueQuickReplies(
+  queueId: string,
+  quick_replies: QueueQuickReplyInput[]
+): Promise<void> {
+  const q = encodeURIComponent(queueId.trim());
+  const res = await fetchWithSupabaseSession(`/api/configuracion/colas-queues/${q}/quick-replies-config`, {
+    method: "PUT",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quick_replies }),
+  });
+  const json = parseJson<ApiOk<boolean> | ApiErr>(await res.json());
+  if (!res.ok || !json.success) {
+    throw new Error(!json.success ? json.error : "Error al guardar respuestas rápidas");
   }
 }

@@ -23,6 +23,7 @@ import {
   apiSaveClosureTaxonomy,
   apiSaveQueue,
   apiSaveQueueRubros,
+  apiSaveQueueQuickReplies,
   apiSetQueueChannelLinks,
   apiUpdateQueueAgent,
 } from "../queue-admin-api";
@@ -95,6 +96,8 @@ export default function ColaEditor({
   const [closureSaving, setClosureSaving] = useState(false);
   const [rubrosDraft, setRubrosDraft] = useState<{ label: string }[]>([]);
   const [rubrosSaving, setRubrosSaving] = useState(false);
+  const [quickRepliesDraft, setQuickRepliesDraft] = useState<{ title: string; body: string }[]>([]);
+  const [quickRepliesSaving, setQuickRepliesSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!queueId) return;
@@ -128,6 +131,7 @@ export default function ColaEditor({
         })),
       );
       setRubrosDraft((boot.rubros ?? []).map((r) => ({ label: r.label })));
+      setQuickRepliesDraft((boot.quick_replies ?? []).map((r) => ({ title: r.title, body: r.body })));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar");
     } finally {
@@ -207,6 +211,23 @@ export default function ColaEditor({
       setError(e instanceof Error ? e.message : "Error al guardar rubros");
     } finally {
       setRubrosSaving(false);
+    }
+  }
+
+  async function handleSaveQuickReplies() {
+    if (!queueId) return;
+    setQuickRepliesSaving(true);
+    setError(null);
+    try {
+      const quick_replies = quickRepliesDraft
+        .map((r, i) => ({ title: r.title.trim(), body: r.body.trim(), sort_order: i }))
+        .filter((r) => r.title.length > 0 && r.body.length > 0);
+      await apiSaveQueueQuickReplies(queueId, quick_replies);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al guardar respuestas rápidas");
+    } finally {
+      setQuickRepliesSaving(false);
     }
   }
 
@@ -840,6 +861,66 @@ export default function ColaEditor({
             onClick={() => setRubrosDraft((d) => [...d, { label: "" }])}
           >
             + Agregar rubro
+          </button>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border border-[#4FAEB2]/45 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Respuestas rápidas</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">
+              Textos reutilizables que los asesores de ESTA cola insertan desde el chat con el ícono de rayo (⚡), en
+              Conversaciones y en Finalizadas. Son por cola: otra cola del mismo canal no ve estas respuestas.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={quickRepliesSaving || !queueId}
+            onClick={() => void handleSaveQuickReplies()}
+            className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {quickRepliesSaving ? "Guardando…" : "Guardar respuestas"}
+          </button>
+        </div>
+        <div className="space-y-3">
+          {quickRepliesDraft.map((row, ri) => (
+            <div key={ri} className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+                  value={row.title}
+                  onChange={(e) =>
+                    setQuickRepliesDraft((d) => d.map((x, i) => (i === ri ? { ...x, title: e.target.value } : x)))
+                  }
+                  placeholder="Nombre interno (ej. Saludo inicial)"
+                  maxLength={120}
+                />
+                <button
+                  type="button"
+                  className="text-xs font-medium text-red-700 hover:underline"
+                  onClick={() => setQuickRepliesDraft((d) => d.filter((_, i) => i !== ri))}
+                >
+                  Quitar
+                </button>
+              </div>
+              <textarea
+                className="w-full min-h-[70px] resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
+                value={row.body}
+                onChange={(e) =>
+                  setQuickRepliesDraft((d) => d.map((x, i) => (i === ri ? { ...x, body: e.target.value } : x)))
+                }
+                placeholder="Texto completo que se inserta en el campo de escritura…"
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            className="text-sm font-medium text-[#4FAEB2] hover:underline"
+            onClick={() => setQuickRepliesDraft((d) => [...d, { title: "", body: "" }])}
+          >
+            + Agregar respuesta rápida
           </button>
         </div>
       </section>

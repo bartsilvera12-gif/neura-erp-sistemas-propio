@@ -1038,7 +1038,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               {composerOpen && (
                 <FinalizedComposer
                   conversationId={detail.conversation_id}
-                  channelId={detail.channel_id}
+                  queueId={detail.queue_id}
                   onSent={() => {
                     setMsgReload((n) => n + 1); // recarga el historial del modal
                     void load(); // refresca la lista: el chat deja de estar frío

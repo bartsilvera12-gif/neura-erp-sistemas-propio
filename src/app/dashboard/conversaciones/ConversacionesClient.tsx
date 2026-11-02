@@ -58,7 +58,7 @@ import { formatWaitHuman } from "@/lib/chat/format-wait-human";
 import { friendlyWhatsappFailureReason, extractWhatsappFailureInfo } from "@/lib/chat/whatsapp-failure-reason";
 import MessageDeliveryTicks from "@/components/chat/MessageDeliveryTicks";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
-import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
+import { listActiveQuickRepliesForQueue } from "@/lib/chat/quick-replies-actions";
 import {
   X,
   CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, Smile, Square, Trash2, UserRound, UserPlus, Zap } from "lucide-react";
@@ -3043,8 +3043,9 @@ export function ConversacionesClient({
   const requestedConversationId = searchParams?.get("conversationId") ?? null;
 
   useEffect(() => {
-    const chId = selected?.channel?.id?.trim();
-    if (!chId || vista === "bot") {
+    // Respuestas rápidas POR COLA: el asesor ve solo las de la cola de la conversación.
+    const qId = selected?.queue_id?.trim();
+    if (!qId || vista === "bot") {
       setChannelQuickReplies([]);
       setQuickReplyOpen(false);
       setQuickReplySearch("");
@@ -3052,7 +3053,7 @@ export function ConversacionesClient({
     }
     let cancelled = false;
     setQuickRepliesLoading(true);
-    void listActiveQuickRepliesForChannel(chId)
+    void listActiveQuickRepliesForQueue(qId)
       .then((rows) => {
         if (!cancelled) {
           setChannelQuickReplies(rows.map((r) => ({ id: r.id, title: r.title, body: r.body })));
@@ -3067,13 +3068,7 @@ export function ConversacionesClient({
     return () => {
       cancelled = true;
     };
-  }, [selected?.channel?.id, vista]);
-
-  useEffect(() => {
-    if (selected?.channel.quick_replies_inbox_enabled === false) {
-      setQuickReplyOpen(false);
-    }
-  }, [selected?.channel.quick_replies_inbox_enabled]);
+  }, [selected?.queue_id, vista]);
 
   useEffect(() => {
     if (!quickReplyOpen) return;
@@ -5227,7 +5222,7 @@ export function ConversacionesClient({
                         </div>
                       ) : null}
                     </div>
-                    {vista !== "bot" && selected?.channel.quick_replies_inbox_enabled !== false ? (
+                    {vista !== "bot" && Boolean(selected?.queue_id) ? (
                       <>
                         <button
                           type="button"

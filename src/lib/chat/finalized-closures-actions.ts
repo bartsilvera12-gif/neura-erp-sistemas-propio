@@ -19,10 +19,12 @@ export type FinalizedClosureListRow = {
   closed_at: string;
   contact_name: string | null;
   phone_number: string;
-  /** Canal de la conversación (para respuestas rápidas por canal en el compositor). */
+  /** Canal de la conversación. */
   channel_id: string | null;
   channel_type: string;
   channel_nombre: string | null;
+  /** Cola del cierre (para respuestas rápidas por cola en el compositor). */
+  queue_id: string | null;
   queue_nombre: string | null;
   /** Usuario operador vía chat_agents / assigned_agent_id */
   assigned_agent_nombre: string | null;
@@ -1119,6 +1121,7 @@ export async function listFinalizedClosures(
       channel_id: conv?.channel_id ?? null,
       channel_type: String(ch?.type ?? "whatsapp"),
       channel_nombre: ch?.nombre ?? null,
+      queue_id: row.queue_id ?? null,
       queue_nombre: row.queue_id ? queueById.get(row.queue_id) ?? null : null,
       assigned_agent_nombre: assignedUid ? usuarioNombre.get(assignedUid) ?? null : null,
       closed_by_nombre: usuarioNombre.get(row.closed_by_usuario_id) ?? null,

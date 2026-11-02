@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "reac
 import { Send, Loader2, Paperclip, Mic, Smile, Zap, X, Square, Trash2 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recording";
-import { listActiveQuickRepliesForChannel } from "@/lib/chat/quick-replies-actions";
+import { listActiveQuickRepliesForQueue } from "@/lib/chat/quick-replies-actions";
 
 /** Emojis de uso frecuente, agrupados. Mismo set que el inbox (versión compacta). */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -30,11 +30,11 @@ type QuickReply = { id: string; title: string; body: string };
  */
 export function FinalizedComposer({
   conversationId,
-  channelId,
+  queueId,
   onSent,
 }: {
   conversationId: string;
-  channelId: string | null;
+  queueId: string | null;
   onSent: () => void;
 }) {
   const [text, setText] = useState("");
@@ -115,16 +115,16 @@ export function FinalizedComposer({
   const abrirQuickReplies = useCallback(() => {
     setEmojiOpen(false);
     setQrOpen((v) => !v);
-    if (qrLoaded || !channelId) return;
+    if (qrLoaded || !queueId) return;
     setQrLoading(true);
-    void listActiveQuickRepliesForChannel(channelId)
+    void listActiveQuickRepliesForQueue(queueId)
       .then((rows) => {
         setQuickReplies(rows.map((r) => ({ id: r.id, title: r.title, body: r.body })));
         setQrLoaded(true);
       })
       .catch(() => setQuickReplies([]))
       .finally(() => setQrLoading(false));
-  }, [channelId, qrLoaded]);
+  }, [queueId, qrLoaded]);
 
   const enviarTexto = useCallback(async () => {
     const texto = text.trim();
@@ -403,7 +403,7 @@ export function FinalizedComposer({
             <button
               type="button"
               onClick={abrirQuickReplies}
-              disabled={busy || !channelId}
+              disabled={busy || !queueId}
               className={`rounded-lg p-2 hover:bg-slate-100 disabled:opacity-40 ${
                 qrOpen ? "text-[#3F8E91]" : "text-slate-500 hover:text-[#3F8E91]"
               }`}
@@ -419,7 +419,7 @@ export function FinalizedComposer({
                   <p className="px-2 py-3 text-sm text-slate-400">Cargando…</p>
                 ) : quickReplies.length === 0 ? (
                   <p className="px-2 py-3 text-sm text-slate-500">
-                    No hay respuestas rápidas para este canal.
+                    No hay respuestas rápidas para esta cola.
                   </p>
                 ) : (
                   <ul className="space-y-1">

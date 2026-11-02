@@ -39,6 +39,37 @@ async function assertChannelBelongsToEmpresa(
   if (!data) throw new Error("Canal no encontrado o sin permiso.");
 }
 
+/** Pick liviano para el inbox/compositor (lo único que se inserta en el campo de escritura). */
+export type QuickReplyPick = { id: string; title: string; body: string };
+
+/**
+ * Listado para inbox POR COLA (reemplaza el por canal): el asesor ve solo las respuestas de la
+ * cola de la conversación. Drift-safe: si la tabla no existe (schema sin la migración) → [].
+ */
+export async function listActiveQuickRepliesForQueue(queueId: string): Promise<QuickReplyPick[]> {
+  const { supabase, empresa_id } = await requireEmpresaTenantServiceRole();
+  const qid = queueId.trim();
+  if (!qid) return [];
+  try {
+    const { data, error } = await supabase
+      .from("chat_queue_quick_replies")
+      .select("id, title, body, sort_order, is_active")
+      .eq("empresa_id", empresa_id)
+      .eq("queue_id", qid)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("title", { ascending: true });
+    if (error) return [];
+    return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+      id: String(r.id ?? ""),
+      title: String((r as { title?: string }).title ?? ""),
+      body: String((r as { body?: string }).body ?? ""),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /** Listado para inbox: solo activas, ordenadas. */
 export async function listActiveQuickRepliesForChannel(channelId: string): Promise<ChannelQuickReplyRow[]> {
   const { supabase, empresa_id, dataSchema } = await requireEmpresaTenantServiceRole();

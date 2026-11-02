@@ -6,7 +6,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ChannelBadge, channelTypeLabel } from "@/components/chat/ChannelBadge";
 import { GenericOmnichannelChannelForm } from "@/components/chat/GenericOmnichannelChannelForm";
-import { ChannelQuickRepliesStandaloneBlock } from "@/components/chat/ChannelQuickRepliesStandaloneBlock";
 import { WhatsAppChannelForm } from "@/components/chat/WhatsAppChannelForm";
 import { BaileysConnectPanel } from "@/components/chat/BaileysConnectPanel";
 import WhatsAppTagRulesPanel from "@/components/chat/tags/WhatsAppTagRulesPanel";
@@ -206,11 +205,14 @@ export default function EditarCanalPage() {
               onSaved={() => void load()}
             />
             <div className="border-t border-slate-200 pt-5">
-              <ChannelQuickRepliesStandaloneBlock
-                channelId={row.id}
-                channelRow={row}
-                onPersisted={() => void load()}
-              />
+              <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                Las <span className="font-semibold">respuestas rápidas</span> ahora se configuran{" "}
+                <span className="font-semibold">por cola</span> en{" "}
+                <a href="/configuracion/colas" className="font-semibold text-[#3F8E91] hover:underline">
+                  Colas y enrutamiento
+                </a>{" "}
+                → Editar cola, así cada equipo tiene las suyas aunque compartan canal.
+              </p>
             </div>
           </div>
         )}

@@ -5,8 +5,9 @@
  * sin convertir al usuario en administrador general del ERP.
  */
 const EMAILS_ACCESO_MOVIL_ESPECIAL = new Set([
-  "milagrosgomezlujan26@gmail.com",
-  "karenayala1711@gmail.com",
+  "julicontreras1912@gmail.com", // Juliana Contreras
+  "emaxigui@gmail.com", // Emmanuel Guillén
+  "meaurioxd@gmail.com", // Dahiana Meaurio
 ]);
 
 export function tieneAccesoMovilEspecial(email: string | null | undefined): boolean {

@@ -4,8 +4,9 @@ import { tieneAccesoMovilEspecial } from "@/lib/auth/acceso-movil-especial";
 import { avisarPorPush } from "@/lib/cc/push-usuarios";
 
 /**
- * Avisa por push a los usuarios con "acceso móvil especial" (Karen, Milagros) sobre
- * cambios de un ticket: comentarios nuevos, cambio de responsable, cambio de estado.
+ * Avisa por push a los usuarios con "acceso móvil especial" (ver
+ * `acceso-movil-especial.ts`) sobre un ticket: alta (carga), comentarios nuevos,
+ * cambio de responsable y cambio de estado (incluido el cierre).
  *
  * El responsable del ticket recibe su propio push por otros caminos (avisarSoporte,
  * avisarEstadoAPMs); acá solo cubrimos los seguidores móviles para no duplicar. Si una

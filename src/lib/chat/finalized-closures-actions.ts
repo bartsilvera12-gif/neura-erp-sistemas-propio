@@ -106,6 +106,38 @@ function intersectIds(a: string[] | null, b: string[]): string[] {
 }
 
 /**
+ * Para un match EXACTO case-insensitive en PostgREST vía `ilike`: escapa los comodines LIKE
+ * (`%` `_` `\`) para que el valor se compare literal (sin wildcards) pero sin distinguir
+ * mayúsculas. Hace falta porque una misma tipificación puede estar en mayúsculas en una cola
+ * y capitalizada en otra (p. ej. "NO CONTESTA" en contable vs "No Contesta" en ventas): el
+ * reporte GLOBAL debe agruparlas, no tratarlas como estados distintos.
+ */
+function ilikeExactPattern(value: string): string {
+  return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
+/**
+ * Dedupe case-insensitive de etiquetas: una entrada por rótulo ignorando may/min. Ante dos
+ * variantes (misma etiqueta en distinta caja por cola) prefiere la que NO es todo mayúsculas
+ * (más legible). Las etiquetas realmente distintas se mantienen separadas.
+ */
+function dedupeLabelsCI(labels: string[]): string[] {
+  const best = new Map<string, string>();
+  for (const l of labels) {
+    const k = l.toLocaleLowerCase("es");
+    const cur = best.get(k);
+    if (cur === undefined) {
+      best.set(k, l);
+      continue;
+    }
+    const curAllUpper = cur === cur.toLocaleUpperCase("es");
+    const nuevaAllUpper = l === l.toLocaleUpperCase("es");
+    if (curAllUpper && !nuevaAllUpper) best.set(k, l);
+  }
+  return [...best.values()];
+}
+
+/**
  * Máximo de IDs por request `.in()`. PostgREST arma la lista en la URL; con muchos UUIDs la URL
  * excede el límite del proxy y devuelve 414 (que antes rompía la vista de finalizadas de un asesor
  * con ~100 conversaciones). Troceamos en lotes y unimos en memoria.
@@ -248,8 +280,8 @@ async function loadFinalizedFilterOptionsAllEmpresa(
     channels: mapChannels(channels),
     agents,
     closed_by_users,
-    state_labels: [...states].sort((a, b) => a.localeCompare(b, "es")),
-    substate_labels: [...subs].sort((a, b) => a.localeCompare(b, "es")),
+    state_labels: dedupeLabelsCI([...states]).sort((a, b) => a.localeCompare(b, "es")),
+    substate_labels: dedupeLabelsCI([...subs]).sort((a, b) => a.localeCompare(b, "es")),
     rubro_labels: [...rubros].sort((a, b) => a.localeCompare(b, "es")),
     ux_scope: "full",
   };
@@ -399,8 +431,8 @@ async function loadFinalizedFilterOptionsScopedTeam(
     channels,
     agents,
     closed_by_users,
-    state_labels: [...states].sort((a, b) => a.localeCompare(b, "es")),
-    substate_labels: [...subs].sort((a, b) => a.localeCompare(b, "es")),
+    state_labels: dedupeLabelsCI([...states]).sort((a, b) => a.localeCompare(b, "es")),
+    substate_labels: dedupeLabelsCI([...subs]).sort((a, b) => a.localeCompare(b, "es")),
     rubro_labels: [...rubros].sort((a, b) => a.localeCompare(b, "es")),
     ux_scope: "team",
   };
@@ -499,8 +531,8 @@ async function loadFinalizedFilterOptionsOwn(
 
   return {
     ...base,
-    state_labels: [...states].sort((a, b) => a.localeCompare(b, "es")),
-    substate_labels: [...subs].sort((a, b) => a.localeCompare(b, "es")),
+    state_labels: dedupeLabelsCI([...states]).sort((a, b) => a.localeCompare(b, "es")),
+    substate_labels: dedupeLabelsCI([...subs]).sort((a, b) => a.localeCompare(b, "es")),
     rubro_labels: [...rubros].sort((a, b) => a.localeCompare(b, "es")),
   };
 }
@@ -869,8 +901,8 @@ export async function listFinalizedClosures(
       if (dt) q = q.lte("closed_at", endOfDayIso(dt));
       if (filters.queue_id?.trim()) q = q.eq("queue_id", filters.queue_id.trim());
       if (filters.closed_by_usuario_id?.trim()) q = q.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
-      if (filters.state_label?.trim()) q = q.eq("closure_state_label", filters.state_label.trim());
-      if (filters.substate_label?.trim()) q = q.eq("closure_substate_label", filters.substate_label.trim());
+      if (filters.state_label?.trim()) q = q.ilike("closure_state_label", ilikeExactPattern(filters.state_label.trim()));
+      if (filters.substate_label?.trim()) q = q.ilike("closure_substate_label", ilikeExactPattern(filters.substate_label.trim()));
       if (filters.rubro_label?.trim()) q = q.eq("rubro_label", filters.rubro_label.trim());
       // El semáforo de frescura ya quedó aplicado arriba como pre-filtro de conversation_id.
       if (filters.solo_seguimientos) q = q.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
@@ -907,9 +939,9 @@ export async function listFinalizedClosures(
     if (filters.closed_by_usuario_id?.trim()) {
       countQuery = countQuery.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
     }
-    if (filters.state_label?.trim()) countQuery = countQuery.eq("closure_state_label", filters.state_label.trim());
+    if (filters.state_label?.trim()) countQuery = countQuery.ilike("closure_state_label", ilikeExactPattern(filters.state_label.trim()));
     if (filters.substate_label?.trim()) {
-      countQuery = countQuery.eq("closure_substate_label", filters.substate_label.trim());
+      countQuery = countQuery.ilike("closure_substate_label", ilikeExactPattern(filters.substate_label.trim()));
     }
     if (filters.rubro_label?.trim()) countQuery = countQuery.eq("rubro_label", filters.rubro_label.trim());
     if (filters.solo_seguimientos) {
@@ -939,9 +971,9 @@ export async function listFinalizedClosures(
     if (filters.closed_by_usuario_id?.trim()) {
       dataQuery = dataQuery.eq("closed_by_usuario_id", filters.closed_by_usuario_id.trim());
     }
-    if (filters.state_label?.trim()) dataQuery = dataQuery.eq("closure_state_label", filters.state_label.trim());
+    if (filters.state_label?.trim()) dataQuery = dataQuery.ilike("closure_state_label", ilikeExactPattern(filters.state_label.trim()));
     if (filters.substate_label?.trim()) {
-      dataQuery = dataQuery.eq("closure_substate_label", filters.substate_label.trim());
+      dataQuery = dataQuery.ilike("closure_substate_label", ilikeExactPattern(filters.substate_label.trim()));
     }
     if (filters.rubro_label?.trim()) dataQuery = dataQuery.eq("rubro_label", filters.rubro_label.trim());
     if (filters.solo_seguimientos) {

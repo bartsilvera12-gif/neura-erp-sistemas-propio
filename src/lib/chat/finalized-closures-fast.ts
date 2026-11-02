@@ -76,11 +76,14 @@ export async function listarCierresRapido(
   const cola = filtros.queue_id?.trim();
   if (cola) agregar("cl.queue_id = $?::uuid", cola);
 
+  // Case-insensitive: una misma tipificación puede estar en mayúsculas en una cola y
+  // capitalizada en otra (p. ej. "NO CONTESTA" en contable vs "No Contesta" en ventas); el
+  // reporte global debe agruparlas, no tratarlas como estados distintos.
   const estado = filtros.state_label?.trim();
-  if (estado) agregar("cl.closure_state_label = $?", estado);
+  if (estado) agregar("lower(cl.closure_state_label) = lower($?)", estado);
 
   const sub = filtros.substate_label?.trim();
-  if (sub) agregar("cl.closure_substate_label = $?", sub);
+  if (sub) agregar("lower(cl.closure_substate_label) = lower($?)", sub);
 
   const cerroPor = filtros.closed_by_usuario_id?.trim();
   if (cerroPor) agregar("cl.closed_by_usuario_id = $?::uuid", cerroPor);
@@ -278,9 +281,21 @@ export async function listarEtiquetasRapido(
     if (c) cerraron.add(c);
   }
   const ordenar = (v: Set<string>) => [...v].sort((a, b) => a.localeCompare(b, "es"));
+  // Dedupe case-insensitive: la misma tipificación en distinta caja por cola ("NO CONTESTA"
+  // vs "No Contesta") es UNA sola opción en el reporte global; prefiere la variante legible.
+  const dedupeCI = (v: Set<string>): string[] => {
+    const best = new Map<string, string>();
+    for (const l of v) {
+      const k = l.toLocaleLowerCase("es");
+      const cur = best.get(k);
+      if (cur === undefined) best.set(k, l);
+      else if (cur === cur.toLocaleUpperCase("es") && l !== l.toLocaleUpperCase("es")) best.set(k, l);
+    }
+    return [...best.values()].sort((a, b) => a.localeCompare(b, "es"));
+  };
   return {
-    state_labels: ordenar(estados),
-    substate_labels: ordenar(subs),
+    state_labels: dedupeCI(estados),
+    substate_labels: dedupeCI(subs),
     rubro_labels: ordenar(rubros),
     closed_by_ids: [...cerraron],
   };

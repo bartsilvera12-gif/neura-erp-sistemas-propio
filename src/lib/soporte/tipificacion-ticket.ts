@@ -6,7 +6,7 @@ import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import { clientesPorId, leerCatalogos, personasDeEmpresa } from "@/lib/soporte/servidor";
 import { avisarSoporte } from "@/lib/soporte/subtareas";
 import { avisarPorPush } from "@/lib/cc/push-usuarios";
-import { enFranjaDeGuardia, puedeEstarACargo } from "@/lib/soporte/dominio";
+import { enFranjaDeGuardia } from "@/lib/soporte/dominio";
 import { enHorarioLaboral, TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
 import { lunesDe } from "@/lib/guardias/semana";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
@@ -57,8 +57,10 @@ export type AsignacionAutomatica = {
  *     Desarrollo de Soporte.
  *   · El suplente NO se asigna solo: asume cuando el principal avisa que no
  *     puede, y eso se registra a mano.
- *
- * Sólo se asigna a alguien que puede quedar a cargo (Desarrollo o QA).
+ *   · El principal de guardia queda a cargo durante su franja AUNQUE su perfil
+ *     no sea Desarrollo/QA (p. ej. una PM que cubre la guardia): ser el principal
+ *     designado le da "perfil de guardia" mientras dura la franja. Fuera de la
+ *     franja nada cambia, así que no es un perfil técnico permanente.
  */
 export async function responsableAutomatico(
   sb: AppSupabaseClient,
@@ -78,7 +80,11 @@ export async function responsableAutomatico(
     personasDeEmpresa(empresaId),
   ]);
   const principal = (data as { soporte_principal_id?: string | null } | null)?.soporte_principal_id ?? null;
-  if (principal && equipo.some((p) => p.id === principal && puedeEstarACargo(p))) {
+  // El principal de guardia queda a cargo de los errores de la franja aunque su
+  // perfil no sea Técnico/QA (p. ej. una PM que cubre la guardia): ser el principal
+  // designado le da "perfil de guardia" mientras dura la franja. Solo pedimos que
+  // siga siendo una persona activa de la empresa.
+  if (principal && equipo.some((p) => p.id === principal)) {
     return { responsableId: principal, motivo: "guardia" };
   }
   return { responsableId: fijo, motivo: "guardia_sin_asignar" };

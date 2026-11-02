@@ -472,10 +472,16 @@ export async function appendOmnicanalConversationScopeToQuery(
     const hadIntent =
       (scope.agentUsuarioIds?.length ?? 0) > 0 || (scope.queueIds?.length ?? 0) > 0;
     if (hadIntent) {
+      // Usuario declarado como operador/agente (hay intención) pero sin fila de agente ni cola
+      // resueltas → está MAL configurado (ej. marcado 'agente' antes de darle su cola). Antes se
+      // omitía el filtro "para no dejar el inbox vacío", pero eso le mostraba TODOS los chats de
+      // la empresa (fuga de alcance). Fail-CLOSED: mejor inbox vacío que ver lo ajeno; el warning
+      // queda para detectar la mala config. A un agente bien configurado nunca le pega (ahí sí se
+      // resuelven cola/agente, no entra a este bloque).
       console.warn(
-        "[appendOmnicanalConversationScopeToQuery] alcance con colas/agentes declarados pero sin ids resueltos; se omite filtro (evita inbox vacío)."
+        "[appendOmnicanalConversationScopeToQuery] alcance con colas/agentes declarados pero sin ids resueltos; se CIERRA el alcance (inbox vacío) para no filtrar lo ajeno. Revisar config del agente."
       );
-      return wrap(q);
+      return wrap(q.eq("id", NO_CONVERSATION_MATCH));
     }
     return wrap(q.eq("id", NO_CONVERSATION_MATCH));
   }

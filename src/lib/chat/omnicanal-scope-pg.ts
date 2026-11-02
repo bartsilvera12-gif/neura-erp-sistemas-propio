@@ -227,11 +227,8 @@ export async function buildPgOmnicanalConversationScopeAndClause(
   const queueIds = scope.queueIds ?? [];
 
   if (queueIds.length === 0 && agentFkIds.length === 0) {
-    const hadIntent =
-      (scope.agentUsuarioIds?.length ?? 0) > 0 || (scope.queueIds?.length ?? 0) > 0;
-    if (hadIntent) {
-      return { sql: "TRUE", params: [], nextOffset: paramOffset };
-    }
+    // Fail-CLOSED igual que el camino REST: operador/agente declarado pero sin cola ni agente
+    // resueltos (mal configurado) → alcance vacío, NO "TRUE" (que mostraba todos los chats ajenos).
     const impossible = normalizeId(IMPOSSIBLE_CONVERSATION_ID);
     return {
       sql: `id = $${paramOffset}::uuid`,

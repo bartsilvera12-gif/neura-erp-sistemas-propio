@@ -791,6 +791,56 @@ export async function listFinalizedClosures(
     }
   }
 
+  // Semáforo de frescura del último mensaje del asesor. El camino rápido (PG) lo resuelve en el
+  // WHERE; acá (PostgREST) lo traducimos a un pre-filtro de conversaciones e intersectamos con el
+  // alcance, de modo que ambos caminos filtran igual. Sin esto el filtro se perdía EN SILENCIO y
+  // "Frío (7+ días)" devolvía chats contestados HOY. Ventanas (en fecha UTC, igual que `::date`):
+  // verde ≤2 / ámbar 3-6 / rojo ≥7 / sin = nunca escribió. Acotado a conversaciones cerradas o
+  // reabiertas (las que pueden tener cierres) y topado a 15.000 (en neura el bucket mayor ≈2.3k).
+  if (filters.frescura_asesor) {
+    const DAY_MS = 86_400_000;
+    const now = new Date();
+    const t0 = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()); // medianoche UTC de hoy
+    const isoAt = (ms: number) => new Date(ms).toISOString();
+    let fq = supabase
+      .from("chat_conversations")
+      .select("id")
+      .eq("empresa_id", empresa_id)
+      .in("status", ["closed", "pending"]);
+    switch (filters.frescura_asesor) {
+      case "sin":
+        fq = fq.is("last_agent_message_at", null);
+        break;
+      case "verde": // ≤2 días
+        fq = fq.gte("last_agent_message_at", isoAt(t0 - 2 * DAY_MS));
+        break;
+      case "ambar": // 3-6 días
+        fq = fq
+          .gte("last_agent_message_at", isoAt(t0 - 6 * DAY_MS))
+          .lte("last_agent_message_at", isoAt(t0 - 2 * DAY_MS - 1));
+        break;
+      case "rojo": // ≥7 días
+        fq = fq.lte("last_agent_message_at", isoAt(t0 - 6 * DAY_MS - 1));
+        break;
+    }
+    const { data: fres, error: fErr } = await fq.limit(15000);
+    if (fErr) {
+      console.warn("[listFinalizedClosures] frescura:", fErr.message);
+      return { rows: [], total: 0, page: p, page_size: ps };
+    }
+    const fresIds = (fres ?? []).map((x) => x.id as string).filter(Boolean);
+    if (fresIds.length === 0) {
+      return { rows: [], total: 0, page: p, page_size: ps };
+    }
+    if (fresIds.length >= 15000) {
+      console.warn("[listFinalizedClosures] frescura truncada a 15000 conversaciones");
+    }
+    conversationIdFilter = intersectIds(conversationIdFilter, fresIds);
+    if (conversationIdFilter.length === 0) {
+      return { rows: [], total: 0, page: p, page_size: ps };
+    }
+  }
+
   const df = filters.date_from?.trim();
   const dt = filters.date_to?.trim();
 
@@ -820,7 +870,7 @@ export async function listFinalizedClosures(
       if (filters.state_label?.trim()) q = q.eq("closure_state_label", filters.state_label.trim());
       if (filters.substate_label?.trim()) q = q.eq("closure_substate_label", filters.substate_label.trim());
       if (filters.rubro_label?.trim()) q = q.eq("rubro_label", filters.rubro_label.trim());
-      // El semáforo de frescura (last_agent_message_at) solo se aplica en el camino rápido (PG).
+      // El semáforo de frescura ya quedó aplicado arriba como pre-filtro de conversation_id.
       if (filters.solo_seguimientos) q = q.not("proxima_accion_at", "is", null).is("seguimiento_hecho_at", null);
       const { data, error } = await q.limit(5000);
       if (error) {

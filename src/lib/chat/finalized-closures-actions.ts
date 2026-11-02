@@ -19,6 +19,8 @@ export type FinalizedClosureListRow = {
   closed_at: string;
   contact_name: string | null;
   phone_number: string;
+  /** Canal de la conversación (para respuestas rápidas por canal en el compositor). */
+  channel_id: string | null;
   channel_type: string;
   channel_nombre: string | null;
   queue_nombre: string | null;
@@ -1082,6 +1084,7 @@ export async function listFinalizedClosures(
       closed_at: row.closed_at,
       contact_name: contact?.name?.trim() || null,
       phone_number: (contact?.phone_number ?? "").trim() || "—",
+      channel_id: conv?.channel_id ?? null,
       channel_type: String(ch?.type ?? "whatsapp"),
       channel_nombre: ch?.nombre ?? null,
       queue_nombre: row.queue_id ? queueById.get(row.queue_id) ?? null : null,

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, MessageSquarePlus, Download, SlidersHorizontal, Send, Loader2 } from "lucide-react";
+import { X, MessageSquarePlus, Download, SlidersHorizontal } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { FinalizedComposer } from "./FinalizedComposer";
 import {
   getErpAttachmentPublicUrl,
   getWhatsAppMediaUrlFromRawPayload,
@@ -391,10 +392,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
 
   // Compositor inline del modal: escribir al contacto sin salir de Finalizadas.
   const [composerOpen, setComposerOpen] = useState(false);
-  const [composerText, setComposerText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendErr, setSendErr] = useState<string | null>(null);
-  const [sendOk, setSendOk] = useState<string | null>(null);
 
   const filtersPayload = useMemo((): FinalizedClosuresFilters => {
     const f: FinalizedClosuresFilters = {};
@@ -491,13 +488,9 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     }
   };
 
-  // Al cambiar (o cerrar) el detalle, el compositor arranca cerrado y limpio.
+  // Al cambiar (o cerrar) el detalle, el compositor arranca cerrado.
   useEffect(() => {
     setComposerOpen(false);
-    setComposerText("");
-    setSendErr(null);
-    setSendOk(null);
-    setSending(false);
   }, [detail]);
 
   useEffect(() => {
@@ -547,41 +540,6 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [detail]);
-
-  // Enviar un mensaje al contacto desde el modal, por la conversación ya existente del cierre.
-  // El backend resuelve el canal real (Baileys/YCloud/Meta); si el proveedor rechaza (p. ej.
-  // ventana de 24h vencida en YCloud) devuelve el error real y lo mostramos tal cual.
-  const enviarMensaje = useCallback(async () => {
-    if (!detail) return;
-    const texto = composerText.trim();
-    if (!texto) {
-      setSendErr("Escribí un mensaje.");
-      return;
-    }
-    setSending(true);
-    setSendErr(null);
-    setSendOk(null);
-    try {
-      const res = await fetchWithSupabaseSession("/api/chat/send", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ conversation_id: detail.conversation_id, message: texto }),
-      });
-      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
-      if (!res.ok || !json?.ok) {
-        setSendErr(json?.error || "No se pudo enviar el mensaje.");
-        return;
-      }
-      setComposerText("");
-      setSendOk("Mensaje enviado.");
-      setMsgReload((n) => n + 1); // recarga el historial del modal
-      void load(); // refresca la lista: el chat deja de estar frío
-    } catch (e) {
-      setSendErr(e instanceof Error ? e.message : "Error de red al enviar.");
-    } finally {
-      setSending(false);
-    }
-  }, [detail, composerText, load]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   // Vista de ASESOR (alcance "own"): filtros reducidos (Fecha, Estado, búsqueda).
@@ -972,11 +930,7 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    setComposerOpen((v) => !v);
-                    setSendErr(null);
-                    setSendOk(null);
-                  }}
+                  onClick={() => setComposerOpen((v) => !v)}
                   aria-expanded={composerOpen}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold shadow-sm transition-colors ${
                     composerOpen
@@ -1080,60 +1034,25 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
               </div>
             </div>
 
-            <div className="shrink-0 space-y-2 border-t border-slate-100 px-5 py-3">
+            <div className="shrink-0 space-y-3 border-t border-slate-100 px-5 py-3">
               {composerOpen && (
-                <div className="space-y-2">
-                  {sendOk && (
-                    <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800">
-                      {sendOk}
-                    </p>
-                  )}
-                  {sendErr && (
-                    <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-800">
-                      {sendErr}
-                    </p>
-                  )}
-                  <textarea
-                    value={composerText}
-                    onChange={(e) => setComposerText(e.target.value)}
-                    rows={2}
-                    autoFocus
-                    disabled={sending}
-                    placeholder="Escribí tu mensaje…"
-                    className="w-full resize-none rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#4FAEB2] disabled:bg-slate-50"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !sending) {
-                        e.preventDefault();
-                        void enviarMensaje();
-                      }
-                    }}
-                  />
-                </div>
+                <FinalizedComposer
+                  conversationId={detail.conversation_id}
+                  channelId={detail.channel_id}
+                  onSent={() => {
+                    setMsgReload((n) => n + 1); // recarga el historial del modal
+                    void load(); // refresca la lista: el chat deja de estar frío
+                  }}
+                />
               )}
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] text-slate-400">
-                  {composerOpen ? "Ctrl/⌘ + Enter para enviar" : ""}
-                </span>
-                <div className="flex items-center gap-2">
-                  {composerOpen && (
-                    <button
-                      type="button"
-                      onClick={() => void enviarMensaje()}
-                      disabled={sending || !composerText.trim()}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-60"
-                    >
-                      {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      {sending ? "Enviando…" : "Enviar"}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setDetail(null)}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Cerrar
-                  </button>
-                </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDetail(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cerrar
+                </button>
               </div>
             </div>
           </div>

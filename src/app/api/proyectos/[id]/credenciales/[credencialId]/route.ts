@@ -33,6 +33,7 @@ export async function PATCH(
     }
     if (body.url !== undefined) patch.url = textoOpcional(body.url);
     if (body.usuario !== undefined) patch.usuario = textoOpcional(body.usuario);
+    if (body.repositorio !== undefined) patch.repositorio = textoOpcional(body.repositorio);
     // La contraseña no se trimea: los espacios pueden ser parte del secreto.
     if (body.password !== undefined) {
       patch.password = typeof body.password === "string" && body.password ? body.password : null;

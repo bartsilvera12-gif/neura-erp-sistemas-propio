@@ -5,8 +5,10 @@ import { Check, ClipboardList, Copy, Eye, EyeOff, Pencil, Plus, Trash2, X } from
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   credencialHref,
+  repoHref,
   type ProyectoCredencial,
 } from "@/lib/proyectos/credenciales-shared";
+import RepoSelector from "@/app/dashboard/proyectos/components/RepoSelector";
 
 type ApiResp<T> = { success: boolean; data?: T; error?: string };
 
@@ -15,10 +17,11 @@ type FormState = {
   url: string;
   usuario: string;
   password: string;
+  repositorio: string;
   notas: string;
 };
 
-const FORM_VACIO: FormState = { nombre: "", url: "", usuario: "", password: "", notas: "" };
+const FORM_VACIO: FormState = { nombre: "", url: "", usuario: "", password: "", repositorio: "", notas: "" };
 
 const inputCls =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20";
@@ -115,6 +118,7 @@ export function credencialComoTexto(c: ProyectoCredencial): string {
   agregar("URL", c.url);
   agregar("Usuario", c.usuario);
   agregar("Contraseña", c.password);
+  agregar("Repositorio", repoHref(c.repositorio));
   const notas = (c.notas ?? "").trim();
   if (notas) lineas.push("", notas);
   return lineas.join("\n");
@@ -300,6 +304,13 @@ function CredencialForm({
         </div>
       </div>
       <div>
+        <label className={labelCls}>Repositorio (GitHub)</label>
+        <RepoSelector
+          value={form.repositorio}
+          onChange={(repositorio) => setForm({ ...form, repositorio })}
+        />
+      </div>
+      <div>
         <label className={labelCls} htmlFor="cred-notas">
           Notas
         </label>
@@ -411,6 +422,7 @@ export default function ProyectoCredencialesTab({ projectId }: { projectId: stri
       url: c.url ?? "",
       usuario: c.usuario ?? "",
       password: c.password ?? "",
+      repositorio: c.repositorio ?? "",
       notas: c.notas ?? "",
     });
   }
@@ -604,6 +616,13 @@ export default function ProyectoCredencialesTab({ projectId }: { projectId: stri
                       label="Usuario"
                       value={c.usuario}
                       mono
+                      onCopied={onCopied}
+                    />
+                    <CampoFila
+                      label="Repositorio"
+                      value={c.repositorio}
+                      mono
+                      href={repoHref(c.repositorio)}
                       onCopied={onCopied}
                     />
                     {/* La contraseña se copia siempre en claro aunque esté oculta. */}

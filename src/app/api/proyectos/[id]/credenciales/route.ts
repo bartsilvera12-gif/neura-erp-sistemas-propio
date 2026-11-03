@@ -69,6 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       url: textoOpcional(body?.url),
       usuario: textoOpcional(body?.usuario),
       password: typeof body?.password === "string" && body.password ? body.password : null,
+      repositorio: textoOpcional(body?.repositorio),
       notas: textoOpcional(body?.notas),
       sort_order: siguiente,
       created_by: auth.usuarioCatalogId,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Eye, EyeOff, KeyRound, Lock, RefreshCw } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { credencialHref, type ProyectoCredencial } from "@/lib/proyectos/credenciales-shared";
+import { credencialHref, repoHref, type ProyectoCredencial } from "@/lib/proyectos/credenciales-shared";
 import {
   CampoFila,
   CopiarTodoButton,
@@ -163,6 +163,7 @@ export default function AccesosProyecto({ proyectoId, compacto = false }: { proy
               <div className="mt-1">
                 <Fila compacto={compacto} label="URL" value={c.url} href={credencialHref(c.url)} onCopied={onCopied} />
                 <Fila compacto={compacto} label="Usuario" value={c.usuario} mono onCopied={onCopied} />
+                <Fila compacto={compacto} label="Repositorio" value={c.repositorio} mono href={repoHref(c.repositorio)} onCopied={onCopied} />
                 <Fila
                   compacto={compacto}
                   label="Contraseña"

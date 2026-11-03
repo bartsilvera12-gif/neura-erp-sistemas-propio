@@ -273,6 +273,33 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Recontacto desde Finalizadas: si la conversación estaba cerrada y un HUMANO le escribe,
+    // se reabre (closed→pending) y vuelve a la bandeja del asesor al que ya está asignada.
+    // Espeja el reabrir del inbound (incoming-message-service: closed→pending). El registro del
+    // cierre (chat_conversation_closures) queda intacto —Finalizadas es historial—, solo cambia
+    // el status. Solo envíos humanos: un recontacto automático/IA no debe arrastrar cierres a
+    // las bandejas. Degradación segura: si falla, el mensaje ya salió y se guardó.
+    if (senderType === "human") {
+      try {
+        if (tenantPg && pool) {
+          const sch = assertAllowedChatDataSchema(dataSchema);
+          await pool.query(
+            `UPDATE "${sch}".chat_conversations SET status = 'pending', updated_at = $2::timestamptz WHERE id = $1::uuid AND empresa_id = $3::uuid AND status = 'closed'`,
+            [conversationId, ts, empresaId]
+          );
+        } else {
+          await supabase
+            .from("chat_conversations")
+            .update({ status: "pending", updated_at: ts })
+            .eq("id", conversationId)
+            .eq("empresa_id", empresaId)
+            .eq("status", "closed");
+        }
+      } catch (e) {
+        console.warn("[api/chat/send] reopen_closed_skip", e instanceof Error ? e.message : String(e));
+      }
+    }
+
     // Contact Center V1: marcar última respuesta del agente (flag, degradación segura).
     if (contactCenterV1Enabled()) {
       try {

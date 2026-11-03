@@ -752,6 +752,17 @@ export async function POST(request: NextRequest) {
       sender_type: "human",
     });
 
+    // Recontacto desde Finalizadas con archivo/nota de voz: reabrir la conversación cerrada
+    // (closed→pending) para que vuelva a la bandeja del asesor. Mismo criterio que /api/chat/send
+    // y que el reabrir del inbound. send-media es siempre acción humana. El cierre en
+    // chat_conversation_closures queda como historial; solo cambia el status.
+    await supabase
+      .from("chat_conversations")
+      .update({ status: "pending", updated_at: ts })
+      .eq("id", conversationId)
+      .eq("empresa_id", empresaId)
+      .eq("status", "closed");
+
     return NextResponse.json({ ok: true, wa_message_id: sendResult.waMessageId, public_url: publicUrl });
   } catch (e) {
     console.error("[api/chat/send-media]", e);

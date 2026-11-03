@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 /**
@@ -91,7 +92,27 @@ export default function CapacitorPushRegister() {
           await PushNotifications.register();
         }
 
+        /**
+         * Volver a registrar cuando cambia quién está logueado.
+         *
+         * El token de FCM identifica al TELÉFONO, no a la persona, y no cambia al cambiar
+         * de usuario. Como esto corría una sola vez al abrir la app, un teléfono donde se
+         * cerró sesión y entró otro seguía apuntando al usuario anterior: a Patricio le
+         * llegaban las notificaciones de los chats de Fernando, con el nombre y el mensaje
+         * de un cliente que no era suyo.
+         *
+         * `register()` vuelve a emitir el mismo token, y el POST lo reapunta al agente que
+         * está logueado ahora (el servidor hace upsert por empresa+token).
+         */
+        const { data: authSub } = supabase.auth.onAuthStateChange((evento) => {
+          if (evento !== "SIGNED_IN" && evento !== "TOKEN_REFRESHED") return;
+          void PushNotifications.register().catch(() => {
+            /* sin permiso o sin red: se reintenta en el próximo arranque */
+          });
+        });
+
         cleanup = () => {
+          authSub.subscription.unsubscribe();
           void regSub.remove();
           void errSub.remove();
           void tapSub.remove();

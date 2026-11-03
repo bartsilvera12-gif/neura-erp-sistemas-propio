@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { filterConversationIdsByOmnicanalScope } from "@/lib/chat/omnicanal-scope";
+import { filterConversationIdsByOmnicanalScope, getOmnicanalScope } from "@/lib/chat/omnicanal-scope";
 import { avisarPorPush } from "@/lib/cc/push-usuarios";
 
 /**
@@ -49,6 +49,25 @@ export async function avisarSupervisionPorPush(args: {
     for (const usuarioId of usuarios) {
       if (usuarioId === usuarioDelAgente) continue;
       try {
+        /**
+         * Un asesor común NO entra acá, aunque la conversación le caiga en el alcance.
+         *
+         * El alcance de un agente es "lo asignado a mí + lo SIN ASIGNAR de mis colas", y
+         * esto corre ANTES de que la asignación automática reparta el chat: en ese
+         * instante la conversación está sin asignar, así que caía en el alcance de TODOS
+         * los agentes de la cola. A Patricio le sonaba el teléfono por cada chat nuevo de
+         * ventas, con el nombre y el mensaje del cliente, y un segundo después el chat
+         * era de Fernando. En su lista no aparecía nunca, lo que lo hacía mas confuso.
+         *
+         * Al asesor ya le llega su push propio por `agent_notification_events` cuando el
+         * chat QUEDA asignado a él. Este aviso es para quien mira sin ser asesor
+         * —supervisión, PM, administración—, que es lo que dice el comentario de arriba.
+         */
+        const alcance = await getOmnicanalScope(args.supabase, args.empresaId, usuarioId);
+        const esAsesorComun =
+          alcance.role === "agente" || (alcance.role === null && alcance.agentUsuarioIds.length > 0);
+        if (esAsesorComun) continue;
+
         const visibles = await filterConversationIdsByOmnicanalScope(
           args.supabase,
           catalogSr,

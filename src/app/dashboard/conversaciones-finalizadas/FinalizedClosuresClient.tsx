@@ -178,8 +178,12 @@ function frescuraAsesor(iso: string | null): { texto: string; dias: number; cls:
 }
 
 function escapeCsvCell(value: string): string {
-  const s = String(value).replace(/"/g, '""');
-  if (/[",\n\r]/.test(s)) return `"${s}"`;
+  // Colapsa saltos de línea a espacio ANTES de armar la celda: un valor multilínea
+  // (p. ej. el texto largo del "Último mensaje / resumen") hace que Excel/Sheets
+  // partan la fila en varias al abrir → el archivo se ve desarmado ("erróneo").
+  // Queda todo en una sola línea; se sigue citando si hay comas o comillas.
+  const s = String(value).replace(/\r\n|\r|\n/g, "  ").replace(/"/g, '""');
+  if (/[",]/.test(s)) return `"${s}"`;
   return s;
 }
 
@@ -471,7 +475,10 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     try {
       const res = await listFinalizedClosures(filtersPayload, 1, EXPORT_MAX_ROWS);
       const csv = buildCsv(res.rows);
-      const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
+      // "sep=," le indica a Excel (en cualquier idioma; el espa\u00F1ol por defecto usa ";")
+      // que las columnas van separadas por coma. Sin esto, Excel en espa\u00F1ol abre todo
+      // amontonado en una sola columna. El BOM va primero para que detecte UTF-8.
+      const blob = new Blob(["\uFEFF", "sep=,\r\n", csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

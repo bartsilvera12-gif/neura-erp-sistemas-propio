@@ -12,9 +12,11 @@ import "server-only";
  * resuelven en una sola consulta SQL. Se usa cuando hay conexión directa a
  * Postgres; si no la hay, el llamador se queda con el camino de siempre.
  *
- * El alcance NO se relaja: un asesor sigue viendo únicamente las
- * conversaciones que tuvo asignadas, y eso se hace en el `WHERE`, no en el
- * cliente.
+ * El alcance NO se relaja: un asesor sigue viendo únicamente los cierres que
+ * ÉL MISMO tipificó (closed_by_usuario_id), y eso se hace en el `WHERE`, no en
+ * el cliente. (Antes se acotaba por asignado actual de la conversación, pero una
+ * misma conversación puede quedar asignada a alguien que NO la cerró —derivación,
+ * reapertura, cambio de cola—; la finalización es de quien la tipificó.)
  */
 
 import type { Pool } from "pg";
@@ -27,8 +29,8 @@ import type {
 
 export type AlcanceCierres =
   | { tipo: "todo" }
-  /** Sólo las conversaciones asignadas a estos `chat_agents.id`. */
-  | { tipo: "agentes"; chatAgentIds: string[] };
+  /** Sólo los cierres TIPIFICADOS por estos usuarios (`closed_by_usuario_id`). */
+  | { tipo: "cerradoPor"; usuarioIds: string[] };
 
 function inicioDelDia(fecha: string): string {
   return `${fecha}T00:00:00.000Z`;
@@ -53,12 +55,12 @@ export async function listarCierresRapido(
   const params: unknown[] = [empresaId];
   let i = 2;
 
-  if (alcance.tipo === "agentes") {
-    if (alcance.chatAgentIds.length === 0) {
+  if (alcance.tipo === "cerradoPor") {
+    if (alcance.usuarioIds.length === 0) {
       return { rows: [], total: 0, page: pagina, page_size: porPagina };
     }
-    cond.push(`co.assigned_agent_id = ANY($${i}::uuid[])`);
-    params.push(alcance.chatAgentIds);
+    cond.push(`cl.closed_by_usuario_id = ANY($${i}::uuid[])`);
+    params.push(alcance.usuarioIds);
     i++;
   }
 
@@ -249,12 +251,12 @@ export async function listarEtiquetasRapido(
   const cond: string[] = ["cl.empresa_id = $1::uuid"];
   const params: unknown[] = [empresaId];
 
-  if (alcance.tipo === "agentes") {
-    if (alcance.chatAgentIds.length === 0) {
+  if (alcance.tipo === "cerradoPor") {
+    if (alcance.usuarioIds.length === 0) {
       return { state_labels: [], substate_labels: [], rubro_labels: [], closed_by_ids: [] };
     }
-    cond.push("co.assigned_agent_id = ANY($2::uuid[])");
-    params.push(alcance.chatAgentIds);
+    cond.push("cl.closed_by_usuario_id = ANY($2::uuid[])");
+    params.push(alcance.usuarioIds);
   }
 
   const sql = `

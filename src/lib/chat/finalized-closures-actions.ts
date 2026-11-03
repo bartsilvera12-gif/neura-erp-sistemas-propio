@@ -4,7 +4,6 @@ import { requireEmpresaTenantServiceRole } from "@/lib/chat/empresa-tenant-servi
 import type { OmnicanalScope } from "@/lib/chat/omnicanal-scope";
 import { alcanceFinalizados } from "@/lib/chat/finalizados-visibilidad";
 import {
-  appendOmnicanalConversationScopeToQuery,
   getOmnicanalScope,
   isOmnicanalAdminScope,
   resolveChatAgentIdsForUsuarios,
@@ -364,19 +363,8 @@ async function loadFinalizedFilterOptionsScopedTeam(
     }
   }
 
-  let convIds: string[] = [];
-  let cq = supabase.from("chat_conversations").select("id").eq("empresa_id", empresa_id);
-  cq = (await appendOmnicanalConversationScopeToQuery(supabase, empresa_id, scope, cq)).builder;
-  const { data: scopedConv, error: convErr } = await cq.limit(8000);
-  if (convErr) {
-    console.warn("[loadFinalizedFilterOptions] scoped conv ids:", convErr.message);
-    return { ...emptyTeam, queues, agents, channels };
-  }
-  convIds = (scopedConv ?? [])
-    .map((r: { id?: string }) => String(r.id ?? "").trim())
-    .filter(Boolean);
-
-  if (convIds.length === 0) {
+  const teamUsuarioIds = [...new Set(scope.agentUsuarioIds.map((x) => String(x ?? "").trim()).filter(Boolean))];
+  if (teamUsuarioIds.length === 0) {
     return { ...emptyTeam, queues, agents, channels };
   }
 
@@ -384,22 +372,19 @@ async function loadFinalizedFilterOptionsScopedTeam(
   const subs = new Set<string>();
   const rubros = new Set<string>();
   const closerIdSet = new Set<string>();
-  // Lotes de ID_IN_CHUNK (50), no de 120: con 120 uuids la URL pasa los ~3,7 KB
-  // que aguanta el gateway y la respuesta es un 502 que acá se ignoraba en
-  // silencio, dejando el combo de estados corto o vacío.
-  const chunk = ID_IN_CHUNK;
-  for (let i = 0; i < convIds.length; i += chunk) {
-    const slice = convIds.slice(i, i + chunk);
-    const { data: closureSample, error: ce } = await supabase
-      .from("chat_conversation_closures")
-      .select("closed_by_usuario_id, closure_state_label, closure_substate_label, rubro_label")
-      .eq("empresa_id", empresa_id)
-      .in("conversation_id", slice)
-      .limit(4000);
-    if (ce) {
-      if (!isMissingClosureTable(ce)) console.warn("[loadFinalizedFilterOptions] closures scoped:", ce.message);
-      continue;
-    }
+  // Alcance del combo = cierres TIPIFICADOS por el equipo (closed_by), igual que la lista.
+  // Se acota por closed_by_usuario_id (pocos ids) en vez de por miles de conversation_id,
+  // así la URL nunca pasa el límite del gateway (el 502 silencioso dejaba el combo corto).
+  const { data: closureSample, error: ce } = await supabase
+    .from("chat_conversation_closures")
+    .select("closed_by_usuario_id, closure_state_label, closure_substate_label, rubro_label")
+    .eq("empresa_id", empresa_id)
+    .in("closed_by_usuario_id", teamUsuarioIds)
+    .order("closed_at", { ascending: false })
+    .limit(8000);
+  if (ce) {
+    if (!isMissingClosureTable(ce)) console.warn("[loadFinalizedFilterOptions] closures scoped:", ce.message);
+  } else {
     for (const r of closureSample ?? []) {
       const cl = String((r as { closed_by_usuario_id?: string | null }).closed_by_usuario_id ?? "").trim();
       if (cl) closerIdSet.add(cl);
@@ -464,21 +449,20 @@ async function loadFinalizedFilterOptionsOwn(
     ux_scope: "own",
   };
 
-  const ownFkIds = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, [usuario_id]);
-  if (ownFkIds.length === 0) return base;
-
   /*
     Camino rápido: una consulta, con el alcance como parámetro en vez de miles
     de ids dentro de la URL. Es lo que arregla el combo "Estado" corto o vacío
     para quien acumula muchos cierres, y de paso lo deja armado sobre la misma
     unión que la lista: lo que ofrece el filtro es lo que se puede llegar a ver.
+    Alcance = los cierres que ESTE usuario tipificó (closed_by_usuario_id), igual
+    que la lista.
   */
   const pool = getChatPostgresPool();
   if (pool && dataSchema) {
     try {
       const et = await listarEtiquetasRapido(pool, dataSchema, empresa_id, {
-        tipo: "agentes",
-        chatAgentIds: ownFkIds,
+        tipo: "cerradoPor",
+        usuarioIds: [usuario_id],
       });
       return { ...base, state_labels: et.state_labels, substate_labels: et.substate_labels, rubro_labels: et.rubro_labels };
     } catch (e) {
@@ -489,46 +473,28 @@ async function loadFinalizedFilterOptionsOwn(
     }
   }
 
-  const { data: ownConv, error: ownErr } = await supabase
-    .from("chat_conversations")
-    .select("id")
-    .eq("empresa_id", empresa_id)
-    .in("assigned_agent_id", ownFkIds)
-    .eq("status", "closed")
-    .limit(15000);
-  if (ownErr) {
-    console.warn("[loadFinalizedFilterOptions] alcance asesor:", ownErr.message);
-    return base;
-  }
-  const convIds = (ownConv ?? [])
-    .map((r: { id?: string }) => String(r.id ?? "").trim())
-    .filter(Boolean);
-  if (convIds.length === 0) return base;
-
+  // Fallback PostgREST: etiquetas de los cierres tipificados por este usuario (closed_by).
   const states = new Set<string>();
   const subs = new Set<string>();
   const rubros = new Set<string>();
-  const chunk = ID_IN_CHUNK;
-  for (let i = 0; i < convIds.length; i += chunk) {
-    const slice = convIds.slice(i, i + chunk);
-    const { data: closureSample, error: ce } = await supabase
-      .from("chat_conversation_closures")
-      .select("closure_state_label, closure_substate_label, rubro_label")
-      .eq("empresa_id", empresa_id)
-      .in("conversation_id", slice)
-      .limit(4000);
-    if (ce) {
-      if (!isMissingClosureTable(ce)) console.warn("[loadFinalizedFilterOptions] closures asesor:", ce.message);
-      continue;
-    }
-    for (const r of closureSample ?? []) {
-      const st = String((r as { closure_state_label?: string }).closure_state_label ?? "").trim();
-      const su = String((r as { closure_substate_label?: string }).closure_substate_label ?? "").trim();
-      const rb = String((r as { rubro_label?: string }).rubro_label ?? "").trim();
-      if (st) states.add(st);
-      if (su) subs.add(su);
-      if (rb) rubros.add(rb);
-    }
+  const { data: closureSample, error: ce } = await supabase
+    .from("chat_conversation_closures")
+    .select("closure_state_label, closure_substate_label, rubro_label")
+    .eq("empresa_id", empresa_id)
+    .eq("closed_by_usuario_id", usuario_id)
+    .order("closed_at", { ascending: false })
+    .limit(8000);
+  if (ce) {
+    if (!isMissingClosureTable(ce)) console.warn("[loadFinalizedFilterOptions] closures asesor:", ce.message);
+    return base;
+  }
+  for (const r of closureSample ?? []) {
+    const st = String((r as { closure_state_label?: string }).closure_state_label ?? "").trim();
+    const su = String((r as { closure_substate_label?: string }).closure_substate_label ?? "").trim();
+    const rb = String((r as { rubro_label?: string }).rubro_label ?? "").trim();
+    if (st) states.add(st);
+    if (su) subs.add(su);
+    if (rb) rubros.add(rb);
   }
 
   return {
@@ -617,16 +583,19 @@ export async function listFinalizedClosures(
       if (bypass || isOmnicanalAdminScope(scope)) {
         alcance = { tipo: "todo" };
       } else {
-        // Un asesor ve lo suyo; un supervisor, lo de su equipo.
+        // Cada quien ve los cierres que ÉL tipificó; un supervisor (o quien tiene
+        // visibilidad extra), los de su equipo. Se acota por `closed_by_usuario_id`,
+        // NO por asignado: la finalización es de quien la cerró, no de a quién quedó
+        // asignada la conversación después (derivación/reapertura/cambio de cola).
         const usuarios =
           scope.role === "supervisor" && scope.agentUsuarioIds.length > 0
             ? scope.agentUsuarioIds
             : [usuario_id];
-        const chatAgentIds = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, usuarios);
-        if (chatAgentIds.length === 0) {
+        const usuarioIds = [...new Set(usuarios.map((x) => String(x ?? "").trim()).filter(Boolean))];
+        if (usuarioIds.length === 0) {
           return { rows: [], total: 0, page: p, page_size: ps };
         }
-        alcance = { tipo: "agentes", chatAgentIds };
+        alcance = { tipo: "cerradoPor", usuarioIds };
       }
       return await listarCierresRapido(
         poolRapido,
@@ -647,83 +616,20 @@ export async function listFinalizedClosures(
     }
   }
 
+  // Alcance de NO-admin: se acota por QUIÉN CERRÓ (closed_by_usuario_id), nunca por
+  // asignado ni por conversation_id. Una misma conversación puede tener cierres de
+  // varias personas (derivación/reapertura/cambio de cola); acotar por conv filtraría
+  // de más (escondería cierres propios) o de menos (mostraría ajenos). Se aplica como
+  // `.in("closed_by_usuario_id", …)` directo sobre las filas de cierre, más abajo.
+  // Asesor puro → solo él; supervisor / visibilidad extra → su equipo.
+  let scopeCloserIds: string[] | null = null;
   if (!bypass && !isOmnicanalAdminScope(scope)) {
-    const fq = filters.queue_id?.trim();
-    if (fq) {
-      const allowedQ = await resolveQueueIdsForUsuarios(supabase, empresa_id, scope.agentUsuarioIds);
-      if (!allowedQ.includes(fq)) {
-        return { rows: [], total: 0, page: p, page_size: ps };
-      }
-    }
-    const fa = filters.assigned_usuario_id?.trim();
-    if (fa) {
-      const allowedAgents = new Set(scope.agentUsuarioIds.map((x) => String(x ?? "").trim()).filter(Boolean));
-      if (scope.role === "supervisor") {
-        if (!allowedAgents.has(fa)) return { rows: [], total: 0, page: p, page_size: ps };
-      } else if (scope.role === "agente") {
-        if (fa !== usuario_id) return { rows: [], total: 0, page: p, page_size: ps };
-      } else if (allowedAgents.size > 0 && !allowedAgents.has(fa)) {
-        return { rows: [], total: 0, page: p, page_size: ps };
-      }
-    }
-    const fc = filters.channel_id?.trim();
-    if (fc) {
-      const fks = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, scope.agentUsuarioIds);
-      if (fks.length === 0) return { rows: [], total: 0, page: p, page_size: ps };
-      const { data: chHit } = await supabase
-        .from("chat_conversations")
-        .select("id")
-        .eq("empresa_id", empresa_id)
-        .eq("channel_id", fc)
-        .in("assigned_agent_id", fks)
-        .limit(1)
-        .maybeSingle();
-      if (!chHit) return { rows: [], total: 0, page: p, page_size: ps };
-    }
-  }
-
-  let omnicanalConvIds: string[] | null = null;
-  if (!bypass && !isOmnicanalAdminScope(scope)) {
-    // ASESOR PURO (rol 'agente' o sin rol con fila chat_agents): ve SOLO SUS finalizadas =
-    // conversaciones ASIGNADAS a él. No usamos la Regla B del inbox (que además sumaría las
-    // sin-asignar de su cola). Acotamos a status='closed' para mantener el .in() chico (evita
-    // URLs largas de PostgREST). SUPERVISOR conserva su alcance de equipo (appendOmnicanal).
-    const esAsesorPuro = scope.role !== "supervisor";
-    if (esAsesorPuro) {
-      const ownFkIds = await resolveChatAgentIdsForUsuarios(supabase, empresa_id, [usuario_id]);
-      if (ownFkIds.length === 0) {
-        return { rows: [], total: 0, page: p, page_size: ps };
-      }
-      const { data: ownConv, error: ownErr } = await supabase
-        .from("chat_conversations")
-        .select("id")
-        .eq("empresa_id", empresa_id)
-        .in("assigned_agent_id", ownFkIds)
-        .eq("status", "closed")
-        .limit(15000);
-      if (ownErr) {
-        console.warn("[listFinalizedClosures] alcance asesor:", ownErr.message);
-        return { rows: [], total: 0, page: p, page_size: ps };
-      }
-      omnicanalConvIds = (ownConv ?? [])
-        .map((r: { id?: string }) => String(r.id ?? "").trim())
-        .filter(Boolean);
-    } else {
-      let cq = supabase.from("chat_conversations").select("id").eq("empresa_id", empresa_id);
-      cq = (await appendOmnicanalConversationScopeToQuery(supabase, empresa_id, scope, cq)).builder;
-      const { data: scopedConv, error: omnErr } = await cq.limit(15000);
-      if (omnErr) {
-        console.warn("[listFinalizedClosures] alcance omnicanal:", omnErr.message);
-        return { rows: [], total: 0, page: p, page_size: ps };
-      }
-      omnicanalConvIds = (scopedConv ?? [])
-        .map((r: { id?: string }) => String(r.id ?? "").trim())
-        .filter(Boolean);
-      if (omnicanalConvIds.length >= 15000) {
-        console.warn("[listFinalizedClosures] alcance omnicanal truncado a 15000 conversaciones");
-      }
-    }
-    if (omnicanalConvIds.length === 0) {
+    const usuarios =
+      scope.role === "supervisor" && scope.agentUsuarioIds.length > 0
+        ? scope.agentUsuarioIds
+        : [usuario_id];
+    scopeCloserIds = [...new Set(usuarios.map((x) => String(x ?? "").trim()).filter(Boolean))];
+    if (scopeCloserIds.length === 0) {
       return { rows: [], total: 0, page: p, page_size: ps };
     }
   }
@@ -820,13 +726,6 @@ export async function listFinalizedClosures(
     }
   }
 
-  if (omnicanalConvIds && omnicanalConvIds.length > 0) {
-    conversationIdFilter = intersectIds(conversationIdFilter, omnicanalConvIds);
-    if (conversationIdFilter.length === 0) {
-      return { rows: [], total: 0, page: p, page_size: ps };
-    }
-  }
-
   // Semáforo de frescura del último mensaje del asesor. El camino rápido (PG) lo resuelve en el
   // WHERE; acá (PostgREST) lo traducimos a un pre-filtro de conversaciones e intersectamos con el
   // alcance, de modo que ambos caminos filtran igual. Sin esto el filtro se perdía EN SILENCIO y
@@ -899,6 +798,7 @@ export async function listFinalizedClosures(
         )
         .eq("empresa_id", empresa_id)
         .in("conversation_id", slice);
+      if (scopeCloserIds) q = q.in("closed_by_usuario_id", scopeCloserIds);
       if (df) q = q.gte("closed_at", startOfDayIso(df));
       if (dt) q = q.lte("closed_at", endOfDayIso(dt));
       if (filters.queue_id?.trim()) q = q.eq("queue_id", filters.queue_id.trim());
@@ -935,6 +835,7 @@ export async function listFinalizedClosures(
       .from("chat_conversation_closures")
       .select("id", { count: "exact", head: true })
       .eq("empresa_id", empresa_id);
+    if (scopeCloserIds) countQuery = countQuery.in("closed_by_usuario_id", scopeCloserIds);
     if (df) countQuery = countQuery.gte("closed_at", startOfDayIso(df));
     if (dt) countQuery = countQuery.lte("closed_at", endOfDayIso(dt));
     if (filters.queue_id?.trim()) countQuery = countQuery.eq("queue_id", filters.queue_id.trim());
@@ -967,6 +868,7 @@ export async function listFinalizedClosures(
         nullsFirst: false,
       })
       .range(from, to);
+    if (scopeCloserIds) dataQuery = dataQuery.in("closed_by_usuario_id", scopeCloserIds);
     if (df) dataQuery = dataQuery.gte("closed_at", startOfDayIso(df));
     if (dt) dataQuery = dataQuery.lte("closed_at", endOfDayIso(dt));
     if (filters.queue_id?.trim()) dataQuery = dataQuery.eq("queue_id", filters.queue_id.trim());

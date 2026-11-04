@@ -25,7 +25,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
-import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import { FechaSelect } from "@/components/ui/FechaSelect";
 import { numeroTicket } from "@/lib/soporte/dominio";
 import { apiSoporte } from "./_ui/api";
@@ -75,24 +74,13 @@ const ACCESOS: { titulo: string; detalle: string; href: string; icono: LucideIco
   { titulo: "Reportes", detalle: "SLA, tiempos y devoluciones", href: "/dashboard/soporte/reportes", icono: BarChart3, tono: "ambar" },
 ];
 
-const PERIODOS = [
-  { value: "mes", label: "Mes actual" },
-  { value: "7", label: "Últimos 7 días" },
-  { value: "30", label: "Últimos 30 días" },
-  { value: "90", label: "Últimos 90 días" },
-  { value: "0", label: "Todo el historial" },
-];
-
-// El último dashboard pedido, por período: volver a la pantalla la pinta al
-// instante con lo que había, y se actualiza en silencio.
+// El último dashboard pedido, por rango de fechas: volver a la pantalla la
+// pinta al instante con lo que había, y se actualiza en silencio.
 const recordado = new Map<string, Dashboard>();
+const claveRango = (desde: string, hasta: string) => `${desde}|${hasta}`;
 
 type PorHora = { desde: string | null; hasta: string | null; total: number; horas: { hora: number; total: number }[] };
 
-const primeroDelMes = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-};
 const hoyISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -176,8 +164,9 @@ function Variacion({ valor, malo }: { valor: number | null | undefined; malo?: b
  * accesos rápidos cubren lo que se hace todos los días sin pasar por el menú.
  */
 export default function SoporteDashboardPage() {
-  const [dias, setDias] = useState("mes");
-  const [datos, setDatos] = useState<Dashboard | null>(() => recordado.get("mes") ?? null);
+  const [desde, setDesde] = useState(hoyISO);
+  const [hasta, setHasta] = useState(hoyISO);
+  const [datos, setDatos] = useState<Dashboard | null>(() => recordado.get(claveRango(hoyISO(), hoyISO())) ?? null);
   const [error, setError] = useState<string | null>(null);
 
   // PM, QA y Desarrollo no ven el Dashboard: van directo a los tickets.
@@ -196,11 +185,12 @@ export default function SoporteDashboardPage() {
 
   useEffect(() => {
     let vivo = true;
-    const guardado = recordado.get(dias);
+    const clave = claveRango(desde, hasta);
+    const guardado = recordado.get(clave);
     if (guardado) setDatos(guardado);
-    apiSoporte<Dashboard>(`/api/soporte/dashboard?dias=${dias}`)
+    apiSoporte<Dashboard>(`/api/soporte/dashboard?desde=${desde}&hasta=${hasta}`)
       .then((d) => {
-        recordado.set(dias, d);
+        recordado.set(clave, d);
         if (vivo) {
           setDatos(d);
           setError(null);
@@ -210,7 +200,7 @@ export default function SoporteDashboardPage() {
     return () => {
       vivo = false;
     };
-  }, [dias]);
+  }, [desde, hasta]);
 
   const totalTipos = datos?.por_tipo.reduce((s, t) => s + t.cantidad, 0) ?? 0;
   const totalSistema = datos?.por_sistema?.reduce((s, t) => s + t.cantidad, 0) ?? 0;
@@ -227,22 +217,20 @@ export default function SoporteDashboardPage() {
       return next;
     });
 
-  // Card "Tickets por hora del día": rango de fechas propio.
-  const [desdeHora, setDesdeHora] = useState(primeroDelMes);
-  const [hastaHora, setHastaHora] = useState(hoyISO);
+  // Card "Tickets por hora del día": usa el mismo rango del dashboard.
   const [porHora, setPorHora] = useState<PorHora | null>(null);
   const [cargandoHoras, setCargandoHoras] = useState(false);
   useEffect(() => {
     let vivo = true;
     setCargandoHoras(true);
-    apiSoporte<PorHora>(`/api/soporte/dashboard/por-hora?desde=${desdeHora}&hasta=${hastaHora}`)
+    apiSoporte<PorHora>(`/api/soporte/dashboard/por-hora?desde=${desde}&hasta=${hasta}`)
       .then((d) => vivo && setPorHora(d))
       .catch(() => vivo && setPorHora(null))
       .finally(() => vivo && setCargandoHoras(false));
     return () => {
       vivo = false;
     };
-  }, [desdeHora, hastaHora]);
+  }, [desde, hasta]);
   const horaPico = porHora?.horas.reduce<{ hora: number; total: number } | null>(
     (best, h) => (h.total > (best?.total ?? 0) ? h : best),
     null
@@ -256,8 +244,15 @@ export default function SoporteDashboardPage() {
         icono={Headphones}
         acciones={
           <>
-            <div className="w-48">
-              <FancySelect size="sm" ariaLabel="Período" value={dias} onChange={setDias} options={PERIODOS} />
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                Desde
+                <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} max={hasta} className="rounded-lg border border-slate-200 px-2 py-1 text-xs" />
+              </label>
+              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                Hasta
+                <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} min={desde} max={hoyISO()} className="rounded-lg border border-slate-200 px-2 py-1 text-xs" />
+              </label>
             </div>
             {/* Los tickets nacen de la tipificación del cliente. */}
             <Link href="/gestion-clientes" className={claseBoton("primario")} title="Los tickets se cargan desde la tipificación del cliente">
@@ -486,34 +481,7 @@ export default function SoporteDashboardPage() {
         </div>
 
         {/* Tickets cargados por hora del día (rango de fechas propio) */}
-        <Tarjeta
-          titulo="Tickets por hora del día"
-          icono={BarChart3}
-          tono="turquesa"
-          accion={
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
-                Desde
-                <FechaSelect
-                  value={desdeHora}
-                  onChange={(e) => setDesdeHora(e.target.value)}
-                  max={hastaHora}
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                />
-              </label>
-              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
-                Hasta
-                <FechaSelect
-                  value={hastaHora}
-                  onChange={(e) => setHastaHora(e.target.value)}
-                  min={desdeHora}
-                  max={hoyISO()}
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                />
-              </label>
-            </div>
-          }
-        >
+        <Tarjeta titulo="Tickets por hora del día" icono={BarChart3} tono="turquesa">
           <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
             <span>{porHora ? `${porHora.total} ticket${porHora.total === 1 ? "" : "s"} cargado${porHora.total === 1 ? "" : "s"} en el período` : ""}</span>
             {horaPico && horaPico.total > 0 ? (

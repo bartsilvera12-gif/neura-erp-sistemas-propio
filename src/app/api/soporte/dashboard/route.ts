@@ -6,52 +6,54 @@ import { TZ_PY } from "@/lib/format/hora-py";
 
 const DIA_MS = 86_400_000;
 
-/** Instante (ms) del 1° del mes en curso, 00:00 hora de Paraguay. */
-function inicioMesPy(ahora: number): number {
-  const p = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit" }).formatToParts(new Date(ahora));
-  const y = p.find((x) => x.type === "year")?.value ?? "1970";
-  const m = p.find((x) => x.type === "month")?.value ?? "01";
-  return Date.parse(`${y}-${m}-01T00:00:00-03:00`);
+/** Fecha de hoy en Paraguay como YYYY-MM-DD. */
+function hoyPy(): string {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("year")}-${g("month")}-${g("day")}`;
 }
+const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * GET /api/soporte/dashboard?dias=30
+ * GET /api/soporte/dashboard?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
  *
- * Vista ejecutiva: KPIs de los tickets creados en el período, con la variación
- * contra el período anterior de igual largo, y las dos distribuciones del
- * tablero. `dias=0` = todo el historial (sin comparación).
+ * Vista ejecutiva: KPIs de los tickets creados en el rango [desde, hasta] (en
+ * hora de Paraguay, `hasta` inclusive), con la variación contra el rango
+ * anterior de igual largo, y las distribuciones del tablero. Sin parámetros,
+ * por defecto es el día actual.
  */
 export async function GET(request: Request) {
   const auth = await requireSoporteApi(request);
   if (!auth.ok) return sinPermiso(auth);
   if (!auth.veDashboard) return sinPermiso({ ok: false, status: 403, message: "El Dashboard de Soporte no está habilitado para tu usuario" });
   try {
-    const periodo = new URL(request.url).searchParams.get("dias") ?? "30";
+    const sp = new URL(request.url).searchParams;
+    const hoy = hoyPy();
+    let desde = sp.get("desde") ?? "";
+    let hasta = sp.get("hasta") ?? "";
+    if (!RE_FECHA.test(desde)) desde = hoy; // por defecto: día actual
+    if (!RE_FECHA.test(hasta)) hasta = hoy;
+    if (hasta < desde) hasta = desde; // rango coherente
+
     const cat = await leerCatalogos(auth.sb, auth.empresaId);
     const todos = await ticketsParaAgregar(auth.sb, auth.empresaId);
 
-    const ahora = Date.now();
-    const ahoraIso = new Date(ahora).toISOString();
-    // "mes" = mes calendario en curso (sin comparación, es parcial). El resto son
-    // ventanas móviles de N días (con comparación contra el período anterior).
-    let inicio: number | null;
-    let inicioPrevio: number | null;
-    let dias = 0;
-    if (periodo === "mes") {
-      inicio = inicioMesPy(ahora);
-      inicioPrevio = null;
-    } else {
-      dias = Math.max(0, Math.min(365, Number(periodo) || 0));
-      inicio = dias ? ahora - dias * DIA_MS : null;
-      inicioPrevio = dias ? ahora - 2 * dias * DIA_MS : null;
-    }
+    const ahoraIso = new Date().toISOString();
+    // Rango en hora de Paraguay. `fin` es exclusivo = 00:00 del día siguiente a
+    // `hasta`, para incluir ese día completo. La comparación es contra el rango
+    // inmediatamente anterior de igual largo.
+    const inicio = Date.parse(`${desde}T00:00:00-03:00`);
+    const fin = Date.parse(`${hasta}T00:00:00-03:00`) + DIA_MS;
+    const largoMs = fin - inicio;
+    const inicioPrevio = inicio - largoMs;
+    const dias = Math.max(1, Math.round(largoMs / DIA_MS));
 
-    const enRango = (t: TicketFila, desde: number | null, hasta: number) => {
+    const enRango = (t: TicketFila, d: number, h: number) => {
       const c = Date.parse(t.created_at);
-      return (desde == null || c >= desde) && c < hasta;
+      return c >= d && c < h;
     };
-    const actuales = todos.filter((t) => enRango(t, inicio, ahora + 1));
-    const previos = inicioPrevio != null && inicio != null ? todos.filter((t) => enRango(t, inicioPrevio, inicio)) : [];
+    const actuales = todos.filter((t) => enRango(t, inicio, fin));
+    const previos = todos.filter((t) => enRango(t, inicioPrevio, inicio));
 
     const kpis = (lista: TicketFila[]) => {
       const cuenta = (...codigos: string[]) => lista.filter((t) => codigos.includes(t.estado_codigo)).length;
@@ -67,7 +69,7 @@ export async function GET(request: Request) {
       };
     };
     const kActual = kpis(actuales);
-    const kPrevio = inicioPrevio != null && inicio != null ? kpis(previos) : null;
+    const kPrevio = kpis(previos);
     const variacion: Record<string, number | null> = {};
     for (const k of Object.keys(kActual) as (keyof typeof kActual)[]) {
       const antes = kPrevio?.[k];
@@ -170,7 +172,7 @@ export async function GET(request: Request) {
       porProgramador = [];
     }
 
-    return ok({ dias, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo, por_sistema: porSistema, top_clientes: topClientes, por_programador: porProgramador });
+    return ok({ dias, desde, hasta, kpis: kActual, variacion, por_estado: porEstado, por_tipo: porTipo, por_sistema: porSistema, top_clientes: topClientes, por_programador: porProgramador });
   } catch (e) {
     return errorInesperado(e);
   }

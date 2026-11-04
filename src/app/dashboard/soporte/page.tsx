@@ -25,7 +25,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import CountUp from "@/components/reactbits/CountUp";
-import { FechaSelect } from "@/components/ui/FechaSelect";
+import { RangoFechas } from "@/components/ui/RangoFechas";
 import { numeroTicket } from "@/lib/soporte/dominio";
 import { apiSoporte } from "./_ui/api";
 import { Aviso, Encabezado, Esqueleto, IconoTile, PALETA_TIPOS, Pagina, TONOS, Tarjeta, TarjetaViva, Vacio, claseBoton, type Tono } from "./_ui/ui";
@@ -244,16 +244,7 @@ export default function SoporteDashboardPage() {
         icono={Headphones}
         acciones={
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
-                Desde
-                <FechaSelect value={desde} onChange={(e) => setDesde(e.target.value)} max={hasta} className="rounded-lg border border-slate-200 px-2 py-1 text-xs" />
-              </label>
-              <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
-                Hasta
-                <FechaSelect value={hasta} onChange={(e) => setHasta(e.target.value)} min={desde} max={hoyISO()} className="rounded-lg border border-slate-200 px-2 py-1 text-xs" />
-              </label>
-            </div>
+            <RangoFechas desde={desde} hasta={hasta} onDesde={setDesde} onHasta={setHasta} max={hoyISO()} />
             {/* Los tickets nacen de la tipificación del cliente. */}
             <Link href="/gestion-clientes" className={claseBoton("primario")} title="Los tickets se cargan desde la tipificación del cliente">
               <Plus className="h-4 w-4" aria-hidden /> Cargar ticket

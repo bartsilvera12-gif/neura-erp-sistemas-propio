@@ -256,7 +256,7 @@ export default function TablaTickets({
         <div className="grid gap-2 border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(130px,1fr))_auto_auto]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
-            <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por asunto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
+            <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por asunto, cliente, proyecto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
           </label>
           <SelectorBuscable tam="sm" avatares ariaLabel="Cliente" opciones={[{ value: "", label: "Todos los clientes" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={filtros.cliente_id} onChange={(v) => cambiar({ cliente_id: v || null })} placeholder="Todos los clientes" buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
           <FancySelect size="sm" ariaLabel="Estado" value={filtros.estado} onChange={(v) => cambiar({ estado: v || null })} options={op.estado} />

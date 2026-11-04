@@ -34,6 +34,8 @@ export type CatalogosConEquipo = CatalogosSoporte & {
   personas: Persona[];
   puede_configurar: boolean;
   usuario_id: string;
+  /** Principal de guardia de la semana (para el "perfil de técnico" durante la franja). */
+  guardia_principal_id: string | null;
 };
 
 /**

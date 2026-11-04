@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Hand, Loader2, Lock } from "lucide-react";
-import { TRANSICIONES, enFranjaDeGuardia, mensajeEstadoFinal, puedeEstarACargo, qaSoporteHabilitado, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
+import { TRANSICIONES, enFranjaDeGuardia, esResponsableElegible, mensajeEstadoFinal, qaSoporteHabilitado, requiereResponsable, transicionPermitida } from "@/lib/soporte/dominio";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte } from "./api";
 import { Aviso, Fase, TONO_AREA, oscurecer } from "./ui";
@@ -84,12 +84,12 @@ export default function EstadoRapido() {
   };
 
   const yo = catalogos.personas.find((p) => p.id === catalogos.usuario_id);
-  const puedoTomar = Boolean(yo && puedeEstarACargo(yo) && t.responsable_id !== yo.id && !final);
+  const puedoTomar = Boolean(yo && esResponsableElegible(yo, catalogos.guardia_principal_id) && t.responsable_id !== yo.id && !final);
 
   const opcionesPersona = [
     { value: "", label: "Sin asignar" },
     // Desarrollo y QA; y quien ya estaba a cargo de antes, para que no desaparezca del selector.
-    ...catalogos.personas.filter((p) => puedeEstarACargo(p) || p.id === t.responsable_id).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
+    ...catalogos.personas.filter((p) => esResponsableElegible(p, catalogos.guardia_principal_id) || p.id === t.responsable_id).map((p) => ({ value: p.id, label: p.nombre, detalle: p.area, tono: TONO_AREA[p.area] })),
   ];
 
   const cambiandoEstado = guardando != null && guardando !== "responsable";

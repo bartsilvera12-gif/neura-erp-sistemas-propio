@@ -1,5 +1,5 @@
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
-import { puedeEstarACargo } from "@/lib/soporte/dominio";
+import { enFranjaDeGuardia, esResponsableElegible } from "@/lib/soporte/dominio";
 import { crearTipificacionConTicket, gestionDeTipoTicket, responsableAutomatico } from "@/lib/soporte/tipificacion-ticket";
 import { requireCargaSoporteApi } from "@/lib/soporte/soporte-auth";
 import { clienteDelContacto } from "@/lib/clientes/cliente-de-contacto";
@@ -13,6 +13,7 @@ import {
   ok,
   personasDeEmpresa,
   personasPorId,
+  principalDeGuardia,
   sinPermiso,
 } from "@/lib/soporte/servidor";
 
@@ -120,12 +121,14 @@ export async function GET(request: Request) {
       // sub-estado elegido tiene acción ticket_error/ticket_cambio.
       estadosCatalogo(auth.sb, auth.empresaId),
     ]);
+    // Durante la franja de guardia, el principal de guardia también puede quedar a cargo.
+    const principalGuardia = enFranjaDeGuardia() ? await principalDeGuardia(auth.sb, auth.empresaId) : null;
     return ok({
       // Sólo los tipos que nacen de una tipificación (Error y Cambio).
       tipos: cat.tipos.filter((t) => t.activo && gestionDeTipoTicket(t.codigo)),
       estados: estadosCat,
       clasificaciones: cat.clasificaciones.filter((c) => c.activo),
-      a_cargo: personas.filter(puedeEstarACargo),
+      a_cargo: personas.filter((p) => esResponsableElegible(p, principalGuardia)),
       // Quién recibe el ticket: se asigna solo, quien carga no elige.
       asignacion: {
         error: { responsable: personas.find((p) => p.id === asigError.responsableId) ?? null, motivo: asigError.motivo },

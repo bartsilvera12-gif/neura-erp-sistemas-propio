@@ -7,6 +7,7 @@ import {
   leerCatalogos,
   ok,
   personasDeEmpresa,
+  principalDeGuardia,
   sinPermiso,
 } from "@/lib/soporte/servidor";
 
@@ -18,11 +19,12 @@ export async function GET(request: Request) {
   const auth = await requireSoporteApi(request);
   if (!auth.ok) return sinPermiso(auth);
   try {
-    const [catalogos, personas] = await Promise.all([
+    const [catalogos, personas, guardia_principal_id] = await Promise.all([
       leerCatalogos(auth.sb, auth.empresaId),
       personasDeEmpresa(auth.empresaId),
+      principalDeGuardia(auth.sb, auth.empresaId),
     ]);
-    return ok({ ...catalogos, personas, puede_configurar: auth.puedeConfigurar, usuario_id: auth.usuarioId });
+    return ok({ ...catalogos, personas, puede_configurar: auth.puedeConfigurar, usuario_id: auth.usuarioId, guardia_principal_id });
   } catch (e) {
     return errorInesperado(e);
   }

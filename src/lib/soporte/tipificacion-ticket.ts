@@ -50,7 +50,7 @@ export type AsignacionAutomatica = {
  * Quién recibe un ticket nuevo. Quien lo carga no elige.
  * (Proceso de Gestión de Soporte v1.4, §11)
  *
- *   · Un ERROR cargado en la franja de guardia (fin de jornada a 20:00) va al
+ *   · Un ERROR cargado en la franja de guardia (fin de jornada a 22:00) va al
  *     desarrollador principal de la guardia de esa semana (módulo Guardias).
  *   · Todo lo demás —errores en horario laboral o fuera de la franja, y todos
  *     los cambios, que nunca entran a guardia— sigue el proceso ordinario:

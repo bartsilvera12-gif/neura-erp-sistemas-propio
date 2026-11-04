@@ -16,6 +16,8 @@ import {
 } from "@/lib/soporte/dominio";
 import type { SoporteAuth } from "@/lib/soporte/soporte-auth";
 import { MINUTO, MemoriaTTL } from "@/lib/soporte/cache";
+import { lunesDe } from "@/lib/guardias/semana";
+import { TZ_OFFSET_MIN } from "@/lib/proyectos/reloj-laboral";
 
 // ------------------------------------------------------------------ respuestas
 
@@ -184,6 +186,26 @@ const memoriaEquipo = new MemoriaTTL<Persona[]>(MINUTO, 300);
 /** Usuarios activos de la empresa, para los selectores de responsable. */
 export function personasDeEmpresa(empresaId: string): Promise<Persona[]> {
   return memoriaEquipo.obtener(empresaId, () => personasDeEmpresaDeBase(empresaId));
+}
+
+/**
+ * El desarrollador principal de la guardia de ESTA semana (tabla `guardias_semana`),
+ * o null si no hay. La semana es el lunes en hora de Paraguay. No mira la hora: el
+ * recorte por franja lo aplica `esResponsableElegible`.
+ */
+export async function principalDeGuardia(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  ahora: number = Date.now()
+): Promise<string | null> {
+  const diaPy = new Date(ahora + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
+  const { data } = await sb
+    .from("guardias_semana")
+    .select("soporte_principal_id")
+    .eq("empresa_id", empresaId)
+    .eq("semana_inicio", lunesDe(diaPy))
+    .maybeSingle();
+  return (data as { soporte_principal_id?: string | null } | null)?.soporte_principal_id ?? null;
 }
 
 async function personasDeEmpresaDeBase(empresaId: string): Promise<Persona[]> {

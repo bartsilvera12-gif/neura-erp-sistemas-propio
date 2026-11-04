@@ -3,6 +3,7 @@ import {
   ESTADOS_EXIGEN_SUBTAREAS_FINALIZADAS,
   TICKET_CAMPOS,
   eventoDeTransicion,
+  esResponsableElegible,
   fechaObjetivoAIso,
   mensajeEstadoFinal,
   puedeEstarACargo,
@@ -20,6 +21,7 @@ import {
   leerCatalogos,
   ok,
   personasDeEmpresa,
+  principalDeGuardia,
   registrarHistorial,
   sinPermiso,
   ticketDeEmpresa,
@@ -183,7 +185,13 @@ export async function PATCH(request: Request, { params }: Params) {
       if (nuevo !== actual.responsable_id) {
         if (nuevo) {
           const equipo = await personasDeEmpresa(auth.empresaId);
-          if (!equipo.some((u) => u.id === nuevo && puedeEstarACargo(u))) return falla("A cargo sólo pueden quedar Desarrollo o QA");
+          const persona = equipo.find((u) => u.id === nuevo);
+          let elegible = persona ? puedeEstarACargo(persona) : false;
+          // Durante la franja de guardia, el principal de guardia también puede quedar a cargo.
+          if (persona && !elegible && enFranjaDeGuardia()) {
+            elegible = esResponsableElegible(persona, await principalDeGuardia(auth.sb, auth.empresaId));
+          }
+          if (!elegible) return falla("A cargo sólo pueden quedar Desarrollo o QA");
         }
         patch.responsable_id = nuevo;
         responsableFinal = nuevo;

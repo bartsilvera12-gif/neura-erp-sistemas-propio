@@ -1,9 +1,10 @@
 import "server-only";
-import { fechaObjetivoAIso, puedeEstarACargo, requiereResponsable, slaDe, vencimientoSla } from "@/lib/soporte/dominio";
+import { enFranjaDeGuardia, esResponsableElegible, fechaObjetivoAIso, puedeEstarACargo, requiereResponsable, slaDe, vencimientoSla } from "@/lib/soporte/dominio";
 import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
 import {
   leerCatalogos,
   personasDeEmpresa,
+  principalDeGuardia,
   registrarHistorial,
   type EventoHistorial,
 } from "@/lib/soporte/servidor";
@@ -127,7 +128,13 @@ export async function prepararTicket(
   let responsableId: string | null = null;
   if (typeof body.responsable_id === "string" && body.responsable_id) {
     const equipo = await personasDeEmpresa(auth.empresaId);
-    if (!equipo.some((u) => u.id === body.responsable_id && puedeEstarACargo(u))) return falla("A cargo sólo pueden quedar Desarrollo o QA");
+    const persona = equipo.find((u) => u.id === body.responsable_id);
+    let elegible = persona ? puedeEstarACargo(persona) : false;
+    // Durante la franja de guardia, el principal de guardia también puede quedar a cargo.
+    if (persona && !elegible && enFranjaDeGuardia()) {
+      elegible = esResponsableElegible(persona, await principalDeGuardia(auth.sb, auth.empresaId));
+    }
+    if (!elegible) return falla("A cargo sólo pueden quedar Desarrollo o QA");
     responsableId = body.responsable_id;
   }
 

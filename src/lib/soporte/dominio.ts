@@ -140,8 +140,8 @@ export function mensajeEstadoFinal(ticket: { numero: number; estado_codigo: stri
   return `Error, Ticket ${numeroTicket(ticket.numero)} ${nombreEstado}: ya no pueden realizarse cambios de estado`;
 }
 
-/** Cierre de la franja de guardia: 20:00, hora de Paraguay. */
-const FIN_GUARDIA_MIN = 20 * 60;
+/** Cierre de la franja de guardia: 22:00, hora de Paraguay. */
+const FIN_GUARDIA_MIN = 22 * 60;
 
 /**
  * ¿Está activa la guardia? (Proceso de Gestión de Soporte v1.4, §11.1)
@@ -154,7 +154,7 @@ export function enFranjaDeGuardia(ahora: number = Date.now()): boolean {
   const local = new Date(ahora + TZ_OFFSET_MIN * 60_000);
   const dia = local.getUTCDay(); // 0 = domingo
   const minuto = local.getUTCHours() * 60 + local.getUTCMinutes();
-  // Domingo no hay jornada: la guardia cubre de 8 a 20.
+  // Domingo no hay jornada: la guardia cubre de 8 a 22.
   const finJornada = dia === 0 ? 8 * 60 : dia === 6 ? 12 * 60 : 17 * 60;
   return minuto >= finJornada && minuto < FIN_GUARDIA_MIN;
 }
@@ -250,6 +250,21 @@ export function nombreEstadoSubtarea(codigo: string): string {
 /** Quién puede quedar a cargo de un ticket: por ahora, Desarrollo y QA. */
 export function puedeEstarACargo(p: { es_tecnico?: boolean | null; es_qa?: boolean | null }): boolean {
   return p.es_tecnico === true || p.es_qa === true;
+}
+
+/**
+ * Quién puede quedar a cargo de un ticket, contemplando la guardia: Desarrollo y
+ * QA siempre; y el principal de guardia de la semana (`guardiaPrincipalId`), pero
+ * SOLO dentro de la franja de guardia. Es decir, al principal designado se le da
+ * "perfil de técnico" mientras dura su guardia (p. ej. una PM que la cubre), y
+ * nada cambia fuera de la franja. Es el mismo criterio en el cliente y el server.
+ */
+export function esResponsableElegible(
+  p: { id: string; es_tecnico?: boolean | null; es_qa?: boolean | null },
+  guardiaPrincipalId: string | null | undefined,
+  ahora: number = Date.now()
+): boolean {
+  return puedeEstarACargo(p) || (!!guardiaPrincipalId && p.id === guardiaPrincipalId && enFranjaDeGuardia(ahora));
 }
 
 /** Un estado abierto que no es el inicial necesita a alguien con la próxima acción. */

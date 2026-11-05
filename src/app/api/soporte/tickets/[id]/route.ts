@@ -28,7 +28,7 @@ import {
   type EventoHistorial,
 } from "@/lib/soporte/servidor";
 import { enriquecerTickets } from "@/lib/soporte/tickets-servidor";
-import { abrirRevisionQa, avisarEstadoAPMs, subtareasSinFinalizar } from "@/lib/soporte/subtareas";
+import { abrirRevisionQa, avisarEstadoAPMs, avisarSoporte, subtareasSinFinalizar } from "@/lib/soporte/subtareas";
 import { avisarSeguidoresMovilesSoporte } from "@/lib/soporte/notificar-seguidores-moviles";
 
 type Params = { params: Promise<{ id: string }> };
@@ -332,6 +332,14 @@ export async function PATCH(request: Request, { params }: Params) {
         titulo: `${nombreEstado} · ${numeroEt}`,
         cuerpo: asuntoFinal ?? "Cambió el estado del ticket",
         excluirUsuarioId: auth.usuarioId,
+      });
+      // Aviso al RESPONSABLE del ticket (el dev a cargo): campanita + push. Se
+      // omite si él mismo hizo el cambio (avisarSoporte ignora al autor).
+      await avisarSoporte(auth, {
+        usuarioId: responsableFinal,
+        titulo: `${nombreEstado} · ${numeroEt}`,
+        cuerpo: asuntoFinal ?? "Cambió el estado del ticket",
+        ticketId: id,
       });
     }
     return ok({ actualizado: true, eventos: eventos.map((e) => e.tipo_evento) });

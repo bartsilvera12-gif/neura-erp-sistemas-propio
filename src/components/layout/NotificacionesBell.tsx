@@ -101,7 +101,20 @@ type ApiResp = {
   error?: string;
 };
 
-type UsuarioSesion = { id: string | null; data_schema: string | null };
+type UsuarioSesion = { id: string | null; data_schema: string | null; es_tecnico: boolean | null };
+
+/** Avisos relacionados a proyectos: van a la pestaña "Proyectos" (solo devs). */
+const TIPOS_PROYECTO: ReadonlySet<TipoNotificacion> = new Set([
+  "qa_novedad",
+  "qa_aprobado",
+  "qa_rechazado",
+  "qa_vence",
+  "esqueleto_por_vencer",
+  "esqueleto_vencido",
+  "proyecto_estado_cambio",
+  "proyecto_entregado",
+  "comentario_proyecto",
+]);
 
 /**
  * El Realtime de este ERP depende de que la RLS pueda resolver quién sos a
@@ -217,7 +230,7 @@ export default function NotificacionesBell() {
   const [abierto, setAbierto] = useState(false);
   const [items, setItems] = useState<Notificacion[]>([]);
   /** Bandeja visible: Soporte va aparte para que un ticket no se pierda entre comentarios. */
-  const [bandeja, setBandeja] = useState<"general" | "soporte">("general");
+  const [bandeja, setBandeja] = useState<"general" | "proyectos" | "soporte">("general");
   const [noLeidas, setNoLeidas] = useState(0);
   /** Cuántos de los no leídos son avisos derivados (no se pueden marcar). */
   const derivadasRef = useRef(0);
@@ -413,7 +426,7 @@ export default function NotificacionesBell() {
         const res = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
         const j = (await res.json().catch(() => null)) as { usuario?: UsuarioSesion } | null;
         if (vivo && j?.usuario) {
-          setSesion({ id: j.usuario.id ?? null, data_schema: j.usuario.data_schema ?? null });
+          setSesion({ id: j.usuario.id ?? null, data_schema: j.usuario.data_schema ?? null, es_tecnico: j.usuario.es_tecnico ?? false });
         }
       } catch {
         // Sin esto sólo se pierde el tiempo real; el polling cubre igual.
@@ -506,9 +519,18 @@ export default function NotificacionesBell() {
   );
 
   const esSoporte = (n: Notificacion) => n.tipo === "soporte_revision";
-  const itemsBandeja = items.filter((n) => (bandeja === "soporte" ? esSoporte(n) : !esSoporte(n)));
+  const esProyecto = (n: Notificacion) => TIPOS_PROYECTO.has(n.tipo);
+  // "Proyectos" es una pestaña aparte SOLO para Desarrollo: sus avisos salen de
+  // General. Para el resto nada cambia (siguen en General, sin pestaña Proyectos).
+  const esDev = sesion?.es_tecnico === true;
+  const itemsBandeja = items.filter((n) => {
+    if (bandeja === "soporte") return esSoporte(n);
+    if (bandeja === "proyectos") return esProyecto(n);
+    return !esSoporte(n) && !(esDev && esProyecto(n));
+  });
   const noLeidasSoporte = items.filter((n) => esSoporte(n) && !n.leida_at).length;
-  const noLeidasGeneral = items.filter((n) => !esSoporte(n) && !n.leida_at).length;
+  const noLeidasProyectos = esDev ? items.filter((n) => esProyecto(n) && !n.leida_at).length : 0;
+  const noLeidasGeneral = items.filter((n) => !esSoporte(n) && !(esDev && esProyecto(n)) && !n.leida_at).length;
   const idsMarcablesBandeja = itemsBandeja.filter((n) => !n.leida_at && !n.derivada).map((n) => n.id);
 
   return (
@@ -518,9 +540,13 @@ export default function NotificacionesBell() {
         onClick={() => {
           setAbierto((v) => !v);
           if (!abierto) {
-            // Si lo único pendiente es de Soporte, se abre directo ahí.
-            if (noLeidasGeneral === 0 && noLeidasSoporte > 0) setBandeja("soporte");
-            else if (noLeidasSoporte === 0 && noLeidasGeneral > 0) setBandeja("general");
+            // Al abrir, si la pestaña activa no tiene pendientes, saltar a la
+            // primera que sí (General > Proyectos > Soporte).
+            const pend = { general: noLeidasGeneral, proyectos: noLeidasProyectos, soporte: noLeidasSoporte } as const;
+            if (pend[bandeja] === 0) {
+              const conPend = (["general", "proyectos", "soporte"] as const).find((b) => pend[b] > 0);
+              if (conPend) setBandeja(conPend);
+            }
             void cargar();
           }
         }}
@@ -629,8 +655,9 @@ export default function NotificacionesBell() {
             {(
               [
                 { id: "general", etiqueta: "General", n: noLeidasGeneral },
+                ...(esDev ? [{ id: "proyectos", etiqueta: "Proyectos", n: noLeidasProyectos }] : []),
                 { id: "soporte", etiqueta: "Soporte", n: noLeidasSoporte },
-              ] as const
+              ] as { id: "general" | "proyectos" | "soporte"; etiqueta: string; n: number }[]
             ).map((t) => {
               const sel = bandeja === t.id;
               return (
@@ -666,7 +693,9 @@ export default function NotificacionesBell() {
                   ? "Cargando…"
                   : bandeja === "soporte"
                     ? "No hay avisos de Soporte pendientes."
-                    : "Estás al día. No hay notificaciones pendientes."}
+                    : bandeja === "proyectos"
+                      ? "No hay avisos de Proyectos pendientes."
+                      : "Estás al día. No hay notificaciones pendientes."}
               </li>
             ) : (
               itemsBandeja.map((n) => {

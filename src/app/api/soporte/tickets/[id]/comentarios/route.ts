@@ -10,6 +10,7 @@ import {
   tocarTicket,
 } from "@/lib/soporte/servidor";
 import { avisarSeguidoresMovilesSoporte } from "@/lib/soporte/notificar-seguidores-moviles";
+import { avisarSoporte } from "@/lib/soporte/subtareas";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -94,19 +95,29 @@ export async function POST(request: Request, { params }: Params) {
     // no se auto-notifique. Respeta la pref 'soporte'.
     const { data: tk } = await auth.sb
       .from("soporte_tickets")
-      .select("numero, asunto")
+      .select("numero, asunto, responsable_id")
       .eq("empresa_id", auth.empresaId)
       .eq("id", id)
       .maybeSingle();
     const numero = (tk as { numero?: number } | null)?.numero ?? null;
     const asunto = ((tk as { asunto?: string } | null)?.asunto ?? "").trim();
+    const tituloAviso = `Nuevo comentario${numero ? ` · T-${numero}` : ""}`;
+    const cuerpoAviso = asunto ? `${asunto}: ${contenido.slice(0, 160)}` : contenido.slice(0, 200);
     void avisarSeguidoresMovilesSoporte({
       sb: auth.sb,
       empresaId: auth.empresaId,
       ticketId: id,
-      titulo: `Nuevo comentario${numero ? ` · T-${numero}` : ""}`,
-      cuerpo: asunto ? `${asunto}: ${contenido.slice(0, 160)}` : contenido.slice(0, 200),
+      titulo: tituloAviso,
+      cuerpo: cuerpoAviso,
       excluirUsuarioId: auth.usuarioId,
+    });
+    // Aviso al RESPONSABLE del ticket (el dev a cargo): campanita + push. Se
+    // omite solo si él mismo comentó (avisarSoporte ignora al autor del cambio).
+    await avisarSoporte(auth, {
+      usuarioId: (tk as { responsable_id?: string | null } | null)?.responsable_id ?? null,
+      titulo: tituloAviso,
+      cuerpo: cuerpoAviso,
+      ticketId: id,
     });
     return ok(data);
   } catch (e) {

@@ -256,7 +256,7 @@ export default function TablaTickets({
         <div className="grid gap-2 border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(130px,1fr))_auto_auto]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
-            <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por asunto, cliente, proyecto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
+            <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por motivo, cliente, proyecto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
           </label>
           <SelectorBuscable tam="sm" avatares ariaLabel="Cliente" opciones={[{ value: "", label: "Todos los clientes" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={filtros.cliente_id} onChange={(v) => cambiar({ cliente_id: v || null })} placeholder="Todos los clientes" buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
           <FancySelect size="sm" ariaLabel="Estado" value={filtros.estado} onChange={(v) => cambiar({ estado: v || null })} options={op.estado} />
@@ -318,7 +318,7 @@ export default function TablaTickets({
                 <thead>
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                     <th className="w-24 px-5 py-3">#</th>
-                    <th className="px-3 py-3">Asunto</th>
+                    <th className="px-3 py-3">Motivo</th>
                     <th className="px-3 py-3">Cliente</th>
                     <th className="px-3 py-3">Proyecto</th>
                     <th className="px-3 py-3">Tipo</th>
@@ -345,11 +345,11 @@ export default function TablaTickets({
                         <span className="absolute inset-y-2 left-0 w-1 rounded-r-full opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundColor: t.estado_color }} aria-hidden />
                         <span className="font-bold tabular-nums text-slate-400 group-hover:text-[#2F6E71]">{numeroTicket(t.numero)}</span>
                       </td>
-                      <td className="max-w-[340px] px-3 py-3.5">
+                      <td className="min-w-[320px] max-w-[460px] px-3 py-3.5">
                         <Link
                           href={`/dashboard/soporte/tickets/${t.id}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="line-clamp-2 font-semibold text-slate-800 no-underline group-hover:text-[#2F6E71]"
+                          className="line-clamp-3 font-semibold text-slate-800 no-underline group-hover:text-[#2F6E71]"
                         >
                           {t.asunto}
                         </Link>

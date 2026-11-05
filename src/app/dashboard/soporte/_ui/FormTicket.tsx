@@ -255,7 +255,7 @@ export default function FormTicket({
       </Seccion>
 
       <Seccion icono={ListChecks} tono="celeste" titulo="Detalle" descripcion="Lo que QA y Desarrollo necesitan para reproducirlo y validarlo sin tener que preguntar.">
-        <Campo etiqueta="Asunto" requerido>
+        <Campo etiqueta="Motivo" requerido>
           <input
             className={claseInput}
             value={v.asunto}

@@ -107,7 +107,7 @@ export default function TicketRelacionesPage() {
                 <tr className="border-b border-slate-100 text-[11.5px] text-slate-500">
                   <th className="px-5 py-2.5 font-medium">Relación</th>
                   <th className="px-3 py-2.5 font-medium">#</th>
-                  <th className="px-3 py-2.5 font-medium">Asunto</th>
+                  <th className="px-3 py-2.5 font-medium">Motivo</th>
                   <th className="px-3 py-2.5 font-medium">Estado</th>
                   <th className="px-3 py-2.5 font-medium">Cliente</th>
                   <th className="px-5 py-2.5" />

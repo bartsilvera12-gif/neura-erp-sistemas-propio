@@ -37,6 +37,7 @@ import {
 } from "@/lib/chat/contact-center-inbound";
 import { normalizeWaPhone } from "@/lib/chat/wa-phone";
 import { guardarTelefonoRealDelContacto } from "@/lib/chat/baileys-telefono-real";
+import { ensureWhatsappInboundCrmLeadPg } from "@/lib/crm/whatsapp-inbound-lead-pg";
 import type { SupabaseAdmin } from "@/lib/chat/types";
 
 export const dynamic = "force-dynamic";
@@ -382,6 +383,32 @@ export async function POST(request: NextRequest) {
         await applyInboundWindowAndAssignPg(pool, schema, empresaId, conversationId);
       } else {
         await applyInboundWindowAndAssignRest(supabase, schema, empresaId, conversationId);
+      }
+    }
+
+    // Alta de lead CRM para entrantes por QR/Baileys (igual que los webhooks YCloud y Meta;
+    // el inbound por QR antes NO creaba prospecto → el CRM Funnel se quedó sin leads nuevos
+    // desde que el número comercial pasó a QR). Va DESPUÉS de la asignación por equidad para
+    // que el `responsable` del lead sea el agente ya asignado. Idempotente: se saltea si el
+    // contacto ya tiene crm_prospecto_id. Solo entrantes del cliente; no bloquea el ack.
+    if (!fromMe) {
+      try {
+        const crmSchema = await fetchDataSchemaForEmpresaId(empresaId);
+        const crmPool = getChatPostgresPool();
+        if (crmPool && isLikelyUnexposedTenantChatSchema(crmSchema)) {
+          const crm = await ensureWhatsappInboundCrmLeadPg({
+            pool: crmPool,
+            data_schema: crmSchema,
+            empresa_id: empresaId,
+            contact_id: result.contact_id,
+            conversation_id: conversationId,
+            channel_id: channelId,
+            first_message_preview: text.trim() || null,
+          });
+          if (!crm.ok) console.error(LOG, "crm_lead_pg_falló", crm.error);
+        }
+      } catch (e) {
+        console.warn(LOG, "crm_lead_excepcion", e instanceof Error ? e.message : String(e));
       }
     }
 

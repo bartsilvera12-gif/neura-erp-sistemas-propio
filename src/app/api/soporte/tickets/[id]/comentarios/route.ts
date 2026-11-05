@@ -1,5 +1,8 @@
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
 import {
+  SOPORTE_BUCKET,
+  SOPORTE_URL_FIRMADA_TTL,
   errorInesperado,
   falla,
   ok,
@@ -34,20 +37,26 @@ export async function GET(request: Request, { params }: Params) {
     const filas = (data ?? []) as { id: string; usuario_id: string | null; contenido: string; es_rechazo_qa: boolean; created_at: string }[];
     const personas = await personasPorId(filas.map((c) => c.usuario_id));
 
-    // Archivos adjuntados junto a cada comentario.
+    // Archivos adjuntados junto a cada comentario, con URL firmada para la vista
+    // previa: las imágenes se muestran bajo el texto del comentario.
     const ids = filas.map((c) => c.id);
-    const adjuntos = new Map<string, { id: string; nombre: string }[]>();
+    const adjuntos = new Map<string, { id: string; nombre: string; mime_type: string | null; url: string | null }[]>();
     if (ids.length) {
       const { data: arch } = await auth.sb
         .from("soporte_ticket_archivos")
-        .select("id, nombre, comentario_id")
+        .select("id, nombre, mime_type, storage_path, comentario_id")
         .eq("ticket_id", id)
         .in("comentario_id", ids);
-      for (const a of (arch ?? []) as { id: string; nombre: string; comentario_id: string }[]) {
-        const lista = adjuntos.get(a.comentario_id) ?? [];
-        lista.push({ id: a.id, nombre: a.nombre });
-        adjuntos.set(a.comentario_id, lista);
-      }
+      const storage = createServiceRoleClient().storage.from(SOPORTE_BUCKET);
+      const filasArch = (arch ?? []) as { id: string; nombre: string; mime_type: string | null; storage_path: string; comentario_id: string }[];
+      await Promise.all(
+        filasArch.map(async (a) => {
+          const { data: firmada } = await storage.createSignedUrl(a.storage_path, SOPORTE_URL_FIRMADA_TTL);
+          const lista = adjuntos.get(a.comentario_id) ?? [];
+          lista.push({ id: a.id, nombre: a.nombre, mime_type: a.mime_type, url: firmada?.signedUrl ?? null });
+          adjuntos.set(a.comentario_id, lista);
+        })
+      );
     }
 
     return ok(

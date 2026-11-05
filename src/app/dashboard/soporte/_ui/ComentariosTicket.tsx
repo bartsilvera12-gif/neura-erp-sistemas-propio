@@ -13,7 +13,7 @@ type Comentario = {
   es_rechazo_qa: boolean;
   created_at: string;
   autor: Persona | null;
-  adjuntos: { id: string; nombre: string }[];
+  adjuntos: { id: string; nombre: string; mime_type: string | null; url: string | null }[];
 };
 
 /**
@@ -109,12 +109,50 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
                 ) : (
                   <p className="mt-1.5 whitespace-pre-line rounded-2xl rounded-tl-md bg-slate-50 px-3.5 py-2.5 text-[13.5px] leading-relaxed text-slate-700">{c.contenido}</p>
                 )}
-                {c.adjuntos.length ? (
-                  <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] text-slate-500">
-                    <Paperclip className="h-3.5 w-3.5" aria-hidden />
-                    {c.adjuntos.map((a) => a.nombre).join(", ")}
-                  </p>
-                ) : null}
+                {(() => {
+                  const imagenes = c.adjuntos.filter((a) => (a.mime_type ?? "").startsWith("image/") && a.url);
+                  const otros = c.adjuntos.filter((a) => !((a.mime_type ?? "").startsWith("image/") && a.url));
+                  return (
+                    <>
+                      {imagenes.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {imagenes.map((a) => (
+                            <a key={a.id} href={a.url!} target="_blank" rel="noreferrer" className="block" aria-label={`Ver ${a.nombre}`}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={a.url!}
+                                alt={a.nombre}
+                                loading="lazy"
+                                className="h-28 w-28 rounded-xl border border-slate-200 object-cover shadow-sm transition hover:brightness-95 sm:h-36 sm:w-36"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      ) : null}
+                      {otros.length ? (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {otros.map((a) =>
+                            a.url ? (
+                              <a
+                                key={a.id}
+                                href={a.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] text-slate-600 no-underline hover:bg-slate-50"
+                              >
+                                <Paperclip className="h-3.5 w-3.5" aria-hidden /> {a.nombre}
+                              </a>
+                            ) : (
+                              <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] text-slate-500">
+                                <Paperclip className="h-3.5 w-3.5" aria-hidden /> {a.nombre}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
             </li>
             );

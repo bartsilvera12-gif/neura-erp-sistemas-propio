@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Film, ImageIcon, UploadCloud, X } from "lucide-react";
 import { ARCHIVO_MAX_BYTES, mimeAceptado, tamanoLegible } from "@/lib/soporte/dominio";
 import { normalizarImagenes } from "@/lib/imagenes/heic";
@@ -32,6 +32,15 @@ export default function ZonaArchivos({
   const input = useRef<HTMLInputElement>(null);
   const [sobre, setSobre] = useState(false);
   const [rechazos, setRechazos] = useState<string[]>([]);
+
+  // Vista previa de imágenes antes de subir: un objectURL por archivo imagen.
+  // Se revocan al cambiar la lista para no filtrar memoria del navegador.
+  const previos = useMemo(() => {
+    const m = new Map<File, string>();
+    for (const f of archivos) if (f.type.startsWith("image/")) m.set(f, URL.createObjectURL(f));
+    return m;
+  }, [archivos]);
+  useEffect(() => () => previos.forEach((u) => URL.revokeObjectURL(u)), [previos]);
 
   const agregar = (lista: FileList | File[]) => {
     // Las fotos de iPhone vienen en HEIC y los navegadores no las muestran: se pasan a JPG
@@ -114,9 +123,18 @@ export default function ZonaArchivos({
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
           {archivos.map((f, i) => (
             <li key={`${f.name}-${i}`} className="flex items-center gap-2.5 px-3 py-2 text-[13px]">
-              <span className="text-slate-400">
-                <IconoArchivo tipo={f.type} />
-              </span>
+              {previos.has(f) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previos.get(f)}
+                  alt={f.name}
+                  className="h-10 w-10 shrink-0 rounded-lg border border-slate-200 object-cover shadow-sm"
+                />
+              ) : (
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-50 text-slate-400">
+                  <IconoArchivo tipo={f.type} />
+                </span>
+              )}
               <span className="min-w-0 flex-1 truncate text-slate-700">{f.name}</span>
               <span className="shrink-0 tabular-nums text-[12px] text-slate-400">{tamanoLegible(f.size)}</span>
               <button

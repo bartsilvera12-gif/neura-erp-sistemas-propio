@@ -312,10 +312,12 @@ export default function TablaTickets({
           />
         ) : (
           <>
-            {/* Desktop */}
-            <div className="scroll-x-barra hidden overflow-x-auto md:block">
+            {/* Desktop: alto máximo con scroll propio para que la barra horizontal
+                quede siempre a la vista (si no, caía al fondo de 20 filas, fuera
+                de pantalla, y parecía que no se podía desplazar). Encabezado fijo. */}
+            <div className="scroll-x-barra hidden max-h-[calc(100svh-360px)] overflow-auto md:block">
               <table className="w-full min-w-[1040px] text-left text-[13px]">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                     <th className="w-24 px-5 py-3">#</th>
                     <th className="px-3 py-3">Motivo</th>

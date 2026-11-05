@@ -41,6 +41,7 @@ type TicketLista = {
   estado_color: string;
   tipo_codigo: string;
   clasificacion_nombre: string | null;
+  origen_subestado: string | null;
   responsable: Persona | null;
   creador: Persona | null;
   updated_at: string;
@@ -404,7 +405,7 @@ export default function TablaTickets({
                           onClick={(e) => e.stopPropagation()}
                           className="line-clamp-3 font-semibold text-slate-800 no-underline group-hover:text-[#2F6E71]"
                         >
-                          {t.asunto}
+                          {t.origen_subestado ?? <span className="font-normal italic text-slate-400">Sub-estado no cargado</span>}
                         </Link>
                         {t.sla.estado === "vencido" ? (
                           <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10.5px] font-bold text-rose-600">
@@ -500,7 +501,7 @@ export default function TablaTickets({
                       <span className="font-bold tabular-nums">{numeroTicket(t.numero)} · {t.cliente_nombre ?? "Sin cliente"}</span>
                       <span className="tabular-nums">{fechaHora(t.updated_at)}</span>
                     </div>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{t.asunto}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{t.origen_subestado ?? <span className="font-normal italic text-slate-400">Sub-estado no cargado</span>}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
                       <Fase n={t.fase} />

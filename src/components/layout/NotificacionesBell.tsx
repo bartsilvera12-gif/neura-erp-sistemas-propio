@@ -101,7 +101,7 @@ type ApiResp = {
   error?: string;
 };
 
-type UsuarioSesion = { id: string | null; data_schema: string | null; es_tecnico: boolean | null };
+type UsuarioSesion = { id: string | null; data_schema: string | null; es_tecnico: boolean | null; ve_proyectos: boolean | null };
 
 /** Avisos relacionados a proyectos: van a la pestaña "Proyectos" (solo devs). */
 const TIPOS_PROYECTO: ReadonlySet<TipoNotificacion> = new Set([
@@ -426,7 +426,12 @@ export default function NotificacionesBell() {
         const res = await fetchWithSupabaseSession("/api/usuarios/me", { cache: "no-store" });
         const j = (await res.json().catch(() => null)) as { usuario?: UsuarioSesion } | null;
         if (vivo && j?.usuario) {
-          setSesion({ id: j.usuario.id ?? null, data_schema: j.usuario.data_schema ?? null, es_tecnico: j.usuario.es_tecnico ?? false });
+          setSesion({
+            id: j.usuario.id ?? null,
+            data_schema: j.usuario.data_schema ?? null,
+            es_tecnico: j.usuario.es_tecnico ?? false,
+            ve_proyectos: j.usuario.ve_proyectos ?? j.usuario.es_tecnico ?? false,
+          });
         }
       } catch {
         // Sin esto sólo se pierde el tiempo real; el polling cubre igual.
@@ -520,9 +525,11 @@ export default function NotificacionesBell() {
 
   const esSoporte = (n: Notificacion) => n.tipo === "soporte_revision";
   const esProyecto = (n: Notificacion) => TIPOS_PROYECTO.has(n.tipo);
-  // "Proyectos" es una pestaña aparte SOLO para Desarrollo: sus avisos salen de
-  // General. Para el resto nada cambia (siguen en General, sin pestaña Proyectos).
-  const esDev = sesion?.es_tecnico === true;
+  // "Proyectos" es una pestaña aparte para quienes trabajan sobre proyectos
+  // (Desarrollo + algunos PM/ATC, ver ve_proyectos en /api/usuarios/me): sus
+  // avisos salen de General. Para el resto nada cambia (siguen en General, sin
+  // pestaña Proyectos).
+  const esDev = sesion?.ve_proyectos === true;
   const itemsBandeja = items.filter((n) => {
     if (bandeja === "soporte") return esSoporte(n);
     if (bandeja === "proyectos") return esProyecto(n);

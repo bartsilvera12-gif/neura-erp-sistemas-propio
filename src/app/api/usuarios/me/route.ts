@@ -16,6 +16,16 @@ type UsuarioMeRow = {
   created_at: string | null;
 };
 
+/**
+ * Quiénes ven la pestaña "Proyectos" de la campanita además de Desarrollo.
+ * Hoy son dos PM/ATC que trabajan sobre proyectos (Juliana y Luján, del tenant
+ * neura). Son ids únicos: en otros tenants nadie coincide y nada cambia.
+ */
+const VE_PROYECTOS_IDS: ReadonlySet<string> = new Set([
+  "84b2e1ba-8794-4f08-8b72-0bff414711fd", // Juliana Contreras
+  "5566a978-05b6-4300-8df1-b35e6b7d74dc", // Luján Gómez
+]);
+
 function pickAuthMetadataName(authUser: { user_metadata?: Record<string, unknown> | null }): string | null {
   const meta = authUser.user_metadata ?? {};
   const candidates = [meta.full_name, meta.name, meta.nombre];
@@ -79,6 +89,8 @@ export async function GET(request: Request) {
         // directo daba 404 contra `zentra_erp`. Aditivos: el header no los usa.
         empresa_id: row?.empresa_id ?? catalogUsuario?.empresa_id ?? null,
         es_tecnico: row?.es_tecnico === true,
+        // Pestaña "Proyectos" de la campanita: Desarrollo + los ids de arriba.
+        ve_proyectos: row?.es_tecnico === true || (catalogUsuario?.id ? VE_PROYECTOS_IDS.has(catalogUsuario.id) : false),
         estado: row?.estado ?? null,
         telefono: row?.telefono ?? null,
         fecha_nacimiento: row?.fecha_nacimiento ?? null,

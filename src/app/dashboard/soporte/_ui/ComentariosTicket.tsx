@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Paperclip, Send, XCircle } from "lucide-react";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte, comentariosEnMemoria, fechaHora, obtenerComentarios, subirArchivos, type Persona } from "./api";
+import { ARCHIVO_MAX_BYTES } from "@/lib/soporte/dominio";
 import ZonaArchivos from "./ZonaArchivos";
 import { Aviso, Avatar, Boton, Cargando, TONOS, TONO_AREA, Tarjeta, Vacio, claseInput } from "./ui";
 
@@ -47,6 +48,32 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  /**
+   * Pegar una imagen (Ctrl+V) en el comentario la adjunta directo, sin tener
+   * que guardarla antes. Las capturas vienen sin nombre real ("image.png"): se
+   * renombran con la hora para que se distingan entre sí.
+   */
+  const pegarEnComentario = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imgs = Array.from(e.clipboardData?.items ?? []).filter(
+      (it) => it.kind === "file" && it.type.startsWith("image/")
+    );
+    if (!imgs.length) return;
+    const nuevos: File[] = [];
+    for (const it of imgs) {
+      const f = it.getAsFile();
+      if (!f || f.size === 0 || f.size > ARCHIVO_MAX_BYTES) continue;
+      const ext = (f.type.split("/")[1] || "png").replace("jpeg", "jpg");
+      const nombre = f.name && f.name.toLowerCase() !== "image.png"
+        ? f.name
+        : `captura-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${ext}`;
+      nuevos.push(new File([f], nombre, { type: f.type }));
+    }
+    if (!nuevos.length) return;
+    e.preventDefault(); // no pegar el blob/el texto, solo adjuntar
+    setAdjuntando(true);
+    setArchivos((prev) => [...prev, ...nuevos].slice(0, 20));
+  };
 
   const comentar = async () => {
     const contenido = texto.trim();
@@ -172,6 +199,7 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
               void comentar();
             }
           }}
+          onPaste={pegarEnComentario}
           placeholder="Escribí un comentario… (Shift+Enter para otro renglón)"
           disabled={enviando}
         />

@@ -313,7 +313,7 @@ export default function TablaTickets({
         ) : (
           <>
             {/* Desktop */}
-            <div className="hidden overflow-x-auto md:block">
+            <div className="scroll-x-barra hidden overflow-x-auto md:block">
               <table className="w-full min-w-[1040px] text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
@@ -396,9 +396,9 @@ export default function TablaTickets({
                         <td className="px-3 py-3.5">
                           <div className="flex items-center gap-2">
                             {t.responsable ? (
-                              <span className="inline-flex items-center gap-2 font-medium text-slate-700">
+                              <span className="inline-flex min-w-0 max-w-[160px] items-center gap-2 font-medium text-slate-700" title={t.responsable.nombre}>
                                 <Avatar nombre={t.responsable.nombre} tam={24} />
-                                {t.responsable.nombre}
+                                <span className="truncate">{t.responsable.nombre}</span>
                               </span>
                             ) : (
                               <span className="text-[12px] italic text-slate-400">Sin asignar</span>
@@ -422,9 +422,9 @@ export default function TablaTickets({
                       )}
                       <td className="px-3 py-3.5">
                         {t.creador ? (
-                          <span className="inline-flex items-center gap-2 font-medium text-slate-700">
+                          <span className="inline-flex min-w-0 max-w-[160px] items-center gap-2 font-medium text-slate-700" title={t.creador.nombre}>
                             <Avatar nombre={t.creador.nombre} tam={24} />
-                            {t.creador.nombre}
+                            <span className="truncate">{t.creador.nombre}</span>
                           </span>
                         ) : (
                           <span className="text-[12px] italic text-slate-400">—</span>

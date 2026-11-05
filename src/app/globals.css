@@ -156,6 +156,32 @@ html:has(#neura-app-shell) body {
 
 
 
+/**
+ * Tablas anchas (p. ej. el listado de Soporte): scrollbar horizontal SIEMPRE
+ * visible. En Mac el scrollbar es overlay y queda oculto hasta que se desplaza,
+ * así que la gente no descubre que puede ir hacia la derecha. Acá se fuerza una
+ * barra fina y clickeable, en webkit y en Firefox.
+ */
+.scroll-x-barra {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.scroll-x-barra::-webkit-scrollbar {
+  height: 10px;
+}
+.scroll-x-barra::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-x-barra::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scroll-x-barra:hover::-webkit-scrollbar-thumb {
+  background-color: #94a3b8;
+}
+
 /* Soporte: barra fina que recorre el borde mientras se refresca un listado. */
 @keyframes soporteBarra {
   0% { transform: translateX(-100%); }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlarmClock, ChevronLeft, ChevronRight, Inbox, Search, UserPen, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
@@ -58,6 +58,7 @@ type RespLista = {
 };
 
 const POR_PAGINA = 20;
+const OPCIONES_POR_PAGINA = [20, 50, 100] as const;
 
 /**
  * El último resultado de cada consulta. Volver al listado desde un ticket lo
@@ -108,6 +109,9 @@ export default function TablaTickets({
   };
   const soloCargados = filtros.cargados === "1";
   const pagina = Math.max(1, Number(params.get("pagina") ?? "1") || 1);
+  const porPagina = (OPCIONES_POR_PAGINA as readonly number[]).includes(Number(params.get("por_pagina")))
+    ? Number(params.get("por_pagina"))
+    : POR_PAGINA;
 
   const consulta = useMemo(() => {
     const q = new URLSearchParams();
@@ -116,11 +120,54 @@ export default function TablaTickets({
     for (const [k, v] of Object.entries(filtros)) if (v) q.set(k, v);
     if (soloMios) q.set("mios", "1");
     q.set("pagina", String(pagina));
-    q.set("por_pagina", String(POR_PAGINA));
+    q.set("por_pagina", String(porPagina));
     return q.toString();
     // `params` resume todos los filtros de la URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, soloMios, pestana]);
+
+  // Auto-scroll horizontal: cuando el cursor se acerca a un borde de la tabla,
+  // se desplaza sola hacia ese lado (más rápido cuanto más cerca del borde).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
+  const velRef = useRef(0);
+  const pararAutoScroll = useCallback(() => {
+    velRef.current = 0;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+  const autoScrollBorde = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) {
+      velRef.current = 0;
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const margen = 90; // zona de borde donde arranca el desplazamiento
+    const maxVel = 22; // píxeles por cuadro en el borde mismo
+    const x = e.clientX;
+    const dDer = rect.right - x;
+    const dIzq = x - rect.left;
+    let vel = 0;
+    if (dDer < margen) vel = Math.ceil(((margen - dDer) / margen) * maxVel);
+    else if (dIzq < margen) vel = -Math.ceil(((margen - dIzq) / margen) * maxVel);
+    velRef.current = vel;
+    if (vel !== 0 && rafRef.current == null) {
+      const paso = () => {
+        const n = scrollRef.current;
+        if (n && velRef.current !== 0) {
+          n.scrollLeft += velRef.current;
+          rafRef.current = requestAnimationFrame(paso);
+        } else {
+          rafRef.current = null;
+        }
+      };
+      rafRef.current = requestAnimationFrame(paso);
+    }
+  }, []);
+  useEffect(() => pararAutoScroll, [pararAutoScroll]);
 
   const [cat, setCat] = useState<CatalogosConEquipo | null>(() => catalogosEnMemoria() ?? null);
   const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>(() => clientesEnMemoria() ?? []);
@@ -221,9 +268,9 @@ export default function TablaTickets({
 
   const hayFiltros = Object.values(filtros).some(Boolean);
   const total = datos?.total ?? 0;
-  const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
-  const desde = total === 0 ? 0 : (pagina - 1) * POR_PAGINA + 1;
-  const hasta = Math.min(total, pagina * POR_PAGINA);
+  const paginas = Math.max(1, Math.ceil(total / porPagina));
+  const desde = total === 0 ? 0 : (pagina - 1) * porPagina + 1;
+  const hasta = Math.min(total, pagina * porPagina);
 
   return (
     <div className="space-y-4">
@@ -312,12 +359,16 @@ export default function TablaTickets({
           />
         ) : (
           <>
-            {/* Desktop: alto máximo con scroll propio para que la barra horizontal
-                quede siempre a la vista (si no, caía al fondo de 20 filas, fuera
-                de pantalla, y parecía que no se podía desplazar). Encabezado fijo. */}
-            <div className="scroll-x-barra hidden max-h-[calc(100svh-360px)] overflow-auto md:block">
+            {/* Desktop: la tabla scrollea de lado sola cuando el cursor se acerca a
+                un borde (izq/der). Sin cajita ni alto fijo. */}
+            <div
+              ref={scrollRef}
+              onMouseMove={autoScrollBorde}
+              onMouseLeave={pararAutoScroll}
+              className="scroll-x-barra hidden overflow-x-auto md:block"
+            >
               <table className="w-full min-w-[1040px] text-left text-[13px]">
-                <thead className="sticky top-0 z-10 bg-white">
+                <thead>
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                     <th className="w-24 px-5 py-3">#</th>
                     <th className="px-3 py-3">Motivo</th>
@@ -472,9 +523,25 @@ export default function TablaTickets({
 
             {/* Paginación */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 text-[12px] text-slate-500">
-              <span className="tabular-nums">
-                Mostrando <b className="text-slate-700">{desde}</b> a <b className="text-slate-700">{hasta}</b> de <b className="text-slate-700">{total}</b> tickets
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="tabular-nums">
+                  Mostrando <b className="text-slate-700">{desde}</b> a <b className="text-slate-700">{hasta}</b> de <b className="text-slate-700">{total}</b> tickets
+                </span>
+                <label className="flex items-center gap-1.5">
+                  <span>Ver</span>
+                  <select
+                    value={porPagina}
+                    onChange={(e) => cambiar({ por_pagina: e.target.value === String(POR_PAGINA) ? null : e.target.value })}
+                    aria-label="Tickets por página"
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
+                  >
+                    {OPCIONES_POR_PAGINA.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                  <span>por página</span>
+                </label>
+              </div>
               <div className="flex items-center gap-1">
                 <button type="button" disabled={pagina <= 1} onClick={() => cambiar({ pagina: String(pagina - 1) })} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/50 disabled:opacity-40" aria-label="Página anterior">
                   <ChevronLeft className="h-4 w-4" />

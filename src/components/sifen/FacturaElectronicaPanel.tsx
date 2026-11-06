@@ -48,7 +48,7 @@ function subtituloSifenEjecutivo(resumen: Resumen, debugUi: boolean): string {
             : fe.error.trim()
           : "Falló el envío. Podés reintentar.";
       case "cancelado":
-        return "Cancelado ante la SET (SIFEN).";
+        return "Cancelado en el ERP.";
       default:
         return "Revisá el estado del documento.";
     }
@@ -74,7 +74,7 @@ function subtituloSifenEjecutivo(resumen: Resumen, debugUi: boolean): string {
           : fe.error.trim()
         : "Falló el envío. Podés reintentar.";
     case "cancelado":
-      return "Documento cancelado ante la SET (SIFEN).";
+      return "Documento anulado en el sistema.";
     default:
       return "Revisá el estado del documento.";
   }
@@ -226,7 +226,7 @@ export function FacturaElectronicaPanel({
         setFlash({ kind: "err", text: j.error ?? `Error ${res.status}` });
         return;
       }
-      setFlash({ kind: "ok", text: "Cancelación aceptada por la SET (SIFEN). La factura comercial quedó anulada." });
+      setFlash({ kind: "ok", text: "Documento electrónico cancelado en el ERP. La factura comercial quedó anulada." });
       setCancelModal(null);
       setMotivoCancel("");
       await refresh();
@@ -693,7 +693,7 @@ export function FacturaElectronicaPanel({
             )}
             {fe && estado === "cancelado" && fe.sifen_cancelado_at && (
               <p className="text-xs text-slate-600 pt-1">
-                <span className="font-semibold text-slate-700">Cancelado ante la SET:</span>{" "}
+                <span className="font-semibold text-slate-700">Cancelado en ERP:</span>{" "}
                 {formatLimiteCancelacion(fe.sifen_cancelado_at)}
                 {fe.sifen_cancelacion_motivo?.trim() ? (
                   <>
@@ -908,10 +908,10 @@ export function FacturaElectronicaPanel({
             <h4 id="sifen-cancel-title" className="text-sm font-bold text-slate-900">
               {cancelModal === "reemitir"
                 ? "Cancelar documento y continuar en cliente"
-                : "Cancelar documento electrónico (SIFEN)"}
+                : "Cancelar documento electrónico (ERP)"}
             </h4>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Se enviará el evento de cancelación a la SET (SIFEN). Si la SET lo acepta, la factura comercial pasará a{" "}
+              Se registrará la cancelación lógica del DE, la factura comercial pasará a{" "}
               <span className="font-semibold">Anulado</span> y quedará trazabilidad. No se elimina ningún registro.
               {cancelModal === "reemitir" ? " Luego podés emitir una nueva factura desde la ficha del cliente." : ""}
             </p>

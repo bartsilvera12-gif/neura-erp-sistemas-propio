@@ -44,6 +44,7 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [eliminandoId, setEliminandoId] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
 
   const cargar = useCallback(async (forzar = false) => {
     try {
@@ -56,6 +57,15 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  // El textarea de edición crece con su contenido (hasta 60% de la pantalla) para
+  // no tener que editar un comentario largo en una cajita con scroll.
+  useEffect(() => {
+    const el = editRef.current;
+    if (!editandoId || !el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * 0.6))}px`;
+  }, [editandoId, textoEdit]);
 
   /**
    * Pegar una imagen (Ctrl+V) en el comentario la adjunta directo, sin tener
@@ -202,7 +212,9 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
                 {editandoId === c.id ? (
                   <div className="mt-1.5 space-y-2">
                     <textarea
-                      className={`${claseInput} min-h-20`}
+                      ref={editRef}
+                      className={`${claseInput} min-h-[9rem] resize-none overflow-y-auto`}
+                      style={{ maxHeight: "60vh" }}
                       value={textoEdit}
                       onChange={(e) => setTextoEdit(e.target.value)}
                       disabled={guardandoEdit}

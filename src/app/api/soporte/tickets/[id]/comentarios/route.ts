@@ -27,14 +27,14 @@ export async function GET(request: Request, { params }: Params) {
 
     const { data, error } = await auth.sb
       .from("soporte_ticket_comentarios")
-      .select("id, usuario_id, contenido, es_rechazo_qa, created_at, editado_at")
+      .select("id, usuario_id, contenido, es_rechazo_qa, created_at, editado_at, parent_id")
       .eq("empresa_id", auth.empresaId)
       .eq("ticket_id", id)
       .is("subtarea_id", null)
       .order("created_at", { ascending: true });
     if (error) return falla(error.message);
 
-    const filas = (data ?? []) as { id: string; usuario_id: string | null; contenido: string; es_rechazo_qa: boolean; created_at: string; editado_at: string | null }[];
+    const filas = (data ?? []) as { id: string; usuario_id: string | null; contenido: string; es_rechazo_qa: boolean; created_at: string; editado_at: string | null; parent_id: string | null }[];
     const personas = await personasPorId(filas.map((c) => c.usuario_id));
 
     // Archivos adjuntados junto a cada comentario, con URL firmada para la vista
@@ -59,15 +59,34 @@ export async function GET(request: Request, { params }: Params) {
       );
     }
 
+    // El autor puede editar/eliminar el suyo. El permiso real se revalida en el
+    // PATCH/DELETE; esto solo decide si la UI muestra los botones.
+    const armar = (c: (typeof filas)[number]) => ({
+      id: c.id,
+      contenido: c.contenido,
+      es_rechazo_qa: c.es_rechazo_qa,
+      created_at: c.created_at,
+      editado_at: c.editado_at,
+      parent_id: c.parent_id,
+      autor: c.usuario_id ? (personas.get(c.usuario_id) ?? null) : null,
+      adjuntos: adjuntos.get(c.id) ?? [],
+      mio: c.usuario_id != null && c.usuario_id === auth.usuarioId,
+    });
+
+    // Hilo de 1 nivel: los top-level (parent_id null) llevan sus respuestas
+    // (subcomentarios) anidadas, en orden cronológico.
+    const respuestasPorPadre = new Map<string, ReturnType<typeof armar>[]>();
+    for (const c of filas) {
+      if (c.parent_id == null) continue;
+      const lista = respuestasPorPadre.get(c.parent_id) ?? [];
+      lista.push(armar(c));
+      respuestasPorPadre.set(c.parent_id, lista);
+    }
+
     return ok(
-      filas.map((c) => ({
-        ...c,
-        autor: c.usuario_id ? (personas.get(c.usuario_id) ?? null) : null,
-        adjuntos: adjuntos.get(c.id) ?? [],
-        // El autor puede editar/eliminar el suyo. El permiso real se revalida en
-        // el PATCH/DELETE; esto solo decide si la UI muestra los botones.
-        mio: c.usuario_id != null && c.usuario_id === auth.usuarioId,
-      }))
+      filas
+        .filter((c) => c.parent_id == null)
+        .map((c) => ({ ...armar(c), respuestas: respuestasPorPadre.get(c.id) ?? [] }))
     );
   } catch (e) {
     return errorInesperado(e);
@@ -89,9 +108,25 @@ export async function POST(request: Request, { params }: Params) {
     const contenido = typeof body?.contenido === "string" ? body.contenido.trim().slice(0, 20_000) : "";
     if (!contenido) return falla("Escribí el comentario");
 
+    // Subcomentario: respuesta a un comentario top-level del mismo ticket.
+    // Hilo de 1 nivel: no se responde a una respuesta.
+    const parentId = typeof body?.parent_id === "string" && body.parent_id ? body.parent_id : null;
+    if (parentId) {
+      const { data: padre } = await auth.sb
+        .from("soporte_ticket_comentarios")
+        .select("id, parent_id")
+        .eq("empresa_id", auth.empresaId)
+        .eq("ticket_id", id)
+        .eq("id", parentId)
+        .maybeSingle();
+      if (!padre) return falla("El comentario que querés responder no existe en este ticket", 404);
+      if ((padre as { parent_id: string | null }).parent_id != null)
+        return falla("No se puede responder a una respuesta");
+    }
+
     const { data, error } = await auth.sb
       .from("soporte_ticket_comentarios")
-      .insert({ empresa_id: auth.empresaId, ticket_id: id, usuario_id: auth.usuarioId, contenido })
+      .insert({ empresa_id: auth.empresaId, ticket_id: id, usuario_id: auth.usuarioId, contenido, parent_id: parentId })
       .select("id, created_at")
       .single();
     if (error || !data) return falla(error?.message ?? "No se pudo comentar");

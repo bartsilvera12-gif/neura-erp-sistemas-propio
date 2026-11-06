@@ -8,7 +8,7 @@ const LABELS: Record<string, string> = {
   aprobado: "Aprobado",
   rechazado: "Rechazado",
   error_envio: "Error envío",
-  cancelado: "Cancelado (ERP)",
+  cancelado: "Cancelado (SIFEN)",
 };
 
 function badgeClasses(estado: string | null): string {

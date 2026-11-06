@@ -27,14 +27,14 @@ export async function GET(request: Request, { params }: Params) {
 
     const { data, error } = await auth.sb
       .from("soporte_ticket_comentarios")
-      .select("id, usuario_id, contenido, es_rechazo_qa, created_at")
+      .select("id, usuario_id, contenido, es_rechazo_qa, created_at, editado_at")
       .eq("empresa_id", auth.empresaId)
       .eq("ticket_id", id)
       .is("subtarea_id", null)
       .order("created_at", { ascending: true });
     if (error) return falla(error.message);
 
-    const filas = (data ?? []) as { id: string; usuario_id: string | null; contenido: string; es_rechazo_qa: boolean; created_at: string }[];
+    const filas = (data ?? []) as { id: string; usuario_id: string | null; contenido: string; es_rechazo_qa: boolean; created_at: string; editado_at: string | null }[];
     const personas = await personasPorId(filas.map((c) => c.usuario_id));
 
     // Archivos adjuntados junto a cada comentario, con URL firmada para la vista
@@ -64,6 +64,9 @@ export async function GET(request: Request, { params }: Params) {
         ...c,
         autor: c.usuario_id ? (personas.get(c.usuario_id) ?? null) : null,
         adjuntos: adjuntos.get(c.id) ?? [],
+        // El autor puede editar/eliminar el suyo. El permiso real se revalida en
+        // el PATCH/DELETE; esto solo decide si la UI muestra los botones.
+        mio: c.usuario_id != null && c.usuario_id === auth.usuarioId,
       }))
     );
   } catch (e) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, Paperclip, Send, XCircle } from "lucide-react";
+import { Check, MessageSquare, Paperclip, Pencil, Send, Trash2, X, XCircle } from "lucide-react";
 import { useTicket } from "./TicketContexto";
 import { apiSoporte, comentariosEnMemoria, fechaHora, obtenerComentarios, subirArchivos, type Persona } from "./api";
 import { ARCHIVO_MAX_BYTES } from "@/lib/soporte/dominio";
@@ -13,6 +13,9 @@ type Comentario = {
   contenido: string;
   es_rechazo_qa: boolean;
   created_at: string;
+  editado_at: string | null;
+  /** El usuario actual es el autor: puede editarlo/eliminarlo. */
+  mio: boolean;
   autor: Persona | null;
   adjuntos: { id: string; nombre: string; mime_type: string | null; url: string | null }[];
 };
@@ -35,6 +38,11 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
   const [adjuntando, setAdjuntando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Edición/eliminación de comentarios propios.
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [textoEdit, setTextoEdit] = useState("");
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
 
   const cargar = useCallback(async (forzar = false) => {
@@ -101,6 +109,47 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
     }
   };
 
+  const empezarEdicion = (c: Comentario) => {
+    setError(null);
+    setEditandoId(c.id);
+    setTextoEdit(c.contenido);
+  };
+
+  const guardarEdicion = async (cid: string) => {
+    const contenidoEdit = textoEdit.trim();
+    if (!contenidoEdit) return;
+    setGuardandoEdit(true);
+    setError(null);
+    try {
+      await apiSoporte(`/api/soporte/tickets/${ticket.id}/comentarios/${cid}`, {
+        method: "PATCH",
+        json: { contenido: contenidoEdit },
+      });
+      setEditandoId(null);
+      setTextoEdit("");
+      await cargar(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo editar el comentario");
+    } finally {
+      setGuardandoEdit(false);
+    }
+  };
+
+  const eliminar = async (cid: string) => {
+    if (!window.confirm("¿Eliminar este comentario? No se puede deshacer.")) return;
+    setEliminandoId(cid);
+    setError(null);
+    try {
+      await apiSoporte(`/api/soporte/tickets/${ticket.id}/comentarios/${cid}`, { method: "DELETE" });
+      if (editandoId === cid) setEditandoId(null);
+      await Promise.all([cargar(true), recargar()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo eliminar el comentario");
+    } finally {
+      setEliminandoId(null);
+    }
+  };
+
   const contenido = (
     <>
       {lista == null ? (
@@ -125,8 +174,59 @@ export default function ComentariosTicket({ enTarjeta = true }: { enTarjeta?: bo
                   <span className="font-bold text-slate-900">{c.autor?.nombre ?? "Usuario"}</span>
                   <span className={`rounded-full px-2 py-px text-[10.5px] font-bold ${TONOS[tono].suave} ${TONOS[tono].texto}`}>{c.autor?.area ?? "Equipo"}</span>
                   <span className="text-[12px] text-slate-400">{fechaHora(c.created_at)}</span>
+                  {c.editado_at ? <span className="text-[11px] italic text-slate-400">· editado</span> : null}
+                  {c.mio && !c.es_rechazo_qa && editandoId !== c.id ? (
+                    <span className="ml-auto inline-flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => empezarEdicion(c)}
+                        className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        aria-label="Editar comentario"
+                        title="Editar"
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void eliminar(c.id)}
+                        disabled={eliminandoId === c.id}
+                        className="rounded p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                        aria-label="Eliminar comentario"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </span>
+                  ) : null}
                 </p>
-                {c.es_rechazo_qa ? (
+                {editandoId === c.id ? (
+                  <div className="mt-1.5 space-y-2">
+                    <textarea
+                      className={`${claseInput} min-h-20`}
+                      value={textoEdit}
+                      onChange={(e) => setTextoEdit(e.target.value)}
+                      disabled={guardandoEdit}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                          e.preventDefault();
+                          void guardarEdicion(c.id);
+                        } else if (e.key === "Escape") {
+                          setEditandoId(null);
+                          setTextoEdit("");
+                        }
+                      }}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Boton tam="sm" onClick={() => void guardarEdicion(c.id)} cargando={guardandoEdit} disabled={!textoEdit.trim()}>
+                        <Check className="h-4 w-4" aria-hidden /> Guardar
+                      </Boton>
+                      <Boton variante="fantasma" tam="sm" onClick={() => { setEditandoId(null); setTextoEdit(""); }} disabled={guardandoEdit}>
+                        <X className="h-4 w-4" aria-hidden /> Cancelar
+                      </Boton>
+                    </div>
+                  </div>
+                ) : c.es_rechazo_qa ? (
                   <div className="mt-1.5 rounded-lg border border-rose-100 bg-rose-50/70 px-3 py-2">
                     <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-rose-600">
                       <XCircle className="h-3.5 w-3.5" aria-hidden /> No confirmado

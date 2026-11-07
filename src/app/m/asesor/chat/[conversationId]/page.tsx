@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { puedeCargarSoporte } from "@/app/dashboard/conversaciones/SoporteTicketModal";
@@ -173,6 +173,32 @@ function fmtTime(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Etiqueta del separador de día (como WhatsApp): "Hoy", "Ayer" o la fecha completa. */
+function fmtSeparadorDia(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const mismoDia = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const hoy = new Date();
+  const ayer = new Date();
+  ayer.setDate(hoy.getDate() - 1);
+  if (mismoDia(d, hoy)) return "Hoy";
+  if (mismoDia(d, ayer)) return "Ayer";
+  return d.toLocaleDateString("es-PY", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** ¿El mensaje arranca un día distinto al anterior? (para mostrar el separador de fecha). */
+function esNuevoDia(iso: string | null, prevIso: string | null): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  if (!prevIso) return true; // primer mensaje: siempre muestra la fecha
+  const p = new Date(prevIso);
+  if (Number.isNaN(p.getTime())) return true;
+  return d.getFullYear() !== p.getFullYear() || d.getMonth() !== p.getMonth() || d.getDate() !== p.getDate();
 }
 
 /** Teléfono para mostrar en el header (dígitos → +5959...). */
@@ -1875,9 +1901,16 @@ export default function MAsesorChatPage() {
               // Las reacciones llegan como mensajes propios, pero no son burbujas:
               // se dibujan colgadas del mensaje al que apuntan.
               .filter((m) => m.message_type !== "reaction")
-              .map((m) => (
+              .map((m, i, arr) => (
+              <Fragment key={m.id}>
+                {esNuevoDia(m.created_at, i > 0 ? arr[i - 1].created_at : null) ? (
+                  <div className="my-2 flex justify-center">
+                    <span className="rounded-full bg-slate-200/80 px-3 py-1 text-[11px] font-medium text-slate-600">
+                      {fmtSeparadorDia(m.created_at)}
+                    </span>
+                  </div>
+                ) : null}
               <div
-                key={m.id}
                 id={`msg-${m.id}`}
                 className={`relative flex ${m.from_me ? "justify-end" : "justify-start"}`}
                 onTouchStart={(e) => onBubbleTouchStart(e, m)}
@@ -2008,6 +2041,7 @@ export default function MAsesorChatPage() {
                   })()}
                 </div>
               </div>
+              </Fragment>
               ))}
             {pending.map((p) => (
               <div key={p.tempId} className="flex justify-end">

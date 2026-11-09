@@ -7,6 +7,7 @@ import { Fragment, useEffect, useMemo, useState, type Dispatch, type SetStateAct
 import {
   AlarmClock,
   BarChart3,
+  CalendarCheck2,
   CheckCircle2,
   ChevronDown,
   Code2,
@@ -71,6 +72,7 @@ const ACCESOS: { titulo: string; detalle: string; href: string; icono: LucideIco
   { titulo: "Cargar ticket", detalle: "Desde la tipificación del cliente", href: "/gestion-clientes", icono: Plus, tono: "turquesa" },
   { titulo: "Mis tickets", detalle: "Donde tenés la próxima acción", href: "/dashboard/soporte/mis-tickets", icono: UserRoundCheck, tono: "violeta" },
   { titulo: "Todos los tickets", detalle: "Listado con filtros", href: "/dashboard/soporte/tickets", icono: ListChecks, tono: "celeste" },
+  { titulo: "Lo que cerré", detalle: "Mis cierres por día, con % resuelto", href: "/dashboard/soporte/mis-cierres", icono: CalendarCheck2, tono: "verde" },
   { titulo: "Reportes", detalle: "SLA, tiempos y devoluciones", href: "/dashboard/soporte/reportes", icono: BarChart3, tono: "ambar" },
 ];
 

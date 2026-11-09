@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CircleDot, Plus, Trash2 } from "lucide-react";
 import { apiPersonal, fechaCorta } from "../api";
-import { Chip, Modal, RatingStars, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
+import { Chip, Modal, RatingStars, SeccionCard, EmptyState, inputCls, btnPrimario, btnSecundario } from "../compartido";
 import type { Competencia, EvaluacionDTO } from "@/lib/personal/types";
 
 function Estrellas({ puntaje }: { puntaje: number | null }) {
@@ -45,7 +45,7 @@ export default function DesempenoTab({ id, onCambio }: { id: string; onCambio: (
 
       <div className="mt-3 space-y-3">
         {lista == null ? <p className="py-8 text-center text-[13px] text-slate-400">Cargando…</p> :
-         lista.length === 0 ? <p className="py-8 text-center text-[13px] text-slate-400">Sin evaluaciones registradas.</p> :
+         lista.length === 0 ? <EmptyState icon={CircleDot} titulo="Sin evaluaciones registradas" descripcion="Cargá una evaluación por período con competencias puntuadas usando Nueva evaluación." /> :
          lista.map((ev) => (
           <div key={ev.id} className="rounded-xl border border-slate-200 bg-white p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-2">

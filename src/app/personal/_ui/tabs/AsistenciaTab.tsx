@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, Plus, Trash2 } from "lucide-react";
 import { apiPersonal, fechaCorta } from "../api";
-import { Chip, Modal, Select, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
+import { Chip, Modal, Select, SeccionCard, EmptyState, inputCls, btnPrimario, btnSecundario } from "../compartido";
 import {
   ESTADO_ASISTENCIA_META, ESTADOS_ASISTENCIA,
   type AsistenciaDTO, type EstadoAsistencia, type ResumenAsistencia,
@@ -71,7 +71,7 @@ export default function AsistenciaTab({ id, onCambio }: { id: string; onCambio: 
 
       <div className="mt-3 overflow-x-auto">
         {lista == null ? <p className="py-8 text-center text-[13px] text-slate-400">Cargando…</p> :
-         lista.length === 0 ? <p className="py-8 text-center text-[13px] text-slate-400">Sin marcas en el mes. Usá “Registrar” para cargar la jornada.</p> : (
+         lista.length === 0 ? <EmptyState icon={CalendarCheck} titulo="Sin marcas este mes" descripcion="Cargá la jornada con el botón Registrar o cambiá de mes para ver otro período." /> : (
           <table className="w-full min-w-[620px] text-left text-[13px]">
             <thead>
               <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">

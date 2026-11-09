@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, Check, Plus, Trash2, X as XIcon } from "lucide-react";
 import { apiPersonal, fechaCorta } from "../api";
-import { Chip, Modal, Select, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
+import { Chip, Modal, Select, SeccionCard, EmptyState, inputCls, btnPrimario, btnSecundario } from "../compartido";
 import {
   ESTADO_VACACION_META, TIPO_VACACION_META, TIPOS_VACACION,
   type EstadoVacacion, type SaldoVacaciones, type TipoVacacion, type VacacionDTO,
@@ -63,7 +63,7 @@ export default function VacacionesTab({ id, onCambio }: { id: string; onCambio: 
 
       <div className="mt-3 overflow-x-auto">
         {lista == null ? <p className="py-8 text-center text-[13px] text-slate-400">Cargando…</p> :
-         lista.length === 0 ? <p className="py-8 text-center text-[13px] text-slate-400">Sin solicitudes registradas.</p> : (
+         lista.length === 0 ? <EmptyState icon={CalendarClock} titulo="Sin solicitudes registradas" descripcion="Creá una solicitud de vacaciones, permiso o licencia con el botón Nueva solicitud." /> : (
           <table className="w-full min-w-[680px] text-left text-[13px]">
             <thead>
               <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">

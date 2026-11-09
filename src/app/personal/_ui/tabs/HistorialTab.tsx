@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CalendarCheck, CalendarClock, CircleDot, Clock, FileText } from "lucide-react";
 import { apiPersonal, fechaCorta } from "../api";
-import { Chip, SeccionCard } from "../compartido";
+import { Chip, SeccionCard, EmptyState } from "../compartido";
 import type { EventoHistorial, TipoEventoHistorial } from "@/lib/personal/types";
 
 const ICONO: Record<TipoEventoHistorial, typeof Clock> = {
@@ -30,7 +30,7 @@ export default function HistorialTab({ id }: { id: string }) {
 
       <div className="mt-4">
         {eventos == null ? <p className="py-8 text-center text-[13px] text-slate-400">Cargando…</p> :
-         eventos.length === 0 ? <p className="py-8 text-center text-[13px] text-slate-400">Sin movimientos todavía.</p> : (
+         eventos.length === 0 ? <EmptyState icon={Clock} titulo="Sin movimientos todavía" descripcion="Acá se arma la línea de tiempo a medida que cargás asistencia, incidencias, vacaciones o evaluaciones." /> : (
           <ol className="relative space-y-4 border-l border-slate-200 pl-5">
             {eventos.map((ev) => {
               const Icon = ICONO[ev.tipo] ?? Clock;

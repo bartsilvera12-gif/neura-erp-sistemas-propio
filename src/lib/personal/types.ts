@@ -222,6 +222,7 @@ export type FichaFuncionario = {
   fecha_ingreso: string | null;
   fecha_nacimiento: string | null;
   tipo_contrato: string | null;
+  dias_vacaciones_anuales: number | null;
   avatar_path: string | null;
   supervisor: { id: string; nombre: string } | null;
   kpis: KpisFuncionario;

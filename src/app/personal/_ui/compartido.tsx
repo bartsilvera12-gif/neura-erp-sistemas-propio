@@ -190,6 +190,17 @@ export function Campo({ label, children, className }: { label: string; children:
   );
 }
 
+/** Estado vacío consistente (icono + título + ayuda corta). */
+export function EmptyState({ icon: Icon, titulo, descripcion }: { icon: typeof X; titulo: string; descripcion?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 py-12 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400"><Icon className="h-5 w-5" aria-hidden /></span>
+      <p className="text-[13.5px] font-semibold text-slate-500">{titulo}</p>
+      {descripcion ? <p className="max-w-xs text-[12.5px] text-slate-400">{descripcion}</p> : null}
+    </div>
+  );
+}
+
 /** Puntuación por estrellas (1–5), elegante y clickeable. */
 export function RatingStars({ value, onChange, readOnly }: { value: number; onChange?: (n: number) => void; readOnly?: boolean }) {
   const [hover, setHover] = useState(0);

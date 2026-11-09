@@ -8,7 +8,7 @@ import {
   Download, FileText, Plus, Trash2, Trophy, Upload, UserRound, X,
 } from "lucide-react";
 import { apiPersonal, subirDocumento, fechaCorta, tamanoLegible } from "./api";
-import { Select, Campo } from "./compartido";
+import { Select, Campo, EmptyState } from "./compartido";
 import AsistenciaTab from "./tabs/AsistenciaTab";
 import VacacionesTab from "./tabs/VacacionesTab";
 import DesempenoTab from "./tabs/DesempenoTab";
@@ -62,7 +62,7 @@ function Placeholder({ titulo }: { titulo: string }) {
 
 export default function FichaFuncionarioClient({ id }: { id: string }) {
   const [ficha, setFicha] = useState<FichaFuncionario | null>(null);
-  const [tab, setTab] = useState<TabKey>("incidencias");
+  const [tab, setTab] = useState<TabKey>("datos");
   const [error, setError] = useState<string | null>(null);
 
   const cargarFicha = useCallback(async () => {
@@ -231,7 +231,7 @@ function IncidenciasTab({ id, onCambio }: { id: string; onCambio: () => void }) 
 
       <div className="mt-3 overflow-x-auto">
         {lista == null ? <p className="py-8 text-center text-[13px] text-slate-400">Cargando…</p> :
-         lista.length === 0 ? <p className="py-8 text-center text-[13px] text-slate-400">Sin incidencias en el período.</p> : (
+         lista.length === 0 ? <EmptyState icon={AlertTriangle} titulo="Sin incidencias en el período" descripcion="Registrá llegadas tardías, amonestaciones o reconocimientos con el botón Registrar." /> : (
           <table className="w-full min-w-[640px] text-left text-[13px]">
             <thead>
               <tr className="border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -325,22 +325,48 @@ function RegistrarIncidenciaModal({ id, onCerrar, onCreado }: { id: string; onCe
 }
 
 /* ------------------------------------------------------------------- Datos tab */
+const MODALIDADES = ["Tiempo completo", "Medio tiempo", "Por horas", "Remoto", "Híbrido", "Pasantía"];
+
 function DatosTab({ ficha, onGuardado }: { ficha: FichaFuncionario; onGuardado: () => void }) {
   const [edit, setEdit] = useState(false);
   const [codigo, setCodigo] = useState(ficha.codigo_empleado ?? "");
   const [cargo, setCargo] = useState(ficha.cargo ?? "");
   const [modalidad, setModalidad] = useState(ficha.modalidad ?? "");
   const [area, setArea] = useState(ficha.area ?? "");
+  const [supervisorId, setSupervisorId] = useState(ficha.supervisor?.id ?? "");
+  const [diasVac, setDiasVac] = useState(ficha.dias_vacaciones_anuales != null ? String(ficha.dias_vacaciones_anuales) : "");
+  const [colegas, setColegas] = useState<{ id: string; nombre: string }[]>([]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!edit || colegas.length) return;
+    apiPersonal<{ funcionarios: { id: string; nombre: string }[] }>("/api/personal")
+      .then((d) => setColegas(d.funcionarios.filter((f) => f.id !== ficha.id)))
+      .catch(() => {});
+  }, [edit, colegas.length, ficha.id]);
 
   const guardar = async () => {
     setGuardando(true); setError(null);
     try {
-      await apiPersonal(`/api/personal/${ficha.id}`, { method: "PATCH", json: { codigo_empleado: codigo, cargo, modalidad, area } });
+      await apiPersonal(`/api/personal/${ficha.id}`, {
+        method: "PATCH",
+        json: {
+          codigo_empleado: codigo, cargo, modalidad, area,
+          supervisor_id: supervisorId || null,
+          dias_vacaciones_anuales: diasVac === "" ? null : Number(diasVac),
+        },
+      });
       setEdit(false); onGuardado();
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo guardar"); } finally { setGuardando(false); }
   };
+
+  const modalidadOpts = [
+    ...(modalidad && !MODALIDADES.includes(modalidad) ? [{ value: modalidad, label: modalidad }] : []),
+    { value: "", label: "— Sin definir —" },
+    ...MODALIDADES.map((m) => ({ value: m, label: m })),
+  ];
+  const supervisorOpts = [{ value: "", label: "— Sin supervisor —" }, ...colegas.map((c) => ({ value: c.id, label: c.nombre }))];
 
   const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20";
   return (
@@ -358,20 +384,23 @@ function DatosTab({ ficha, onGuardado }: { ficha: FichaFuncionario; onGuardado: 
           <Dato label="Cargo" valor={ficha.cargo} />
           <Dato label="Área" valor={ficha.area} />
           <Dato label="Modalidad" valor={ficha.modalidad} />
+          <Dato label="Supervisor" valor={ficha.supervisor?.nombre ?? null} />
           <Dato label="Tipo de contrato" valor={ficha.tipo_contrato} />
+          <Dato label="Cupo de vacaciones" valor={ficha.dias_vacaciones_anuales != null ? `${ficha.dias_vacaciones_anuales} días/año` : "12 días/año (por defecto)"} />
           <Dato label="Fecha de ingreso" valor={fechaCorta(ficha.fecha_ingreso)} />
           <Dato label="Fecha de nacimiento" valor={fechaCorta(ficha.fecha_nacimiento)} />
-          <Dato label="Supervisor" valor={ficha.supervisor?.nombre ?? null} />
           <Dato label="Rol del sistema" valor={ficha.rol} />
         </dl>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-[12px] font-semibold text-slate-500">Código de empleado<input className={`${inputCls} mt-1`} value={codigo} onChange={(e) => setCodigo(e.target.value)} /></label>
-          <label className="block text-[12px] font-semibold text-slate-500">Cargo<input className={`${inputCls} mt-1`} value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="Ej.: Project Manager" /></label>
-          <label className="block text-[12px] font-semibold text-slate-500">Área<input className={`${inputCls} mt-1`} value={area} onChange={(e) => setArea(e.target.value)} placeholder="Ej.: Operaciones" /></label>
-          <label className="block text-[12px] font-semibold text-slate-500">Modalidad<input className={`${inputCls} mt-1`} value={modalidad} onChange={(e) => setModalidad(e.target.value)} placeholder="Ej.: Tiempo completo" /></label>
-          {error ? <p className="sm:col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p> : null}
-          <div className="sm:col-span-2 flex items-center gap-2">
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Campo label="Código de empleado"><input className={inputCls} value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ej.: EMP-014" /></Campo>
+          <Campo label="Cargo"><input className={inputCls} value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="Ej.: Project Manager" /></Campo>
+          <Campo label="Área"><input className={inputCls} value={area} onChange={(e) => setArea(e.target.value)} placeholder="Ej.: Operaciones" /></Campo>
+          <Campo label="Modalidad"><Select className="w-full" value={modalidad} onChange={setModalidad} options={modalidadOpts} placeholder="Elegí una modalidad" /></Campo>
+          <Campo label="Supervisor"><Select className="w-full" value={supervisorId} onChange={setSupervisorId} options={supervisorOpts} placeholder="Elegí un supervisor" /></Campo>
+          <Campo label="Cupo de vacaciones (días/año)"><input type="number" min={0} max={60} className={inputCls} value={diasVac} onChange={(e) => setDiasVac(e.target.value)} placeholder="12" /></Campo>
+          {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700 sm:col-span-2">{error}</p> : null}
+          <div className="flex items-center gap-2 sm:col-span-2">
             <button type="button" onClick={() => void guardar()} disabled={guardando} className="rounded-lg bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">{guardando ? "Guardando…" : "Guardar"}</button>
             <button type="button" onClick={() => setEdit(false)} disabled={guardando} className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancelar</button>
           </div>

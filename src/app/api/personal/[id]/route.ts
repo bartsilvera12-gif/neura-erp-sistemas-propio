@@ -15,7 +15,7 @@ export async function GET(request: Request, { params }: Params) {
 
     const { data: u, error } = await sb
       .from("usuarios")
-      .select("id, nombre, email, telefono, codigo_empleado, cargo, area, modalidad, estado, rol, fecha_ingreso, fecha_nacimiento, tipo_contrato, avatar_path, supervisor_id")
+      .select("id, nombre, email, telefono, codigo_empleado, cargo, area, modalidad, estado, rol, fecha_ingreso, fecha_nacimiento, tipo_contrato, dias_vacaciones_anuales, avatar_path, supervisor_id")
       .eq("empresa_id", empresaId)
       .eq("id", id)
       .maybeSingle();
@@ -56,6 +56,7 @@ export async function GET(request: Request, { params }: Params) {
       fecha_ingreso: (row.fecha_ingreso as string | null) ?? null,
       fecha_nacimiento: (row.fecha_nacimiento as string | null) ?? null,
       tipo_contrato: (row.tipo_contrato as string | null) ?? null,
+      dias_vacaciones_anuales: (row.dias_vacaciones_anuales as number | null) ?? null,
       avatar_path: (row.avatar_path as string | null) ?? null,
       supervisor: supervisorId ? { id: supervisorId, nombre: nombres.get(supervisorId) ?? "—" } : null,
       kpis: componerKpis(tipos, asis),
@@ -87,6 +88,10 @@ export async function PATCH(request: Request, { params }: Params) {
     if ("cargo" in body) patch.cargo = texto(body.cargo, 120);
     if ("modalidad" in body) patch.modalidad = texto(body.modalidad, 60);
     if ("area" in body) patch.area = texto(body.area, 120);
+    if ("dias_vacaciones_anuales" in body) {
+      const n = Number(body.dias_vacaciones_anuales);
+      patch.dias_vacaciones_anuales = Number.isFinite(n) && n >= 0 ? Math.min(60, Math.round(n)) : null;
+    }
     if ("supervisor_id" in body) {
       const sup = typeof body.supervisor_id === "string" && UUID.test(body.supervisor_id) ? body.supervisor_id : null;
       if (sup) {

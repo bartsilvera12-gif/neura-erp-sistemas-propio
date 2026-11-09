@@ -297,9 +297,9 @@ export async function crearTipificacionConTicket(
   });
 
   // Aviso al cliente por WhatsApp: SÓLO cuando el ticket nació de una conversación
-  // (ahí tenemos canal y contacto). Le confirmamos el número y el plazo estimado
-  // (SLA de la clasificación). Best-effort: nunca hace fallar el alta ni la revierte
-  // (si la ventana de 24h está cerrada, el envío sólo se loguea).
+  // (ahí tenemos canal y contacto). Le confirmamos el número de su solicitud.
+  // Sin plazos (pedido del equipo). Best-effort: nunca hace fallar el alta ni la
+  // revierte (si la ventana de 24h está cerrada, el envío sólo se loguea).
   if (args.conversationId) {
     try {
       const { data: convRow } = await soporte.sb
@@ -311,14 +311,10 @@ export async function crearTipificacionConTicket(
       const contactId = ((convRow as { contact_id?: string | null } | null)?.contact_id ?? "").trim();
       const channelId = ((convRow as { channel_id?: string | null } | null)?.channel_id ?? "").trim();
       if (contactId && channelId) {
-        const slaH = prep.ticket.fila.sla_horas;
-        const horas = typeof slaH === "number" ? Math.round(slaH) : 0;
-        const plazo =
-          horas > 0 ? `en un plazo aproximado de ${horas} ${horas === 1 ? "hora" : "horas"}` : "a la brevedad";
         const texto =
           `Estimado cliente, hemos registrado su solicitud bajo el número ${numeroTicket(r.numero)}. ` +
-          `Nuestro equipo de soporte ya se encuentra trabajando en ella y estimamos resolverla ${plazo}. ` +
-          `Le mantendremos informado sobre cualquier novedad. Gracias por su confianza.`;
+          `Nuestro equipo de soporte ya se encuentra trabajando en ella. ` +
+          `Le mantendremos informado. Gracias por su confianza.`;
         const dataSchema = await fetchDataSchemaForEmpresaId(soporte.empresaId);
         const pool = getChatPostgresPool();
         const tenantPg = Boolean(pool && isLikelyUnexposedTenantChatSchema(dataSchema));

@@ -64,6 +64,8 @@ export function isModuleSlugGranted(routeSlug: string, grantedSlugs: Set<string>
   }
   if (routeSlug === "gestion-clientes" && grantedSlugs.has("clientes")) return true;
   if (routeSlug === "notas_credito" && grantedSlugs.has("ventas")) return true;
+  // Gestión de Personal es RRHH: lo ve quien tiene el módulo de usuarios/RRHH.
+  if (routeSlug === "personal" && grantedSlugs.has("usuarios")) return true;
   return false;
 }
 
@@ -100,6 +102,8 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/admin")) return null;
   if (p.startsWith("/api")) return null;
   if (p.startsWith("/usuarios")) return "usuarios";
+  // Gestión de Personal (RRHH): mismo gate de módulo que Usuarios.
+  if (p.startsWith("/personal")) return "usuarios";
   // Ayuda en línea: sin gate de módulo a propósito — la consulta cualquiera con sesión.
   if (p.startsWith("/ayuda")) return null;
 

@@ -158,6 +158,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/notas-credito",
     icon: ScrollText,
   },
+  { key: "personal", slug: "personal", label: "Gestión de Personal", href: "/personal", icon: Users },
   { key: "usuarios", slug: "usuarios", label: "RRHH", href: "/usuarios", icon: UserCog },
   {
     // Soporte: la visibilidad la da el módulo, pero el permiso real es de rol
@@ -326,7 +327,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Finanzas",
     itemKeys: ["ventas", "cobranzas", "pagos", "gastos", "compras", "notas_credito", "reportes"],
   },
-  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "produccion"] },
+  { id: "operaciones", title: "Operaciones", itemKeys: ["personal", "inventario", "produccion"] },
   {
     id: "omnicanal",
     title: "Omnicanal",

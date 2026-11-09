@@ -5,7 +5,8 @@ import { createServiceRoleClientForEmpresa } from "@/lib/supabase/empresa-data-s
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { successResponse, errorResponse } from "@/lib/api/response";
-import type { KpisFuncionario, TipoIncidencia } from "@/lib/personal/types";
+import type { EstadoAsistencia, KpisFuncionario, ResumenAsistencia, TipoIncidencia } from "@/lib/personal/types";
+import { ESTADO_ASISTENCIA_META } from "@/lib/personal/types";
 
 /** Bucket privado para los documentos de RRHH. */
 export const PERSONAL_BUCKET = "personal";
@@ -57,6 +58,53 @@ export function kpisDesdeIncidencias(tipos: TipoIncidencia[]): KpisFuncionario {
     else incidencias++; // amonestación, suspensión, ausencia justificada, observación
   }
   return { asistencia: null, llegadas_tardias: llegadas, incidencias, reconocimientos };
+}
+
+/** Resumen de asistencia desde `fecha` (YYYY-MM-DD). % = días efectivos / días marcados. */
+export async function resumenAsistencia(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  usuarioId: string,
+  desde: string
+): Promise<ResumenAsistencia> {
+  const { data } = await sb
+    .from("personal_asistencia")
+    .select("estado")
+    .eq("empresa_id", empresaId)
+    .eq("usuario_id", usuarioId)
+    .gte("fecha", desde);
+  const filas = (data ?? []) as { estado: EstadoAsistencia }[];
+  let presentes = 0, tardes = 0, ausentes = 0, justificadas = 0, efectivos = 0;
+  for (const { estado } of filas) {
+    if (estado === "presente") presentes++;
+    else if (estado === "tarde") tardes++;
+    else if (estado === "ausente") ausentes++;
+    else if (estado === "justificada") justificadas++;
+    if (ESTADO_ASISTENCIA_META[estado]?.cuenta) efectivos++;
+  }
+  const dias_marcados = filas.length;
+  return {
+    dias_marcados,
+    presentes,
+    tardes,
+    ausentes,
+    justificadas,
+    porcentaje: dias_marcados > 0 ? Math.round((efectivos / dias_marcados) * 100) : null,
+  };
+}
+
+/** Combina incidencias + asistencia en los KPIs de la ficha. */
+export function componerKpis(
+  tipos: TipoIncidencia[],
+  asistencia: ResumenAsistencia
+): KpisFuncionario {
+  const base = kpisDesdeIncidencias(tipos);
+  return {
+    ...base,
+    asistencia: asistencia.porcentaje,
+    // Llegadas tardías reales = incidencias "llegada_tardia" + marcas "tarde".
+    llegadas_tardias: base.llegadas_tardias + asistencia.tardes,
+  };
 }
 
 /** Nombres de usuarios por id (para "registrado por" y supervisor). */

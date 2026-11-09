@@ -80,11 +80,132 @@ export type FuncionarioResumen = {
 };
 
 export type KpisFuncionario = {
-  /** % de asistencia. null hasta la Fase 2 (módulo de Asistencia). */
+  /** % de asistencia (presentes+tarde / días marcados). null si no hay registros. */
   asistencia: number | null;
   llegadas_tardias: number;
   incidencias: number;
   reconocimientos: number;
+};
+
+/* ----------------------------------------------------------------- Asistencia */
+export type EstadoAsistencia = "presente" | "tarde" | "ausente" | "justificada" | "permiso" | "vacaciones";
+
+export const ESTADOS_ASISTENCIA: EstadoAsistencia[] = [
+  "presente", "tarde", "ausente", "justificada", "permiso", "vacaciones",
+];
+
+export const ESTADO_ASISTENCIA_META: Record<EstadoAsistencia, { label: string; chip: string; cuenta: boolean }> = {
+  // cuenta = si suma como "día marcado con asistencia efectiva" para el %
+  presente:    { label: "Presente", chip: "bg-emerald-50 text-emerald-700 ring-emerald-200", cuenta: true },
+  tarde:       { label: "Tarde", chip: "bg-amber-50 text-amber-700 ring-amber-200", cuenta: true },
+  ausente:     { label: "Ausente", chip: "bg-rose-50 text-rose-700 ring-rose-200", cuenta: false },
+  justificada: { label: "Falta justificada", chip: "bg-sky-50 text-sky-700 ring-sky-200", cuenta: false },
+  permiso:     { label: "Permiso", chip: "bg-violet-50 text-violet-700 ring-violet-200", cuenta: false },
+  vacaciones:  { label: "Vacaciones", chip: "bg-teal-50 text-teal-700 ring-teal-200", cuenta: false },
+};
+
+export function esEstadoAsistencia(v: unknown): v is EstadoAsistencia {
+  return typeof v === "string" && (ESTADOS_ASISTENCIA as string[]).includes(v);
+}
+
+export type AsistenciaDTO = {
+  id: string;
+  fecha: string;
+  estado: EstadoAsistencia;
+  hora_entrada: string | null;
+  hora_salida: string | null;
+  minutos_tarde: number;
+  observacion: string | null;
+  registrado_por: string | null;
+};
+
+export type ResumenAsistencia = {
+  dias_marcados: number;
+  presentes: number;
+  tardes: number;
+  ausentes: number;
+  justificadas: number;
+  porcentaje: number | null;
+};
+
+/* ----------------------------------------------------------------- Vacaciones */
+export type TipoVacacion = "vacaciones" | "permiso" | "licencia" | "reposo";
+export type EstadoVacacion = "solicitada" | "aprobada" | "rechazada" | "anulada" | "gozada";
+
+export const TIPOS_VACACION: TipoVacacion[] = ["vacaciones", "permiso", "licencia", "reposo"];
+export const ESTADOS_VACACION: EstadoVacacion[] = ["solicitada", "aprobada", "rechazada", "anulada", "gozada"];
+
+export const TIPO_VACACION_META: Record<TipoVacacion, { label: string }> = {
+  vacaciones: { label: "Vacaciones" },
+  permiso: { label: "Permiso" },
+  licencia: { label: "Licencia" },
+  reposo: { label: "Reposo médico" },
+};
+
+export const ESTADO_VACACION_META: Record<EstadoVacacion, { label: string; chip: string }> = {
+  solicitada: { label: "Solicitada", chip: "bg-amber-50 text-amber-700 ring-amber-200" },
+  aprobada:   { label: "Aprobada", chip: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  rechazada:  { label: "Rechazada", chip: "bg-rose-50 text-rose-700 ring-rose-200" },
+  anulada:    { label: "Anulada", chip: "bg-slate-100 text-slate-500 ring-slate-200" },
+  gozada:     { label: "Gozada", chip: "bg-sky-50 text-sky-700 ring-sky-200" },
+};
+
+export function esTipoVacacion(v: unknown): v is TipoVacacion {
+  return typeof v === "string" && (TIPOS_VACACION as string[]).includes(v);
+}
+export function esEstadoVacacion(v: unknown): v is EstadoVacacion {
+  return typeof v === "string" && (ESTADOS_VACACION as string[]).includes(v);
+}
+
+export type VacacionDTO = {
+  id: string;
+  tipo: TipoVacacion;
+  fecha_inicio: string;
+  fecha_fin: string;
+  dias: number;
+  motivo: string | null;
+  estado: EstadoVacacion;
+  aprobado_por: string | null;
+  aprobado_at: string | null;
+  created_at: string;
+};
+
+export type SaldoVacaciones = {
+  anio: number;
+  anuales: number;
+  gozados: number;
+  aprobados: number;
+  disponibles: number;
+};
+
+/* ------------------------------------------------------------------ Desempeño */
+export type Competencia = { nombre: string; puntaje: number };
+
+export type EvaluacionDTO = {
+  id: string;
+  periodo: string;
+  fecha: string;
+  puntaje: number | null;
+  competencias: Competencia[];
+  fortalezas: string | null;
+  mejoras: string | null;
+  comentario: string | null;
+  evaluador: string | null;
+  estado: "borrador" | "finalizada";
+  created_at: string;
+};
+
+/* ------------------------------------------------------------------ Historial */
+export type TipoEventoHistorial = "incidencia" | "asistencia" | "vacacion" | "evaluacion" | "documento";
+
+export type EventoHistorial = {
+  id: string;
+  tipo: TipoEventoHistorial;
+  fecha: string;
+  titulo: string;
+  detalle: string | null;
+  chip: string | null;
+  autor: string | null;
 };
 
 export type FichaFuncionario = {

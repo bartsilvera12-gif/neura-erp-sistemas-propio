@@ -1,4 +1,4 @@
-import { requirePersonalApi, ok, falla, errorInesperado, kpisDesdeIncidencias, nombresPorId } from "@/lib/personal/servidor";
+import { requirePersonalApi, ok, falla, errorInesperado, componerKpis, resumenAsistencia, nombresPorId } from "@/lib/personal/servidor";
 import type { FichaFuncionario, TipoIncidencia } from "@/lib/personal/types";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -37,6 +37,11 @@ export async function GET(request: Request, { params }: Params) {
       .gte("fecha", desde.toISOString().slice(0, 10));
     const tipos = ((inc ?? []) as { tipo: TipoIncidencia }[]).map((r) => r.tipo);
 
+    // Asistencia de los últimos 90 días para el KPI de % y las tardes reales.
+    const desdeAsis = new Date();
+    desdeAsis.setDate(desdeAsis.getDate() - 90);
+    const asis = await resumenAsistencia(sb, empresaId, id, desdeAsis.toISOString().slice(0, 10));
+
     const ficha: FichaFuncionario = {
       id: String(row.id),
       nombre: (row.nombre as string | null) ?? "—",
@@ -53,7 +58,7 @@ export async function GET(request: Request, { params }: Params) {
       tipo_contrato: (row.tipo_contrato as string | null) ?? null,
       avatar_path: (row.avatar_path as string | null) ?? null,
       supervisor: supervisorId ? { id: supervisorId, nombre: nombres.get(supervisorId) ?? "—" } : null,
-      kpis: kpisDesdeIncidencias(tipos),
+      kpis: componerKpis(tipos, asis),
     };
     return ok({ ficha });
   } catch (e) {

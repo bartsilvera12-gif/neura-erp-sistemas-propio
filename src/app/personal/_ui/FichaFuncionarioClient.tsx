@@ -8,6 +8,10 @@ import {
   Download, FileText, Plus, Trash2, Trophy, Upload, UserRound, X,
 } from "lucide-react";
 import { apiPersonal, subirDocumento, fechaCorta, tamanoLegible } from "./api";
+import AsistenciaTab from "./tabs/AsistenciaTab";
+import VacacionesTab from "./tabs/VacacionesTab";
+import DesempenoTab from "./tabs/DesempenoTab";
+import HistorialTab from "./tabs/HistorialTab";
 import {
   ESTADO_INCIDENCIA_META, TIPO_INCIDENCIA_META, TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA,
   type DocumentoDTO, type FichaFuncionario, type IncidenciaDTO, type TipoIncidencia, type EstadoIncidencia,
@@ -128,6 +132,10 @@ export default function FichaFuncionarioClient({ id }: { id: string }) {
         <div className="min-w-0">
           {tab === "incidencias" ? <IncidenciasTab id={id} onCambio={cargarFicha} /> :
            tab === "datos" ? <DatosTab ficha={ficha} onGuardado={cargarFicha} /> :
+           tab === "asistencia" ? <AsistenciaTab id={id} onCambio={cargarFicha} /> :
+           tab === "vacaciones" ? <VacacionesTab id={id} onCambio={cargarFicha} /> :
+           tab === "desempeno" ? <DesempenoTab id={id} onCambio={cargarFicha} /> :
+           tab === "historial" ? <HistorialTab id={id} /> :
            tab === "documentos" ? <DocumentosPanel id={id} grande /> :
            <Placeholder titulo={TABS.find((t) => t.key === tab)?.label ?? ""} />}
         </div>

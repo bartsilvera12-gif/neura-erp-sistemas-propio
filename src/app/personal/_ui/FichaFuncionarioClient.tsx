@@ -8,6 +8,7 @@ import {
   Download, FileText, Plus, Trash2, Trophy, Upload, UserRound, X,
 } from "lucide-react";
 import { apiPersonal, subirDocumento, fechaCorta, tamanoLegible } from "./api";
+import { Select, Campo } from "./compartido";
 import AsistenciaTab from "./tabs/AsistenciaTab";
 import VacacionesTab from "./tabs/VacacionesTab";
 import DesempenoTab from "./tabs/DesempenoTab";
@@ -196,7 +197,6 @@ function IncidenciasTab({ id, onCambio }: { id: string; onCambio: () => void }) 
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo eliminar"); }
   };
 
-  const selectCls = "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] text-slate-700 outline-none focus:border-[#4FAEB2]";
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -212,28 +212,19 @@ function IncidenciasTab({ id, onCambio }: { id: string; onCambio: () => void }) 
         </button>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Tipo
-          <select className={selectCls} value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            <option value="todos">Todos</option>
-            {TIPOS_INCIDENCIA.map((t) => <option key={t} value={t}>{TIPO_INCIDENCIA_META[t].label}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Estado
-          <select className={selectCls} value={estado} onChange={(e) => setEstado(e.target.value)}>
-            <option value="todos">Todos</option>
-            {ESTADOS_INCIDENCIA.map((s) => <option key={s} value={s}>{ESTADO_INCIDENCIA_META[s].label}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Período
-          <select className={selectCls} value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
-            <option value="3m">Últimos 3 meses</option>
-            <option value="6m">Últimos 6 meses</option>
-            <option value="12m">Últimos 12 meses</option>
-            <option value="24m">Últimos 24 meses</option>
-            <option value="todos">Todo</option>
-          </select>
-        </label>
+      <div className="mt-3 flex flex-wrap gap-2.5">
+        <Campo label="Tipo" className="w-44">
+          <Select size="sm" value={tipo} onChange={setTipo} options={[{ value: "todos", label: "Todos" }, ...TIPOS_INCIDENCIA.map((t) => ({ value: t, label: TIPO_INCIDENCIA_META[t].label }))]} />
+        </Campo>
+        <Campo label="Estado" className="w-40">
+          <Select size="sm" value={estado} onChange={setEstado} options={[{ value: "todos", label: "Todos" }, ...ESTADOS_INCIDENCIA.map((s) => ({ value: s, label: ESTADO_INCIDENCIA_META[s].label }))]} />
+        </Campo>
+        <Campo label="Período" className="w-44">
+          <Select size="sm" value={periodo} onChange={setPeriodo} options={[
+            { value: "3m", label: "Últimos 3 meses" }, { value: "6m", label: "Últimos 6 meses" },
+            { value: "12m", label: "Últimos 12 meses" }, { value: "24m", label: "Últimos 24 meses" }, { value: "todos", label: "Todo" },
+          ]} />
+        </Campo>
       </div>
 
       {error ? <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</div> : null}
@@ -306,18 +297,14 @@ function RegistrarIncidenciaModal({ id, onCerrar, onCreado }: { id: string; onCe
         <div className="space-y-3 overflow-y-auto px-5 py-4">
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-[12px] font-semibold text-slate-500">Tipo
-              <select className={`${inputCls} mt-1`} value={tipo} onChange={(e) => setTipo(e.target.value as TipoIncidencia)}>
-                {TIPOS_INCIDENCIA.map((t) => <option key={t} value={t}>{TIPO_INCIDENCIA_META[t].label}</option>)}
-              </select>
+              <Select className="mt-1 w-full" value={tipo} onChange={(v) => setTipo(v as TipoIncidencia)} options={TIPOS_INCIDENCIA.map((t) => ({ value: t, label: TIPO_INCIDENCIA_META[t].label }))} />
             </label>
             <label className="block text-[12px] font-semibold text-slate-500">Fecha
               <input type="date" className={`${inputCls} mt-1`} value={fecha} max={hoy} onChange={(e) => setFecha(e.target.value)} />
             </label>
           </div>
           <label className="block text-[12px] font-semibold text-slate-500">Estado
-            <select className={`${inputCls} mt-1`} value={estado} onChange={(e) => setEstado(e.target.value as EstadoIncidencia)}>
-              {ESTADOS_INCIDENCIA.map((s) => <option key={s} value={s}>{ESTADO_INCIDENCIA_META[s].label}</option>)}
-            </select>
+            <Select className="mt-1 w-full" value={estado} onChange={(v) => setEstado(v as EstadoIncidencia)} options={ESTADOS_INCIDENCIA.map((s) => ({ value: s, label: ESTADO_INCIDENCIA_META[s].label }))} />
           </label>
           <label className="block text-[12px] font-semibold text-slate-500">Descripción
             <textarea className={`${inputCls} mt-1 min-h-24`} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej.: Ingreso a las 08:27 (27 min de atraso)" autoFocus />

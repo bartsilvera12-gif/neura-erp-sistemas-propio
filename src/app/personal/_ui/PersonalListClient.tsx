@@ -1,28 +1,38 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Users, Search, Clock, Trophy, AlertTriangle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Users, Search, ChevronRight } from "lucide-react";
 import { apiPersonal } from "./api";
+import { Chip, Select } from "./compartido";
 import type { FuncionarioResumen } from "@/lib/personal/types";
 
 function normalizar(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-function Inicial({ nombre }: { nombre: string }) {
-  const ini = nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0] ?? "").join("").toUpperCase() || "?";
+function iniciales(nombre: string): string {
+  return nombre.trim().split(/\s+/).slice(0, 2).map((p) => p[0] ?? "").join("").toUpperCase() || "?";
+}
+
+function Avatar({ nombre, activo }: { nombre: string; activo: boolean }) {
   return (
-    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#4FAEB2] to-[#2F8E92] text-sm font-bold text-white">
-      {ini}
+    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12.5px] font-bold text-white ${activo ? "bg-gradient-to-br from-[#4FAEB2] to-[#2F8E92]" : "bg-slate-300"}`}>
+      {iniciales(nombre)}
     </span>
   );
 }
 
+function KpiNum({ n, color }: { n: number; color: string }) {
+  return <span className={`inline-flex min-w-6 justify-center text-[13px] font-semibold ${n > 0 ? color : "text-slate-300"}`}>{n}</span>;
+}
+
 export default function PersonalListClient() {
+  const router = useRouter();
   const [lista, setLista] = useState<FuncionarioResumen[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [estado, setEstado] = useState("todos");
 
   useEffect(() => {
     apiPersonal<{ funcionarios: FuncionarioResumen[] }>("/api/personal")
@@ -33,33 +43,59 @@ export default function PersonalListClient() {
   const filtrada = useMemo(() => {
     if (!lista) return [];
     const t = normalizar(q.trim());
-    if (!t) return lista;
-    const términos = t.split(/\s+/);
+    const terminos = t ? t.split(/\s+/) : [];
     return lista.filter((f) => {
+      const esActivo = (f.estado ?? "").toLowerCase() === "activo";
+      if (estado === "activos" && !esActivo) return false;
+      if (estado === "inactivos" && esActivo) return false;
+      if (!terminos.length) return true;
       const campo = normalizar([f.nombre, f.cargo, f.area, f.codigo_empleado].filter(Boolean).join(" "));
-      return términos.every((term) => campo.includes(term));
+      return terminos.every((term) => campo.includes(term));
     });
-  }, [lista, q]);
+  }, [lista, q, estado]);
+
+  const totalActivos = useMemo(() => (lista ?? []).filter((f) => (f.estado ?? "").toLowerCase() === "activo").length, [lista]);
 
   return (
     <div className="mx-auto max-w-6xl p-4 sm:p-6">
-      <header className="mb-5 flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#4FAEB2]/10 text-[#2F8E92]">
-          <Users className="h-6 w-6" aria-hidden />
-        </span>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Gestión de Personal</h1>
-          <p className="text-sm text-slate-500">Hoja de vida, asistencia e incidencias del equipo.</p>
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#4FAEB2]/10 text-[#2F8E92]">
+            <Users className="h-6 w-6" aria-hidden />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">Gestión de Personal</h1>
+            <p className="text-sm text-slate-500">Hoja de vida, asistencia e incidencias del equipo.</p>
+          </div>
         </div>
+        {lista ? (
+          <div className="flex items-center gap-4 text-[13px]">
+            <div className="text-right"><p className="text-lg font-bold leading-none text-slate-900">{lista.length}</p><p className="text-[11px] text-slate-400">Funcionarios</p></div>
+            <div className="h-8 w-px bg-slate-200" />
+            <div className="text-right"><p className="text-lg font-bold leading-none text-emerald-600">{totalActivos}</p><p className="text-[11px] text-slate-400">Activos</p></div>
+          </div>
+        ) : null}
       </header>
 
-      <div className="relative mb-5 max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por nombre, cargo, área o código…"
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 shadow-sm outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nombre, cargo, área o código…"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 shadow-sm outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20"
+          />
+        </div>
+        <Select
+          value={estado}
+          onChange={setEstado}
+          className="w-40"
+          options={[
+            { value: "todos", label: "Todos los estados" },
+            { value: "activos", label: "Solo activos" },
+            { value: "inactivos", label: "Solo inactivos" },
+          ]}
         />
       </div>
 
@@ -68,55 +104,60 @@ export default function PersonalListClient() {
       ) : lista == null ? (
         <div className="py-20 text-center text-sm text-slate-400">Cargando…</div>
       ) : filtrada.length === 0 ? (
-        <div className="py-20 text-center text-sm text-slate-400">{q ? "Sin resultados." : "No hay funcionarios cargados."}</div>
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 py-16 text-center text-sm text-slate-400">
+          {q || estado !== "todos" ? "Sin resultados para el filtro." : "No hay funcionarios cargados."}
+        </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtrada.map((f) => (
-            <Link
-              key={f.id}
-              href={`/personal/${f.id}`}
-              className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-[#4FAEB2]/50 hover:shadow-md"
-            >
-              <div className="flex items-start gap-3">
-                <Inicial nombre={f.nombre} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-slate-900 group-hover:text-[#2F8E92]">{f.nombre}</p>
-                  <p className="truncate text-[13px] text-slate-500">
-                    {[f.cargo, f.area].filter(Boolean).join(" · ") || "Sin cargo"}
-                  </p>
-                  <div className="mt-0.5 flex items-center gap-2 text-[11.5px] text-slate-400">
-                    {f.codigo_empleado ? <span>Código {f.codigo_empleado}</span> : null}
-                    <span
-                      className={`rounded-full px-1.5 py-px font-semibold ${
-                        (f.estado ?? "").toLowerCase() === "activo"
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-100 text-slate-500"
-                      }`}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-[13.5px]">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="py-2.5 pl-4 pr-3">Funcionario</th>
+                  <th className="py-2.5 pr-3">Cargo</th>
+                  <th className="py-2.5 pr-3">Área</th>
+                  <th className="py-2.5 pr-3">Estado</th>
+                  <th className="py-2.5 pr-3 text-center">Tardías</th>
+                  <th className="py-2.5 pr-3 text-center">Incid.</th>
+                  <th className="py-2.5 pr-3 text-center">Recon.</th>
+                  <th className="py-2.5 pr-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrada.map((f) => {
+                  const activo = (f.estado ?? "").toLowerCase() === "activo";
+                  return (
+                    <tr
+                      key={f.id}
+                      onClick={() => router.push(`/personal/${f.id}`)}
+                      className="group cursor-pointer border-b border-slate-50 transition last:border-0 hover:bg-[#4FAEB2]/[0.04]"
                     >
-                      {f.estado ?? "—"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center">
-                <div className="flex flex-col items-center gap-0.5">
-                  <Clock className="h-4 w-4 text-amber-500" aria-hidden />
-                  <span className="text-sm font-bold text-slate-800">{f.kpis.llegadas_tardias}</span>
-                  <span className="text-[10px] text-slate-400">Tardías</span>
-                </div>
-                <div className="flex flex-col items-center gap-0.5">
-                  <AlertTriangle className="h-4 w-4 text-rose-500" aria-hidden />
-                  <span className="text-sm font-bold text-slate-800">{f.kpis.incidencias}</span>
-                  <span className="text-[10px] text-slate-400">Incidencias</span>
-                </div>
-                <div className="flex flex-col items-center gap-0.5">
-                  <Trophy className="h-4 w-4 text-emerald-500" aria-hidden />
-                  <span className="text-sm font-bold text-slate-800">{f.kpis.reconocimientos}</span>
-                  <span className="text-[10px] text-slate-400">Reconoc.</span>
-                </div>
-              </div>
-            </Link>
-          ))}
+                      <td className="py-2.5 pl-4 pr-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar nombre={f.nombre} activo={activo} />
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-slate-800 group-hover:text-[#2F8E92]">{f.nombre}</p>
+                            {f.codigo_empleado ? <p className="text-[11.5px] text-slate-400">Código {f.codigo_empleado}</p> : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate-600">{f.cargo || <span className="text-slate-300">—</span>}</td>
+                      <td className="py-2.5 pr-3 text-slate-600">{f.area || <span className="text-slate-300">—</span>}</td>
+                      <td className="py-2.5 pr-3">
+                        <Chip className={activo ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-500 ring-slate-200"}>{f.estado ?? "—"}</Chip>
+                      </td>
+                      <td className="py-2.5 pr-3 text-center"><KpiNum n={f.kpis.llegadas_tardias} color="text-amber-600" /></td>
+                      <td className="py-2.5 pr-3 text-center"><KpiNum n={f.kpis.incidencias} color="text-rose-600" /></td>
+                      <td className="py-2.5 pr-3 text-center"><KpiNum n={f.kpis.reconocimientos} color="text-emerald-600" /></td>
+                      <td className="py-2.5 pr-4 text-right">
+                        <ChevronRight className="inline h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#2F8E92]" aria-hidden />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

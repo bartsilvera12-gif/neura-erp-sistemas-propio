@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Check, ChevronDown, Star, X } from "lucide-react";
 
 export const inputCls =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20";
@@ -91,3 +91,124 @@ export const btnPrimario =
   "inline-flex items-center gap-1.5 rounded-lg bg-[#4FAEB2] px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F8E91] disabled:opacity-50";
 export const btnSecundario =
   "rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-50";
+
+/* ---------------------------------------------------------------- Select elegante
+ * Dropdown propio (no <select> nativo). Se despliega en un portal con posición fija
+ * para que no lo recorte el scroll de una modal. Teclado: Esc cierra.
+ */
+export type OpcionSelect = { value: string; label: string };
+
+export function Select({
+  value,
+  onChange,
+  options,
+  placeholder = "Seleccionar…",
+  className,
+  size = "md",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: OpcionSelect[];
+  placeholder?: string;
+  className?: string;
+  size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const sel = options.find((o) => o.value === value);
+
+  const medir = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+  };
+  useEffect(() => {
+    if (!open) return;
+    medir();
+    const cerrar = () => setOpen(false);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("scroll", cerrar, true);
+    window.addEventListener("resize", cerrar);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", cerrar, true);
+      window.removeEventListener("resize", cerrar);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const pad = size === "sm" ? "px-2.5 py-1.5 text-[13px]" : "px-3 py-2 text-sm";
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center justify-between gap-2 rounded-lg border bg-white text-left text-slate-700 shadow-sm outline-none transition hover:border-[#4FAEB2]/60 focus:ring-2 focus:ring-[#4FAEB2]/20 ${pad} ${open ? "border-[#4FAEB2]" : "border-slate-200"} ${className ?? ""}`}
+      >
+        <span className={`truncate ${sel ? "text-slate-800" : "text-slate-400"}`}>{sel?.label ?? placeholder}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition ${open ? "rotate-180" : ""}`} aria-hidden />
+      </button>
+      {open && rect
+        ? createPortal(
+            <>
+              <div className="fixed inset-0 z-[60]" onMouseDown={() => setOpen(false)} />
+              <div
+                className="fixed z-[61] max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
+                style={{ top: rect.top, left: rect.left, width: rect.width }}
+              >
+                {options.map((o) => {
+                  const act = o.value === value;
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => { onChange(o.value); setOpen(false); }}
+                      className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13.5px] transition ${act ? "bg-[#4FAEB2]/10 font-semibold text-[#2F8E92]" : "text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      <span className="truncate">{o.label}</span>
+                      {act ? <Check className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
+/** Campo etiquetado vertical (label arriba, control abajo). */
+export function Campo({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <label className={`flex flex-col gap-1 ${className ?? ""}`}>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** Puntuación por estrellas (1–5), elegante y clickeable. */
+export function RatingStars({ value, onChange, readOnly }: { value: number; onChange?: (n: number) => void; readOnly?: boolean }) {
+  const [hover, setHover] = useState(0);
+  const activo = hover || value;
+  return (
+    <div className="inline-flex items-center gap-0.5" onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          disabled={readOnly}
+          onClick={() => onChange?.(n)}
+          onMouseEnter={() => !readOnly && setHover(n)}
+          className={`rounded p-0.5 transition ${readOnly ? "cursor-default" : "hover:scale-110"}`}
+          aria-label={`${n} de 5`}
+        >
+          <Star className={`h-5 w-5 ${n <= activo ? "fill-amber-400 text-amber-400" : "text-slate-200"}`} aria-hidden />
+        </button>
+      ))}
+    </div>
+  );
+}

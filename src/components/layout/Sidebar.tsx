@@ -159,7 +159,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: ScrollText,
   },
   { key: "personal", slug: "personal", label: "Gestión de Personal", href: "/personal", icon: Users },
-  { key: "usuarios", slug: "usuarios", label: "RRHH", href: "/usuarios", icon: UserCog },
+  { key: "usuarios", slug: "usuarios", label: "Usuarios y accesos", href: "/usuarios", icon: UserCog },
   {
     // Soporte: la visibilidad la da el módulo, pero el permiso real es de rol
     // (`puedeUsarSoporte`) y lo vuelven a verificar el layout y cada API.
@@ -327,7 +327,8 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Finanzas",
     itemKeys: ["ventas", "cobranzas", "pagos", "gastos", "compras", "notas_credito", "reportes"],
   },
-  { id: "operaciones", title: "Operaciones", itemKeys: ["personal", "inventario", "produccion"] },
+  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "produccion"] },
+  { id: "rrhh", title: "Recursos Humanos", itemKeys: ["personal", "usuarios", "guardias"] },
   {
     id: "omnicanal",
     title: "Omnicanal",
@@ -346,7 +347,7 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
     title: "Marketing y Automatización",
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  { id: "administracion", title: "Administración", itemKeys: ["usuarios", "guardias", "configuracion"] },
+  { id: "administracion", title: "Administración", itemKeys: ["configuracion"] },
 ];
 
 /**

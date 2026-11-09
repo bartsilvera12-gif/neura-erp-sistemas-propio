@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, Plus, Trash2 } from "lucide-react";
 import { apiPersonal, fechaCorta } from "../api";
-import { Chip, Modal, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
+import { Chip, Modal, Select, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
 import {
   ESTADO_ASISTENCIA_META, ESTADOS_ASISTENCIA,
   type AsistenciaDTO, type EstadoAsistencia, type ResumenAsistencia,
@@ -141,9 +141,7 @@ function RegistrarJornadaModal({ id, onCerrar, onCreado }: { id: string; onCerra
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-[12px] font-semibold text-slate-500">Fecha<input type="date" className={`${inputCls} mt-1`} value={fecha} max={hoy} onChange={(e) => setFecha(e.target.value)} /></label>
         <label className="block text-[12px] font-semibold text-slate-500">Estado
-          <select className={`${inputCls} mt-1`} value={estado} onChange={(e) => setEstado(e.target.value as EstadoAsistencia)}>
-            {ESTADOS_ASISTENCIA.map((s) => <option key={s} value={s}>{ESTADO_ASISTENCIA_META[s].label}</option>)}
-          </select>
+          <Select className="mt-1 w-full" value={estado} onChange={(v) => setEstado(v as EstadoAsistencia)} options={ESTADOS_ASISTENCIA.map((s) => ({ value: s, label: ESTADO_ASISTENCIA_META[s].label }))} />
         </label>
       </div>
       {(estado === "presente" || estado === "tarde") ? (

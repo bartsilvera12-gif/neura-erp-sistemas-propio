@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, Check, Plus, Trash2, X as XIcon } from "lucide-react";
 import { apiPersonal, fechaCorta } from "../api";
-import { Chip, Modal, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
+import { Chip, Modal, Select, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
 import {
   ESTADO_VACACION_META, TIPO_VACACION_META, TIPOS_VACACION,
   type EstadoVacacion, type SaldoVacaciones, type TipoVacacion, type VacacionDTO,
@@ -132,9 +132,7 @@ function NuevaSolicitudModal({ id, onCerrar, onCreado }: { id: string; onCerrar:
       </>
     }>
       <label className="block text-[12px] font-semibold text-slate-500">Tipo
-        <select className={`${inputCls} mt-1`} value={tipo} onChange={(e) => setTipo(e.target.value as TipoVacacion)}>
-          {TIPOS_VACACION.map((t) => <option key={t} value={t}>{TIPO_VACACION_META[t].label}</option>)}
-        </select>
+        <Select className="mt-1 w-full" value={tipo} onChange={(v) => setTipo(v as TipoVacacion)} options={TIPOS_VACACION.map((t) => ({ value: t, label: TIPO_VACACION_META[t].label }))} />
       </label>
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-[12px] font-semibold text-slate-500">Desde<input type="date" className={`${inputCls} mt-1`} value={ini} onChange={(e) => setIni(e.target.value)} /></label>

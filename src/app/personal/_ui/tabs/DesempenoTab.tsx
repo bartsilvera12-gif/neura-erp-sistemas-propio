@@ -1,20 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CircleDot, Plus, Star, Trash2 } from "lucide-react";
+import { CircleDot, Plus, Trash2 } from "lucide-react";
 import { apiPersonal, fechaCorta } from "../api";
-import { Chip, Modal, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
+import { Chip, Modal, RatingStars, SeccionCard, inputCls, btnPrimario, btnSecundario } from "../compartido";
 import type { Competencia, EvaluacionDTO } from "@/lib/personal/types";
 
 function Estrellas({ puntaje }: { puntaje: number | null }) {
   if (puntaje == null) return <span className="text-[13px] text-slate-400">Sin puntaje</span>;
   return (
-    <span className="inline-flex items-center gap-1">
-      <span className="inline-flex">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <Star key={n} className={`h-3.5 w-3.5 ${n <= Math.round(puntaje) ? "fill-amber-400 text-amber-400" : "text-slate-200"}`} aria-hidden />
-        ))}
-      </span>
+    <span className="inline-flex items-center gap-1.5">
+      <RatingStars value={Math.round(puntaje)} readOnly />
       <span className="text-[13px] font-semibold text-slate-700">{puntaje.toFixed(1)}</span>
     </span>
   );
@@ -134,18 +130,24 @@ function NuevaEvaluacionModal({ id, onCerrar, onCreado }: { id: string; onCerrar
       <label className="block text-[12px] font-semibold text-slate-500">Período<input className={`${inputCls} mt-1`} value={periodo} onChange={(e) => setPeriodo(e.target.value)} placeholder="Ej.: 2º semestre 2026" /></label>
 
       <div>
-        <p className="text-[12px] font-semibold text-slate-500">Competencias (0–5)</p>
-        <div className="mt-1 space-y-1.5">
+        <p className="text-[12px] font-semibold text-slate-500">Competencias <span className="font-normal text-slate-400">(puntuá con las estrellas)</span></p>
+        <div className="mt-1.5 space-y-1.5">
           {competencias.map((c, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input className={`${inputCls} flex-1`} value={c.nombre} list="comp-sugeridas" onChange={(e) => setComp(i, { nombre: e.target.value })} placeholder="Competencia" />
-              <input type="number" min={0} max={5} step={0.5} className={`${inputCls} w-20`} value={c.puntaje} onChange={(e) => setComp(i, { puntaje: Math.min(5, Math.max(0, Number(e.target.value))) })} />
+            <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-1.5">
+              <input
+                className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-slate-200 focus:bg-white"
+                value={c.nombre}
+                list="comp-sugeridas"
+                onChange={(e) => setComp(i, { nombre: e.target.value })}
+                placeholder="Nombre de la competencia"
+              />
+              <RatingStars value={Math.round(c.puntaje)} onChange={(n) => setComp(i, { puntaje: n })} />
               <button type="button" onClick={() => quitar(i)} className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600" aria-label="Quitar"><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
             </div>
           ))}
         </div>
         <datalist id="comp-sugeridas">{COMPETENCIAS_SUGERIDAS.map((s) => <option key={s} value={s} />)}</datalist>
-        <button type="button" onClick={agregar} className="mt-1.5 text-[12.5px] font-semibold text-[#2F8E92] hover:underline">+ Agregar competencia</button>
+        <button type="button" onClick={agregar} className="mt-2 text-[12.5px] font-semibold text-[#2F8E92] hover:underline">+ Agregar competencia</button>
       </div>
 
       <label className="block text-[12px] font-semibold text-slate-500">Fortalezas<textarea className={`${inputCls} mt-1 min-h-14`} value={fortalezas} onChange={(e) => setFortalezas(e.target.value)} /></label>

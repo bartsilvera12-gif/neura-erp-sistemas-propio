@@ -31,6 +31,14 @@ export function Modal({
 }) {
   const [montado, setMontado] = useState(false);
   useEffect(() => setMontado(true), []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Si un Select abierto ya consumió el Escape (preventDefault), no cerramos el modal.
+      if (e.key === "Escape" && !e.defaultPrevented) onCerrar();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCerrar]);
   if (!montado) return null;
   return createPortal(
     <div
@@ -141,7 +149,7 @@ export function Select({
       if (panelRef.current && e.target instanceof Node && panelRef.current.contains(e.target)) return;
       medir();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } };
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", medir);
     window.addEventListener("keydown", onKey);

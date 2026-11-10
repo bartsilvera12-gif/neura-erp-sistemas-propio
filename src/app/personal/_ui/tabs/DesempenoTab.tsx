@@ -142,7 +142,7 @@ function NuevaEvaluacionModal({ id, onCerrar, onCreado }: { id: string; onCerrar
                 placeholder="Nombre de la competencia"
               />
               <RatingStars value={Math.round(c.puntaje)} onChange={(n) => setComp(i, { puntaje: n })} />
-              <button type="button" onClick={() => quitar(i)} className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600" aria-label="Quitar"><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
+              <button type="button" onClick={() => quitar(i)} className="ml-2 shrink-0 rounded-md border border-transparent p-1.5 text-slate-300 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600" aria-label="Quitar competencia" title="Quitar competencia"><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
             </div>
           ))}
         </div>

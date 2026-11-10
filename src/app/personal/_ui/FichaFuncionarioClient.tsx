@@ -15,7 +15,7 @@ import DesempenoTab from "./tabs/DesempenoTab";
 import HistorialTab from "./tabs/HistorialTab";
 import {
   ESTADO_INCIDENCIA_META, TIPO_INCIDENCIA_META, TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA,
-  type DocumentoDTO, type FichaFuncionario, type IncidenciaDTO, type TipoIncidencia, type EstadoIncidencia,
+  type DocumentoDTO, type FichaFuncionario, type FuncionarioResumen, type IncidenciaDTO, type TipoIncidencia, type EstadoIncidencia,
 } from "@/lib/personal/types";
 
 const TABS = [
@@ -336,15 +336,24 @@ function DatosTab({ ficha, onGuardado }: { ficha: FichaFuncionario; onGuardado: 
   const [supervisorId, setSupervisorId] = useState(ficha.supervisor?.id ?? "");
   const [diasVac, setDiasVac] = useState(ficha.dias_vacaciones_anuales != null ? String(ficha.dias_vacaciones_anuales) : "");
   const [colegas, setColegas] = useState<{ id: string; nombre: string }[]>([]);
+  const [areasDisp, setAreasDisp] = useState<string[]>([]);
+  const [areaManual, setAreaManual] = useState(false);
+  const [cargado, setCargado] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!edit || colegas.length) return;
-    apiPersonal<{ funcionarios: { id: string; nombre: string }[] }>("/api/personal")
-      .then((d) => setColegas(d.funcionarios.filter((f) => f.id !== ficha.id)))
-      .catch(() => {});
-  }, [edit, colegas.length, ficha.id]);
+    if (!edit || cargado) return;
+    apiPersonal<{ funcionarios: FuncionarioResumen[] }>("/api/personal")
+      .then((d) => {
+        setColegas(d.funcionarios.filter((f) => f.id !== ficha.id).map((f) => ({ id: f.id, nombre: f.nombre })));
+        const vistas = new Map<string, string>();
+        for (const f of d.funcionarios) { const a = (f.area ?? "").trim(); if (a) vistas.set(a.toLowerCase(), a); }
+        setAreasDisp([...vistas.values()].sort((a, b) => a.localeCompare(b, "es")));
+        setCargado(true);
+      })
+      .catch(() => setCargado(true));
+  }, [edit, cargado, ficha.id]);
 
   const guardar = async () => {
     setGuardando(true); setError(null);
@@ -367,6 +376,14 @@ function DatosTab({ ficha, onGuardado }: { ficha: FichaFuncionario; onGuardado: 
     ...MODALIDADES.map((m) => ({ value: m, label: m })),
   ];
   const supervisorOpts = [{ value: "", label: "— Sin supervisor —" }, ...colegas.map((c) => ({ value: c.id, label: c.nombre }))];
+  const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const areaConocida = !area || areasDisp.some((a) => a.toLowerCase() === area.toLowerCase());
+  const areaOpts = [
+    { value: "", label: "— Sin área —" },
+    ...(area && !areaConocida ? [{ value: area, label: cap(area) }] : []),
+    ...areasDisp.map((a) => ({ value: a, label: cap(a) })),
+    { value: "__otra__", label: "Otra área…" },
+  ];
 
   const inputCls = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20";
   return (
@@ -395,7 +412,18 @@ function DatosTab({ ficha, onGuardado }: { ficha: FichaFuncionario; onGuardado: 
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Campo label="Código de empleado"><input className={inputCls} value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ej.: EMP-014" /></Campo>
           <Campo label="Cargo"><input className={inputCls} value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="Ej.: Project Manager" /></Campo>
-          <Campo label="Área"><input className={inputCls} value={area} onChange={(e) => setArea(e.target.value)} placeholder="Ej.: Operaciones" /></Campo>
+          <Campo label="Área">
+            {areaManual ? (
+              <div className="flex items-center gap-1.5">
+                <input className={inputCls} value={area} onChange={(e) => setArea(e.target.value)} placeholder="Nueva área" autoFocus />
+                <button type="button" onClick={() => setAreaManual(false)} className="shrink-0 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-slate-500 hover:bg-slate-100" title="Elegir de la lista">Lista</button>
+              </div>
+            ) : (
+              <Select className="w-full" value={area} placeholder="Elegí un área"
+                onChange={(v) => { if (v === "__otra__") { setArea(""); setAreaManual(true); } else setArea(v); }}
+                options={areaOpts} />
+            )}
+          </Campo>
           <Campo label="Modalidad"><Select className="w-full" value={modalidad} onChange={setModalidad} options={modalidadOpts} placeholder="Elegí una modalidad" /></Campo>
           <Campo label="Supervisor"><Select className="w-full" value={supervisorId} onChange={setSupervisorId} options={supervisorOpts} placeholder="Elegí un supervisor" /></Campo>
           <Campo label="Cupo de vacaciones (días/año)"><input type="number" min={0} max={60} className={inputCls} value={diasVac} onChange={(e) => setDiasVac(e.target.value)} placeholder="12" /></Campo>

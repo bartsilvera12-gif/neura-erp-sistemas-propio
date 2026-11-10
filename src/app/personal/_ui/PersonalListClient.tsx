@@ -95,9 +95,14 @@ export default function PersonalListClient() {
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cargar"));
   }, []);
 
+  // Desglose de áreas: solo funcionarios activos.
   const areas = useMemo(() => {
     const m = new Map<string, number>();
-    for (const f of lista ?? []) { const a = (f.area ?? "").trim(); if (a) m.set(a, (m.get(a) ?? 0) + 1); }
+    for (const f of lista ?? []) {
+      if (!esActivo(f)) continue;
+      const a = (f.area ?? "").trim();
+      if (a) m.set(a, (m.get(a) ?? 0) + 1);
+    }
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [lista]);
 
@@ -180,7 +185,7 @@ export default function PersonalListClient() {
       {areas.length ? (
         <div className="mb-3 flex flex-wrap gap-1.5">
           <button type="button" onClick={() => setArea("todas")} className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ring-1 ring-inset transition ${area === "todas" ? "bg-[#4FAEB2] text-white ring-[#4FAEB2]" : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"}`}>
-            Todas · {lista?.length ?? 0}
+            Todas · {totalActivos}
           </button>
           {areas.map(([a, n]) => (
             <button key={a} type="button" onClick={() => setArea(area === a ? "todas" : a)}

@@ -115,26 +115,42 @@ export function Select({
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; arriba: boolean } | null>(null);
   const sel = options.find((o) => o.value === value);
 
   const medir = () => {
     const r = btnRef.current?.getBoundingClientRect();
-    if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    if (!r) return;
+    // Si no hay lugar abajo, abrir hacia arriba.
+    const espacioAbajo = window.innerHeight - r.bottom;
+    const arriba = espacioAbajo < 260 && r.top > espacioAbajo;
+    setRect({
+      top: arriba ? r.top - 4 : r.bottom + 4,
+      left: r.left,
+      width: r.width,
+      arriba,
+    });
   };
   useEffect(() => {
     if (!open) return;
     medir();
-    const cerrar = () => setOpen(false);
+    // Reposicionar (no cerrar) cuando la página hace scroll o cambia de tamaño,
+    // ignorando el scroll que ocurre DENTRO de la propia lista.
+    const onScroll = (e: Event) => {
+      if (panelRef.current && e.target instanceof Node && panelRef.current.contains(e.target)) return;
+      medir();
+    };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    window.addEventListener("scroll", cerrar, true);
-    window.addEventListener("resize", cerrar);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", medir);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("scroll", cerrar, true);
-      window.removeEventListener("resize", cerrar);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", medir);
       window.removeEventListener("keydown", onKey);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const pad = size === "sm" ? "px-2.5 py-1.5 text-[13px]" : "px-3 py-2 text-sm";
@@ -154,8 +170,15 @@ export function Select({
             <>
               <div className="fixed inset-0 z-[60]" onMouseDown={() => setOpen(false)} />
               <div
+                ref={panelRef}
                 className="fixed z-[61] max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
-                style={{ top: rect.top, left: rect.left, width: rect.width }}
+                style={{
+                  left: rect.left,
+                  width: rect.width,
+                  ...(rect.arriba
+                    ? { bottom: window.innerHeight - rect.top }
+                    : { top: rect.top }),
+                }}
               >
                 {options.map((o) => {
                   const act = o.value === value;

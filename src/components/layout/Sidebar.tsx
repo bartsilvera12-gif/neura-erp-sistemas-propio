@@ -61,7 +61,8 @@ type MenuItem = {
   slug: string;
   label: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  /** `strokeWidth` para poder afinar el trazo, como el menú de 2.0. */
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   children?: { label: string; href: string; exactMatch?: boolean }[];
   showWhen?: string;
 };
@@ -414,26 +415,22 @@ function NavItem({
     return (
       <div className="space-y-0.5">
         <div
-          className={`group/parent relative flex items-center gap-0.5 rounded-xl text-[14px] transition-all ${
+          className={`group/parent relative flex items-center gap-0.5 rounded-xl text-[15px] transition-all ${
             active
-              ? "bg-white/[0.08] text-white"
+              ? "bg-white/[0.10] text-white"
               : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
           }`}
         >
-          {active ? (
-            <span
-              aria-hidden="true"
-              className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-[#7DCFD2] shadow-[0_0_12px_rgba(125,207,210,0.7)]"
-            />
-          ) : null}
+
           <Link
             href={item.href}
-            className={`flex min-w-0 flex-1 items-center gap-3 px-3 py-[0.7rem] ${active ? "font-semibold" : "font-medium"}`}
+            className={`flex min-w-0 flex-1 items-center gap-3.5 px-3 py-3 ${active ? "font-semibold" : "font-medium"}`}
             title={item.label}
           >
             <Icon
-              className={`h-[18px] w-[18px] shrink-0 transition-colors ${
-                active ? "text-[#7DCFD2]" : "text-slate-400 group-hover/parent:text-slate-200"
+              strokeWidth={1.75}
+              className={`h-5 w-5 shrink-0 transition-colors ${
+                active ? "text-white" : "text-slate-400 group-hover/parent:text-slate-200"
               }`}
             />
             {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
@@ -801,7 +798,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       transition={{ duration: 0.2 }}
       data-mobile-open={mobileOpen ? "true" : "false"}
       className={`
-        flex h-svh min-h-0 shrink-0 flex-col border-r border-[color:var(--zentra-sidebar-border)] bg-[color:var(--zentra-sidebar)]
+        flex h-svh min-h-0 shrink-0 flex-col border-r border-[color:var(--zentra-sidebar-border)] bg-[#2E4D54]
         max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:!w-[280px]
         max-md:shadow-2xl max-md:transition-transform max-md:duration-200 max-md:ease-out
         ${mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}

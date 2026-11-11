@@ -29,12 +29,12 @@ export const TIPO_TICKET_DE_GESTION: Partial<Record<TipoGestion, string>> = {
 };
 
 /**
- * Desarrollo de Soporte en horario laboral, por empresa: hoy Emmanuel
- * Maximiliano Guillén Martínez (desde nov-2026; antes Milagros Luján Gómez
- * Flores, que pasó a Project Manager). Para cambiarlo alcanza con este mapa.
+ * Desarrollo de Soporte en horario laboral, por empresa: hoy Neurita, el agente
+ * de IA (desde el 11-nov-2026; antes Emmanuel Maximiliano Guillén Martínez, y
+ * antes Milagros Luján Gómez Flores). Para cambiarlo alcanza con este mapa.
  */
 const RESPONSABLE_HORARIO_LABORAL: Record<string, string> = {
-  "9fd29108-4b0f-4faf-9eee-c509f6227d47": "2c6f3063-d7df-4561-b804-6889d8108e68",
+  "9fd29108-4b0f-4faf-9eee-c509f6227d47": "d021c302-110e-4982-9ded-57e52032692e",
 };
 
 export { enFranjaDeGuardia };

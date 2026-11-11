@@ -804,7 +804,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       transition={{ duration: 0.2 }}
       data-mobile-open={mobileOpen ? "true" : "false"}
       className={`
-        flex h-svh min-h-0 shrink-0 flex-col border-r border-[color:var(--zentra-sidebar-border)] bg-[#2E4D54]
+        flex h-svh min-h-0 shrink-0 flex-col border-r border-[color:var(--zentra-sidebar-border)] bg-[#224E55]
         max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:!w-[280px]
         max-md:shadow-2xl max-md:transition-transform max-md:duration-200 max-md:ease-out
         ${mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}
@@ -814,14 +814,14 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           Cerrado NO se achica el logo: a 44 px la palabra ZENTRA queda ilegible y la Z se
           ve como una manchita. Se esconde y el botón de abrir ocupa el lugar, centrado. */}
       <div
-        className={`flex shrink-0 items-center gap-2 px-3 py-2.5 ${
-          collapsed ? "h-16 justify-center" : "h-[7.25rem] justify-between"
+        className={`relative flex shrink-0 items-center border-b border-[color:var(--zentra-sidebar-border)] bg-[#285C62] ${
+          collapsed ? "h-16 justify-center gap-1 px-1" : "h-28 justify-center px-3"
         }`}
       >
         {collapsed ? null : (
-        <Link href="/" className={`flex items-center justify-center min-w-0 flex-1 overflow-hidden`}>
+        <Link href="/" className="flex items-center justify-center overflow-hidden" aria-label="Inicio">
           <div
-            className="relative flex h-[4.5rem] w-full max-w-[200px] items-center justify-center"
+            className="relative flex h-16 w-[180px] items-center justify-center"
           >
             <Image
               src="/brand/zentra-logo-official.png"
@@ -840,7 +840,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden rounded-lg p-2 text-slate-400 transition-colors hover:bg-[color:var(--zentra-sidebar-hover)] hover:text-white md:inline-flex"
+          className={`hidden shrink-0 rounded-md text-slate-400 transition-colors hover:bg-white/10 hover:text-white md:inline-flex ${collapsed ? "p-1" : "absolute right-3 top-3 p-1.5"}`}
           aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
         >
           {/* Los chevrones dobles de 2.0, en vez del ícono de panel: el mismo gesto,
@@ -851,7 +851,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         <button
           type="button"
           onClick={() => onCloseMobile?.()}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-[color:var(--zentra-sidebar-hover)] hover:text-white md:hidden"
+          className="absolute right-2 top-3 flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/10 hover:text-white md:hidden"
           aria-label="Cerrar menú"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -878,7 +878,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
               placeholder="Buscar en el menú…"
               value={menuSearchQuery}
               onChange={(e) => setMenuSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-9 pr-9 text-base text-white outline-none transition-[border-color,background-color,box-shadow] placeholder:text-slate-500 hover:border-white/[0.14] hover:bg-white/[0.06] focus:border-[#7DCFD2]/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-[#7DCFD2]/30 md:text-[13px]"
+              className="w-full rounded-lg border border-white/[0.08] bg-black/20 py-2.5 pl-9 pr-9 text-base text-white outline-none transition-[border-color,background-color] placeholder:text-slate-500 focus:border-[#7DCFD2]/40 focus:bg-black/30 md:py-2 md:text-[13px]"
             />
             {/* El atajo a la vista, como en 2.0: si no se muestra, nadie lo descubre. */}
             {menuSearchQuery ? null : (

@@ -89,9 +89,11 @@ export async function GET(request: Request) {
       const usd = Number(g.usd ?? 0);
       if (!Number.isFinite(usd)) continue;
       usdTotal += usd;
+      // Un aviso sin número de ticket no es una vuelta del modelo: es una carga
+      // hecha a mano (el gasto previo a esta tabla). Suma plata, no vueltas.
       if (g.fecha === hoy) {
         usdHoy += usd;
-        vueltasHoy++;
+        if (g.ticket_numero != null) vueltasHoy++;
       }
       if (typeof g.fecha === "string" && g.fecha.startsWith(mes)) usdMes += usd;
       if (g.ticket_numero != null) {

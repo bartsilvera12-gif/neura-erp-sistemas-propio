@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Sparkles, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2 } from "lucide-react";
+import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity } from "lucide-react";
 import { apiSoporte } from "../_ui/api";
-import { Aviso, Cargando, Encabezado, Insignia, Pagina, Tarjeta, Vacio } from "../_ui/ui";
+import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio } from "../_ui/ui";
+
+type Ficha = { id: string | null; numero: number; asunto: string; cliente: string | null; estado_codigo: string | null; usd: number; vueltas: number };
 
 type Resp = {
   agente: { id: string; nombre: string } | null;
@@ -18,11 +20,16 @@ type Resp = {
     volvieron: number;
     ticketsConGasto: number;
   };
-  hoy: { numero: number; id: string | null; asunto: string; cliente: string | null; estado_codigo: string | null; usd: number; vueltas: number }[];
-  comparativo: { id: string; nombre: string; resueltos: number; medianaMinutos: number | null; esAgente: boolean }[];
+  hoy: Ficha[];
+  dias: { fecha: string; usd: number; vueltas: number }[];
+  sistemas: { nombre: string; usd: number; vueltas: number; tickets: number }[];
+  volvieronLista: Ficha[];
+  abiertos: (Ficha & { desde: string })[];
+  caros: Ficha[];
 };
 
 const usd = (n: number) => `US$ ${n.toLocaleString("es-PY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const nro = (n: number) => `#${String(n).padStart(4, "0")}`;
 
 /** 95 → "1 h 35 min". Los minutos sueltos no se leen cuando pasan de la hora. */
 function duracion(min: number | null): string {
@@ -33,19 +40,20 @@ function duracion(min: number | null): string {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
-function Dato({
-  etiqueta,
-  valor,
-  pie,
-  icono: Icono,
-  tono = "text-slate-400",
-}: {
-  etiqueta: string;
-  valor: string;
-  pie?: string;
-  icono: typeof Wallet;
-  tono?: string;
-}) {
+/** "2026-11-11" → "11/11". Dos dígitos alcanzan para un eje de catorce días. */
+const diaCorto = (f: string) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
+
+function desdeHace(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const min = ms / 60_000;
+  if (min < 60) return `hace ${Math.round(min)} min`;
+  const h = min / 60;
+  if (h < 48) return `hace ${Math.round(h)} h`;
+  return `hace ${Math.round(h / 24)} días`;
+}
+
+function Dato({ etiqueta, valor, pie, icono: Icono, tono = "text-slate-400" }: { etiqueta: string; valor: string; pie?: string; icono: typeof Wallet; tono?: string }) {
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="mb-2 flex items-center gap-2">
@@ -53,8 +61,28 @@ function Dato({
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{etiqueta}</p>
       </div>
       <p className="text-[22px] font-semibold leading-none text-slate-800">{valor}</p>
-      {pie ? <p className="mt-1.5 text-[12px] text-slate-400">{pie}</p> : null}
+      {pie ? <p className="mt-1.5 text-[12px] leading-snug text-slate-400">{pie}</p> : null}
     </div>
+  );
+}
+
+/** Ticket con su número, asunto y cliente: la fila que se repite en todas las listas. */
+function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
+  return (
+    <tr className="border-b border-slate-100 last:border-0">
+      <td className="px-5 py-3">
+        {t.id ? (
+          <Link href={`/dashboard/soporte/tickets/${t.id}`} className="font-semibold text-[#2F7F83] hover:underline">
+            {nro(t.numero)}
+          </Link>
+        ) : (
+          <span className="font-semibold text-slate-400">{nro(t.numero)}</span>
+        )}
+        <p className="mt-0.5 line-clamp-1 text-[12px] text-slate-500">{t.asunto}</p>
+        {t.cliente ? <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-400">{t.cliente}</p> : null}
+      </td>
+      {extra}
+    </tr>
   );
 }
 
@@ -66,7 +94,11 @@ export default function NeuritaPage() {
     let vivo = true;
     const traer = () =>
       apiSoporte<Resp>("/api/soporte/neurita")
-        .then((r) => vivo && (setD(r), setError(null)))
+        .then((r) => {
+          if (!vivo) return;
+          setD(r);
+          setError(null);
+        })
         .catch((e) => vivo && setError(e instanceof Error ? e.message : "No se pudo leer"));
     traer();
     const t = setInterval(traer, 60_000);
@@ -81,30 +113,19 @@ export default function NeuritaPage() {
 
   const { gasto, trabajo } = d;
   const pctMes = gasto.topeMes > 0 ? Math.min(100, Math.round((gasto.mes / gasto.topeMes) * 100)) : 0;
-  // De los que cerró, cuántos volvieron. Es el número que dice si el arreglo servía.
   const pctVuelta = trabajo.resueltos > 0 ? Math.round((trabajo.volvieron / trabajo.resueltos) * 100) : null;
+  const picoDia = Math.max(0.01, ...d.dias.map((x) => x.usd));
 
   return (
     <Pagina>
-      <Encabezado
-        titulo={d.agente?.nombre ?? "Neurita"}
-        subtitulo="Qué hizo y cuánto costó el agente de IA"
-        icono={Sparkles}
-        tono="violeta"
-      />
+      <Encabezado titulo={d.agente?.nombre ?? "Neurita"} subtitulo="Qué hizo y cuánto costó el agente de IA" icono={Bot} tono="violeta" />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <Dato etiqueta="Gastó hoy" valor={usd(gasto.hoy)} pie={`${gasto.vueltasHoy} ${gasto.vueltasHoy === 1 ? "vuelta" : "vueltas"}`} icono={Wallet} tono="text-violet-500" />
+      <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        <Dato etiqueta="Gastó hoy" valor={usd(gasto.hoy)} pie={`${gasto.vueltasHoy} ${gasto.vueltasHoy === 1 ? "vuelta" : "vueltas"} del modelo`} icono={Wallet} tono="text-violet-500" />
         <Dato etiqueta="Este mes" valor={usd(gasto.mes)} pie={`${pctMes}% del tope de ${usd(gasto.topeMes)}`} icono={Wallet} tono="text-violet-500" />
-        <Dato etiqueta="Total" valor={usd(gasto.total)} pie="desde que empezó a informar" icono={Wallet} tono="text-slate-400" />
+        <Dato etiqueta="Total" valor={usd(gasto.total)} pie="desde que empezó a informar" icono={Wallet} />
         <Dato etiqueta="Resueltos" valor={String(trabajo.resueltos)} pie={trabajo.abiertos ? `${trabajo.abiertos} abiertos ahora` : "ninguno abierto"} icono={CheckCircle2} tono="text-emerald-500" />
-        <Dato
-          etiqueta="Costo por ticket"
-          valor={trabajo.costoPorTicket == null ? "—" : usd(trabajo.costoPorTicket)}
-          pie="todo lo gastado ÷ resueltos"
-          icono={Wallet}
-          tono="text-slate-400"
-        />
+        <Dato etiqueta="Costo por ticket" valor={trabajo.costoPorTicket == null ? "—" : usd(trabajo.costoPorTicket)} pie="todo lo gastado ÷ resueltos" icono={Wallet} />
         <Dato
           etiqueta="Le volvieron"
           valor={pctVuelta == null ? "—" : `${pctVuelta}%`}
@@ -115,13 +136,7 @@ export default function NeuritaPage() {
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Dato
-          etiqueta="Tarda (mediana)"
-          valor={duracion(trabajo.medianaMinutos)}
-          pie="desde que lo toma hasta que lo resuelve"
-          icono={Timer}
-          tono="text-sky-500"
-        />
+        <Dato etiqueta="Tarda (mediana)" valor={duracion(trabajo.medianaMinutos)} pie="desde que lo toma hasta que lo resuelve" icono={Timer} tono="text-sky-500" />
         <Dato
           etiqueta="Vueltas por ticket (mediana)"
           valor={trabajo.vueltasMediana == null ? "—" : String(trabajo.vueltasMediana)}
@@ -131,72 +146,122 @@ export default function NeuritaPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Tarjeta titulo="Lo que trabajó hoy" icono={Sparkles} tono="violeta" padding="p-0">
-          {d.hoy.length === 0 ? (
-            <div className="p-5">
-              <Vacio titulo="Hoy todavía no trabajó" detalle="Acá aparecen los tickets que tocó, con lo que costó cada uno." icono={Sparkles} tono="violeta" />
+      <Tarjeta titulo="Gasto de los últimos 14 días" icono={Activity} tono="violeta" className="mb-5">
+        <div className="flex h-36 items-end gap-1.5">
+          {d.dias.map((x) => (
+            <div key={x.fecha} className="flex min-w-0 flex-1 flex-col items-center gap-1.5" title={`${diaCorto(x.fecha)} · ${usd(x.usd)} · ${x.vueltas} ${x.vueltas === 1 ? "vuelta" : "vueltas"}`}>
+              <span className="text-[10px] tabular-nums text-slate-400">{x.usd > 0 ? x.usd.toFixed(0) : ""}</span>
+              <div className="w-full rounded-t bg-violet-400/80" style={{ height: `${Math.max(x.usd > 0 ? 4 : 1, (x.usd / picoDia) * 100)}%` }} />
+              <span className="text-[10px] tabular-nums text-slate-400">{diaCorto(x.fecha)}</span>
             </div>
+          ))}
+        </div>
+      </Tarjeta>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Tarjeta titulo="En qué está ahora" icono={Bot} tono="violeta" padding="p-0">
+          {d.abiertos.length === 0 ? (
+            <div className="p-5"><Vacio titulo="No tiene nada abierto" detalle="Cuando tome un ticket aparece acá, con cuánto hace que lo tiene." icono={Bot} tono="violeta" /></div>
           ) : (
             <table className="w-full text-left text-[13px]">
-              <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  <th className="px-5 py-2.5">Ticket</th>
-                  <th className="px-3 py-2.5">Cliente</th>
-                  <th className="px-3 py-2.5 text-right">Vueltas</th>
-                  <th className="px-5 py-2.5 text-right">Costo</th>
-                </tr>
-              </thead>
               <tbody>
-                {d.hoy.map((t) => (
-                  <tr key={t.numero} className="border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-3">
-                      {t.id ? (
-                        <Link href={`/dashboard/soporte/tickets/${t.id}`} className="font-semibold text-[#2F7F83] hover:underline">
-                          #{String(t.numero).padStart(4, "0")}
-                        </Link>
-                      ) : (
-                        <span className="font-semibold text-slate-400">#{String(t.numero).padStart(4, "0")}</span>
-                      )}
-                      <p className="mt-0.5 line-clamp-1 text-[12px] text-slate-500">{t.asunto}</p>
-                    </td>
-                    <td className="px-3 py-3 text-slate-600">{t.cliente ?? <span className="text-slate-300">—</span>}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{t.vueltas}</td>
-                    <td className="px-5 py-3 text-right font-semibold tabular-nums text-slate-700">{usd(t.usd)}</td>
-                  </tr>
+                {d.abiertos.map((t) => (
+                  <FilaTicket
+                    key={t.numero}
+                    t={t}
+                    extra={
+                      <td className="px-5 py-3 text-right">
+                        <p className="text-[12px] font-medium text-slate-600">{desdeHace(t.desde)}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{t.vueltas} {t.vueltas === 1 ? "vuelta" : "vueltas"} · {usd(t.usd)}</p>
+                      </td>
+                    }
+                  />
                 ))}
               </tbody>
             </table>
           )}
         </Tarjeta>
 
-        <Tarjeta titulo="Contra el equipo" icono={CheckCircle2} tono="turquesa" padding="p-0">
-          {d.comparativo.length === 0 ? (
-            <div className="p-5">
-              <Vacio titulo="Sin tickets resueltos todavía" icono={CheckCircle2} />
-            </div>
+        <Tarjeta titulo="Los que le volvieron" icono={RotateCcw} tono="rosa" padding="p-0">
+          {d.volvieronLista.length === 0 ? (
+            <div className="p-5"><Vacio titulo="Ninguno volvió" detalle="Los tickets que dio por resueltos y después se reabrieron aparecen acá." icono={RotateCcw} tono="rosa" /></div>
+          ) : (
+            <table className="w-full text-left text-[13px]">
+              <tbody>
+                {d.volvieronLista.map((t) => (
+                  <FilaTicket key={t.numero} t={t} extra={<td className="px-5 py-3 text-right tabular-nums text-[12px] text-slate-500">{t.vueltas} {t.vueltas === 1 ? "vuelta" : "vueltas"}</td>} />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Tarjeta>
+
+        <Tarjeta titulo="Lo que trabajó hoy" icono={Bot} tono="violeta" padding="p-0">
+          {d.hoy.length === 0 ? (
+            <div className="p-5"><Vacio titulo="Hoy todavía no trabajó" icono={Bot} tono="violeta" /></div>
+          ) : (
+            <table className="w-full text-left text-[13px]">
+              <tbody>
+                {d.hoy.map((t) => (
+                  <FilaTicket
+                    key={t.numero}
+                    t={t}
+                    extra={
+                      <td className="px-5 py-3 text-right">
+                        <p className="font-semibold tabular-nums text-slate-700">{usd(t.usd)}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{t.vueltas} {t.vueltas === 1 ? "vuelta" : "vueltas"}</p>
+                      </td>
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Tarjeta>
+
+        <Tarjeta titulo="Los que más costaron" icono={Flame} tono="ambar" padding="p-0">
+          {d.caros.length === 0 ? (
+            <div className="p-5"><Vacio titulo="Todavía no hay gasto por ticket" icono={Flame} tono="ambar" /></div>
+          ) : (
+            <table className="w-full text-left text-[13px]">
+              <tbody>
+                {d.caros.map((t) => (
+                  <FilaTicket
+                    key={t.numero}
+                    t={t}
+                    extra={
+                      <td className="px-5 py-3 text-right">
+                        <p className="font-semibold tabular-nums text-slate-700">{usd(t.usd)}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{t.vueltas} {t.vueltas === 1 ? "vuelta" : "vueltas"}</p>
+                      </td>
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Tarjeta>
+
+        <Tarjeta titulo="En qué sistemas gastó" icono={Server} tono="celeste" padding="p-0" className="xl:col-span-2">
+          {d.sistemas.length === 0 ? (
+            <div className="p-5"><Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" /></div>
           ) : (
             <table className="w-full text-left text-[13px]">
               <thead>
                 <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  <th className="px-5 py-2.5">Quién</th>
-                  <th className="px-3 py-2.5 text-right">Resueltos</th>
-                  <th className="px-5 py-2.5 text-right">Tarda (mediana)</th>
+                  <th className="px-5 py-2.5">Sistema</th>
+                  <th className="px-3 py-2.5 text-right">Tickets</th>
+                  <th className="px-3 py-2.5 text-right">Vueltas</th>
+                  <th className="px-5 py-2.5 text-right">Gasto</th>
                 </tr>
               </thead>
               <tbody>
-                {d.comparativo.map((p) => (
-                  <tr key={p.id} className={`border-b border-slate-100 last:border-0 ${p.esAgente ? "bg-violet-50/40" : ""}`}>
-                    <td className="px-5 py-3">
-                      <span className="font-medium text-slate-700">{p.nombre}</span>
-                      {p.esAgente ? (
-                        <span className="ml-2 align-middle">
-                          <Insignia color="#8b5cf6">IA</Insignia>
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{p.resueltos}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-slate-600">{duracion(p.medianaMinutos)}</td>
+                {d.sistemas.map((s) => (
+                  <tr key={s.nombre} className="border-b border-slate-100 last:border-0">
+                    <td className="px-5 py-3 font-medium text-slate-700">{s.nombre}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.tickets || "—"}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.vueltas}</td>
+                    <td className="px-5 py-3 text-right font-semibold tabular-nums text-slate-700">{usd(s.usd)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -206,8 +271,8 @@ export default function NeuritaPage() {
       </div>
 
       <p className="mt-5 text-[12px] leading-relaxed text-slate-400">
-        El gasto se cuenta desde que el agente empezó a informarlo (11/11/2026): lo anterior no está. Los tickets resueltos y los tiempos
-        salen del historial y sí cubren todo. &quot;Vueltas&quot; es cuántas veces trabajó el modelo sobre ese ticket.
+        El gasto se cuenta desde que el agente empezó a informarlo (11/11/2026): lo de antes no está. Los tickets resueltos, los tiempos y las
+        reaperturas salen del historial y cubren todo. &quot;Vueltas&quot; es cuántas veces trabajó el modelo sobre ese ticket.
       </p>
     </Pagina>
   );

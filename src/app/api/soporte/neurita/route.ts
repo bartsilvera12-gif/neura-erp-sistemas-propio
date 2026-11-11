@@ -1,5 +1,5 @@
 import { requireSoporteApi } from "@/lib/soporte/soporte-auth";
-import { errorInesperado, falla, ok, personasPorId, sinPermiso, clientesDeEmpresa } from "@/lib/soporte/servidor";
+import { errorInesperado, falla, ok, sinPermiso, clientesDeEmpresa } from "@/lib/soporte/servidor";
 import { ticketsParaAgregar } from "@/lib/soporte/agregados-servidor";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import type { TicketFila } from "@/lib/soporte/dominio";
@@ -153,37 +153,22 @@ export async function GET(request: Request) {
         resueltos: unicos.size,
         medianaMinutos: mediana(xs.map((x) => x.minutos).filter((m): m is number => m != null)),
         volvieron: volvieron.length,
+        ticketsVolvieron: volvieron,
       };
     };
 
-    const mio = agente ? resumenDe(agente.id) : { resueltos: 0, medianaMinutos: null, volvieron: 0 };
+    const clientes = new Map((await clientesDeEmpresa(auth.sb, auth.empresaId)).map((c) => [c.id, c.nombre] as const));
+    const porNumeroTodos = new Map(tickets.map((t) => [t.numero, t] as const));
+    const mio = agente ? resumenDe(agente.id) : { resueltos: 0, medianaMinutos: null, volvieron: 0, ticketsVolvieron: [] as string[] };
     const abiertos = agente
       ? tickets.filter((t) => t.responsable_id === agente.id && !["cerrado", "cancelado", "resuelto"].includes(t.estado_codigo)).length
       : 0;
 
-    // Comparativo: el agente y las personas que resolvieron algo.
-    const comparativo: { id: string; nombre: string; resueltos: number; medianaMinutos: number | null; esAgente: boolean }[] = [];
-    const personas = await personasPorId([...resueltosPor.keys()]);
-    for (const id of resueltosPor.keys()) {
-      const r = resumenDe(id);
-      if (!r.resueltos) continue;
-      comparativo.push({
-        id,
-        nombre: personas.get(id)?.nombre ?? "—",
-        resueltos: r.resueltos,
-        medianaMinutos: r.medianaMinutos,
-        esAgente: id === agente?.id,
-      });
-    }
-    comparativo.sort((a, b) => b.resueltos - a.resueltos);
-
     // Lo que trabajó hoy, tomado de los avisos de gasto (un aviso = una vuelta).
-    const clientes = new Map((await clientesDeEmpresa(auth.sb, auth.empresaId)).map((c) => [c.id, c.nombre] as const));
     const numerosHoy = [...new Set(gastos.filter((g) => g.fecha === hoy && g.ticket_numero != null).map((g) => g.ticket_numero as number))];
-    const porNumero = new Map(tickets.map((t) => [t.numero, t] as const));
     const deHoy = numerosHoy
       .map((numero) => {
-        const t: TicketFila | undefined = porNumero.get(numero);
+        const t: TicketFila | undefined = porNumeroTodos.get(numero);
         return {
           numero,
           id: t?.id ?? null,
@@ -195,6 +180,61 @@ export async function GET(request: Request) {
         };
       })
       .sort((a, b) => b.usd - a.usd);
+
+    // Últimos 14 días: el gasto diario, para ver si se está yendo de escala.
+    const dias: { fecha: string; usd: number; vueltas: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(`${hoy}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - i);
+      const f = d.toISOString().slice(0, 10);
+      const delDia = gastos.filter((g) => g.fecha === f);
+      dias.push({ fecha: f, usd: red(delDia.reduce((a, g) => a + Number(g.usd ?? 0), 0)), vueltas: delDia.length });
+    }
+
+    // Por sistema: `detalle` guarda el repo del cliente en el que trabajó.
+    const porSistema = new Map<string, { usd: number; vueltas: number; tickets: Set<number> }>();
+    for (const g of gastos) {
+      const nombre = (g.detalle ?? "").trim() || "sin identificar";
+      const x = porSistema.get(nombre) ?? { usd: 0, vueltas: 0, tickets: new Set<number>() };
+      x.usd += Number(g.usd ?? 0);
+      x.vueltas++;
+      if (g.ticket_numero != null) x.tickets.add(g.ticket_numero);
+      porSistema.set(nombre, x);
+    }
+    const sistemas = [...porSistema.entries()]
+      .map(([nombre, x]) => ({ nombre, usd: red(x.usd), vueltas: x.vueltas, tickets: x.tickets.size }))
+      .sort((a, b) => b.usd - a.usd)
+      .slice(0, 8);
+
+    const ficha = (t: TicketFila) => ({
+      id: t.id,
+      numero: t.numero,
+      asunto: t.asunto,
+      cliente: t.cliente_id ? (clientes.get(t.cliente_id) ?? null) : null,
+      estado_codigo: t.estado_codigo,
+      usd: red(usdPorTicket.get(t.numero) ?? 0),
+      vueltas: vueltasPorTicket.get(t.numero) ?? 0,
+    });
+
+    // Los que dio por resueltos y volvieron: la lista, no solo el porcentaje.
+    const idsVolvieron = new Set(mio.ticketsVolvieron);
+    const volvieronLista = tickets.filter((t) => idsVolvieron.has(t.id)).map(ficha).sort((a, b) => b.numero - a.numero);
+
+    // En qué está ahora.
+    const abiertosLista = agente
+      ? tickets
+          .filter((t) => t.responsable_id === agente.id && !["cerrado", "cancelado", "resuelto"].includes(t.estado_codigo))
+          .map((t) => ({ ...ficha(t), desde: t.updated_at }))
+          .sort((a, b) => Date.parse(a.desde) - Date.parse(b.desde))
+      : [];
+
+    // Los que más costaron: un ticket caro es un ticket que se le complicó.
+    const caros = [...usdPorTicket.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([numero]) => porNumeroTodos.get(numero))
+      .filter((t): t is TicketFila => !!t)
+      .map(ficha);
 
     const vueltas = [...vueltasPorTicket.values()];
     return ok({
@@ -210,7 +250,11 @@ export async function GET(request: Request) {
         ticketsConGasto: vueltasPorTicket.size,
       },
       hoy: deHoy,
-      comparativo,
+      dias,
+      sistemas,
+      volvieronLista,
+      abiertos: abiertosLista,
+      caros,
     });
   } catch (e) {
     return errorInesperado(e);

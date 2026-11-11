@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Loader2, type LucideIcon } from "lucide-react";
+import { Bot, Loader2, type LucideIcon } from "lucide-react";
 import SpotlightCard from "@/components/reactbits/SpotlightCard";
 import BlurText from "@/components/reactbits/BlurText";
 
@@ -277,6 +277,19 @@ const PALETA_AVATAR: Tono[] = ["turquesa", "celeste", "violeta", "ambar", "verde
  */
 export function Avatar({ nombre, tam = 32, tono }: { nombre: string | null | undefined; tam?: number; tono?: Tono }) {
   const limpio = (nombre ?? "").trim();
+  // Neurita (el agente de IA) lleva su robot en vez de la inicial, igual que en la tarjeta de gasto.
+  if (/^neurita$/i.test(limpio)) {
+    const ic = Math.round(tam * 0.56);
+    return (
+      <span
+        className="grid shrink-0 place-items-center rounded-full bg-violet-50 text-violet-500 ring-2 ring-white"
+        style={{ width: tam, height: tam }}
+        aria-hidden
+      >
+        <Bot style={{ width: ic, height: ic }} />
+      </span>
+    );
+  }
   const w = limpio.split(/\s+/).filter(Boolean);
   const ini = w.length ? (w[0][0] + (w[1]?.[0] ?? "")).toUpperCase() : "—";
   let h = 0;

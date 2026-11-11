@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Bot } from "lucide-react";
 import { apiSoporte } from "./api";
 
 type Gasto = { hoy: number; mes: number; total: number; vueltas: number };
@@ -45,7 +45,7 @@ export default function GastoNeurita() {
       title={`${g.vueltas} ${g.vueltas === 1 ? "vuelta" : "vueltas"} del agente · este mes US$ ${usd(g.mes)}`}
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-500">
-        <Sparkles className="h-4 w-4" aria-hidden />
+        <Bot className="h-4 w-4" aria-hidden />
       </span>
       <div className="flex items-center gap-3.5">
         <div>

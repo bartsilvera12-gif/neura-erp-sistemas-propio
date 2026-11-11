@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlarmClock, CalendarDays, UserRoundCheck, ChevronLeft, ChevronRight, Inbox, Search, SlidersHorizontal, UserPen, X } from "lucide-react";
+import { AlarmClock, CalendarDays, Filter, UserRoundCheck, ChevronLeft, ChevronRight, Inbox, Search, SlidersHorizontal, UserPen, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   apiSoporte,
@@ -137,6 +137,38 @@ export default function TablaTickets({
    * acá se enciende por URL.
    */
   const soloMiosEfectivo = soloMios || params.get("mios") === "1";
+  /**
+   * Columnas elegidas, guardadas en el navegador.
+   *
+   * Es una preferencia de quien mira, no un dato del ticket: no tiene por qué viajar en la
+   * URL ni guardarse en la base. Se lee una vez al montar; si el navegador no deja (modo
+   * privado), se usa el orden de siempre y no se rompe nada.
+   */
+  const CLAVE_COLUMNAS = "soporte:tickets:columnas";
+  const [colOrden, setColOrden] = useState<string[]>([]);
+  const [colOcultas, setColOcultas] = useState<string[]>([]);
+  const [embudoAbierto, setEmbudoAbierto] = useState(false);
+  useEffect(() => {
+    try {
+      const crudo = localStorage.getItem(CLAVE_COLUMNAS);
+      if (!crudo) return;
+      const guardado = JSON.parse(crudo) as { orden?: string[]; ocultas?: string[] };
+      if (Array.isArray(guardado.orden)) setColOrden(guardado.orden);
+      if (Array.isArray(guardado.ocultas)) setColOcultas(guardado.ocultas);
+    } catch {
+      /* sin storage o guardado roto: el orden de siempre */
+    }
+  }, []);
+  const guardarColumnas = useCallback((orden: string[], ocultas: string[]) => {
+    setColOrden(orden);
+    setColOcultas(ocultas);
+    try {
+      localStorage.setItem(CLAVE_COLUMNAS, JSON.stringify({ orden, ocultas }));
+    } catch {
+      /* no poder recordarlo no es motivo para no aplicarlo ahora */
+    }
+  }, []);
+
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [panelAbierto, setPanelAbierto] = useState(false);
   /** Cuántos filtros hay puestos, para el número del botón. El texto se ve solo. */
@@ -303,6 +335,184 @@ export default function TablaTickets({
     };
   }, [cat]);
 
+  /**
+   * Columnas de la tabla: cuáles se ven y en qué orden.
+   *
+   * Antes el encabezado y las celdas estaban escritos uno al lado del otro, así que la
+   * única forma de sacar una columna era borrar código. Acá cada columna es un objeto con
+   * su etiqueta y cómo se dibuja, y la tabla recorre la lista.
+   *
+   * `numero` y `motivo` no se pueden ocultar ni mover: el número es la referencia del
+   * ticket —y lleva el control de orden— y el motivo es lo único que identifica la fila.
+   * Sin esos dos, una fila no se entiende.
+   */
+  const botonOrden = (
+    <button
+      type="button"
+      onClick={() =>
+        cambiar({ orden: orden === "" ? "numero_desc" : orden === "numero_desc" ? "numero_asc" : null })
+      }
+      title={
+        orden === "numero_desc"
+          ? "Por número, del más nuevo — tocá para invertir"
+          : orden === "numero_asc"
+            ? "Por número, del más viejo — tocá para volver a última actividad"
+            : "Ordenar por número"
+      }
+      className={`-ml-1 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-bold uppercase tracking-wide shadow-sm transition-colors ${
+        orden ? "border-[#4FAEB2] bg-[#4FAEB2] text-white" : "border-[#4FAEB2]/50 bg-white text-[#2F6E71] hover:bg-[#4FAEB2]/10"
+      }`}
+    >
+      N°
+      <span aria-hidden className="text-[11px] leading-none">
+        {orden === "numero_desc" ? "↓" : orden === "numero_asc" ? "↑" : "⇅"}
+      </span>
+    </button>
+  );
+
+  const COLUMNAS = useMemo(() => {
+    const defs: {
+      id: string;
+      etiqueta: string;
+      fija?: boolean;
+      th: string;
+      td: string;
+      celda: (t: TicketLista) => React.ReactNode;
+    }[] = [
+      {
+        id: "numero", etiqueta: "N°", fija: true, th: "w-24 px-5 py-3", td: "relative px-5 py-3.5",
+        celda: (t) => (
+          <>
+            {/* Filete del color del estado al pasar el mouse. */}
+            <span className="absolute inset-y-2 left-0 w-1 rounded-r-full opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundColor: t.estado_color }} aria-hidden />
+            <span className="font-bold tabular-nums text-slate-400 group-hover:text-[#2F6E71]">{numeroTicket(t.numero)}</span>
+          </>
+        ),
+      },
+      {
+        id: "motivo", etiqueta: "Motivo", fija: true, th: "px-3 py-3", td: "min-w-[320px] max-w-[460px] px-3 py-3.5",
+        celda: (t) => (
+          <>
+            <Link href={`/dashboard/soporte/tickets/${t.id}`} onClick={(e) => e.stopPropagation()} className="line-clamp-3 font-semibold text-slate-800 no-underline group-hover:text-[#2F6E71]">
+              {t.origen_subestado ?? <span className="font-normal italic text-slate-400">Sub-estado no cargado</span>}
+            </Link>
+            {t.sla.estado === "vencido" ? (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10.5px] font-bold text-rose-600">
+                <AlarmClock className="h-3 w-3" aria-hidden /> SLA vencido
+              </span>
+            ) : t.sla.estado === "en_riesgo" ? (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-600">
+                <AlarmClock className="h-3 w-3" aria-hidden /> SLA en riesgo
+              </span>
+            ) : null}
+          </>
+        ),
+      },
+      {
+        id: "cliente", etiqueta: "Cliente", th: "px-3 py-3", td: "max-w-[190px] truncate px-3 py-3.5 font-medium text-slate-600",
+        celda: (t) => t.cliente_nombre ?? "—",
+      },
+      {
+        id: "proyecto", etiqueta: "Proyecto", th: "px-3 py-3", td: "max-w-[180px] px-3 py-3.5 text-slate-600",
+        celda: (t) =>
+          t.proyectos_cliente.length === 0 ? (
+            <span className="text-slate-300">—</span>
+          ) : (
+            <span className="flex items-center gap-1.5" title={t.proyectos_cliente.map((x) => x.titulo).join(" · ")}>
+              <Link href={`/dashboard/proyectos?proyecto=${t.proyectos_cliente[0].id}`} onClick={(e) => e.stopPropagation()} className="truncate font-medium text-[#3F8E91] hover:underline">
+                {t.proyectos_cliente[0].titulo}
+              </Link>
+              {t.proyectos_cliente.length > 1 ? (
+                <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">+{t.proyectos_cliente.length - 1}</span>
+              ) : null}
+            </span>
+          ),
+      },
+      {
+        id: "tipo", etiqueta: "Tipo", th: "px-3 py-3", td: "px-3 py-3.5 text-slate-600",
+        celda: (t) => cat?.tipos.find((x) => x.codigo === t.tipo_codigo)?.nombre ?? t.tipo_etiqueta,
+      },
+      {
+        id: "estado", etiqueta: "Estado", th: "px-3 py-3", td: "px-3 py-3.5",
+        celda: (t) => (
+          <>
+            <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
+            <Fase n={t.fase} bloque />
+          </>
+        ),
+      },
+      {
+        id: "clasificacion", etiqueta: "Clasificación", th: "px-3 py-3", td: "px-3 py-3.5",
+        celda: (t) => <span className="text-slate-600">{t.clasificacion_nombre ?? <span className="text-slate-300">—</span>}</span>,
+      },
+      ...(ocultarResponsable
+        ? []
+        : [{
+            id: "responsable", etiqueta: "Asignado a", th: "px-3 py-3", td: "px-3 py-3.5",
+            celda: (t: TicketLista) => (
+              <div className="flex items-center gap-2">
+                {t.responsable ? (
+                  <span className="inline-flex min-w-0 max-w-[160px] items-center gap-2 font-medium text-slate-700" title={t.responsable.nombre}>
+                    <Avatar nombre={t.responsable.nombre} tam={24} />
+                    <span className="truncate">{t.responsable.nombre}</span>
+                  </span>
+                ) : (
+                  <span className="text-[12px] italic text-slate-400">Sin asignar</span>
+                )}
+                {puedoTomar && t.responsable?.id !== cat?.usuario_id && t.estado_codigo !== "cerrado" && t.estado_codigo !== "cancelado" ? (
+                  <button
+                    type="button"
+                    disabled={tomando === t.id}
+                    onClick={(e) => { e.stopPropagation(); void tomar(t.id); }}
+                    title="Asignarme este ticket"
+                    className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#4FAEB2]/40 bg-white px-2 py-1 text-[11px] font-bold text-[#2F6E71] opacity-0 transition hover:bg-[#4FAEB2]/10 focus:opacity-100 group-hover:opacity-100 disabled:opacity-60"
+                  >
+                    {tomando === t.id ? "…" : "Tomar"}
+                  </button>
+                ) : null}
+              </div>
+            ),
+          }]),
+      {
+        id: "creador", etiqueta: "Cargado por", th: "px-3 py-3", td: "px-3 py-3.5",
+        celda: (t) =>
+          t.creador ? (
+            <span className="inline-flex min-w-0 max-w-[160px] items-center gap-2 font-medium text-slate-700" title={t.creador.nombre}>
+              <Avatar nombre={t.creador.nombre} tam={24} />
+              <span className="truncate">{t.creador.nombre}</span>
+            </span>
+          ) : (
+            <span className="text-[12px] italic text-slate-400">—</span>
+          ),
+      },
+      {
+        id: "actualizado", etiqueta: "Actualizado", th: "px-5 py-3 text-right", td: "whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-500",
+        celda: (t) => fechaHora(t.updated_at),
+      },
+      {
+        id: "creado", etiqueta: "Creado", th: "px-5 py-3 text-right", td: "whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-400",
+        celda: (t) => fechaHora(t.created_at),
+      },
+    ];
+    return defs;
+    // `cat`, `tomando` y `puedoTomar` cambian con los datos; el resto es estático.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cat, tomando, puedoTomar, ocultarResponsable, router]);
+
+  /** Todas, en el orden elegido. El panel las necesita completas para poder reactivarlas. */
+  const columnasOrdenadas = useMemo(() => {
+    const porId = new Map(COLUMNAS.map((c) => [c.id, c] as const));
+    const ordenadas = colOrden.map((id) => porId.get(id)).filter((c): c is (typeof COLUMNAS)[number] => Boolean(c));
+    // Las que el registro tiene y la preferencia guardada no conoce (columnas nuevas) van al final.
+    for (const c of COLUMNAS) if (!colOrden.includes(c.id)) ordenadas.push(c);
+    return ordenadas;
+  }, [COLUMNAS, colOrden]);
+
+  const columnasVisibles = useMemo(
+    () => columnasOrdenadas.filter((c) => c.fija || !colOcultas.includes(c.id)),
+    [columnasOrdenadas, colOcultas]
+  );
+
   const hayFiltros = Object.values(filtros).some(Boolean) || (!soloMios && soloMiosEfectivo);
   const total = datos?.total ?? 0;
   const paginas = Math.max(1, Math.ceil(total / porPagina));
@@ -407,6 +617,71 @@ export default function TablaTickets({
                 </span>
               ) : null}
             </button>
+
+            {/* Embudo: qué columnas se ven y en qué orden. */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setEmbudoAbierto((v) => !v)}
+                aria-expanded={embudoAbierto}
+                title="Columnas"
+                className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[12.5px] font-semibold transition-colors ${
+                  embudoAbierto || colOcultas.length > 0
+                    ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+                }`}
+              >
+                <Filter className="h-4 w-4" aria-hidden />
+                Columnas
+              </button>
+              {embudoAbierto ? (
+                <>
+                  <button type="button" aria-label="Cerrar" className="fixed inset-0 z-20 cursor-default" onClick={() => setEmbudoAbierto(false)} />
+                  <div className="absolute left-0 top-11 z-30 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                    <p className="px-2 pb-1.5 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Columnas</p>
+                    <ul className="max-h-[60vh] overflow-y-auto">
+                      {columnasOrdenadas.map((c, i) => {
+                        const oculta = colOcultas.includes(c.id);
+                        const ids = columnasOrdenadas.map((x) => x.id);
+                        const mover = (delta: number) => {
+                          const j = i + delta;
+                          if (j < 0 || j >= ids.length) return;
+                          const copia = [...ids];
+                          [copia[i], copia[j]] = [copia[j], copia[i]];
+                          guardarColumnas(copia, colOcultas);
+                        };
+                        return (
+                          <li key={c.id} className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 hover:bg-slate-50">
+                            <label className={`flex min-w-0 flex-1 items-center gap-2 text-[13px] ${c.fija ? "text-slate-400" : "cursor-pointer text-slate-700"}`}>
+                              <input
+                                type="checkbox"
+                                checked={c.fija || !oculta}
+                                disabled={c.fija}
+                                onChange={() =>
+                                  guardarColumnas(ids, oculta ? colOcultas.filter((x) => x !== c.id) : [...colOcultas, c.id])
+                                }
+                                className="h-3.5 w-3.5 accent-[#4FAEB2]"
+                              />
+                              <span className="truncate">{c.etiqueta}</span>
+                              {c.fija ? <span className="shrink-0 text-[10px] uppercase">fija</span> : null}
+                            </label>
+                            <button type="button" onClick={() => mover(-1)} disabled={i === 0} aria-label={`Subir ${c.etiqueta}`} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-25">↑</button>
+                            <button type="button" onClick={() => mover(1)} disabled={i === columnasOrdenadas.length - 1} aria-label={`Bajar ${c.etiqueta}`} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-25">↓</button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => guardarColumnas([], [])}
+                      className="mt-1 w-full rounded-lg px-2 py-1.5 text-[12px] font-semibold text-slate-500 hover:bg-slate-50"
+                    >
+                      Volver a como estaba
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
 
             <span className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
 
@@ -542,47 +817,11 @@ export default function TablaTickets({
               <table className="w-full min-w-[1040px] text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                    <th className="w-24 px-5 py-3">
-                      {/* Ordenar por número vive acá y no en la barra de filtros: esa barra
-                          es una grilla de ancho fijo y sumarle una columna empujaba
-                          "Cargados por mí" fuera de la pantalla. Además es donde uno lo
-                          busca. Cicla: última actividad → más nuevo → más viejo. */}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          cambiar({
-                            orden: orden === "" ? "numero_desc" : orden === "numero_desc" ? "numero_asc" : null,
-                          })
-                        }
-                        title={
-                          orden === "numero_desc"
-                            ? "Por número, del más nuevo — tocá para invertir"
-                            : orden === "numero_asc"
-                              ? "Por número, del más viejo — tocá para volver a última actividad"
-                              : "Ordenar por número"
-                        }
-                        className={`-ml-1 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-bold uppercase tracking-wide shadow-sm transition-colors ${
-                          orden
-                            ? "border-[#4FAEB2] bg-[#4FAEB2] text-white"
-                            : "border-[#4FAEB2]/50 bg-white text-[#2F6E71] hover:bg-[#4FAEB2]/10"
-                        }`}
-                      >
-                        N°
-                        <span aria-hidden className="text-[11px] leading-none">
-                          {orden === "numero_desc" ? "↓" : orden === "numero_asc" ? "↑" : "⇅"}
-                        </span>
-                      </button>
-                    </th>
-                    <th className="px-3 py-3">Motivo</th>
-                    <th className="px-3 py-3">Cliente</th>
-                    <th className="px-3 py-3">Proyecto</th>
-                    <th className="px-3 py-3">Tipo</th>
-                    <th className="px-3 py-3">Estado</th>
-                    <th className="px-3 py-3">Clasificación</th>
-                    {ocultarResponsable ? null : <th className="px-3 py-3">Asignado a</th>}
-                    <th className="px-3 py-3">Cargado por</th>
-                    <th className="px-5 py-3 text-right">Actualizado</th>
-                    <th className="px-5 py-3 text-right">Creado</th>
+                    {columnasVisibles.map((c) => (
+                      <th key={c.id} className={c.th}>
+                        {c.id === "numero" ? botonOrden : c.etiqueta}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -596,98 +835,11 @@ export default function TablaTickets({
                       onClick={() => router.push(`/dashboard/soporte/tickets/${t.id}`)}
                       className="group relative cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-[#4FAEB2]/[0.04]"
                     >
-                      <td className="relative px-5 py-3.5">
-                        {/* Filete del color del estado al pasar el mouse. */}
-                        <span className="absolute inset-y-2 left-0 w-1 rounded-r-full opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundColor: t.estado_color }} aria-hidden />
-                        <span className="font-bold tabular-nums text-slate-400 group-hover:text-[#2F6E71]">{numeroTicket(t.numero)}</span>
-                      </td>
-                      <td className="min-w-[320px] max-w-[460px] px-3 py-3.5">
-                        <Link
-                          href={`/dashboard/soporte/tickets/${t.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="line-clamp-3 font-semibold text-slate-800 no-underline group-hover:text-[#2F6E71]"
-                        >
-                          {t.origen_subestado ?? <span className="font-normal italic text-slate-400">Sub-estado no cargado</span>}
-                        </Link>
-                        {t.sla.estado === "vencido" ? (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10.5px] font-bold text-rose-600">
-                            <AlarmClock className="h-3 w-3" aria-hidden /> SLA vencido
-                          </span>
-                        ) : t.sla.estado === "en_riesgo" ? (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-600">
-                            <AlarmClock className="h-3 w-3" aria-hidden /> SLA en riesgo
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="max-w-[190px] truncate px-3 py-3.5 font-medium text-slate-600">{t.cliente_nombre ?? "—"}</td>
-                      <td className="max-w-[180px] px-3 py-3.5 text-slate-600">
-                        {t.proyectos_cliente.length === 0 ? (
-                          <span className="text-slate-300">—</span>
-                        ) : (
-                          <span className="flex items-center gap-1.5" title={t.proyectos_cliente.map((p) => p.titulo).join(" · ")}>
-                            <Link
-                              href={`/dashboard/proyectos?proyecto=${t.proyectos_cliente[0].id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="truncate font-medium text-[#3F8E91] hover:underline"
-                            >
-                              {t.proyectos_cliente[0].titulo}
-                            </Link>
-                            {t.proyectos_cliente.length > 1 ? (
-                              <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                                +{t.proyectos_cliente.length - 1}
-                              </span>
-                            ) : null}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3.5 text-slate-600">{cat?.tipos.find((x) => x.codigo === t.tipo_codigo)?.nombre ?? t.tipo_etiqueta}</td>
-                      <td className="px-3 py-3.5">
-                        <Insignia color={t.estado_color} punto>{t.estado_nombre}</Insignia>
-                        <Fase n={t.fase} bloque />
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <span className="text-slate-600">{t.clasificacion_nombre ?? <span className="text-slate-300">—</span>}</span>
-                      </td>
-                      {ocultarResponsable ? null : (
-                        <td className="px-3 py-3.5">
-                          <div className="flex items-center gap-2">
-                            {t.responsable ? (
-                              <span className="inline-flex min-w-0 max-w-[160px] items-center gap-2 font-medium text-slate-700" title={t.responsable.nombre}>
-                                <Avatar nombre={t.responsable.nombre} tam={24} />
-                                <span className="truncate">{t.responsable.nombre}</span>
-                              </span>
-                            ) : (
-                              <span className="text-[12px] italic text-slate-400">Sin asignar</span>
-                            )}
-                            {puedoTomar && t.responsable?.id !== cat?.usuario_id && t.estado_codigo !== "cerrado" && t.estado_codigo !== "cancelado" ? (
-                              <button
-                                type="button"
-                                disabled={tomando === t.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void tomar(t.id);
-                                }}
-                                title="Asignarme este ticket"
-                                className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#4FAEB2]/40 bg-white px-2 py-1 text-[11px] font-bold text-[#2F6E71] opacity-0 transition hover:bg-[#4FAEB2]/10 focus:opacity-100 group-hover:opacity-100 disabled:opacity-60"
-                              >
-                                {tomando === t.id ? "…" : "Tomar"}
-                              </button>
-                            ) : null}
-                          </div>
+                      {columnasVisibles.map((c) => (
+                        <td key={c.id} className={c.td}>
+                          {c.celda(t)}
                         </td>
-                      )}
-                      <td className="px-3 py-3.5">
-                        {t.creador ? (
-                          <span className="inline-flex min-w-0 max-w-[160px] items-center gap-2 font-medium text-slate-700" title={t.creador.nombre}>
-                            <Avatar nombre={t.creador.nombre} tam={24} />
-                            <span className="truncate">{t.creador.nombre}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[12px] italic text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-500">{fechaHora(t.updated_at)}</td>
-                      <td className="whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-400">{fechaHora(t.created_at)}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>

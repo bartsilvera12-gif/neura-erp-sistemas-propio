@@ -26,6 +26,14 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
  * cada pantalla arma sus propias pestañas con eso ("Tickets" y "Mis tickets"
  * no agrupan igual).
  */
+type ConsultaOrdenable = { order: (col: string, o: { ascending: boolean }) => ConsultaOrdenable };
+
+function ordenar<T extends ConsultaOrdenable>(q: T, orden: string | null): T {
+  if (orden === "numero_asc") return q.order("numero", { ascending: true }) as T;
+  if (orden === "numero_desc") return q.order("numero", { ascending: false }) as T;
+  return q.order("updated_at", { ascending: false }) as T;
+}
+
 export async function GET(request: Request) {
   const auth = await requireSoporteApi(request);
   if (!auth.ok) return sinPermiso(auth);
@@ -34,6 +42,14 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const p = url.searchParams;
 
+    /**
+     * Orden de la lista. El valor de siempre —última actividad— es el predeterminado:
+     * sin `orden` en la URL, nada cambia.
+     *
+     * `numero` es el número visible del ticket (#0362). Sirve para recorrer la lista como
+     * un listado correlativo en vez de "lo que se movió recién", que salta de lugar cada
+     * vez que alguien comenta algo.
+     */
     const pestana = PESTANAS_TICKETS.find((x) => x.id === p.get("pestana")) ?? PESTANAS_TICKETS[0];
     const pagina = Math.max(1, Number(p.get("pagina") ?? "1") || 1);
     const porPagina = Math.min(POR_PAGINA_MAX, Math.max(5, Number(p.get("por_pagina") ?? "20") || 20));
@@ -160,7 +176,7 @@ export async function GET(request: Request) {
     // Catálogos, página y contadores en paralelo: ninguno espera al otro.
     const [cat, { data, error, count }, { data: todos }] = await Promise.all([
       leerCatalogos(auth.sb, auth.empresaId),
-      lista.order("updated_at", { ascending: false }).range(desde, desde + porPagina - 1),
+      ordenar(lista, p.get("orden")).range(desde, desde + porPagina - 1),
       // Contadores: una consulta liviana por estado, sumada por pestaña.
       aplicar(auth.sb.from("soporte_tickets").select("estado_codigo")).limit(10_000),
     ]);

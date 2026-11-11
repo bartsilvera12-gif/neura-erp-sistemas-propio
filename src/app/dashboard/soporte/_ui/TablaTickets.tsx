@@ -109,6 +109,11 @@ export default function TablaTickets({
     cargados: params.get("cargados") ?? "",
   };
   const soloCargados = filtros.cargados === "1";
+  /**
+   * Orden de la lista. Va aparte de `filtros` a propósito: ordenar no es filtrar, y si
+   * entrara ahí contaría como "filtro activo" y encendería el botón de limpiar.
+   */
+  const orden = params.get("orden") ?? "";
   const pagina = Math.max(1, Number(params.get("pagina") ?? "1") || 1);
   const porPagina = (OPCIONES_POR_PAGINA as readonly number[]).includes(Number(params.get("por_pagina")))
     ? Number(params.get("por_pagina"))
@@ -120,6 +125,7 @@ export default function TablaTickets({
     if (pestana.revision) q.set("revision", "1");
     for (const [k, v] of Object.entries(filtros)) if (v) q.set(k, v);
     if (soloMios) q.set("mios", "1");
+    if (orden) q.set("orden", orden);
     q.set("pagina", String(pagina));
     q.set("por_pagina", String(porPagina));
     return q.toString();
@@ -263,6 +269,11 @@ export default function TablaTickets({
     return {
       estado: [...todos("Todos los estados"), ...(cat?.estados ?? []).filter((e) => e.activo).map((e) => ({ value: e.codigo, label: e.nombre }))],
       tipo: [...todos("Todos los tipos"), ...(cat?.tipos ?? []).filter((t) => t.activo).map((t) => ({ value: t.codigo, label: t.nombre }))],
+      orden: [
+        { value: "", label: "Última actividad" },
+        { value: "numero_desc", label: "N° — del más nuevo" },
+        { value: "numero_asc", label: "N° — del más viejo" },
+      ],
       responsable: [...todos("Cualquier responsable"), ...(cat?.personas ?? []).map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] }))],
     };
   }, [cat]);
@@ -309,6 +320,7 @@ export default function TablaTickets({
           <SelectorBuscable tam="sm" avatares ariaLabel="Cliente" opciones={[{ value: "", label: "Todos los clientes" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={filtros.cliente_id} onChange={(v) => cambiar({ cliente_id: v || null })} placeholder="Todos los clientes" buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
           <FancySelect size="sm" ariaLabel="Estado" value={filtros.estado} onChange={(v) => cambiar({ estado: v || null })} options={op.estado} />
           <FancySelect size="sm" ariaLabel="Tipo" value={filtros.tipo} onChange={(v) => cambiar({ tipo: v || null })} options={op.tipo} />
+          <FancySelect size="sm" ariaLabel="Ordenar por" value={orden} onChange={(v) => cambiar({ orden: v || null })} options={op.orden} />
           {ocultarResponsable ? (
             <span className="hidden lg:block" />
           ) : (

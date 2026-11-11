@@ -458,8 +458,9 @@ export const PESTANAS_TICKETS = [
   { id: "pendientes", etiqueta: "Pendientes", estados: ["pendiente"] },
   { id: "en_proceso", etiqueta: "En proceso", estados: ["en_proceso", "reabierto"] },
   { id: "falta_informacion", etiqueta: "Falta información", estados: ["falta_informacion"] },
-  { id: "revision", etiqueta: "Revisión cliente", estados: ["revision_cliente"] },
   { id: "resueltos", etiqueta: "Resueltos", estados: ["resuelto"] },
+  // Después de Resueltos: es el paso siguiente del flujo, no uno anterior.
+  { id: "revision", etiqueta: "Revisión cliente", estados: ["revision_cliente"] },
   { id: "cerrados", etiqueta: "Cerrados", estados: ["cerrado", "cancelado"] },
 ] as const;
 

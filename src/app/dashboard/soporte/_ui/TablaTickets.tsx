@@ -269,11 +269,6 @@ export default function TablaTickets({
     return {
       estado: [...todos("Todos los estados"), ...(cat?.estados ?? []).filter((e) => e.activo).map((e) => ({ value: e.codigo, label: e.nombre }))],
       tipo: [...todos("Todos los tipos"), ...(cat?.tipos ?? []).filter((t) => t.activo).map((t) => ({ value: t.codigo, label: t.nombre }))],
-      orden: [
-        { value: "", label: "Última actividad" },
-        { value: "numero_desc", label: "N° — del más nuevo" },
-        { value: "numero_asc", label: "N° — del más viejo" },
-      ],
       responsable: [...todos("Cualquier responsable"), ...(cat?.personas ?? []).map((u) => ({ value: u.id, label: u.nombre, detalle: u.area, tono: TONO_AREA[u.area] }))],
     };
   }, [cat]);
@@ -320,7 +315,6 @@ export default function TablaTickets({
           <SelectorBuscable tam="sm" avatares ariaLabel="Cliente" opciones={[{ value: "", label: "Todos los clientes" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={filtros.cliente_id} onChange={(v) => cambiar({ cliente_id: v || null })} placeholder="Todos los clientes" buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
           <FancySelect size="sm" ariaLabel="Estado" value={filtros.estado} onChange={(v) => cambiar({ estado: v || null })} options={op.estado} />
           <FancySelect size="sm" ariaLabel="Tipo" value={filtros.tipo} onChange={(v) => cambiar({ tipo: v || null })} options={op.tipo} />
-          <FancySelect size="sm" ariaLabel="Ordenar por" value={orden} onChange={(v) => cambiar({ orden: v || null })} options={op.orden} />
           {ocultarResponsable ? (
             <span className="hidden lg:block" />
           ) : (
@@ -383,7 +377,35 @@ export default function TablaTickets({
               <table className="w-full min-w-[1040px] text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                    <th className="w-24 px-5 py-3">#</th>
+                    <th className="w-24 px-5 py-3">
+                      {/* Ordenar por número vive acá y no en la barra de filtros: esa barra
+                          es una grilla de ancho fijo y sumarle una columna empujaba
+                          "Cargados por mí" fuera de la pantalla. Además es donde uno lo
+                          busca. Cicla: última actividad → más nuevo → más viejo. */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          cambiar({
+                            orden: orden === "" ? "numero_desc" : orden === "numero_desc" ? "numero_asc" : null,
+                          })
+                        }
+                        title={
+                          orden === "numero_desc"
+                            ? "Por número, del más nuevo — tocá para invertir"
+                            : orden === "numero_asc"
+                              ? "Por número, del más viejo — tocá para volver a última actividad"
+                              : "Ordenar por número"
+                        }
+                        className={`inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors ${
+                          orden ? "text-[#2F6E71]" : "hover:text-slate-700"
+                        }`}
+                      >
+                        #
+                        <span aria-hidden className="text-[10px] leading-none">
+                          {orden === "numero_desc" ? "▼" : orden === "numero_asc" ? "▲" : "⇅"}
+                        </span>
+                      </button>
+                    </th>
                     <th className="px-3 py-3">Motivo</th>
                     <th className="px-3 py-3">Cliente</th>
                     <th className="px-3 py-3">Proyecto</th>

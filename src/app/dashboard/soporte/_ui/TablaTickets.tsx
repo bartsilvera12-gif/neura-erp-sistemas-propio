@@ -339,7 +339,7 @@ export default function TablaTickets({
             {/* Buscar: una lupa que se abre. El campo ocupaba un tercio de la barra para
                 algo que se usa de a ratos. */}
             {buscadorAbierto || filtros.q ? (
-              <label className="relative min-w-[200px] flex-1 sm:max-w-sm">
+              <label className="relative min-w-[260px] flex-1 sm:max-w-2xl">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
                 <input
                   autoFocus
@@ -351,7 +351,7 @@ export default function TablaTickets({
                     cambiar({ q: null });
                     setBuscadorAbierto(false);
                   }}
-                  placeholder="Motivo, cliente, proyecto o #número…"
+                  placeholder="Buscar por motivo, cliente, proyecto o #número…"
                   aria-label="Buscar tickets"
                   className={`${claseInput} pl-9 pr-8`}
                 />

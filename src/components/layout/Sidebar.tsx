@@ -22,6 +22,12 @@ import {
   Sparkles,
   ChevronsLeft,
   ChevronsRight,
+  Wallet,
+  Coins,
+  WalletCards,
+  IdCard,
+  LifeBuoy,
+  LayoutGrid,
   Search,
   Receipt,
   Banknote,
@@ -97,14 +103,14 @@ function adminEmpresasMatchesQuery(queryRaw: string): boolean {
 }
 
 const MENU_STRUCTURE: MenuItem[] = [
-  { key: "dashboard", slug: "dashboard", label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { key: "dashboard", slug: "dashboard", label: "Dashboard", href: "/", icon: LayoutGrid },
   { key: "reportes", slug: "reportes", label: "Reportes", href: "/reportes", icon: BarChart3 },
   {
     key: "conversaciones",
     slug: "conversaciones",
     label: "Conversaciones",
     href: "/dashboard/conversaciones",
-    icon: MessageCircle,
+    icon: MessagesSquare,
   },
   {
     key: "historial-omnicanal",
@@ -127,7 +133,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/dashboard/monitoreo",
     icon: Activity,
   },
-  { key: "ventas", slug: "ventas", label: "Caja", href: "/ventas", icon: ShoppingCart },
+  { key: "ventas", slug: "ventas", label: "Caja", href: "/ventas", icon: Wallet },
   { key: "inventario", slug: "inventario", label: "Inventario", href: "/inventario", icon: Package, children: [
     { label: "Productos", href: "/inventario" },
     { label: "Movimientos", href: "/inventario/movimientos" },
@@ -140,7 +146,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     slug: "compras",
     label: "Compras",
     href: "/compras",
-    icon: Package,
+    icon: WalletCards,
     children: [
       { label: "Compras", href: "/compras" },
       { label: "Órdenes de Compra", href: "/compras/ordenes" },
@@ -150,7 +156,7 @@ const MENU_STRUCTURE: MenuItem[] = [
   },
   { key: "gastos", slug: "gastos", label: "Gastos y Servicios", href: "/gastos", icon: Receipt },
   { key: "pagos", slug: "pagos", label: "Pagos", href: "/pagos", icon: Banknote },
-  { key: "cobranzas", slug: "cobranzas", label: "Cobranzas", href: "/cobranzas", icon: HandCoins },
+  { key: "cobranzas", slug: "cobranzas", label: "Cobranzas", href: "/cobranzas", icon: Coins },
   { key: "comisiones", slug: "comisiones", label: "Comisiones", href: "/comisiones", icon: Percent },
   {
     key: "notas_credito",
@@ -159,7 +165,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/notas-credito",
     icon: ScrollText,
   },
-  { key: "personal", slug: "personal", label: "Gestión de Personal", href: "/personal", icon: Users },
+  { key: "personal", slug: "personal", label: "Gestión de Personal", href: "/personal", icon: IdCard },
   { key: "usuarios", slug: "usuarios", label: "Usuarios y accesos", href: "/usuarios", icon: UserCog },
   {
     // Soporte: la visibilidad la da el módulo, pero el permiso real es de rol
@@ -168,7 +174,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     slug: "soporte",
     label: "Soporte",
     href: "/dashboard/soporte/tickets",
-    icon: Headphones,
+    icon: LifeBuoy,
     children: [
       { label: "Dashboard", href: "/dashboard/soporte", exactMatch: true },
       { label: "Tickets", href: "/dashboard/soporte/tickets", exactMatch: true },
@@ -213,7 +219,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     slug: "chat_interno",
     label: "Chat interno",
     href: "/dashboard/chat-interno",
-    icon: MessagesSquare,
+    icon: MessageCircle,
   },
   {
     // Tableros: módulo RESTRINGIDO (ver `lib/modulos/modulos-restringidos.ts`).

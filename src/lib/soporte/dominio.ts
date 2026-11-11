@@ -65,7 +65,7 @@ export type CatalogosSoporte = {
  * estado al que vuelve un ticket cuando QA pide cambios en la revisión.
  */
 export const ESTADOS_DEFECTO: SoporteEstado[] = [
-  { codigo: "pendiente", nombre: "Pendiente", tipo: "abierto", color: "#94a3b8", area: "ATC / PM", detiene_sla: false, es_inicial: true, sort_order: 1, activo: true },
+  { codigo: "pendiente", nombre: "Pendiente", tipo: "abierto", color: "#dc2626", area: "ATC / PM", detiene_sla: false, es_inicial: true, sort_order: 1, activo: true },
   { codigo: "en_proceso", nombre: "En proceso", tipo: "abierto", color: "#0ea5e9", area: "Desarrollo", detiene_sla: false, es_inicial: false, sort_order: 2, activo: true },
   { codigo: "falta_informacion", nombre: "Falta información", tipo: "abierto", color: "#f59e0b", area: "ATC / PM", detiene_sla: false, es_inicial: false, sort_order: 3, activo: true },
   { codigo: "listo_revision", nombre: "Listo para revisión", tipo: "abierto", color: "#8b5cf6", area: "QA", detiene_sla: false, es_inicial: false, sort_order: 4, activo: true },
@@ -75,7 +75,7 @@ export const ESTADOS_DEFECTO: SoporteEstado[] = [
   // del equipo ya terminó, así que el SLA sigue detenido: lo que falta depende de la agenda del cliente.
   { codigo: "revision_cliente", nombre: "Revisión cliente", tipo: "abierto", color: "#8b5cf6", area: "ATC / PM", detiene_sla: true, es_inicial: false, sort_order: 7, activo: true },
   { codigo: "cancelado", nombre: "Cancelado", tipo: "cerrado", color: "#f43f5e", area: null, detiene_sla: true, es_inicial: false, sort_order: 8, activo: true },
-  { codigo: "cerrado", nombre: "Cerrado", tipo: "cerrado", color: "#dc2626", area: null, detiene_sla: true, es_inicial: false, sort_order: 9, activo: true },
+  { codigo: "cerrado", nombre: "Cerrado", tipo: "cerrado", color: "#0f172a", area: null, detiene_sla: true, es_inicial: false, sort_order: 9, activo: true },
 ];
 
 export const TIPOS_DEFECTO: SoporteTipo[] = [

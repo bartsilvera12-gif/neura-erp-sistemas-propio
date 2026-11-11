@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlarmClock, CalendarDays, ChevronLeft, ChevronRight, Inbox, Search, SlidersHorizontal, UserPen, X } from "lucide-react";
+import { AlarmClock, CalendarDays, UserRoundCheck, ChevronLeft, ChevronRight, Inbox, Search, SlidersHorizontal, UserPen, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   apiSoporte,
@@ -131,6 +131,12 @@ export default function TablaTickets({
    * entrara ahí contaría como "filtro activo" y encendería el botón de limpiar.
    */
   const orden = params.get("orden") ?? "";
+  /**
+   * "Mis tickets" dejó de ser una pantalla aparte y pasó a ser un botón de esta barra.
+   * La pantalla vieja sigue existiendo (hay enlaces que apuntan ahí) y entra por `soloMios`;
+   * acá se enciende por URL.
+   */
+  const soloMiosEfectivo = soloMios || params.get("mios") === "1";
   const [buscadorAbierto, setBuscadorAbierto] = useState(false);
   const [panelAbierto, setPanelAbierto] = useState(false);
   /** Cuántos filtros hay puestos, para el número del botón. El texto se ve solo. */
@@ -148,14 +154,14 @@ export default function TablaTickets({
     if (pestana.estados) q.set("estados", pestana.estados.join(","));
     if (pestana.revision) q.set("revision", "1");
     for (const [k, v] of Object.entries(filtros)) if (v) q.set(k, v);
-    if (soloMios) q.set("mios", "1");
+    if (soloMiosEfectivo) q.set("mios", "1");
     if (orden) q.set("orden", orden);
     q.set("pagina", String(pagina));
     q.set("por_pagina", String(porPagina));
     return q.toString();
     // `params` resume todos los filtros de la URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, soloMios, pestana]);
+  }, [params, soloMiosEfectivo, pestana]);
 
   // Auto-scroll horizontal: cuando el cursor se acerca a un borde de la tabla,
   // se desplaza sola hacia ese lado (más rápido cuanto más cerca del borde).
@@ -297,7 +303,7 @@ export default function TablaTickets({
     };
   }, [cat]);
 
-  const hayFiltros = Object.values(filtros).some(Boolean);
+  const hayFiltros = Object.values(filtros).some(Boolean) || (!soloMios && soloMiosEfectivo);
   const total = datos?.total ?? 0;
   const paginas = Math.max(1, Math.ceil(total / porPagina));
   const desde = total === 0 ? 0 : (pagina - 1) * porPagina + 1;
@@ -446,6 +452,21 @@ export default function TablaTickets({
 
             <span className="flex-1" />
 
+            {soloMios ? null : (
+              <button
+                type="button"
+                onClick={() => cambiar({ mios: soloMiosEfectivo ? null : "1" })}
+                aria-pressed={soloMiosEfectivo}
+                title="Sólo los tickets donde tengo la próxima acción"
+                className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-[12px] font-semibold transition-colors ${
+                  soloMiosEfectivo
+                    ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+                }`}
+              >
+                <UserRoundCheck className="h-3.5 w-3.5" aria-hidden /> Mis tickets
+              </button>
+            )}
             <button
               type="button"
               onClick={() => cambiar({ cargados: soloCargados ? null : "1" })}
@@ -465,7 +486,7 @@ export default function TablaTickets({
                 type="button"
                 onClick={() => {
                   setTexto("");
-                  cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null, cargados: null, desde: null, hasta: null });
+                  cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null, cargados: null, desde: null, hasta: null, mios: null });
                 }}
                 className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl px-2.5 text-[12px] font-semibold text-rose-500 hover:bg-rose-50"
               >
@@ -505,7 +526,7 @@ export default function TablaTickets({
         ) : datos.tickets.length === 0 ? (
           <Vacio
             icono={Inbox}
-            titulo={hayFiltros ? "Ningún ticket coincide con los filtros" : soloMios ? "No tenés tickets en esta vista" : "Todavía no hay tickets"}
+            titulo={hayFiltros ? "Ningún ticket coincide con los filtros" : soloMiosEfectivo ? "No tenés tickets en esta vista" : "Todavía no hay tickets"}
             detalle={hayFiltros ? "Probá quitando algún filtro." : undefined}
           />
         ) : (

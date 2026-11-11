@@ -45,6 +45,7 @@ type TicketLista = {
   responsable: Persona | null;
   creador: Persona | null;
   updated_at: string;
+  created_at: string;
   sla: { estado: string };
 };
 
@@ -396,10 +397,10 @@ export default function TablaTickets({
                               ? "Por número, del más viejo — tocá para volver a última actividad"
                               : "Ordenar por número"
                         }
-                        className={`-ml-1 inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors ${
+                        className={`-ml-1 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-bold uppercase tracking-wide shadow-sm transition-colors ${
                           orden
-                            ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
-                            : "border-slate-200 bg-white text-slate-500 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+                            ? "border-[#4FAEB2] bg-[#4FAEB2] text-white"
+                            : "border-[#4FAEB2]/50 bg-white text-[#2F6E71] hover:bg-[#4FAEB2]/10"
                         }`}
                       >
                         N°
@@ -417,6 +418,7 @@ export default function TablaTickets({
                     {ocultarResponsable ? null : <th className="px-3 py-3">Asignado a</th>}
                     <th className="px-3 py-3">Cargado por</th>
                     <th className="px-5 py-3 text-right">Actualizado</th>
+                    <th className="px-5 py-3 text-right">Creado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -521,6 +523,7 @@ export default function TablaTickets({
                         )}
                       </td>
                       <td className="whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-500">{fechaHora(t.updated_at)}</td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-right text-[12.5px] tabular-nums text-slate-400">{fechaHora(t.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>

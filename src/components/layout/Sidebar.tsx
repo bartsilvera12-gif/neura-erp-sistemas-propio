@@ -862,29 +862,41 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       </div>
 
       {!collapsed && (
-        <div className="shrink-0 px-3 pb-2 pt-1">
+        <div className="shrink-0 px-3 pt-3">
           <label htmlFor="sidebar-menu-search" className="sr-only">
             Buscar en el menú
           </label>
           <div className="group relative">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-[#7DCFD2]"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 transition-colors group-focus-within:text-[#7DCFD2]"
               aria-hidden
             />
             <input
               id="sidebar-menu-search"
-              type="search"
               autoComplete="off"
+              enterKeyHint="search"
               placeholder="Buscar en el menú…"
               value={menuSearchQuery}
               onChange={(e) => setMenuSearchQuery(e.target.value)}
               className="w-full rounded-lg border border-white/[0.08] bg-black/20 py-2.5 pl-9 pr-9 text-base text-white outline-none transition-[border-color,background-color] placeholder:text-slate-500 focus:border-[#7DCFD2]/40 focus:bg-black/30 md:py-2 md:text-[13px]"
             />
             {/* El atajo a la vista, como en 2.0: si no se muestra, nadie lo descubre. */}
-            {menuSearchQuery ? null : (
+            {menuSearchQuery ? (
+              <button
+                type="button"
+                onClick={() => setMenuSearchQuery("")}
+                aria-label="Limpiar búsqueda"
+                className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            ) : (
               <span
                 aria-hidden
-                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-white/[0.12] px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-slate-500"
               >
                 /
               </span>

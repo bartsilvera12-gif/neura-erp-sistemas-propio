@@ -13,8 +13,11 @@ const usd = (n: number) => n.toLocaleString("es-PY", { minimumFractionDigits: 2,
  * Lo que lleva gastado Neurita, al lado de "Cargar ticket".
  *
  * El dato lo informa el propio agente cada vez que termina una vuelta
- * (POST /api/soporte/gastos). Si todavía no informó nada, la tarjeta no se
- * muestra: una tarjeta en cero no dice nada y ocupa lugar.
+ * (POST /api/soporte/gastos). Se muestra aunque esté en cero: así se ve que el
+ * circuito funciona antes de que el agente informe su primer gasto.
+ *
+ * Solo se esconde mientras no haya respuesta (primera carga, o la consulta
+ * falló): una tarjeta con números inventados sería peor que no mostrar nada.
  */
 export default function GastoNeurita() {
   const [g, setG] = useState<Gasto | null>(null);
@@ -34,7 +37,7 @@ export default function GastoNeurita() {
     };
   }, []);
 
-  if (!g || g.total <= 0) return null;
+  if (!g) return null;
 
   return (
     <div

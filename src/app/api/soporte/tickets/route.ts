@@ -57,11 +57,19 @@ export async function GET(request: Request) {
     const estadosParam = (p.get("estados") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
     const desde = (pagina - 1) * porPagina;
 
+    const fechaValida = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+    const desdeFecha = fechaValida(p.get("desde"));
+    const hastaFecha = fechaValida(p.get("hasta"));
+
     // Filtros comunes (sin el texto: con `q` la búsqueda va por el RPC de abajo).
     const aplicarSinMios = (q: ConsultaFiltrable): ConsultaFiltrable => {
       let b = q.eq("empresa_id", auth.empresaId);
       // Los que cargó quien consulta: sirve para seguir lo que uno mismo derivó.
       if (p.get("cargados") === "1") b = b.eq("created_by", auth.usuarioId);
+      // Rango por fecha de CREACIÓN. Vienen como YYYY-MM-DD y se interpretan en hora de
+      // Paraguay: sin el huso, "hoy" empezaba a las 21:00 del día anterior.
+      if (desdeFecha) b = b.gte("created_at", `${desdeFecha}T00:00:00-03:00`);
+      if (hastaFecha) b = b.lte("created_at", `${hastaFecha}T23:59:59.999-03:00`);
       for (const [param, columna] of [
         ["cliente_id", "cliente_id"],
         ["estado", "estado_codigo"],
@@ -121,8 +129,24 @@ export async function GET(request: Request) {
       if (rpcErr) return falla(rpcErr.message);
       const matches = (matchesRaw ?? []) as { id: string; estado_codigo: string; rank: number }[];
 
+      // El buscador no sabe de fechas: se acotan los ids acá, antes de contar y paginar,
+      // para que el total y los contadores reflejen el rango elegido.
+      let matchesEnRango = matches;
+      if ((desdeFecha || hastaFecha) && matches.length) {
+        let qf = auth.sb
+          .from("soporte_tickets")
+          .select("id")
+          .eq("empresa_id", auth.empresaId)
+          .in("id", matches.map((m) => m.id));
+        if (desdeFecha) qf = qf.gte("created_at", `${desdeFecha}T00:00:00-03:00`);
+        if (hastaFecha) qf = qf.lte("created_at", `${hastaFecha}T23:59:59.999-03:00`);
+        const { data: enRango } = await qf;
+        const permitidos = new Set(((enRango ?? []) as { id: string }[]).map((x) => x.id));
+        matchesEnRango = matches.filter((m) => permitidos.has(m.id));
+      }
+
       const porEstado = new Map<string, number>();
-      for (const m of matches) porEstado.set(m.estado_codigo, (porEstado.get(m.estado_codigo) ?? 0) + 1);
+      for (const m of matchesEnRango) porEstado.set(m.estado_codigo, (porEstado.get(m.estado_codigo) ?? 0) + 1);
 
       // La pestaña de revisiones no filtra por estado.
       const estadosFiltro: readonly string[] | null = revision
@@ -131,8 +155,8 @@ export async function GET(request: Request) {
           ? estadosParam
           : pestana.estados ?? null;
       const filtrados = estadosFiltro
-        ? matches.filter((m) => estadosFiltro.includes(m.estado_codigo))
-        : matches;
+        ? matchesEnRango.filter((m) => estadosFiltro.includes(m.estado_codigo))
+        : matchesEnRango;
       const total = filtrados.length;
       const pageIds = filtrados.slice(desde, desde + porPagina).map((m) => m.id);
 

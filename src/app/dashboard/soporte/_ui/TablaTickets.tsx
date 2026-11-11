@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlarmClock, ChevronLeft, ChevronRight, Inbox, Search, UserPen, X } from "lucide-react";
+import { AlarmClock, CalendarDays, ChevronLeft, ChevronRight, Inbox, Search, SlidersHorizontal, UserPen, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   apiSoporte,
@@ -27,6 +27,20 @@ export type PestanaDef = {
   /** Tickets con una revisión de QA sin terminar asignada a quien mira. */
   revision?: boolean;
 };
+
+/**
+ * Día de hoy / ayer en formato YYYY-MM-DD, en hora LOCAL.
+ *
+ * `toISOString()` devuelve UTC: en Paraguay, después de las 21:00 daba el día siguiente y
+ * "Hoy" filtraba por mañana.
+ */
+function diaISO(desplazamiento = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + desplazamiento);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const hoyISO = () => diaISO(0);
+const ayerISO = () => diaISO(-1);
 
 type TicketLista = {
   id: string;
@@ -108,6 +122,8 @@ export default function TablaTickets({
     tipo: params.get("tipo") ?? "",
     responsable_id: params.get("responsable_id") ?? "",
     cargados: params.get("cargados") ?? "",
+    desde: params.get("desde") ?? "",
+    hasta: params.get("hasta") ?? "",
   };
   const soloCargados = filtros.cargados === "1";
   /**
@@ -115,6 +131,13 @@ export default function TablaTickets({
    * entrara ahí contaría como "filtro activo" y encendería el botón de limpiar.
    */
   const orden = params.get("orden") ?? "";
+  const [buscadorAbierto, setBuscadorAbierto] = useState(false);
+  const [panelAbierto, setPanelAbierto] = useState(false);
+  /** Cuántos filtros hay puestos, para el número del botón. El texto se ve solo. */
+  const filtrosPuestos = [
+    filtros.cliente_id, filtros.estado, filtros.tipo, filtros.responsable_id,
+    filtros.cargados, filtros.desde, filtros.hasta,
+  ].filter(Boolean).length;
   const pagina = Math.max(1, Number(params.get("pagina") ?? "1") || 1);
   const porPagina = (OPCIONES_POR_PAGINA as readonly number[]).includes(Number(params.get("por_pagina")))
     ? Number(params.get("por_pagina"))
@@ -307,47 +330,167 @@ export default function TablaTickets({
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.05),0_8px_24px_-12px_rgba(15,23,42,0.08)]">
-        {/* Filtros */}
-        <div className="grid gap-2 border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(130px,1fr))_auto_auto]">
-          <label className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
-            <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar por motivo, cliente, proyecto o #número…" aria-label="Buscar tickets" className={`${claseInput} pl-9`} />
-          </label>
-          <SelectorBuscable tam="sm" avatares ariaLabel="Cliente" opciones={[{ value: "", label: "Todos los clientes" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={filtros.cliente_id} onChange={(v) => cambiar({ cliente_id: v || null })} placeholder="Todos los clientes" buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
-          <FancySelect size="sm" ariaLabel="Estado" value={filtros.estado} onChange={(v) => cambiar({ estado: v || null })} options={op.estado} />
-          <FancySelect size="sm" ariaLabel="Tipo" value={filtros.tipo} onChange={(v) => cambiar({ tipo: v || null })} options={op.tipo} />
-          {ocultarResponsable ? (
-            <span className="hidden lg:block" />
-          ) : (
-            <SelectorBuscable tam="sm" avatares ariaLabel="Asignado a" value={filtros.responsable_id} onChange={(v) => cambiar({ responsable_id: v || null })} opciones={op.responsable} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
-          )}
-          <button
-            type="button"
-            onClick={() => cambiar({ cargados: soloCargados ? null : "1" })}
-            aria-pressed={soloCargados}
-            title="Sólo los tickets que cargué yo"
-            className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-[12px] font-semibold transition-colors ${
-              soloCargados
-                ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
-                : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
-            }`}
-          >
-            <UserPen className="h-3.5 w-3.5" aria-hidden /> Cargados por mí
-          </button>
-          {hayFiltros ? (
+        {/* Filtros.
+            Antes eran siete columnas fijas siempre a la vista: no entraba nada más y en
+            pantallas chicas se cortaba. Ahora la fila es corta —buscar, filtros, fechas— y
+            lo demás vive en un panel que se abre abajo. */}
+        <div className="border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/[0.05] via-white to-sky-50/40 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Buscar: una lupa que se abre. El campo ocupaba un tercio de la barra para
+                algo que se usa de a ratos. */}
+            {buscadorAbierto || filtros.q ? (
+              <label className="relative min-w-[200px] flex-1 sm:max-w-sm">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FAEB2]" aria-hidden />
+                <input
+                  autoFocus
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Escape") return;
+                    setTexto("");
+                    cambiar({ q: null });
+                    setBuscadorAbierto(false);
+                  }}
+                  placeholder="Motivo, cliente, proyecto o #número…"
+                  aria-label="Buscar tickets"
+                  className={`${claseInput} pl-9 pr-8`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTexto("");
+                    cambiar({ q: null });
+                    setBuscadorAbierto(false);
+                  }}
+                  aria-label="Cerrar la búsqueda"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </label>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setBuscadorAbierto(true)}
+                aria-label="Buscar tickets"
+                title="Buscar"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+              >
+                <Search className="h-4 w-4" aria-hidden />
+              </button>
+            )}
+
+            {/* Filtros: abre el panel de abajo. El número dice cuántos están puestos, para
+                no tener que abrirlo sólo para saber si hay alguno. */}
             <button
               type="button"
-              onClick={() => {
-                setTexto("");
-                cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null, cargados: null });
-              }}
-              className="inline-flex items-center justify-center gap-1 rounded-xl px-2.5 text-[12px] font-semibold text-rose-500 hover:bg-rose-50"
+              onClick={() => setPanelAbierto((v) => !v)}
+              aria-expanded={panelAbierto}
+              title="Filtros"
+              className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[12.5px] font-semibold transition-colors ${
+                panelAbierto || filtrosPuestos > 0
+                  ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+              }`}
             >
-              <X className="h-3.5 w-3.5" aria-hidden /> Limpiar
+              <SlidersHorizontal className="h-4 w-4" aria-hidden />
+              Filtros
+              {filtrosPuestos > 0 ? (
+                <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[#4FAEB2] px-1 text-[10px] font-bold text-white">
+                  {filtrosPuestos}
+                </span>
+              ) : null}
             </button>
-          ) : (
-            <span className="hidden lg:block" />
-          )}
+
+            <span className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
+
+            {/* Fechas de uso diario, a un toque. El rango fino está en el panel. */}
+            {([["Hoy", hoyISO()], ["Ayer", ayerISO()]] as const).map(([etq, dia]) => {
+              const puesto = filtros.desde === dia && filtros.hasta === dia;
+              return (
+                <button
+                  key={etq}
+                  type="button"
+                  onClick={() => cambiar(puesto ? { desde: null, hasta: null } : { desde: dia, hasta: dia })}
+                  aria-pressed={puesto}
+                  className={`h-9 shrink-0 rounded-xl border px-3 text-[12.5px] font-semibold transition-colors ${
+                    puesto
+                      ? "border-[#4FAEB2] bg-[#4FAEB2] text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+                  }`}
+                >
+                  {etq}
+                </button>
+              );
+            })}
+            <label
+              title="Elegir un día"
+              className={`inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 text-[12.5px] font-semibold transition-colors ${
+                filtros.desde && filtros.desde === filtros.hasta && ![hoyISO(), ayerISO()].includes(filtros.desde)
+                  ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60"
+              }`}
+            >
+              <CalendarDays className="h-4 w-4" aria-hidden />
+              <input
+                type="date"
+                value={filtros.desde && filtros.desde === filtros.hasta ? filtros.desde : ""}
+                onChange={(e) => {
+                  const d = e.target.value;
+                  cambiar(d ? { desde: d, hasta: d } : { desde: null, hasta: null });
+                }}
+                aria-label="Elegir un día"
+                className="w-[7.5rem] bg-transparent text-[12.5px] outline-none"
+              />
+            </label>
+
+            <span className="flex-1" />
+
+            <button
+              type="button"
+              onClick={() => cambiar({ cargados: soloCargados ? null : "1" })}
+              aria-pressed={soloCargados}
+              title="Sólo los tickets que cargué yo"
+              className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-[12px] font-semibold transition-colors ${
+                soloCargados
+                  ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
+              }`}
+            >
+              <UserPen className="h-3.5 w-3.5" aria-hidden /> Cargados por mí
+            </button>
+
+            {hayFiltros ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setTexto("");
+                  cambiar({ q: null, cliente_id: null, estado: null, tipo: null, responsable_id: null, cargados: null, desde: null, hasta: null });
+                }}
+                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl px-2.5 text-[12px] font-semibold text-rose-500 hover:bg-rose-50"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden /> Limpiar
+              </button>
+            ) : null}
+          </div>
+
+          {/* Panel: lo que no se usa a cada rato. Se abre y se cierra sin perder lo elegido. */}
+          {panelAbierto ? (
+            <div className="mt-2.5 grid gap-2 border-t border-slate-200/70 pt-2.5 sm:grid-cols-2 lg:grid-cols-4">
+              <SelectorBuscable tam="sm" avatares ariaLabel="Cliente" opciones={[{ value: "", label: "Todos los clientes" }, ...clientes.map((c) => ({ value: c.id, label: c.nombre }))]} value={filtros.cliente_id} onChange={(v) => cambiar({ cliente_id: v || null })} placeholder="Todos los clientes" buscarPlaceholder="Buscar cliente…" vacio="Ningún cliente coincide" />
+              <FancySelect size="sm" ariaLabel="Estado" value={filtros.estado} onChange={(v) => cambiar({ estado: v || null })} options={op.estado} />
+              <FancySelect size="sm" ariaLabel="Tipo" value={filtros.tipo} onChange={(v) => cambiar({ tipo: v || null })} options={op.tipo} />
+              {ocultarResponsable ? null : (
+                <SelectorBuscable tam="sm" avatares ariaLabel="Asignado a" value={filtros.responsable_id} onChange={(v) => cambiar({ responsable_id: v || null })} opciones={op.responsable} buscarPlaceholder="Buscar persona o área…" vacio="Nadie coincide" />
+              )}
+              <label className="flex items-center gap-2 text-[12px] text-slate-500 sm:col-span-2">
+                Entre
+                <input type="date" value={filtros.desde} onChange={(e) => cambiar({ desde: e.target.value || null })} aria-label="Desde" className={claseInput} />
+                y
+                <input type="date" value={filtros.hasta} onChange={(e) => cambiar({ hasta: e.target.value || null })} aria-label="Hasta" className={claseInput} />
+              </label>
+            </div>
+          ) : null}
         </div>
 
         {/* Barra de progreso fina mientras se refresca: no tapa lo que ya se ve. */}

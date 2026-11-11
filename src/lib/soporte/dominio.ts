@@ -75,7 +75,7 @@ export const ESTADOS_DEFECTO: SoporteEstado[] = [
   // del equipo ya terminó, así que el SLA sigue detenido: lo que falta depende de la agenda del cliente.
   { codigo: "revision_cliente", nombre: "Revisión cliente", tipo: "abierto", color: "#8b5cf6", area: "ATC / PM", detiene_sla: true, es_inicial: false, sort_order: 7, activo: true },
   { codigo: "cancelado", nombre: "Cancelado", tipo: "cerrado", color: "#f43f5e", area: null, detiene_sla: true, es_inicial: false, sort_order: 8, activo: true },
-  { codigo: "cerrado", nombre: "Cerrado", tipo: "cerrado", color: "#334155", area: null, detiene_sla: true, es_inicial: false, sort_order: 9, activo: true },
+  { codigo: "cerrado", nombre: "Cerrado", tipo: "cerrado", color: "#dc2626", area: null, detiene_sla: true, es_inicial: false, sort_order: 9, activo: true },
 ];
 
 export const TIPOS_DEFECTO: SoporteTipo[] = [

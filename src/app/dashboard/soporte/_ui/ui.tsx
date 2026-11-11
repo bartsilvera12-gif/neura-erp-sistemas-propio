@@ -53,7 +53,7 @@ export const TONO_ESTADO: Record<string, Tono> = {
   resuelto: "verde",
   revision_cliente: "violeta",
   cancelado: "rosa",
-  cerrado: "pizarra",
+  cerrado: "rosa",
 };
 
 /** Tono por área de trabajo: el mismo en avatares, comentarios y equipos. */

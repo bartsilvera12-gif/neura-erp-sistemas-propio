@@ -88,7 +88,9 @@ const recordado = new Map<string, RespLista>();
 function tonoPestana(p: PestanaDef): Tono {
   if (p.revision) return "violeta";
   if (!p.estados) return "turquesa";
-  return TONO_ESTADO[p.estados[p.estados.length - 1]] ?? "turquesa";
+  // El primero de la lista es el estado que da nombre a la pestaña: "En proceso" se pinta como
+  // En proceso, no como Re-abierto, que es el que iba último.
+  return TONO_ESTADO[p.estados[0]] ?? "turquesa";
 }
 
 /**

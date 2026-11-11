@@ -26,7 +26,7 @@ import {
   Coins,
   WalletCards,
   IdCard,
-  LifeBuoy,
+  Headset,
   LayoutGrid,
   Search,
   Receipt,
@@ -174,7 +174,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     slug: "soporte",
     label: "Soporte",
     href: "/dashboard/soporte/tickets",
-    icon: LifeBuoy,
+    icon: Headset,
     children: [
       { label: "Dashboard", href: "/dashboard/soporte", exactMatch: true },
       { label: "Tickets", href: "/dashboard/soporte/tickets", exactMatch: true },

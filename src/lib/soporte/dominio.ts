@@ -71,8 +71,11 @@ export const ESTADOS_DEFECTO: SoporteEstado[] = [
   { codigo: "listo_revision", nombre: "Listo para revisión", tipo: "abierto", color: "#8b5cf6", area: "QA", detiene_sla: false, es_inicial: false, sort_order: 4, activo: true },
   { codigo: "reabierto", nombre: "Re-abierto", tipo: "abierto", color: "#f97316", area: "Desarrollo", detiene_sla: false, es_inicial: false, sort_order: 5, activo: true },
   { codigo: "resuelto", nombre: "Resuelto", tipo: "cerrado", color: "#10b981", area: "ATC / PM", detiene_sla: true, es_inicial: false, sort_order: 6, activo: true },
-  { codigo: "cancelado", nombre: "Cancelado", tipo: "cerrado", color: "#f43f5e", area: null, detiene_sla: true, es_inicial: false, sort_order: 7, activo: true },
-  { codigo: "cerrado", nombre: "Cerrado", tipo: "cerrado", color: "#334155", area: null, detiene_sla: true, es_inicial: false, sort_order: 8, activo: true },
+  // Después de Resuelto: ATC le muestra el arreglo al cliente y espera su visto bueno. El trabajo
+  // del equipo ya terminó, así que el SLA sigue detenido: lo que falta depende de la agenda del cliente.
+  { codigo: "revision_cliente", nombre: "Revisión cliente", tipo: "abierto", color: "#8b5cf6", area: "ATC / PM", detiene_sla: true, es_inicial: false, sort_order: 7, activo: true },
+  { codigo: "cancelado", nombre: "Cancelado", tipo: "cerrado", color: "#f43f5e", area: null, detiene_sla: true, es_inicial: false, sort_order: 8, activo: true },
+  { codigo: "cerrado", nombre: "Cerrado", tipo: "cerrado", color: "#334155", area: null, detiene_sla: true, es_inicial: false, sort_order: 9, activo: true },
 ];
 
 export const TIPOS_DEFECTO: SoporteTipo[] = [
@@ -110,7 +113,8 @@ export const PRIORIDADES_DEFECTO: SoportePrioridad[] = [
  *   Listo para revisión → Resuelto (con las subtareas finalizadas)
  *     · a Re-abierto lo lleva QA al pedir cambios en la subtarea, no a mano
  *   Re-abierto → En proceso · Falta información · Cancelado
- *   Resuelto → Re-abierto · Cerrado
+ *   Resuelto → Revisión cliente · Re-abierto · Cerrado
+ *   Revisión cliente → Cerrado (el cliente lo aprobó) · Re-abierto (dijo que sigue mal)
  *   Cancelado y Cerrado son finales.
  *
  * Un estado creado desde Configuración no tiene reglas propias: se permite
@@ -122,7 +126,8 @@ export const TRANSICIONES: Record<string, string[]> = {
   falta_informacion: ["en_proceso", "cancelado"],
   listo_revision: ["resuelto"],
   reabierto: ["en_proceso", "falta_informacion", "cancelado"],
-  resuelto: ["reabierto", "cerrado"],
+  resuelto: ["revision_cliente", "reabierto", "cerrado"],
+  revision_cliente: ["cerrado", "reabierto"],
   cancelado: [],
   cerrado: [],
 };
@@ -453,7 +458,7 @@ export const PESTANAS_TICKETS = [
   { id: "pendientes", etiqueta: "Pendientes", estados: ["pendiente"] },
   { id: "en_proceso", etiqueta: "En proceso", estados: ["en_proceso", "reabierto"] },
   { id: "falta_informacion", etiqueta: "Falta información", estados: ["falta_informacion"] },
-  { id: "revision", etiqueta: "En revisión", estados: ["listo_revision"] },
+  { id: "revision", etiqueta: "Revisión cliente", estados: ["revision_cliente"] },
   { id: "resueltos", etiqueta: "Resueltos", estados: ["resuelto"] },
   { id: "cerrados", etiqueta: "Cerrados", estados: ["cerrado", "cancelado"] },
 ] as const;

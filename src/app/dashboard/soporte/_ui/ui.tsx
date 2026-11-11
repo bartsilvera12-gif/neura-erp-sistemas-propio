@@ -51,6 +51,7 @@ export const TONO_ESTADO: Record<string, Tono> = {
   listo_revision: "violeta",
   reabierto: "naranja",
   resuelto: "verde",
+  revision_cliente: "violeta",
   cancelado: "rosa",
   cerrado: "pizarra",
 };

@@ -13,6 +13,7 @@ import { numeroTicket } from "@/lib/soporte/dominio";
 const PISTA: Record<string, string> = {
   listo_revision: "Abre una revisión para QA y le avisa",
   resuelto: "Requiere las subtareas finalizadas",
+  revision_cliente: "Se lo mostrás al cliente y esperás su visto bueno",
   cerrado: "Final: después no se puede cambiar",
   cancelado: "Final: después no se puede cambiar",
 };

@@ -63,6 +63,7 @@ export function tonoEstado(codigo: string | null | undefined): Tono {
     case "falta_informacion":
       return TONOS.faltaInfo;
     case "listo_revision":
+    case "revision_cliente":
       return TONOS.revision;
     case "resuelto":
     case "cerrado":

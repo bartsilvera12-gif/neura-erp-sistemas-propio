@@ -105,6 +105,7 @@ export async function GET(request: Request) {
     // Tickets y su historial de estados. Con el historial se sabe QUIÉN resolvió
     // cada uno y cuándo, que es lo que `responsable_id` solo no dice.
     const tickets = await ticketsParaAgregar(auth.sb, auth.empresaId);
+    const porId = new Map(tickets.map((t) => [t.id, t] as const));
     const historial = await porLotes<FilaHist>((d, h) =>
       auth.sb
         .from("soporte_ticket_historial")
@@ -238,6 +239,26 @@ export async function GET(request: Request) {
       .filter((t): t is TicketFila => !!t)
       .map(ficha);
 
+    // Todo lo que resolvió, no solo lo que tiene gasto informado: los tickets
+    // anteriores a esta tabla también son trabajo suyo.
+    const resueltosLista = agente
+      ? [...(resueltosPor.get(agente.id) ?? [])]
+          .reduce((acc, x) => {
+            // Un ticket resuelto dos veces aparece una sola vez, con la última.
+            const prev = acc.get(x.ticket);
+            if (!prev || x.cuando > prev) acc.set(x.ticket, x.cuando);
+            return acc;
+          }, new Map<string, number>())
+      : new Map<string, number>();
+    const resueltos = [...resueltosLista.entries()]
+      .map(([id, cuando]) => {
+        const t = porId.get(id);
+        if (!t) return null;
+        return { ...ficha(t), resuelto_at: new Date(cuando).toISOString(), volvio: idsVolvieron.has(id) };
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x)
+      .sort((a, b) => Date.parse(b.resuelto_at) - Date.parse(a.resuelto_at));
+
     const vueltas = [...vueltasPorTicket.values()];
     return ok({
       agente: agente ? { id: agente.id, nombre: agente.nombre ?? "Neurita" } : null,
@@ -257,6 +278,7 @@ export async function GET(request: Request) {
       volvieronLista,
       abiertos: abiertosLista,
       caros,
+      resueltos,
     });
   } catch (e) {
     return errorInesperado(e);

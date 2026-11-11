@@ -150,22 +150,27 @@ export async function POST(request: Request, { params }: Params) {
     const asunto = ((tk as { asunto?: string } | null)?.asunto ?? "").trim();
     const tituloAviso = `Nuevo comentario${numero ? ` · T-${numero}` : ""}`;
     const cuerpoAviso = asunto ? `${asunto}: ${contenido.slice(0, 160)}` : contenido.slice(0, 200);
-    void avisarSeguidoresMovilesSoporte({
-      sb: auth.sb,
-      empresaId: auth.empresaId,
-      ticketId: id,
-      titulo: tituloAviso,
-      cuerpo: cuerpoAviso,
-      excluirUsuarioId: auth.usuarioId,
-    });
-    // Aviso al RESPONSABLE del ticket (el dev a cargo): campanita + push. Se
-    // omite solo si él mismo comentó (avisarSoporte ignora al autor del cambio).
-    await avisarSoporte(auth, {
-      usuarioId: (tk as { responsable_id?: string | null } | null)?.responsable_id ?? null,
-      titulo: tituloAviso,
-      cuerpo: cuerpoAviso,
-      ticketId: id,
-    });
+    // `notificar: false` = comentario sin push ni campanita (lo usa el Agente IA para sus
+    // avisos de avance: comentaba mucho y sonaba todo el tiempo). Los cambios de estado
+    // siguen notificando por su propia ruta.
+    if (body?.notificar !== false) {
+      void avisarSeguidoresMovilesSoporte({
+        sb: auth.sb,
+        empresaId: auth.empresaId,
+        ticketId: id,
+        titulo: tituloAviso,
+        cuerpo: cuerpoAviso,
+        excluirUsuarioId: auth.usuarioId,
+      });
+      // Aviso al RESPONSABLE del ticket (el dev a cargo): campanita + push. Se
+      // omite solo si él mismo comentó (avisarSoporte ignora al autor del cambio).
+      await avisarSoporte(auth, {
+        usuarioId: (tk as { responsable_id?: string | null } | null)?.responsable_id ?? null,
+        titulo: tituloAviso,
+        cuerpo: cuerpoAviso,
+        ticketId: id,
+      });
+    }
     return ok(data);
   } catch (e) {
     return errorInesperado(e);

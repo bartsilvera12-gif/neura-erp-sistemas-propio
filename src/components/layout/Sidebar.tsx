@@ -414,10 +414,10 @@ function NavItem({
     return (
       <div className="space-y-0.5">
         <div
-          className={`group/parent relative flex items-center gap-0.5 rounded-xl text-sm transition-all ${
+          className={`group/parent relative flex items-center gap-0.5 rounded-xl text-[14px] transition-all ${
             active
-              ? "bg-gradient-to-r from-[#7DCFD2]/22 via-[#7DCFD2]/12 to-transparent text-white"
-              : "text-slate-300 hover:bg-white/[0.04] hover:text-white"
+              ? "bg-white/[0.08] text-white"
+              : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
           }`}
         >
           {active ? (
@@ -428,7 +428,7 @@ function NavItem({
           ) : null}
           <Link
             href={item.href}
-            className={`flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 ${active ? "font-semibold" : "font-medium"}`}
+            className={`flex min-w-0 flex-1 items-center gap-3 px-3 py-[0.7rem] ${active ? "font-semibold" : "font-medium"}`}
             title={item.label}
           >
             <Icon
@@ -797,7 +797,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     <motion.aside
       id="neura-sidebar"
       initial={false}
-      animate={{ width: collapsed ? 80 : 260 }}
+      animate={{ width: collapsed ? 72 : 236 }}
       transition={{ duration: 0.2 }}
       data-mobile-open={mobileOpen ? "true" : "false"}
       className={`
@@ -808,7 +808,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       `}
     >
       {/* Logo oficial ZENTRA (blanco sobre azul marca) */}
-      <div className="flex h-[7.25rem] shrink-0 items-center justify-between gap-2 border-b border-[color:var(--zentra-sidebar-border)] bg-[color:var(--zentra-sidebar-elevated)]/35 px-3 py-2.5">
+      <div className="flex h-[7.25rem] shrink-0 items-center justify-between gap-2 px-3 py-2.5">
         <Link href="/" className={`flex items-center justify-center min-w-0 flex-1 overflow-hidden`}>
           <div
             className={`relative flex items-center justify-center ${collapsed ? "h-11 w-11" : "h-[4.5rem] w-full max-w-[200px]"}`}
@@ -849,7 +849,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       </div>
 
       {!collapsed && (
-        <div className="shrink-0 border-b border-[color:var(--zentra-sidebar-border)] px-3 py-3">
+        <div className="shrink-0 px-3 pb-2 pt-1">
           <label htmlFor="sidebar-menu-search" className="sr-only">
             Buscar en el menú
           </label>
@@ -865,8 +865,17 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
               placeholder="Buscar en el menú…"
               value={menuSearchQuery}
               onChange={(e) => setMenuSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2 pl-9 pr-3 text-base text-white outline-none transition-[border-color,background-color,box-shadow] placeholder:text-slate-500 hover:border-white/[0.14] hover:bg-white/[0.06] focus:border-[#7DCFD2]/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-[#7DCFD2]/30 md:text-xs"
+              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] py-2.5 pl-9 pr-9 text-base text-white outline-none transition-[border-color,background-color,box-shadow] placeholder:text-slate-500 hover:border-white/[0.14] hover:bg-white/[0.06] focus:border-[#7DCFD2]/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-[#7DCFD2]/30 md:text-[13px]"
             />
+            {/* El atajo a la vista, como en 2.0: si no se muestra, nadie lo descubre. */}
+            {menuSearchQuery ? null : (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-white/[0.12] px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+              >
+                /
+              </span>
+            )}
           </div>
         </div>
       )}

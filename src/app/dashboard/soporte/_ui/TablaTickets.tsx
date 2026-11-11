@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlarmClock, CalendarDays, Filter, UserRoundCheck, ChevronLeft, ChevronRight, Inbox, Search, SlidersHorizontal, UserPen, X } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlarmClock, CalendarDays, Filter, UserRoundCheck, ChevronDown, ChevronLeft, ChevronRight, Inbox, Search, SlidersHorizontal, UserPen, X } from "lucide-react";
 import { FancySelect } from "@/app/dashboard/proyectos/components/FancySelect";
 import {
   apiSoporte,
@@ -46,6 +46,8 @@ type TicketLista = {
   id: string;
   numero: number;
   asunto: string;
+  /** Ya la devuelve /api/soporte/tickets (TICKET_CAMPOS): la usa el panel desplegable. */
+  descripcion?: string | null;
   cliente_nombre: string | null;
   proyectos_cliente: { id: string; titulo: string }[];
   tipo_etiqueta: string;
@@ -513,6 +515,17 @@ export default function TablaTickets({
     [columnasOrdenadas, colOcultas]
   );
 
+  // Filas desplegadas: se puede abrir más de una a la vez (sirve para comparar dos tickets).
+  // No se guarda entre recargas a propósito: es una ayuda para barrer la lista, no una preferencia.
+  const [desplegados, setDesplegados] = useState<Set<string>>(() => new Set());
+  const alternarDespliegue = useCallback((id: string) => {
+    setDesplegados((prev) => {
+      const sig = new Set(prev);
+      if (!sig.delete(id)) sig.add(id);
+      return sig;
+    });
+  }, []);
+
   const hayFiltros = Object.values(filtros).some(Boolean) || (!soloMios && soloMiosEfectivo);
   const total = datos?.total ?? 0;
   const paginas = Math.max(1, Math.ceil(total / porPagina));
@@ -817,6 +830,8 @@ export default function TablaTickets({
               <table className="w-full min-w-[1040px] text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                    {/* La flechita no entra en el embudo: es parte de la fila, no una columna de datos. */}
+                    <th className="w-9 px-1 py-2.5" aria-label="Ver la descripción" />
                     {columnasVisibles.map((c) => (
                       <th key={c.id} className={c.th}>
                         {c.id === "numero" ? botonOrden : c.etiqueta}
@@ -825,23 +840,67 @@ export default function TablaTickets({
                   </tr>
                 </thead>
                 <tbody>
-                  {datos.tickets.map((t) => (
-                    <tr
-                      key={t.id}
-                      onMouseEnter={() => {
-                        precargarTicket(t.id);
-                        router.prefetch(`/dashboard/soporte/tickets/${t.id}`);
-                      }}
-                      onClick={() => router.push(`/dashboard/soporte/tickets/${t.id}`)}
-                      className="group relative cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-[#4FAEB2]/[0.04]"
-                    >
-                      {columnasVisibles.map((c) => (
-                        <td key={c.id} className={c.td}>
-                          {c.celda(t)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {datos.tickets.map((t) => {
+                    const abierto = desplegados.has(t.id);
+                    const texto = (t.descripcion ?? "").trim();
+                    return (
+                      <Fragment key={t.id}>
+                        <tr
+                          onMouseEnter={() => {
+                            precargarTicket(t.id);
+                            router.prefetch(`/dashboard/soporte/tickets/${t.id}`);
+                          }}
+                          onClick={() => router.push(`/dashboard/soporte/tickets/${t.id}`)}
+                          className={`group relative cursor-pointer transition-colors hover:bg-[#4FAEB2]/[0.04] ${
+                            abierto ? "border-b-0" : "border-b border-slate-100 last:border-0"
+                          }`}
+                        >
+                          <td className="px-1 py-2.5 align-middle">
+                            {/* Despliega la descripción sin salir de la lista: el click no tiene que
+                                llegar a la fila, que navega al ticket. */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                alternarDespliegue(t.id);
+                              }}
+                              aria-expanded={abierto}
+                              aria-label={abierto ? `Ocultar la descripción del ticket ${t.numero}` : `Ver la descripción del ticket ${t.numero}`}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                            >
+                              <ChevronDown className={`h-4 w-4 transition-transform duration-150 ${abierto ? "rotate-180" : ""}`} />
+                            </button>
+                          </td>
+                          {columnasVisibles.map((c) => (
+                            <td key={c.id} className={c.td}>
+                              {c.celda(t)}
+                            </td>
+                          ))}
+                        </tr>
+                        {abierto && (
+                          <tr className="border-b border-slate-100 last:border-0">
+                            <td />
+                            <td colSpan={columnasVisibles.length} className="px-3 pb-3 pt-0">
+                              <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2.5">
+                                {texto ? (
+                                  <p className="line-clamp-4 whitespace-pre-line text-[13px] leading-relaxed text-slate-600">{texto}</p>
+                                ) : (
+                                  <p className="text-[13px] italic text-slate-400">Este ticket no tiene descripción cargada.</p>
+                                )}
+                                <Link
+                                  href={`/dashboard/soporte/tickets/${t.id}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="mt-2 inline-block text-[12px] font-semibold text-[#2F7F83] hover:underline"
+                                >
+                                  Ver el ticket completo →
+                                </Link>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

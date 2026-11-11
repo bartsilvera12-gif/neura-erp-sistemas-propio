@@ -20,8 +20,8 @@ import {
   ChevronRight,
   Star,
   Sparkles,
-  PanelLeftClose,
-  PanelLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Search,
   Receipt,
   Banknote,
@@ -829,7 +829,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
           className="hidden rounded-lg p-2 text-slate-400 transition-colors hover:bg-[color:var(--zentra-sidebar-hover)] hover:text-white md:inline-flex"
           aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
         >
-          {collapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+          {/* Los chevrones dobles de 2.0, en vez del ícono de panel: el mismo gesto,
+              dibujado como una flecha que señala hacia dónde se va el menú. */}
+          {collapsed ? <ChevronsRight className="h-[18px] w-[18px]" /> : <ChevronsLeft className="h-[18px] w-[18px]" />}
         </button>
         {/* En mobile, botón de cerrar el sheet. */}
         <button

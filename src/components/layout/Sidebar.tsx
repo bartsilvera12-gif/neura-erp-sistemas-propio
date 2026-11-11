@@ -804,23 +804,31 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         ${mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}
       `}
     >
-      {/* Logo oficial ZENTRA (blanco sobre azul marca) */}
-      <div className="flex h-[7.25rem] shrink-0 items-center justify-between gap-2 px-3 py-2.5">
+      {/* Logo oficial ZENTRA (blanco sobre azul marca).
+          Cerrado NO se achica el logo: a 44 px la palabra ZENTRA queda ilegible y la Z se
+          ve como una manchita. Se esconde y el botón de abrir ocupa el lugar, centrado. */}
+      <div
+        className={`flex shrink-0 items-center gap-2 px-3 py-2.5 ${
+          collapsed ? "h-16 justify-center" : "h-[7.25rem] justify-between"
+        }`}
+      >
+        {collapsed ? null : (
         <Link href="/" className={`flex items-center justify-center min-w-0 flex-1 overflow-hidden`}>
           <div
-            className={`relative flex items-center justify-center ${collapsed ? "h-11 w-11" : "h-[4.5rem] w-full max-w-[200px]"}`}
+            className="relative flex h-[4.5rem] w-full max-w-[200px] items-center justify-center"
           >
             <Image
               src="/brand/zentra-logo-official.png"
               alt="ZENTRA"
               width={400}
               height={220}
-              sizes={collapsed ? "44px" : "200px"}
+              sizes="200px"
               className="h-full w-full object-contain object-center"
               priority
             />
           </div>
         </Link>
+        )}
         {/* Toggle colapsar (solo desktop): en mobile el sidebar es un sheet que se cierra
             con el backdrop o cambio de ruta, no tiene estado intermedio. */}
         <button

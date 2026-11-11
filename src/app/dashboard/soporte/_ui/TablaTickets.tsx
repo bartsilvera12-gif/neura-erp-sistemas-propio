@@ -396,13 +396,15 @@ export default function TablaTickets({
                               ? "Por número, del más viejo — tocá para volver a última actividad"
                               : "Ordenar por número"
                         }
-                        className={`inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors ${
-                          orden ? "text-[#2F6E71]" : "hover:text-slate-700"
+                        className={`-ml-1 inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors ${
+                          orden
+                            ? "border-[#4FAEB2] bg-[#4FAEB2]/10 text-[#2F6E71]"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-[#4FAEB2]/60 hover:text-[#2F6E71]"
                         }`}
                       >
-                        #
-                        <span aria-hidden className="text-[10px] leading-none">
-                          {orden === "numero_desc" ? "▼" : orden === "numero_asc" ? "▲" : "⇅"}
+                        N°
+                        <span aria-hidden className="text-[11px] leading-none">
+                          {orden === "numero_desc" ? "↓" : orden === "numero_asc" ? "↑" : "⇅"}
                         </span>
                       </button>
                     </th>

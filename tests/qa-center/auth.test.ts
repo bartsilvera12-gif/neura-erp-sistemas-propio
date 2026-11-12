@@ -33,36 +33,49 @@ after(() => {
   });
 });
 
-test("auth.ts: NO usa service_role ni createClient Supabase (chequeo estático del fuente)", async () => {
+test("auth.ts: NO usa service_role ni superuser (chequeo estático del fuente)", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile("src/lib/qa/auth.ts", "utf8");
-  // Rechaza la key service_role
   assert.ok(
     !src.includes("SUPABASE_SERVICE_ROLE_KEY"),
     "auth.ts no debe mencionar SUPABASE_SERVICE_ROLE_KEY"
   );
-  // Rechaza instanciación de clientes admin
   assert.ok(
-    !src.includes("createClient"),
-    "auth.ts no debe llamar createClient() (eso crea un cliente Supabase runtime)"
-  );
-  // Rechaza referencias al helper de service-role
-  assert.ok(
-    !src.includes("service-admin") && !src.includes("supabaseServiceRole"),
+    !src.includes("supabaseServiceRole") && !src.includes("service-admin"),
     "auth.ts no debe referenciar el cliente service-role"
   );
-  // Rechaza lookup contra neura.usuarios
+  // Prohíbe la `createClient` de @supabase/supabase-js (que crea un cliente
+  // con API key, típicamente service_role). Permite `createSupabaseServerClient`
+  // (cookie-scoped) porque ya es el patrón del ERP.
   assert.ok(
-    !/resolveUsuarioErpFromAuthUser|from\(["']usuarios["']\)/.test(src),
-    "auth.ts no debe consultar la tabla usuarios"
+    !/\bcreateClient\s*\(/.test(src),
+    "auth.ts no debe llamar createClient() de supabase-js (eso instancia admin cliente)"
+  );
+  assert.ok(
+    !src.includes("resolveUsuarioErpFromAuthUser"),
+    "auth.ts no debe usar el helper que recibe el service_role client"
   );
 });
 
-test("auth.ts: SÓLO autoriza vía isBootstrapSuperAdminEmail", async () => {
+test("auth.ts: autoriza por rol en DB + fallback bootstrap, no por email solo", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile("src/lib/qa/auth.ts", "utf8");
+  // Debe leer la fila del usuario desde `usuarios` vía cookie client.
   assert.ok(
-    src.includes("isBootstrapSuperAdminEmail"),
-    "auth.ts debe usar isBootstrapSuperAdminEmail"
+    src.includes("createSupabaseServerClient"),
+    "auth.ts debe usar createSupabaseServerClient (cookie-scoped, RLS self-read)"
+  );
+  assert.ok(
+    /\.from\(["']usuarios["']\)/.test(src),
+    "auth.ts debe consultar la tabla usuarios para validar el rol real"
+  );
+  assert.ok(
+    /roleFromDb\s*===\s*["']super_admin["']/.test(src),
+    "auth.ts debe autorizar cuando rol = 'super_admin' en DB"
+  );
+  // bootstrap sigue siendo fallback cuando la DB no responde.
+  assert.ok(
+    src.includes("isBootstrapSuperAdminEmail") && src.includes("dbErrored"),
+    "auth.ts debe mantener fallback bootstrap SOLO ante dbErrored"
   );
 });

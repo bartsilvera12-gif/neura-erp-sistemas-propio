@@ -24,9 +24,26 @@ export default async function QaCenterPage() {
   const {
     data: { user },
   } = await sb.auth.getUser();
-  if (!user?.email || !isBootstrapSuperAdminEmail(user.email)) {
+  if (!user?.email) {
     notFound();
   }
+  // Rol en DB vía RLS self-read; fallback a email sólo si la DB no responde.
+  let rolFromDb: string | null = null;
+  let dbErrored = false;
+  try {
+    const { data, error } = await sb
+      .from("usuarios")
+      .select("rol")
+      .eq("email", user.email)
+      .limit(1);
+    if (error) dbErrored = true;
+    else rolFromDb = (data?.[0] as { rol?: string | null } | undefined)?.rol ?? null;
+  } catch {
+    dbErrored = true;
+  }
+  const bootstrap = isBootstrapSuperAdminEmail(user.email);
+  const authorized = rolFromDb === "super_admin" || (dbErrored && bootstrap);
+  if (!authorized) notFound();
 
   // 2) Lectura por PG directo (fail-closed si QA_DB_URL ausente).
   let projects: Awaited<ReturnType<typeof listQaProjects>>;

@@ -1,16 +1,19 @@
 /**
- * NEURA QA CENTER — autorización server-side SIN service_role.
+ * NEURA QA CENTER — autorización server-side con doble verificación:
+ *   (a) sesión Supabase VÁLIDA (JWT firmado por Auth; cookie o Bearer).
+ *   (b) `neura.usuarios.rol = 'super_admin'` LEÍDO POR EL PROPIO USUARIO
+ *       usando un cliente cookie-scoped con RLS activa — NO service_role.
  *
- * El ERP marca super_admins por dos vías:
- *  1. Email en la lista `NEXT_PUBLIC_SUPER_ADMIN_EMAILS` (o la lista bootstrap
- *     hard-codeada en `isBootstrapSuperAdminEmail`). Lectura: solo env, sin DB.
- *  2. Campo `rol = 'super_admin'` en la tabla `neura.usuarios`.
+ * Fallback `isBootstrapSuperAdminEmail` sólo cuando la DB está inaccesible
+ * (fail-safe para bootstrap). Conocer un email de la lista NO basta por sí
+ * mismo: requiere además sesión Supabase válida y, cuando la DB está sana,
+ * el rol persistido en la BD.
  *
- * QA Center usa SOLO la vía (1) para evitar leer `neura.usuarios` desde este
- * módulo — mantiene el principio de mínimo privilegio: QA Center nunca lee
- * tablas de otros schemas, nunca usa `service_role`, nunca usa el superuser
- * `postgres`. Los admins que no estén en el env quedan explícitamente fuera
- * del panel.
+ * Por qué no es "administrativa":
+ *   - `createSupabaseServerClient` es el mismo cliente que usa `/dashboard/panel-control`.
+ *   - No instancia ningún cliente con la key service_role.
+ *   - Lee únicamente la fila del propio usuario (RLS filtra).
+ *   - No toca ninguna tabla fuera del scope de `neura.usuarios` para el self-user.
  */
 
 import type { User } from "@supabase/supabase-js";
@@ -18,12 +21,14 @@ import { NextResponse } from "next/server";
 
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type QaAuthResult =
   | { ok: true; user: User }
   | { ok: false; response: NextResponse };
 
 export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> {
+  // (a) sesión válida
   const user = await getAuthUserForApiRoute(request);
   if (!user?.id || !user.email) {
     return {
@@ -34,7 +39,31 @@ export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> 
       ),
     };
   }
-  if (!isBootstrapSuperAdminEmail(user.email)) {
+
+  // (b) rol en DB leído por el propio usuario (RLS).
+  let roleFromDb: string | null = null;
+  let dbErrored = false;
+  try {
+    const sb = await createSupabaseServerClient();
+    const { data, error } = await sb
+      .from("usuarios")
+      .select("rol")
+      .eq("email", user.email)
+      .limit(1);
+    if (error) dbErrored = true;
+    else {
+      const row = data?.[0] as { rol?: string | null } | undefined;
+      roleFromDb = (row?.rol ?? "").trim() || null;
+    }
+  } catch {
+    dbErrored = true;
+  }
+
+  const bootstrap = isBootstrapSuperAdminEmail(user.email);
+  const authorized =
+    roleFromDb === "super_admin" || (dbErrored && bootstrap);
+
+  if (!authorized) {
     return {
       ok: false,
       response: NextResponse.json(

@@ -18,6 +18,7 @@ import { withQaClient, withQaTransaction } from "./pg-pool";
 import type {
   ClaimedJob,
   FinishRunInput,
+  QaFindingRow,
   QaProject,
   QaRun,
   QaRunnerJob,
@@ -345,6 +346,194 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       return r.rows
         .map(asSuite)
         .filter((s): s is QaSuite => s !== null);
+    });
+  }
+
+  async createProject(input: {
+    slug: string;
+    name: string;
+    target_base_url: string;
+    target_env: QaProject["target_env"];
+    default_branch?: string;
+    owner_user_id?: string | null;
+  }): Promise<QaProject | { conflict: "slug" }> {
+    return this.run(async (c) => {
+      const dup = await c.query(
+        `SELECT 1 FROM qa_center.projects WHERE slug = $1 LIMIT 1`,
+        [input.slug]
+      );
+      if (dup.rowCount && dup.rowCount > 0) return { conflict: "slug" } as const;
+      const r = await c.query(
+        `INSERT INTO qa_center.projects
+           (slug, name, target_base_url, target_env, default_branch, owner_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING ${PROJECT_COLS}`,
+        [
+          input.slug,
+          input.name,
+          input.target_base_url,
+          input.target_env,
+          input.default_branch ?? "main",
+          input.owner_user_id ?? null,
+        ]
+      );
+      return asProject(r.rows[0]) as QaProject;
+    }, /* tx = */ true);
+  }
+
+  async updateProject(
+    projectId: string,
+    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch">>
+  ): Promise<QaProject | null> {
+    return this.run(async (c) => {
+      const sets: string[] = [];
+      const params: unknown[] = [];
+      let i = 1;
+      if (patch.name !== undefined) { sets.push(`name = $${i++}`); params.push(patch.name); }
+      if (patch.target_base_url !== undefined) { sets.push(`target_base_url = $${i++}`); params.push(patch.target_base_url); }
+      if (patch.target_env !== undefined) { sets.push(`target_env = $${i++}`); params.push(patch.target_env); }
+      if (patch.default_branch !== undefined) { sets.push(`default_branch = $${i++}`); params.push(patch.default_branch); }
+      if (sets.length === 0) return (await this.getProject(projectId));
+      sets.push(`updated_at = now()`);
+      params.push(projectId);
+      const r = await c.query(
+        `UPDATE qa_center.projects SET ${sets.join(", ")}
+          WHERE id = $${i} AND archived_at IS NULL
+          RETURNING ${PROJECT_COLS}`,
+        params
+      );
+      return r.rows[0] ? asProject(r.rows[0]) : null;
+    });
+  }
+
+  async createSuite(input: {
+    project_id: string;
+    slug: string;
+    name: string;
+    description?: string | null;
+    tags?: string[];
+    specs: string[];
+    enabled?: boolean;
+  }): Promise<QaSuite | { conflict: "slug" } | { conflict: "project_not_found" }> {
+    return this.run(async (c) => {
+      const pr = await c.query(
+        `SELECT 1 FROM qa_center.projects WHERE id = $1 AND archived_at IS NULL LIMIT 1`,
+        [input.project_id]
+      );
+      if (!pr.rowCount) return { conflict: "project_not_found" } as const;
+      const dup = await c.query(
+        `SELECT 1 FROM qa_center.suites WHERE project_id = $1 AND slug = $2 LIMIT 1`,
+        [input.project_id, input.slug]
+      );
+      if (dup.rowCount && dup.rowCount > 0) return { conflict: "slug" } as const;
+      const r = await c.query(
+        `INSERT INTO qa_center.suites
+           (project_id, slug, name, description, tags, specs, enabled)
+         VALUES ($1, $2, $3, $4, $5::text[], $6::text[], $7)
+         RETURNING ${SUITE_COLS}`,
+        [
+          input.project_id,
+          input.slug,
+          input.name,
+          input.description ?? null,
+          input.tags ?? [],
+          input.specs,
+          input.enabled ?? true,
+        ]
+      );
+      return asSuite(r.rows[0]) as QaSuite;
+    }, /* tx = */ true);
+  }
+
+  async updateSuite(
+    suiteId: string,
+    patch: Partial<Pick<QaSuite, "name" | "tags" | "specs" | "enabled">>
+  ): Promise<QaSuite | null> {
+    return this.run(async (c) => {
+      const sets: string[] = [];
+      const params: unknown[] = [];
+      let i = 1;
+      if (patch.name !== undefined) { sets.push(`name = $${i++}`); params.push(patch.name); }
+      if (patch.tags !== undefined) { sets.push(`tags = $${i++}::text[]`); params.push(patch.tags); }
+      if (patch.specs !== undefined) { sets.push(`specs = $${i++}::text[]`); params.push(patch.specs); }
+      if (patch.enabled !== undefined) { sets.push(`enabled = $${i++}`); params.push(patch.enabled); }
+      if (sets.length === 0) return this.getSuite(suiteId);
+      sets.push(`updated_at = now()`);
+      params.push(suiteId);
+      const r = await c.query(
+        `UPDATE qa_center.suites SET ${sets.join(", ")}
+          WHERE id = $${i}
+          RETURNING ${SUITE_COLS}`,
+        params
+      );
+      return r.rows[0] ? asSuite(r.rows[0]) : null;
+    });
+  }
+
+  async listFindings(opts: { projectId?: string; limit?: number } = {}): Promise<QaFindingRow[]> {
+    return this.run(async (c) => {
+      const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+      const cols =
+        "id, project_id, run_id, result_id, title, description, severity, status, " +
+        "triage_notes, external_ticket_ref, created_at, updated_at";
+      const r = opts.projectId
+        ? await c.query(
+            `SELECT ${cols} FROM qa_center.findings
+              WHERE project_id = $1
+              ORDER BY
+                CASE severity
+                  WHEN 'blocker' THEN 0 WHEN 'critical' THEN 1 WHEN 'major' THEN 2
+                  WHEN 'minor' THEN 3 ELSE 4 END,
+                created_at DESC
+              LIMIT $2`,
+            [opts.projectId, limit]
+          )
+        : await c.query(
+            `SELECT ${cols} FROM qa_center.findings
+              ORDER BY
+                CASE severity
+                  WHEN 'blocker' THEN 0 WHEN 'critical' THEN 1 WHEN 'major' THEN 2
+                  WHEN 'minor' THEN 3 ELSE 4 END,
+                created_at DESC
+              LIMIT $1`,
+            [limit]
+          );
+      return r.rows.map((row): QaFindingRow => ({
+        id: String(row.id),
+        project_id: String(row.project_id),
+        run_id: (row.run_id as string | null) ?? null,
+        result_id: (row.result_id as string | null) ?? null,
+        title: String(row.title),
+        description: (row.description as string | null) ?? null,
+        severity: row.severity as QaFindingRow["severity"],
+        status: row.status as QaFindingRow["status"],
+        triage_notes: (row.triage_notes as string | null) ?? null,
+        external_ticket_ref: (row.external_ticket_ref as string | null) ?? null,
+        created_at: String(row.created_at),
+        updated_at: String(row.updated_at),
+      }));
+    });
+  }
+
+  async listResultsForRun(runId: string): Promise<ResultPayload[]> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT spec_file, test_title, status, duration_ms, retries,
+                error_type, error_message, stack_trace
+           FROM qa_center.results WHERE run_id = $1
+           ORDER BY spec_file, test_title`,
+        [runId]
+      );
+      return r.rows.map((row): ResultPayload => ({
+        spec_file: String(row.spec_file),
+        test_title: String(row.test_title),
+        status: row.status as ResultPayload["status"],
+        duration_ms: (row.duration_ms as number | null) ?? null,
+        retries: Number(row.retries ?? 0),
+        error_type: (row.error_type as string | null) ?? null,
+        error_message: (row.error_message as string | null) ?? null,
+        stack_trace: (row.stack_trace as string | null) ?? null,
+      }));
     });
   }
 }

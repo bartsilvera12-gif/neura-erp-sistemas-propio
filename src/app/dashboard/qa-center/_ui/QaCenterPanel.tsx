@@ -1,28 +1,37 @@
 "use client";
 
 /**
- * NEURA QA CENTER — vista principal del panel.
+ * NEURA QA CENTER — vista principal.
  *
- * Componente puro (no fetch adicional): recibe `projects` y `runs` del server
- * component. No simula datos: si vienen vacíos, se muestra el estado vacío
- * con el motivo real (migración pendiente, esquema no expuesto, etc).
+ * Datos iniciales llegan del server component (projects, runs). La UI agrega
+ * acciones: nuevo/editar proyecto, gestionar suites, encolar run, ver detalle.
  */
 
-import type {
-  QaListResult,
-  QaProjectRow,
-  QaRunRow,
-} from "@/lib/qa/db";
+import Link from "next/link";
+import { useState } from "react";
+import type { QaListResult, QaProjectRow, QaRunRow } from "@/lib/qa/db";
+import type { QaFindingRow } from "@/lib/qa/repo-types";
 import EjecutarQaButton from "./EjecutarQaButton";
+import NuevoProyectoDialog from "./NuevoProyectoDialog";
+import EditarProyectoDialog from "./EditarProyectoDialog";
+import SuitesSection from "./SuitesSection";
+import FindingsSection from "./FindingsSection";
 
 type Props = {
   projects: QaListResult<QaProjectRow>;
   runs: QaListResult<QaRunRow>;
+  findings?: QaFindingRow[];
 };
 
-export default function QaCenterPanel({ projects, runs }: Props) {
+export default function QaCenterPanel({ projects, runs, findings }: Props) {
   const migrationPending =
     projects.migration_status !== "ready" || runs.migration_status !== "ready";
+
+  const [showNew, setShowNew] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = editingId ? projects.data.find((p) => p.id === editingId) ?? null : null;
+
+  const reload = (): void => { window.location.reload(); };
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6">
@@ -33,42 +42,94 @@ export default function QaCenterPanel({ projects, runs }: Props) {
             Panel de QA Desarrollo. Nunca ejecuta contra producción.
           </p>
         </div>
-        <EjecutarQaButton
-          projects={projects.data}
-          disabled={projects.migration_status !== "ready"}
-        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowNew(true)}
+            data-testid="btn-nuevo-proyecto"
+            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100"
+          >
+            + Nuevo proyecto
+          </button>
+          <EjecutarQaButton
+            projects={projects.data}
+            disabled={projects.migration_status !== "ready"}
+          />
+        </div>
       </header>
 
-      {migrationPending && (
-        <MigrationPendingBanner projects={projects} runs={runs} />
-      )}
+      {migrationPending && <MigrationPendingBanner projects={projects} runs={runs} />}
 
       <section className="mb-8">
-        <SectionHeader
-          title="Proyectos"
-          subtitle="Cada proyecto representa un ERP bajo QA."
-        />
+        <SectionHeader title="Proyectos" subtitle="Cada proyecto representa un ERP bajo QA." />
         {projects.data.length === 0 ? (
           <EmptyState
             title="Todavía no hay proyectos cargados"
-            hint={
-              migrationPending
-                ? "Primero aplicá la migración qa_center y exponé el esquema en PostgREST."
-                : "Creá el primer proyecto con la API de administración (fase próxima)."
-            }
+            hint='Hacé clic en "+ Nuevo proyecto" para registrar el primero.'
           />
         ) : (
-          <ul className="divide-y rounded-lg border bg-white">
+          <ul className="divide-y rounded-lg border bg-white" data-testid="lista-proyectos">
             {projects.data.map((p) => (
-              <li key={p.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <p className="font-medium">{p.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {p.slug} · branch {p.default_branch} · {p.target_env}
-                  </p>
+              <li key={p.id} className="px-4 py-3" data-testid={`row-proy-${p.slug}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{p.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {p.slug} · branch {p.default_branch} · {p.target_env}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                      {p.target_base_url}
+                    </span>
+                    <button
+                      onClick={() => setEditingId(p.id)}
+                      data-testid={`btn-editar-${p.slug}`}
+                      className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                    >
+                      Editar
+                    </button>
+                  </div>
                 </div>
-                <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
-                  {p.target_base_url}
+                <SuitesSection projectId={p.id} projectSlug={p.slug} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <FindingsSection initial={findings} />
+
+      <section>
+        <SectionHeader title="Últimas ejecuciones" subtitle="Se muestran las 10 más recientes." />
+        {runs.data.length === 0 ? (
+          <EmptyState
+            title="Sin ejecuciones todavía"
+            hint='Cargá un proyecto + suite y ejecutá con "Ejecutar QA".'
+          />
+        ) : (
+          <ul className="divide-y rounded-lg border bg-white" data-testid="lista-runs">
+            {runs.data.map((r) => (
+              <li key={r.id} className="grid grid-cols-7 items-center px-4 py-3 text-sm" data-testid={`row-run-${r.id.slice(0, 8)}`}>
+                <Link
+                  href={`/dashboard/qa-center/runs/${r.id}`}
+                  className="col-span-2 font-mono text-xs text-slate-700 hover:underline"
+                >
+                  {r.id.slice(0, 8)}
+                </Link>
+                <span><StatusBadge status={r.status} /></span>
+                <span className="text-slate-600">{r.trigger}</span>
+                <span className="text-slate-600">{r.duration_ms != null ? `${r.duration_ms} ms` : "—"}</span>
+                <span className="text-xs text-slate-400">
+                  {new Date(r.created_at).toLocaleString("es-PY")}
+                </span>
+                <span className="text-right">
+                  <Link
+                    href={`/dashboard/qa-center/runs/${r.id}`}
+                    data-testid={`link-ver-${r.id.slice(0, 8)}`}
+                    className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-100"
+                  >
+                    Ver detalle
+                  </Link>
                 </span>
               </li>
             ))}
@@ -76,42 +137,19 @@ export default function QaCenterPanel({ projects, runs }: Props) {
         )}
       </section>
 
-      <section>
-        <SectionHeader
-          title="Últimas ejecuciones"
-          subtitle="Se muestran las 10 más recientes."
+      {showNew && (
+        <NuevoProyectoDialog
+          onClose={() => setShowNew(false)}
+          onCreated={() => { setShowNew(false); reload(); }}
         />
-        {runs.data.length === 0 ? (
-          <EmptyState
-            title="Sin ejecuciones todavía"
-            hint={
-              migrationPending
-                ? "La tabla qa_center.runs todavía no está disponible."
-                : "Cuando el runner reporte su primera corrida, aparecerá acá."
-            }
-          />
-        ) : (
-          <ul className="divide-y rounded-lg border bg-white">
-            {runs.data.map((r) => (
-              <li key={r.id} className="grid grid-cols-6 items-center px-4 py-3 text-sm">
-                <span className="col-span-2 font-mono text-xs text-slate-500">
-                  {r.id.slice(0, 8)}
-                </span>
-                <span>
-                  <StatusBadge status={r.status} />
-                </span>
-                <span className="text-slate-600">{r.trigger}</span>
-                <span className="text-slate-600">
-                  {r.duration_ms != null ? `${r.duration_ms} ms` : "—"}
-                </span>
-                <span className="text-right text-xs text-slate-400">
-                  {new Date(r.created_at).toLocaleString("es-PY")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      )}
+      {editing && (
+        <EditarProyectoDialog
+          project={editing}
+          onClose={() => setEditingId(null)}
+          onSaved={() => { setEditingId(null); reload(); }}
+        />
+      )}
     </div>
   );
 }
@@ -144,37 +182,25 @@ function StatusBadge({ status }: { status: string }) {
     error: "bg-red-100 text-red-700",
   };
   const cls = map[status] ?? "bg-slate-100 text-slate-700";
-  return (
-    <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {status}
-    </span>
-  );
+  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
 }
 
 function MigrationPendingBanner({
-  projects,
-  runs,
-}: {
-  projects: QaListResult<QaProjectRow>;
-  runs: QaListResult<QaRunRow>;
-}) {
+  projects, runs,
+}: { projects: QaListResult<QaProjectRow>; runs: QaListResult<QaRunRow> }) {
   const notes = [projects.note, runs.note].filter((n): n is string => Boolean(n));
   return (
     <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-      <p className="text-sm font-medium text-amber-900">
-        Panel operativo, datos aún no disponibles
-      </p>
+      <p className="text-sm font-medium text-amber-900">Panel operativo, datos aún no disponibles</p>
       <p className="mt-1 text-xs text-amber-800">
         El panel no simula información. Pasos pendientes antes de que haya datos:
       </p>
       <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-xs text-amber-800">
-        <li>Aplicar <code>20261112000000_qa_center_schema.sql</code> en Supabase (con backup previo).</li>
-        <li>Agregar <code>&quot;qa_center&quot;</code> al array <code>schemas</code> de <code>supabase/config.toml</code> y recargar PostgREST.</li>
-        <li>Sembrar al menos un proyecto desde la próxima fase de la API.</li>
+        <li>Aplicar <code>20261112000000_qa_center_schema.sql</code>.</li>
+        <li>Agregar <code>&quot;qa_center&quot;</code> a <code>schemas</code> y recargar.</li>
+        <li>Crear el primer proyecto desde &quot;+ Nuevo proyecto&quot;.</li>
       </ol>
-      {notes.length > 0 && (
-        <p className="mt-2 text-xs text-amber-700">Detalle: {notes.join(" · ")}</p>
-      )}
+      {notes.length > 0 && <p className="mt-2 text-xs text-amber-700">Detalle: {notes.join(" · ")}</p>}
     </div>
   );
 }

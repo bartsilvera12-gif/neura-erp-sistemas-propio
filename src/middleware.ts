@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { DEVICE_COOKIE_NAME, isMobileUserAgent } from "@/shared/device/detect";
+import { evaluateQaOnlyGate, isQaOnlyMode } from "@/lib/qa/qa-only-gate";
 
 /**
  * Middleware combinado: (a) refresca la sesión Supabase en cookies antes de Route
@@ -17,6 +18,29 @@ import { DEVICE_COOKIE_NAME, isMobileUserAgent } from "@/shared/device/detect";
  * Sin este skip, una pantalla con 10 links visibles disparaba 10 auth-refresh ocultos.
  */
 export async function middleware(request: NextRequest) {
+  // QA-only gate: SOLO si `QA_ONLY_MODE === "true"`. En prod esta rama no corre.
+  // El gate bloquea páginas y APIs ajenas a QA Center antes de que llegue a su
+  // handler, sin exponer información del ERP.
+  if (isQaOnlyMode()) {
+    const decision = evaluateQaOnlyGate({
+      pathname: request.nextUrl.pathname,
+      method: request.method,
+    });
+    if (decision.kind === "redirect") {
+      const url = request.nextUrl.clone();
+      url.pathname = decision.location;
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    if (decision.kind === "block") {
+      return new NextResponse(null, {
+        status: decision.status,
+        headers: { "X-QA-Block": decision.reason, "Cache-Control": "no-store" },
+      });
+    }
+    // "pass" → sigue el flujo normal (refresh de sesión Supabase más abajo).
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   // Seteo de cookie de device: solo si no existe todavía, para no pisar la corrección

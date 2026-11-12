@@ -14,6 +14,7 @@ import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import type {
   ClaimedJob,
   FinishRunInput,
+  QaFindingRow,
   QaProject,
   QaRun,
   QaRunnerJob,
@@ -216,5 +217,38 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     return (data as QaSuite[] | null) ?? [];
+  }
+
+  // ─── CRUD administración: stubs. Esta impl Supabase quedó como alternativa
+  // documental mientras usamos PostgresQaRunsRepo en runtime. Si se reactiva
+  // se completan acá. ───
+  async createProject(_input: Parameters<QaRunsRepo["createProject"]>[0]): ReturnType<QaRunsRepo["createProject"]> {
+    throw new Error("SupabaseQaRunsRepo.createProject no implementado — usar PostgresQaRunsRepo");
+  }
+  async updateProject(
+    _projectId: string,
+    _patch: Parameters<QaRunsRepo["updateProject"]>[1]
+  ): ReturnType<QaRunsRepo["updateProject"]> {
+    throw new Error("SupabaseQaRunsRepo.updateProject no implementado — usar PostgresQaRunsRepo");
+  }
+  async createSuite(_input: Parameters<QaRunsRepo["createSuite"]>[0]): ReturnType<QaRunsRepo["createSuite"]> {
+    throw new Error("SupabaseQaRunsRepo.createSuite no implementado — usar PostgresQaRunsRepo");
+  }
+  async updateSuite(
+    _suiteId: string,
+    _patch: Parameters<QaRunsRepo["updateSuite"]>[1]
+  ): ReturnType<QaRunsRepo["updateSuite"]> {
+    throw new Error("SupabaseQaRunsRepo.updateSuite no implementado — usar PostgresQaRunsRepo");
+  }
+  async listResultsForRun(runId: string): Promise<ResultPayload[]> {
+    const { data } = await this.qc()
+      .from("results")
+      .select("spec_file, test_title, status, duration_ms, retries, error_type, error_message, stack_trace")
+      .eq("run_id", runId)
+      .order("test_title", { ascending: true });
+    return (data as ResultPayload[] | null) ?? [];
+  }
+  async listFindings(_opts: { projectId?: string; limit?: number } = {}): Promise<QaFindingRow[]> {
+    return [];
   }
 }

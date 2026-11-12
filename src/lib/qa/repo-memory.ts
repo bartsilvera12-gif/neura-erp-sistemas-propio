@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import type {
   ClaimedJob,
   FinishRunInput,
+  QaFindingRow,
   QaProject,
   QaRun,
   QaRunnerJob,
@@ -175,5 +176,35 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
   }
   async listSuitesForProject(projectId: string): Promise<QaSuite[]> {
     return [...this.state.suites.values()].filter((s) => s.project_id === projectId);
+  }
+
+  // ─── CRUD administración: stubs para que compile. Esta impl in-memory
+  // existe sólo para tests del handler y no se usa en runtime. Si algún test
+  // lo necesita, se implementa ahí sin cambiar la interfaz. ───
+  async createProject(_input: Parameters<QaRunsRepo["createProject"]>[0]): ReturnType<QaRunsRepo["createProject"]> {
+    throw new Error("InMemoryQaRunsRepo.createProject no implementado — usar PostgresQaRunsRepo");
+  }
+  async updateProject(
+    _projectId: string,
+    _patch: Parameters<QaRunsRepo["updateProject"]>[1]
+  ): ReturnType<QaRunsRepo["updateProject"]> {
+    throw new Error("InMemoryQaRunsRepo.updateProject no implementado — usar PostgresQaRunsRepo");
+  }
+  async createSuite(_input: Parameters<QaRunsRepo["createSuite"]>[0]): ReturnType<QaRunsRepo["createSuite"]> {
+    throw new Error("InMemoryQaRunsRepo.createSuite no implementado — usar PostgresQaRunsRepo");
+  }
+  async updateSuite(
+    _suiteId: string,
+    _patch: Parameters<QaRunsRepo["updateSuite"]>[1]
+  ): ReturnType<QaRunsRepo["updateSuite"]> {
+    throw new Error("InMemoryQaRunsRepo.updateSuite no implementado — usar PostgresQaRunsRepo");
+  }
+  async listResultsForRun(runId: string): Promise<ResultPayload[]> {
+    return [...this.state.results.entries()]
+      .filter(([k]) => k.startsWith(`${runId}::`))
+      .map(([, v]) => v);
+  }
+  async listFindings(_opts: { projectId?: string; limit?: number } = {}): Promise<QaFindingRow[]> {
+    return [];
   }
 }

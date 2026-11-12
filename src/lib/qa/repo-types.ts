@@ -139,4 +139,63 @@ export interface QaRunsRepo {
   listActiveProjects(limit?: number): Promise<QaProject[]>;
   /** Suites de un proyecto, orden descendente por created_at. */
   listSuitesForProject(projectId: string): Promise<QaSuite[]>;
+
+  // ── CRUD administración (gated server-side, nunca por el runner) ──
+
+  /** Crea un proyecto. El slug debe ser único; devuelve null si colisiona. */
+  createProject(input: {
+    slug: string;
+    name: string;
+    target_base_url: string;
+    target_env: QaTargetEnv;
+    default_branch?: string;
+    owner_user_id?: string | null;
+  }): Promise<QaProject | { conflict: "slug" }>;
+
+  /** Actualiza campos editables de un proyecto. No cambia el slug. */
+  updateProject(
+    projectId: string,
+    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch">>
+  ): Promise<QaProject | null>;
+
+  /** Crea un suite. Duplicados por (project_id, slug) → conflict. */
+  createSuite(input: {
+    project_id: string;
+    slug: string;
+    name: string;
+    description?: string | null;
+    tags?: string[];
+    specs: string[];
+    enabled?: boolean;
+  }): Promise<QaSuite | { conflict: "slug" } | { conflict: "project_not_found" }>;
+
+  /** Actualiza campos editables de un suite. */
+  updateSuite(
+    suiteId: string,
+    patch: Partial<Pick<QaSuite, "name" | "tags" | "specs" | "enabled">>
+  ): Promise<QaSuite | null>;
+
+  /** Resultados de un run (orden estable por test_title). */
+  listResultsForRun(runId: string): Promise<ResultPayload[]>;
+
+  /** Hallazgos (findings) — lista para el panel. Por proyecto si se provee. */
+  listFindings(opts?: { projectId?: string; limit?: number }): Promise<QaFindingRow[]>;
 }
+
+export type QaFindingSeverity = "blocker" | "critical" | "major" | "minor" | "info";
+export type QaFindingStatus = "open" | "triaged" | "confirmed" | "wont_fix" | "fixed" | "closed";
+
+export type QaFindingRow = {
+  id: string;
+  project_id: string;
+  run_id: string | null;
+  result_id: string | null;
+  title: string;
+  description: string | null;
+  severity: QaFindingSeverity;
+  status: QaFindingStatus;
+  triage_notes: string | null;
+  external_ticket_ref: string | null;
+  created_at: string;
+  updated_at: string;
+};

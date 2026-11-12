@@ -57,41 +57,61 @@ test("auth.ts: NO usa service_role ni superuser (chequeo estático del fuente)",
   );
 });
 
-test("auth.ts: autoriza SOLO por rol='super_admin' en DB (fail-closed)", async () => {
+test("auth.ts: autoriza via resolveQaAccess (super_admin o neura_qa_member)", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile("src/lib/qa/auth.ts", "utf8");
   assert.ok(
+    src.includes("resolveQaAccess"),
+    "auth.ts debe delegar a resolveQaAccess de authorize.ts"
+  );
+  assert.ok(
     src.includes("createSupabaseServerClient"),
-    "auth.ts debe usar createSupabaseServerClient (cookie-scoped, RLS self-read)"
-  );
-  assert.ok(
-    /\.from\(["']usuarios["']\)/.test(src),
-    "auth.ts debe consultar la tabla usuarios para validar el rol real"
-  );
-  assert.ok(
-    /roleFromDb\s*!==\s*["']super_admin["']/.test(src),
-    "auth.ts debe denegar cuando rol !== 'super_admin' en DB"
+    "auth.ts debe usar cliente cookie-scoped, no service_role"
   );
 });
 
-test("auth.ts: NO usa fallback por email (bootstrap) ni evaluación condicional de error", async () => {
+test("auth.ts: NO usa fallback por email (bootstrap)", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile("src/lib/qa/auth.ts", "utf8");
   assert.ok(
     !src.includes("isBootstrapSuperAdminEmail"),
-    "auth.ts no debe importar/llamar isBootstrapSuperAdminEmail (fallback email está prohibido)"
-  );
-  assert.ok(
-    !/dbErrored\s*&&/.test(src),
-    "auth.ts no debe tener condicional 'dbErrored && …' (fallback a email ya retirado)"
+    "auth.ts no debe importar isBootstrapSuperAdminEmail (fallback email prohibido)"
   );
 });
 
-test("page.tsx del panel: NO usa fallback por email", async () => {
+test("authorize.ts: NO importa/invoca resolveEffectiveModules (admin otorgaría acceso implícito)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile("src/lib/qa/authorize.ts", "utf8");
+  assert.ok(
+    !/import\s+[^;]+resolveEffectiveModules/.test(src),
+    "authorize.ts no debe importar resolveEffectiveModules"
+  );
+  assert.ok(
+    !/resolveEffectiveModules\s*\(/.test(src),
+    "authorize.ts no debe invocar resolveEffectiveModules()"
+  );
+});
+
+test("authorize.ts: valida empresa Neura por UUID Y data_schema (doble verificación)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile("src/lib/qa/authorize.ts", "utf8");
+  assert.ok(
+    src.includes("QA_NEURA_INTERNAL_COMPANY_ID"),
+    "authorize.ts debe exigir QA_NEURA_INTERNAL_COMPANY_ID del env"
+  );
+  const hasBoth = src.includes("data_schema") && src.includes('"neura"');
+  assert.ok(hasBoth, "authorize.ts debe validar adicionalmente data_schema='neura'");
+});
+
+test("page.tsx del panel: delega en resolveQaAccess", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile("src/app/dashboard/qa-center/page.tsx", "utf8");
   assert.ok(
+    src.includes("resolveQaAccess"),
+    "page.tsx debe llamar resolveQaAccess"
+  );
+  assert.ok(
     !src.includes("isBootstrapSuperAdminEmail"),
-    "page.tsx no debe importar isBootstrapSuperAdminEmail"
+    "page.tsx no debe usar fallback por email"
   );
 });

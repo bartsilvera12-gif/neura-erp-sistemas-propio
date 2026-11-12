@@ -1,19 +1,16 @@
 /**
- * NEURA QA CENTER — autorización server-side fail-closed:
- *   (a) sesión Supabase VÁLIDA (JWT firmado por Auth; cookie o Bearer).
- *   (b) `neura.usuarios.rol = 'super_admin'` LEÍDO POR EL PROPIO USUARIO
- *       usando un cliente cookie-scoped con RLS activa — NO service_role.
+ * NEURA QA CENTER — autorización server-side con permisos de módulo.
  *
- * Si la DB no responde, DENEGAMOS. No hay fallback por email: la lista
- * `NEXT_PUBLIC_SUPER_ADMIN_EMAILS` no es evidencia de permiso real, y
- * confiar en ella bypassearía el cambio de rol en la BD (ej. usuario
- * degradado que sigue en el env).
+ * Reutiliza el modelo existente del ERP (`neura.modulos`, `empresa_modulos`,
+ * `usuario_modulos`) SIN cambiar su funcionamiento: no se escribe en esas
+ * tablas, no se usa `resolveEffectiveModules` del ERP, y se consulta con
+ * cliente cookie-scoped (RLS respeta identidad del user). NO service_role.
  *
- * Por qué no es "administrativa":
- *   - `createSupabaseServerClient` es el mismo cliente que usa `/dashboard/panel-control`.
- *   - No instancia ningún cliente con la key service_role.
- *   - Lee únicamente la fila del propio usuario (RLS filtra).
- *   - No toca ninguna tabla fuera del scope de `neura.usuarios` para el self-user.
+ * Reglas resumidas (detalle en `authorize.ts`):
+ *   - super_admin → acceso incondicional
+ *   - resto → empresa Neura (UUID + data_schema='neura') + módulo activo
+ *     en empresa + asignación individual del usuario. Rol administrador NO
+ *     otorga acceso automático.
  */
 
 import type { User } from "@supabase/supabase-js";
@@ -21,13 +18,22 @@ import { NextResponse } from "next/server";
 
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveQaAccess } from "./authorize";
 
 export type QaAuthResult =
-  | { ok: true; user: User }
+  | { ok: true; user: User; via: "super_admin" | "neura_qa_member" }
   | { ok: false; response: NextResponse };
 
+/**
+ * Compat alias: muchas rutas siguen llamando `assertSuperAdmin`. La semántica
+ * cambia (ahora autoriza al equipo QA de Neura, no solo super_admins) pero el
+ * shape de retorno es compatible.
+ */
 export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> {
-  // (a) sesión válida
+  return assertQaCenterAccess(request);
+}
+
+export async function assertQaCenterAccess(request: Request): Promise<QaAuthResult> {
   const user = await getAuthUserForApiRoute(request);
   if (!user?.id || !user.email) {
     return {
@@ -39,37 +45,16 @@ export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> 
     };
   }
 
-  // (b) rol en DB leído por el propio usuario (RLS).
-  let roleFromDb: string | null = null;
-  try {
-    const sb = await createSupabaseServerClient();
-    const { data, error } = await sb
-      .from("usuarios")
-      .select("rol")
-      .eq("email", user.email)
-      .limit(1);
-    if (error) {
-      // DB inaccesible → fail-closed.
-      return denyForbidden("db_error");
-    }
-    const row = data?.[0] as { rol?: string | null } | undefined;
-    roleFromDb = (row?.rol ?? "").trim() || null;
-  } catch {
-    return denyForbidden("db_exception");
+  const sb = await createSupabaseServerClient();
+  const decision = await resolveQaAccess(sb, user.email);
+  if (!decision.ok) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "No autorizado", code: "forbidden", reason: decision.reason },
+        { status: 403 }
+      ),
+    };
   }
-
-  if (roleFromDb !== "super_admin") {
-    return denyForbidden("role_mismatch");
-  }
-  return { ok: true, user };
-}
-
-function denyForbidden(reason: string): QaAuthResult {
-  return {
-    ok: false,
-    response: NextResponse.json(
-      { error: "No autorizado", code: "forbidden", reason },
-      { status: 403 }
-    ),
-  };
+  return { ok: true, user, via: decision.reason };
 }

@@ -4,12 +4,69 @@ import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 import { NextResponse } from "next/server";
 import { resolveEffectiveModules } from "@/lib/modulos/resolve-effective-modules";
+import { isQaOnlyMode } from "@/lib/qa/qa-only-gate";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveQaAccess } from "@/lib/qa/authorize";
 
 /**
  * Slugs de módulos efectivos para el usuario autenticado (intersección empresa ∩ usuario).
  * super_admin → todos los slugs del catálogo.
+ *
+ * BIFURCACIÓN:
+ *   - En producción (QA_ONLY_MODE ausente): comportamiento original, con service_role.
+ *   - En QA-only (QA_ONLY_MODE === "true"): stub cookie-scoped que delega en
+ *     `resolveQaAccess`. No usa SERVICE_ROLE_KEY. Devuelve únicamente el slug
+ *     `qa_center` si el usuario pasa el gate; en caso contrario slugs vacíos.
+ *     No otorga ningún permiso ficticio: resolveQaAccess exige empresa Neura,
+ *     módulo activo y asignación individual (o super_admin global).
  */
 export async function GET(request: Request) {
+  if (isQaOnlyMode()) {
+    return handleQaOnly(request);
+  }
+  return handleProduction(request);
+}
+
+async function handleQaOnly(request: Request): Promise<NextResponse> {
+  try {
+    const user = await getAuthUserForApiRoute(request);
+    if (!user?.id || !user.email) {
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+    }
+    const sb = await createSupabaseServerClient();
+    const decision = await resolveQaAccess(sb, user.email);
+    if (!decision.ok) {
+      return NextResponse.json({
+        superAdmin: false,
+        rol: null,
+        slugs: [],
+        modulos: [],
+      });
+    }
+    // super_admin → mantenemos superAdmin:true por si AuthGuard enruta por eso,
+    // pero sin exponer el catálogo completo: en QA-only ese catálogo no corre.
+    if (decision.reason === "super_admin") {
+      return NextResponse.json({
+        superAdmin: true,
+        rol: "super_admin",
+        slugs: ["qa_center"],
+        modulos: [{ id: null, nombre: "QA Center", slug: "qa_center" }],
+      });
+    }
+    return NextResponse.json({
+      superAdmin: false,
+      rol: null,
+      slugs: ["qa_center"],
+      modulos: [{ id: null, nombre: "QA Center", slug: "qa_center" }],
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Error";
+    console.error("[module-access][qa-only] 500", { msg: redactarMensajeDiagnostico(msg) });
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+async function handleProduction(request: Request): Promise<NextResponse> {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

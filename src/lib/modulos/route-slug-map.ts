@@ -5,6 +5,10 @@
 
 /** Orden del menú lateral (misma idea que Sidebar): primera entrada accesible = “home” sin dashboard. */
 const SIDEBAR_SLUG_HREF_ORDER: { slug: string; href: string }[] = [
+  // QA Center va primero: en QA-only mode un usuario con solo este slug entra
+  // acá. En prod no cambia nada para el resto de roles (el usuario sin qa_center
+  // ni lo mira y sigue con dashboard/gerencia/etc.).
+  { slug: "qa_center", href: "/dashboard/qa-center" },
   { slug: "dashboard", href: "/" },
   { slug: "gerencia", href: "/dashboard/gerencia" },
   { slug: "reportes", href: "/reportes" },
@@ -108,6 +112,9 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/ayuda")) return null;
 
   if (p.startsWith("/dashboard")) {
+    // QA Center: slug propio. Sin esto el fallback "conversaciones" rebotaba a
+    // los miembros QA de Neura que no tienen omnicanal.
+    if (p.startsWith("/dashboard/qa-center")) return "qa_center";
     // Panel de Control: no tiene módulo de empresa. El permiso es por correo y
     // lo aplican la página y la API en el servidor (ver `acceso-panel-control`).
     // Sin esta línea caería en el fallback "conversaciones" de más abajo.

@@ -1,46 +1,31 @@
 /**
  * NEURA QA CENTER — panel principal.
  *
- * Lectura de datos EXCLUSIVAMENTE vía Postgres directo (`listQaProjects`,
- * `listQaRuns` que usan `PostgresQaRunsRepo` + `QA_DB_URL`). No se instancia
- * service_role en ningún lugar del flujo.
- *
- * Super_admin check: `neura.usuarios.rol = 'super_admin'` leído por el
- * propio usuario vía cookie-scoped client (RLS self-read). No hay fallback
- * por email: si la DB no responde, 404 opaco (fail-closed).
+ * Autoriza vía `resolveQaAccess`: super_admin o miembro del equipo QA Neura
+ * (empresa interna + módulo qa_center activo + asignación individual).
+ * Toda la verificación con cookie-scoped client (RLS self-read), sin service_role.
  */
 
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveQaAccess } from "@/lib/qa/authorize";
 import { listQaProjects, listQaRuns } from "@/lib/qa/db";
+import { buildQaRepo } from "@/lib/qa/route-helpers";
+import type { QaFindingRow } from "@/lib/qa/repo-types";
 import QaCenterPanel from "./_ui/QaCenterPanel";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "QA Center" };
 
 export default async function QaCenterPage() {
-  // 1) Autenticación por cookie (cliente user-scoped, sin service_role).
   const sb = await createSupabaseServerClient();
   const {
     data: { user },
   } = await sb.auth.getUser();
-  if (!user?.email) {
-    notFound();
-  }
-  // Rol en DB vía RLS self-read. Fail-closed: si la DB no responde → notFound().
-  let rolFromDb: string | null = null;
-  try {
-    const { data, error } = await sb
-      .from("usuarios")
-      .select("rol")
-      .eq("email", user.email)
-      .limit(1);
-    if (error) notFound();
-    rolFromDb = (data?.[0] as { rol?: string | null } | undefined)?.rol ?? null;
-  } catch {
-    notFound();
-  }
-  if (rolFromDb !== "super_admin") notFound();
+  if (!user?.email) notFound();
+
+  const decision = await resolveQaAccess(sb, user.email);
+  if (!decision.ok) notFound();
 
   // 2) Lectura por PG directo (fail-closed si QA_DB_URL ausente).
   let projects: Awaited<ReturnType<typeof listQaProjects>>;
@@ -64,5 +49,14 @@ export default async function QaCenterPage() {
     };
   }
 
-  return <QaCenterPanel projects={projects} runs={runs} />;
+  // Findings — lectura directa del repo (fail-closed: si QA_DB_URL falta, lista vacía).
+  let findings: QaFindingRow[] = [];
+  try {
+    const repo = buildQaRepo();
+    if (repo) findings = await repo.listFindings({ limit: 200 });
+  } catch {
+    findings = [];
+  }
+
+  return <QaCenterPanel projects={projects} runs={runs} findings={findings} />;
 }

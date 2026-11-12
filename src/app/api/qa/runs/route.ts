@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { assertSuperAdmin } from "@/lib/qa/auth";
 import { listQaRuns } from "@/lib/qa/db";
 import { handleCreateRun } from "@/lib/qa/handlers";
-import { buildSupabaseRepo } from "@/lib/qa/route-helpers";
+import { buildQaRepo } from "@/lib/qa/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,10 +59,10 @@ export async function POST(request: Request) {
   const auth = await assertSuperAdmin(request);
   if (!auth.ok) return auth.response;
 
-  const repo = buildSupabaseRepo();
+  const repo = buildQaRepo();
   if (!repo) {
     return NextResponse.json(
-      { error: "Config Supabase no disponible", code: "internal" },
+      { error: "QA_DB_URL no configurada o Postgres inalcanzable", code: "internal" },
       { status: 500 }
     );
   }

@@ -1,31 +1,31 @@
 /**
  * Helpers compartidos entre rutas /api/qa/*.
- * Resuelve el repo Supabase para usar en producción; para tests el repo se
- * pasa inyectado directamente al handler.
+ *
+ * Fail-closed: si `QA_DB_URL` no está configurada, QA Center NO opera.
+ * NO hay fallback a Supabase REST, autorizado previamente — la expectativa
+ * explícita es que QA Center acceda EXCLUSIVAMENTE vía Postgres directo con
+ * el rol `qa_center_api` de permisos mínimos.
+ *
+ * Las impls Supabase quedan en el repo como material histórico y para tests
+ * con mocks, pero no se cablean desde las rutas.
  */
 
-import { createClient } from "@supabase/supabase-js";
-import {
-  supabaseServiceRoleClientOptions,
-  type AppSupabaseClient,
-} from "@/lib/supabase/schema";
-import { SupabaseQaRunsRepo } from "./repo-supabase";
-import { SupabaseNonceStore, type NonceStore } from "./nonce-store";
+import { PostgresQaRunsRepo } from "./repo-pg";
+import { PostgresNonceStore } from "./nonce-store-pg";
+import { getQaPool } from "./pg-pool";
 import type { QaRunsRepo } from "./repo-types";
+import type { NonceStore } from "./nonce-store";
 
-export function buildSupabaseClient(): AppSupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, { ...supabaseServiceRoleClientOptions });
+/**
+ * Devuelve el repo PG si `QA_DB_URL` está seteada; `null` si no.
+ * Las rutas deben traducir `null` a HTTP 500 para que no pasen al handler.
+ */
+export function buildQaRepo(): QaRunsRepo | null {
+  if (!getQaPool()) return null;
+  return new PostgresQaRunsRepo();
 }
 
-export function buildSupabaseRepo(): QaRunsRepo | null {
-  const client = buildSupabaseClient();
-  return client ? new SupabaseQaRunsRepo(client) : null;
-}
-
-export function buildNonceStore(): NonceStore | null {
-  const client = buildSupabaseClient();
-  return client ? new SupabaseNonceStore(client) : null;
+export function buildQaNonceStore(): NonceStore | null {
+  if (!getQaPool()) return null;
+  return new PostgresNonceStore();
 }

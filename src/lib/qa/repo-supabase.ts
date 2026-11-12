@@ -42,12 +42,12 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
   async getSuite(suiteId: string): Promise<QaSuite | null> {
     const { data } = await this.qc()
       .from("suites")
-      .select("id, project_id, slug, name, tags, enabled")
+      .select("id, project_id, slug, name, tags, specs, enabled")
       .eq("id", suiteId)
       .maybeSingle();
     if (!data) return null;
-    // `specs` no está en la tabla aún (fase próxima). Default: lista vacía.
-    return { ...(data as Omit<QaSuite, "specs">), specs: [] };
+    const row = data as QaSuite & { specs: string[] | null };
+    return { ...row, specs: row.specs ?? [] };
   }
 
   async createRunAndJob(input: {
@@ -134,20 +134,17 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
     runId: string,
     result: ResultPayload
   ): Promise<"inserted" | "skipped"> {
-    const { data: existing } = await this.qc()
+    // Idempotencia enforceada por UNIQUE (run_id, spec_file, test_title).
+    // `onConflict` + `ignoreDuplicates: true` deja a Postgres resolver la carrera.
+    const { data, error } = await this.qc()
       .from("results")
-      .select("id")
-      .eq("run_id", runId)
-      .eq("spec_file", result.spec_file)
-      .eq("test_title", result.test_title)
-      .limit(1)
-      .maybeSingle();
-    if (existing) return "skipped";
-    const { error } = await this.qc()
-      .from("results")
-      .insert({ run_id: runId, ...result });
+      .upsert(
+        { run_id: runId, ...result },
+        { onConflict: "run_id,spec_file,test_title", ignoreDuplicates: true }
+      )
+      .select("id");
     if (error) throw new Error(`insertResult: ${error.message}`);
-    return "inserted";
+    return data && data.length > 0 ? "inserted" : "skipped";
   }
 
   async finishRunIdempotent(
@@ -160,18 +157,13 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
       .select("claimed_by")
       .eq("run_id", runId)
       .maybeSingle();
-    if (job && (job as { claimed_by: string | null }).claimed_by !== workerId) {
+    const claimedBy = (job as { claimed_by: string | null } | null)?.claimed_by ?? null;
+    if (claimedBy !== null && claimedBy !== workerId) {
       return "not_owner";
     }
-    const { data: run } = await this.qc()
-      .from("runs")
-      .select("finished_at")
-      .eq("id", runId)
-      .maybeSingle();
-    if (run && (run as { finished_at: string | null }).finished_at) {
-      return "already_finished";
-    }
-    const { error } = await this.qc()
+    // UPDATE condicional atómico: solo actualiza si finished_at IS NULL.
+    // Si el run ya estaba finalizado o pertenece a otro worker, no modifica.
+    const { data, error } = await this.qc()
       .from("runs")
       .update({
         status: input.status,
@@ -183,9 +175,10 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
         finished_at: new Date().toISOString(),
       })
       .eq("id", runId)
-      .is("finished_at", null);
+      .is("finished_at", null)
+      .select("id");
     if (error) throw new Error(`finishRun: ${error.message}`);
-    return "finished";
+    return data && data.length > 0 ? "finished" : "already_finished";
   }
 
   async listRecentRuns(limit: number): Promise<QaRun[]> {

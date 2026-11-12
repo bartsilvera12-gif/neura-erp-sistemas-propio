@@ -5,14 +5,27 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { supabaseServiceRoleClientOptions } from "@/lib/supabase/schema";
+import {
+  supabaseServiceRoleClientOptions,
+  type AppSupabaseClient,
+} from "@/lib/supabase/schema";
 import { SupabaseQaRunsRepo } from "./repo-supabase";
+import { SupabaseNonceStore, type NonceStore } from "./nonce-store";
 import type { QaRunsRepo } from "./repo-types";
 
-export function buildSupabaseRepo(): QaRunsRepo | null {
+export function buildSupabaseClient(): AppSupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  const client = createClient(url, key, { ...supabaseServiceRoleClientOptions });
-  return new SupabaseQaRunsRepo(client);
+  return createClient(url, key, { ...supabaseServiceRoleClientOptions });
+}
+
+export function buildSupabaseRepo(): QaRunsRepo | null {
+  const client = buildSupabaseClient();
+  return client ? new SupabaseQaRunsRepo(client) : null;
+}
+
+export function buildNonceStore(): NonceStore | null {
+  const client = buildSupabaseClient();
+  return client ? new SupabaseNonceStore(client) : null;
 }

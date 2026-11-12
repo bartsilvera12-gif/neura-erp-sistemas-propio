@@ -25,7 +25,7 @@ export const QA_HMAC_VERSION = "v1";
 export const QA_HMAC_MAX_SKEW_SECONDS = 300; // 5 minutos
 
 export type HmacResult =
-  | { ok: true; runnerId: string; timestamp: number }
+  | { ok: true; runnerId: string; timestamp: number; nonce: string }
   | { ok: false; code: HmacFailureCode; reason: string };
 
 export type HmacFailureCode =
@@ -34,7 +34,11 @@ export type HmacFailureCode =
   | "stale_timestamp"
   | "bad_signature_format"
   | "signature_mismatch"
-  | "missing_secret";
+  | "missing_secret"
+  | "bad_nonce"
+  | "replay";
+
+const NONCE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function sha256Hex(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex");
@@ -44,9 +48,11 @@ export function signPayload(opts: {
   secret: string;
   timestamp: number;
   body: string;
+  nonce: string;
 }): string {
   const bodyHash = sha256Hex(opts.body);
-  const canonical = `${opts.timestamp}.${bodyHash}`;
+  // El nonce entra al material firmado para que no pueda ser alterado tras firmar.
+  const canonical = `${opts.timestamp}.${opts.nonce}.${bodyHash}`;
   const sig = createHmac("sha256", opts.secret).update(canonical).digest("hex");
   return `${QA_HMAC_VERSION}=${sig}`;
 }
@@ -65,6 +71,7 @@ export function verifyRequest(opts: {
     "x-qa-timestamp"?: string | null;
     "x-qa-signature"?: string | null;
     "x-qa-runner-id"?: string | null;
+    "x-qa-nonce"?: string | null;
   };
   body: string;
   secret: string | null | undefined;
@@ -81,8 +88,12 @@ export function verifyRequest(opts: {
   const ts = opts.headers["x-qa-timestamp"];
   const sig = opts.headers["x-qa-signature"];
   const runnerId = opts.headers["x-qa-runner-id"];
-  if (!ts || !sig || !runnerId) {
+  const nonce = opts.headers["x-qa-nonce"];
+  if (!ts || !sig || !runnerId || !nonce) {
     return { ok: false, code: "missing_header", reason: "headers X-QA-* faltantes" };
+  }
+  if (!NONCE_RE.test(nonce)) {
+    return { ok: false, code: "bad_nonce", reason: "nonce no es UUID" };
   }
   const tsNum = Number.parseInt(ts, 10);
   if (!Number.isFinite(tsNum) || tsNum <= 0) {
@@ -105,9 +116,10 @@ export function verifyRequest(opts: {
     secret: opts.secret,
     timestamp: tsNum,
     body: opts.body,
+    nonce,
   }).slice(prefix.length);
   if (!constantTimeEqualHex(actual.toLowerCase(), expected.toLowerCase())) {
     return { ok: false, code: "signature_mismatch", reason: "firma no coincide" };
   }
-  return { ok: true, runnerId, timestamp: tsNum };
+  return { ok: true, runnerId, timestamp: tsNum, nonce };
 }

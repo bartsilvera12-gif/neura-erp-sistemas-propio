@@ -1,0 +1,173 @@
+/**
+ * Implementación en memoria del QaRunsRepo.
+ * Uso exclusivo: tests locales. No persiste. No es thread-safe para múltiples
+ * procesos; sí es seguro dentro de un solo proceso Node (Mutex sincrónico).
+ */
+
+import { randomUUID } from "node:crypto";
+import type {
+  ClaimedJob,
+  FinishRunInput,
+  QaProject,
+  QaRun,
+  QaRunnerJob,
+  QaRunsRepo,
+  QaSuite,
+  ResultPayload,
+} from "./repo-types";
+
+type State = {
+  projects: Map<string, QaProject>;
+  suites: Map<string, QaSuite>;
+  runs: Map<string, QaRun>;
+  jobs: Map<string, QaRunnerJob>;
+  results: Map<string, ResultPayload>; // key = run_id::spec_file::test_title
+  recentIdempotency: Map<string, { runId: string; at: number }>; // clientRequestId → runId
+};
+
+export class InMemoryQaRunsRepo implements QaRunsRepo {
+  readonly state: State = {
+    projects: new Map(),
+    suites: new Map(),
+    runs: new Map(),
+    jobs: new Map(),
+    results: new Map(),
+    recentIdempotency: new Map(),
+  };
+
+  seedProject(p: QaProject): void {
+    this.state.projects.set(p.id, p);
+  }
+  seedSuite(s: QaSuite): void {
+    this.state.suites.set(s.id, s);
+  }
+
+  async getProject(id: string): Promise<QaProject | null> {
+    return this.state.projects.get(id) ?? null;
+  }
+  async getSuite(id: string): Promise<QaSuite | null> {
+    return this.state.suites.get(id) ?? null;
+  }
+
+  async createRunAndJob(input: {
+    project: QaProject;
+    suite: QaSuite;
+    triggered_by_user_id: string | null;
+    clientRequestId: string | null;
+  }): Promise<{ run: QaRun; job: QaRunnerJob; created: boolean }> {
+    if (input.clientRequestId) {
+      const now = Date.now();
+      const existing = this.state.recentIdempotency.get(input.clientRequestId);
+      if (existing && now - existing.at < 10 * 60 * 1000) {
+        const run = this.state.runs.get(existing.runId);
+        const job = [...this.state.jobs.values()].find((j) => j.run_id === existing.runId);
+        if (run && job) return { run, job, created: false };
+      }
+    }
+
+    const runId = randomUUID();
+    const nowIso = new Date().toISOString();
+    const run: QaRun = {
+      id: runId,
+      project_id: input.project.id,
+      suite_id: input.suite.id,
+      status: "queued",
+      trigger: "manual",
+      target_base_url: input.project.target_base_url,
+      target_env: input.project.target_env,
+      triggered_by_user_id: input.triggered_by_user_id,
+      triggered_by_ref: input.clientRequestId,
+      totals: { passed: 0, failed: 0, skipped: 0, flaky: 0 },
+      env_assert_passed: null,
+      env_assert_response: null,
+      summary: null,
+      duration_ms: null,
+      started_at: null,
+      finished_at: null,
+      created_at: nowIso,
+    };
+    const job: QaRunnerJob = {
+      id: randomUUID(),
+      run_id: runId,
+      claimed_by: null,
+      claimed_at: null,
+      attempts: 0,
+      max_attempts: 3,
+      heartbeat_at: null,
+      created_at: nowIso,
+    };
+    this.state.runs.set(run.id, run);
+    this.state.jobs.set(job.id, job);
+    if (input.clientRequestId) {
+      this.state.recentIdempotency.set(input.clientRequestId, { runId, at: Date.now() });
+    }
+    return { run, job, created: true };
+  }
+
+  async claimNextJob(workerId: string): Promise<ClaimedJob | null> {
+    const unclaimed = [...this.state.jobs.values()]
+      .filter((j) => j.claimed_at === null)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const job = unclaimed[0];
+    if (!job) return null;
+    const nowIso = new Date().toISOString();
+    job.claimed_by = workerId;
+    job.claimed_at = nowIso;
+    job.heartbeat_at = nowIso;
+    job.attempts += 1;
+    const run = this.state.runs.get(job.run_id);
+    if (!run) return null;
+    run.status = "running";
+    run.started_at = nowIso;
+    const project = this.state.projects.get(run.project_id);
+    const suite = this.state.suites.get(run.suite_id);
+    if (!project || !suite) return null;
+    return { job, run, project, suite };
+  }
+
+  async heartbeat(runId: string, workerId: string): Promise<void> {
+    const job = [...this.state.jobs.values()].find((j) => j.run_id === runId);
+    if (!job || job.claimed_by !== workerId) return;
+    job.heartbeat_at = new Date().toISOString();
+  }
+
+  async insertResultIdempotent(
+    runId: string,
+    result: ResultPayload
+  ): Promise<"inserted" | "skipped"> {
+    const key = `${runId}::${result.spec_file}::${result.test_title}`;
+    if (this.state.results.has(key)) return "skipped";
+    this.state.results.set(key, result);
+    return "inserted";
+  }
+
+  async finishRunIdempotent(
+    runId: string,
+    workerId: string,
+    input: FinishRunInput
+  ): Promise<"finished" | "already_finished" | "not_owner"> {
+    const run = this.state.runs.get(runId);
+    if (!run) return "already_finished";
+    const job = [...this.state.jobs.values()].find((j) => j.run_id === runId);
+    if (job && job.claimed_by !== workerId) return "not_owner";
+    if (run.finished_at) return "already_finished";
+    const nowIso = new Date().toISOString();
+    run.status = input.status;
+    run.totals = input.totals;
+    run.summary = input.summary;
+    run.duration_ms = input.duration_ms;
+    run.env_assert_passed = input.env_assert_passed;
+    run.env_assert_response = input.env_assert_response;
+    run.finished_at = nowIso;
+    return "finished";
+  }
+
+  async listRecentRuns(limit: number): Promise<QaRun[]> {
+    return [...this.state.runs.values()]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit);
+  }
+  async getRun(runId: string): Promise<QaRun | null> {
+    return this.state.runs.get(runId) ?? null;
+  }
+}

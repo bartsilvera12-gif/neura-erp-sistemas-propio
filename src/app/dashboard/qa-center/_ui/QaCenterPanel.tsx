@@ -13,6 +13,7 @@ import type {
   QaProjectRow,
   QaRunRow,
 } from "@/lib/qa/db";
+import EjecutarQaButton from "./EjecutarQaButton";
 
 type Props = {
   projects: QaListResult<QaProjectRow>;
@@ -25,11 +26,17 @@ export default function QaCenterPanel({ projects, runs }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">QA Center</h1>
-        <p className="text-sm text-slate-500">
-          Panel de QA Desarrollo. Nunca ejecuta contra producción.
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">QA Center</h1>
+          <p className="text-sm text-slate-500">
+            Panel de QA Desarrollo. Nunca ejecuta contra producción.
+          </p>
+        </div>
+        <EjecutarQaButton
+          projects={projects.data}
+          disabled={projects.migration_status !== "ready"}
+        />
       </header>
 
       {migrationPending && (

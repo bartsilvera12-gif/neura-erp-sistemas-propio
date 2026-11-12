@@ -1,50 +1,31 @@
 /**
- * NEURA QA CENTER — gating de autorización server-side.
- * Reutiliza los helpers de auth existentes (`getAuthUserForApiRoute`,
- * `resolveUsuarioErpFromAuthUser`, `isBootstrapSuperAdminEmail`). No los
- * modifica ni duplica.
+ * NEURA QA CENTER — autorización server-side SIN service_role.
  *
- * Patrón idéntico al usado en `src/app/api/admin/modulos/route.ts`.
+ * El ERP marca super_admins por dos vías:
+ *  1. Email en la lista `NEXT_PUBLIC_SUPER_ADMIN_EMAILS` (o la lista bootstrap
+ *     hard-codeada en `isBootstrapSuperAdminEmail`). Lectura: solo env, sin DB.
+ *  2. Campo `rol = 'super_admin'` en la tabla `neura.usuarios`.
+ *
+ * QA Center usa SOLO la vía (1) para evitar leer `neura.usuarios` desde este
+ * módulo — mantiene el principio de mínimo privilegio: QA Center nunca lee
+ * tablas de otros schemas, nunca usa `service_role`, nunca usa el superuser
+ * `postgres`. Los admins que no estén en el env quedan explícitamente fuera
+ * del panel.
  */
 
-import { createClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
-import { resolveUsuarioErpFromAuthUser } from "@/lib/auth/resolve-usuario-erp";
 import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
-import {
-  supabaseServiceRoleClientOptions,
-  type AppSupabaseClient,
-} from "@/lib/supabase/schema";
 
 export type QaAuthResult =
-  | { ok: true; user: User; serviceClient: AppSupabaseClient }
+  | { ok: true; user: User }
   | { ok: false; response: NextResponse };
 
-/**
- * Resuelve al usuario autenticado y confirma que es super_admin.
- * Retorna el service-role client ya creado para que el caller no lo repita.
- *
- * Nunca retorna un cliente con permisos ampliados si la validación falla.
- */
 export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !anonKey || !key) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Config no disponible", code: "internal" },
-        { status: 500 }
-      ),
-    };
-  }
-
   const user = await getAuthUserForApiRoute(request);
-  if (!user?.id) {
+  if (!user?.id || !user.email) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -53,14 +34,7 @@ export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> 
       ),
     };
   }
-
-  const serviceClient = createClient(url, key, {
-    ...supabaseServiceRoleClientOptions,
-  });
-  const usuario = await resolveUsuarioErpFromAuthUser(serviceClient, user);
-  const rolSuper = (usuario?.rol ?? "").trim() === "super_admin";
-  const bootstrapSuper = isBootstrapSuperAdminEmail(user.email);
-  if (!rolSuper && !bootstrapSuper) {
+  if (!isBootstrapSuperAdminEmail(user.email)) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -69,6 +43,5 @@ export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> 
       ),
     };
   }
-
-  return { ok: true, user, serviceClient };
+  return { ok: true, user };
 }

@@ -1,16 +1,23 @@
 /**
- * NEURA QA CENTER — acceso de lectura al esquema `qa_center`.
- * MVP-2 solo lee. Las mutaciones (POST/PATCH/DELETE) llegarán en fases siguientes.
+ * NEURA QA CENTER — fachada de lectura basada EXCLUSIVAMENTE en el adaptador
+ * Postgres directo (`PostgresQaRunsRepo`). NO usa Supabase REST ni service_role.
  *
- * Importante: el esquema `qa_center` NO está expuesto por PostgREST hasta que
- * un humano lo agregue manualmente a `supabase/config.toml :: [api].schemas`.
- * Mientras eso no ocurra, las queries acá devuelven un error reconocible y los
- * endpoints responden con un estado "migration_pending" vacío, sin fingir datos.
+ * Mantenemos los nombres (`listQaProjects`, `listQaRuns`, `listQaSuites`,
+ * `QaListResult`, `QaProjectRow`, `QaRunRow`, `QaSuiteRow`, `classifyQaReadError`)
+ * por compatibilidad con los imports de la UI y las rutas GET existentes.
+ *
+ * Si `QA_DB_URL` no está configurada, devolvemos `{ data: [], migration_status:
+ * "config_missing" }` para que la UI muestre un banner claro y fail-closed.
  */
 
-import type { AppSupabaseClient } from "@/lib/supabase/schema";
+import { buildQaRepo } from "./route-helpers";
+import type { QaProject, QaRun, QaSuite } from "./repo-types";
 
-export type QaMigrationStatus = "ready" | "schema_not_exposed" | "table_missing";
+export type QaMigrationStatus =
+  | "ready"
+  | "schema_not_exposed"
+  | "table_missing"
+  | "config_missing";
 
 export type QaListResult<T> = {
   data: T[];
@@ -18,29 +25,7 @@ export type QaListResult<T> = {
   note?: string;
 };
 
-/**
- * Error que devuelve PostgREST cuando el esquema no está en `[api].schemas`
- * de `supabase/config.toml`. Observado contra Supabase self-hosted v2.
- *   code: "PGRST106" o mensaje "schema \"qa_center\" is not in exposed schemas"
- *
- * Tambien cubrimos el caso "relation ... does not exist" si la migración
- * todavía no corrió (code 42P01).
- */
-export function classifyQaReadError(err: {
-  code?: string | null;
-  message?: string | null;
-}): QaMigrationStatus {
-  const code = (err.code ?? "").toUpperCase();
-  const msg = (err.message ?? "").toLowerCase();
-  if (code === "PGRST106" || msg.includes("not in exposed schemas")) {
-    return "schema_not_exposed";
-  }
-  if (code === "42P01" || msg.includes("does not exist")) {
-    return "table_missing";
-  }
-  return "ready";
-}
-
+// Tipos "row" que la UI consume (shape mínima).
 export type QaProjectRow = {
   id: string;
   slug: string;
@@ -48,40 +33,11 @@ export type QaProjectRow = {
   repo_url: string | null;
   default_branch: string;
   target_base_url: string;
-  target_env: "staging" | "preview" | "local";
+  target_env: QaProject["target_env"];
   archived_at: string | null;
   created_at: string;
   updated_at: string;
 };
-
-export async function listQaProjects(
-  client: AppSupabaseClient
-): Promise<QaListResult<QaProjectRow>> {
-  const { data, error } = await client
-    .schema("qa_center")
-    .from("projects")
-    .select(
-      "id, slug, name, repo_url, default_branch, target_base_url, target_env, archived_at, created_at, updated_at"
-    )
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    const status = classifyQaReadError(error);
-    if (status !== "ready") {
-      return {
-        data: [],
-        migration_status: status,
-        note:
-          status === "schema_not_exposed"
-            ? "El esquema qa_center aún no está en [api].schemas de Supabase."
-            : "La migración 20261112000000_qa_center_schema.sql aún no fue aplicada.",
-      };
-    }
-    throw error;
-  }
-  return { data: (data as QaProjectRow[]) ?? [], migration_status: "ready" };
-}
 
 export type QaRunRow = {
   id: string;
@@ -90,7 +46,7 @@ export type QaRunRow = {
   trigger: string;
   status: string;
   target_base_url: string;
-  target_env: "staging" | "preview" | "local";
+  target_env: QaRun["target_env"];
   env_assert_passed: boolean | null;
   started_at: string | null;
   finished_at: string | null;
@@ -99,75 +55,90 @@ export type QaRunRow = {
   created_at: string;
 };
 
-export async function listQaRuns(
-  client: AppSupabaseClient,
-  opts: { projectId?: string; limit?: number } = {}
-): Promise<QaListResult<QaRunRow>> {
-  let q = client
-    .schema("qa_center")
-    .from("runs")
-    .select(
-      "id, project_id, suite_id, trigger, status, target_base_url, target_env, env_assert_passed, started_at, finished_at, duration_ms, totals, created_at"
-    )
-    .order("created_at", { ascending: false })
-    .limit(opts.limit ?? 25);
+export type QaSuiteRow = QaSuite;
 
-  if (opts.projectId) q = q.eq("project_id", opts.projectId);
-
-  const { data, error } = await q;
-  if (error) {
-    const status = classifyQaReadError(error);
-    if (status !== "ready") {
-      return {
-        data: [],
-        migration_status: status,
-        note:
-          status === "schema_not_exposed"
-            ? "El esquema qa_center aún no está en [api].schemas de Supabase."
-            : "La migración 20261112000000_qa_center_schema.sql aún no fue aplicada.",
-      };
-    }
-    throw error;
-  }
-  return { data: (data as QaRunRow[]) ?? [], migration_status: "ready" };
+/**
+ * Compatibilidad hacia atrás: antes se usaba para clasificar errores
+ * PostgREST (PGRST106, 42P01). Hoy, con PG directo, los errores de
+ * conectividad se traducen a `config_missing` o se dejan propagar.
+ */
+export function classifyQaReadError(_err: {
+  code?: string | null;
+  message?: string | null;
+}): QaMigrationStatus {
+  return "ready";
 }
 
-export type QaSuiteRow = {
-  id: string;
-  project_id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  tags: string[];
-  enabled: boolean;
-  created_at: string;
-};
+function noConfig<T>(): QaListResult<T> {
+  return {
+    data: [],
+    migration_status: "config_missing",
+    note: "QA_DB_URL no configurada — QA Center fail-closed.",
+  };
+}
+
+function projectToRow(p: QaProject): QaProjectRow {
+  return {
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    repo_url: null,
+    default_branch: p.default_branch,
+    target_base_url: p.target_base_url,
+    target_env: p.target_env,
+    archived_at: null,
+    created_at: "",
+    updated_at: "",
+  };
+}
+
+function runToRow(r: QaRun): QaRunRow {
+  return {
+    id: r.id,
+    project_id: r.project_id,
+    suite_id: r.suite_id,
+    trigger: r.trigger,
+    status: r.status,
+    target_base_url: r.target_base_url,
+    target_env: r.target_env,
+    env_assert_passed: r.env_assert_passed,
+    started_at: r.started_at,
+    finished_at: r.finished_at,
+    duration_ms: r.duration_ms,
+    totals: r.totals as unknown as Record<string, number>,
+    created_at: r.created_at,
+  };
+}
+
+export async function listQaProjects(limit = 100): Promise<QaListResult<QaProjectRow>> {
+  const repo = buildQaRepo();
+  if (!repo) return noConfig();
+  const rows = await repo.listActiveProjects(limit);
+  return { data: rows.map(projectToRow), migration_status: "ready" };
+}
+
+export async function listQaRuns(
+  opts: { projectId?: string; limit?: number } = {}
+): Promise<QaListResult<QaRunRow>> {
+  const repo = buildQaRepo();
+  if (!repo) return noConfig();
+  const limit = opts.limit ?? 25;
+  const all = await repo.listRecentRuns(limit);
+  const filtered = opts.projectId
+    ? all.filter((r) => r.project_id === opts.projectId)
+    : all;
+  return { data: filtered.map(runToRow), migration_status: "ready" };
+}
 
 export async function listQaSuites(
-  client: AppSupabaseClient,
   projectId?: string
 ): Promise<QaListResult<QaSuiteRow>> {
-  let q = client
-    .schema("qa_center")
-    .from("suites")
-    .select("id, project_id, slug, name, description, tags, enabled, created_at")
-    .order("created_at", { ascending: false });
-  if (projectId) q = q.eq("project_id", projectId);
-
-  const { data, error } = await q;
-  if (error) {
-    const status = classifyQaReadError(error);
-    if (status !== "ready") {
-      return {
-        data: [],
-        migration_status: status,
-        note:
-          status === "schema_not_exposed"
-            ? "El esquema qa_center aún no está en [api].schemas de Supabase."
-            : "La migración 20261112000000_qa_center_schema.sql aún no fue aplicada.",
-      };
-    }
-    throw error;
+  const repo = buildQaRepo();
+  if (!repo) return noConfig();
+  if (!projectId) {
+    // Sin projectId no listamos (la UI siempre pasa uno).
+    return { data: [], migration_status: "ready" };
   }
-  return { data: (data as QaSuiteRow[]) ?? [], migration_status: "ready" };
+  const rows = await repo.listSuitesForProject(projectId);
+  return { data: rows, migration_status: "ready" };
 }

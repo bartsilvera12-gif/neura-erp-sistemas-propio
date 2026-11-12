@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await listQaRuns(auth.serviceClient, { projectId, limit });
+    const result = await listQaRuns({ projectId, limit });
     return NextResponse.json(result, {
       status: 200,
       headers: { "Cache-Control": "no-store" },

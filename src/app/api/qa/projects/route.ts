@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   try {
-    const result = await listQaProjects(auth.serviceClient);
+    const result = await listQaProjects();
     return NextResponse.json(result, {
       status: 200,
       headers: { "Cache-Control": "no-store" },

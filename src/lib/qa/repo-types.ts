@@ -134,4 +134,9 @@ export interface QaRunsRepo {
 
   listRecentRuns(limit: number): Promise<QaRun[]>;
   getRun(runId: string): Promise<QaRun | null>;
+
+  /** Proyectos NO archivados, orden descendente por created_at. */
+  listActiveProjects(limit?: number): Promise<QaProject[]>;
+  /** Suites de un proyecto, orden descendente por created_at. */
+  listSuitesForProject(projectId: string): Promise<QaSuite[]>;
 }

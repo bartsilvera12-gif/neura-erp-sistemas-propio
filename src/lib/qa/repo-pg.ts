@@ -318,4 +318,33 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       return r.rows[0] ? asRun(r.rows[0]) : null;
     });
   }
+
+  async listActiveProjects(limit = 100): Promise<QaProject[]> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT ${PROJECT_COLS} FROM qa_center.projects
+          WHERE archived_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT $1`,
+        [Math.min(Math.max(limit, 1), 200)]
+      );
+      return r.rows
+        .map(asProject)
+        .filter((p): p is QaProject => p !== null);
+    });
+  }
+
+  async listSuitesForProject(projectId: string): Promise<QaSuite[]> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT ${SUITE_COLS} FROM qa_center.suites
+          WHERE project_id = $1
+          ORDER BY created_at DESC`,
+        [projectId]
+      );
+      return r.rows
+        .map(asSuite)
+        .filter((s): s is QaSuite => s !== null);
+    });
+  }
 }

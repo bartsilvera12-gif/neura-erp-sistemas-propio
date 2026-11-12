@@ -170,4 +170,10 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
   async getRun(runId: string): Promise<QaRun | null> {
     return this.state.runs.get(runId) ?? null;
   }
+  async listActiveProjects(limit = 100): Promise<QaProject[]> {
+    return [...this.state.projects.values()].slice(0, limit);
+  }
+  async listSuitesForProject(projectId: string): Promise<QaSuite[]> {
+    return [...this.state.suites.values()].filter((s) => s.project_id === projectId);
+  }
 }

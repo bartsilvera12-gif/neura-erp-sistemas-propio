@@ -198,4 +198,23 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
       .maybeSingle();
     return (data as QaRun | null) ?? null;
   }
+
+  async listActiveProjects(limit = 100): Promise<QaProject[]> {
+    const { data } = await this.qc()
+      .from("projects")
+      .select("*")
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    return (data as QaProject[] | null) ?? [];
+  }
+
+  async listSuitesForProject(projectId: string): Promise<QaSuite[]> {
+    const { data } = await this.qc()
+      .from("suites")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false });
+    return (data as QaSuite[] | null) ?? [];
+  }
 }

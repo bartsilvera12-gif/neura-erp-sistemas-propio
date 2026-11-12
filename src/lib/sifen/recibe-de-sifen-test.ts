@@ -166,9 +166,8 @@ function postHttpsMtls(
         cert: certPem,
         key: keyPem,
         rejectUnauthorized: true,
-        /** SET exige TLS 1.2 con autenticación mutua; mismo criterio que recibe-lote. */
+        /** Piso TLS 1.2 (default de Node); se permite 1.3, como venía funcionando con el SET. */
         minVersion: "TLSv1.2",
-        maxVersion: "TLSv1.2",
         headers: {
           "Content-Type": contentType,
           "Content-Length": Buffer.byteLength(body, "utf8"),

@@ -251,15 +251,13 @@ function postHttpsMtls(
         key: keyPem,
         rejectUnauthorized: true,
         /**
-         * SET exige TLS 1.2 con autenticación mutua (guía DNIT/SET). Fijamos
-         * min=max=TLSv1.2 para que el certificado cliente viaje en el handshake
-         * inicial (CertificateRequest de TLS 1.2). Con TLS 1.3 el servidor puede
-         * pedir el certificado por post-handshake auth; si Node no lo presenta,
-         * el frontal de producción responde con una redirección (HTTP 302) a una
-         * página de error/login en vez de procesar el SOAP.
+         * NO fijar maxVersion: el SET de producción venía operando en TLS 1.3 con
+         * autenticación mutua. Forzar TLS 1.2 fue una hipótesis descartada (el 302
+         * del 12/11 era un incidente del gateway del SET, no de la versión TLS).
+         * Se deja min=TLSv1.2 (piso de seguridad, ya es el default de Node) y se
+         * permite negociar 1.3 como venía funcionando.
          */
         minVersion: "TLSv1.2",
-        maxVersion: "TLSv1.2",
         headers: {
           "Content-Type": contentType,
           "Content-Length": Buffer.byteLength(body, "utf8"),

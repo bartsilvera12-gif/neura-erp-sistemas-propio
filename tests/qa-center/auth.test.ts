@@ -57,10 +57,9 @@ test("auth.ts: NO usa service_role ni superuser (chequeo estático del fuente)",
   );
 });
 
-test("auth.ts: autoriza por rol en DB + fallback bootstrap, no por email solo", async () => {
+test("auth.ts: autoriza SOLO por rol='super_admin' en DB (fail-closed)", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile("src/lib/qa/auth.ts", "utf8");
-  // Debe leer la fila del usuario desde `usuarios` vía cookie client.
   assert.ok(
     src.includes("createSupabaseServerClient"),
     "auth.ts debe usar createSupabaseServerClient (cookie-scoped, RLS self-read)"
@@ -70,12 +69,29 @@ test("auth.ts: autoriza por rol en DB + fallback bootstrap, no por email solo", 
     "auth.ts debe consultar la tabla usuarios para validar el rol real"
   );
   assert.ok(
-    /roleFromDb\s*===\s*["']super_admin["']/.test(src),
-    "auth.ts debe autorizar cuando rol = 'super_admin' en DB"
+    /roleFromDb\s*!==\s*["']super_admin["']/.test(src),
+    "auth.ts debe denegar cuando rol !== 'super_admin' en DB"
   );
-  // bootstrap sigue siendo fallback cuando la DB no responde.
+});
+
+test("auth.ts: NO usa fallback por email (bootstrap) ni evaluación condicional de error", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile("src/lib/qa/auth.ts", "utf8");
   assert.ok(
-    src.includes("isBootstrapSuperAdminEmail") && src.includes("dbErrored"),
-    "auth.ts debe mantener fallback bootstrap SOLO ante dbErrored"
+    !src.includes("isBootstrapSuperAdminEmail"),
+    "auth.ts no debe importar/llamar isBootstrapSuperAdminEmail (fallback email está prohibido)"
+  );
+  assert.ok(
+    !/dbErrored\s*&&/.test(src),
+    "auth.ts no debe tener condicional 'dbErrored && …' (fallback a email ya retirado)"
+  );
+});
+
+test("page.tsx del panel: NO usa fallback por email", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile("src/app/dashboard/qa-center/page.tsx", "utf8");
+  assert.ok(
+    !src.includes("isBootstrapSuperAdminEmail"),
+    "page.tsx no debe importar isBootstrapSuperAdminEmail"
   );
 });

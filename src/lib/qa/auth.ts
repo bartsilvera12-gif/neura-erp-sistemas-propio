@@ -1,13 +1,13 @@
 /**
- * NEURA QA CENTER — autorización server-side con doble verificación:
+ * NEURA QA CENTER — autorización server-side fail-closed:
  *   (a) sesión Supabase VÁLIDA (JWT firmado por Auth; cookie o Bearer).
  *   (b) `neura.usuarios.rol = 'super_admin'` LEÍDO POR EL PROPIO USUARIO
  *       usando un cliente cookie-scoped con RLS activa — NO service_role.
  *
- * Fallback `isBootstrapSuperAdminEmail` sólo cuando la DB está inaccesible
- * (fail-safe para bootstrap). Conocer un email de la lista NO basta por sí
- * mismo: requiere además sesión Supabase válida y, cuando la DB está sana,
- * el rol persistido en la BD.
+ * Si la DB no responde, DENEGAMOS. No hay fallback por email: la lista
+ * `NEXT_PUBLIC_SUPER_ADMIN_EMAILS` no es evidencia de permiso real, y
+ * confiar en ella bypassearía el cambio de rol en la BD (ej. usuario
+ * degradado que sigue en el env).
  *
  * Por qué no es "administrativa":
  *   - `createSupabaseServerClient` es el mismo cliente que usa `/dashboard/panel-control`.
@@ -20,7 +20,6 @@ import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { getAuthUserForApiRoute } from "@/lib/auth/get-auth-user-for-api-route";
-import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-email";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type QaAuthResult =
@@ -42,7 +41,6 @@ export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> 
 
   // (b) rol en DB leído por el propio usuario (RLS).
   let roleFromDb: string | null = null;
-  let dbErrored = false;
   try {
     const sb = await createSupabaseServerClient();
     const { data, error } = await sb
@@ -50,27 +48,28 @@ export async function assertSuperAdmin(request: Request): Promise<QaAuthResult> 
       .select("rol")
       .eq("email", user.email)
       .limit(1);
-    if (error) dbErrored = true;
-    else {
-      const row = data?.[0] as { rol?: string | null } | undefined;
-      roleFromDb = (row?.rol ?? "").trim() || null;
+    if (error) {
+      // DB inaccesible → fail-closed.
+      return denyForbidden("db_error");
     }
+    const row = data?.[0] as { rol?: string | null } | undefined;
+    roleFromDb = (row?.rol ?? "").trim() || null;
   } catch {
-    dbErrored = true;
+    return denyForbidden("db_exception");
   }
 
-  const bootstrap = isBootstrapSuperAdminEmail(user.email);
-  const authorized =
-    roleFromDb === "super_admin" || (dbErrored && bootstrap);
-
-  if (!authorized) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "No autorizado", code: "forbidden" },
-        { status: 403 }
-      ),
-    };
+  if (roleFromDb !== "super_admin") {
+    return denyForbidden("role_mismatch");
   }
   return { ok: true, user };
+}
+
+function denyForbidden(reason: string): QaAuthResult {
+  return {
+    ok: false,
+    response: NextResponse.json(
+      { error: "No autorizado", code: "forbidden", reason },
+      { status: 403 }
+    ),
+  };
 }

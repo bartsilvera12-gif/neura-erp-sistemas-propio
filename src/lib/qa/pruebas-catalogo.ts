@@ -181,12 +181,26 @@ export function specsPermitidas(): Set<string> {
  * Deriva un slug legible y estable a partir de los tipos seleccionados y la fecha.
  * Ejemplo: tipos=[disponibilidad, seguridad] → "disponibilidad-seguridad-20261113-1430".
  */
+/**
+ * Códigos cortos kebab-safe para armar slugs dentro del límite de 40 chars.
+ * Si se agrega un nuevo TipoDePrueba, declararlo acá también.
+ */
+const CODIGO_CORTO: Record<TipoDePrueba, string> = {
+  disponibilidad: "disp",
+  inicio_sesion: "login",
+  navegacion: "nav",
+  seguridad: "sec",
+};
+
 export function derivarSlugSuite(tipos: TipoDePrueba[], ahora: Date = new Date()): string {
   const ordenDe = (t: string): number =>
     (ETIQUETAS_TIPO as Record<string, { orden: number }>)[t]?.orden ?? 99;
-  const base = (tipos.length ? [...new Set(tipos)] as string[] : ["suite"])
+  const codigos = (tipos.length ? [...new Set(tipos)] as string[] : ["suite"])
     .sort((a, b) => ordenDe(a) - ordenDe(b))
-    .join("-");
+    .map((t) => (CODIGO_CORTO as Record<string, string>)[t] ?? "suite");
+  const base = codigos.join("-");
   const ts = ahora.toISOString().replace(/[-:T]/g, "").slice(0, 12); // YYYYMMDDHHMM
-  return `${base}-${ts}`.toLowerCase();
+  const candidato = `${base}-${ts}`.toLowerCase();
+  // Doble red de seguridad: si por alguna razón la suma supera 40, recortamos.
+  return candidato.length <= 40 ? candidato : candidato.slice(0, 40).replace(/-$/, "");
 }

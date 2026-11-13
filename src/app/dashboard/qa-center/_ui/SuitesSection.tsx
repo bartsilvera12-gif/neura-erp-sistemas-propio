@@ -247,9 +247,23 @@ function NuevaSuiteInline({
   );
 }
 
-/** Deriva un slug simple en cliente (el server valida unicidad). */
+/**
+ * Deriva un slug simple en cliente usando los mismos códigos cortos que el
+ * servidor (ver pruebas-catalogo.ts → CODIGO_CORTO). Kebab-case y ≤ 40 chars
+ * para pasar validateSlug sin fricción.
+ */
+const CODIGO_CORTO_CLIENTE: Record<string, string> = {
+  disponibilidad: "disp",
+  inicio_sesion: "login",
+  navegacion: "nav",
+  seguridad: "sec",
+};
 function derivarSlugCliente(tipos: string[], ahora: Date): string {
-  const base = (tipos.length ? [...new Set(tipos)] : ["suite"]).sort().join("-");
+  const codigos = (tipos.length ? [...new Set(tipos)] : ["suite"])
+    .sort()
+    .map((t) => CODIGO_CORTO_CLIENTE[t] ?? "suite");
+  const base = codigos.join("-");
   const ts = ahora.toISOString().replace(/[-:T]/g, "").slice(0, 12);
-  return `${base}-${ts}`.toLowerCase();
+  const candidato = `${base}-${ts}`.toLowerCase();
+  return candidato.length <= 40 ? candidato : candidato.slice(0, 40).replace(/-$/, "");
 }

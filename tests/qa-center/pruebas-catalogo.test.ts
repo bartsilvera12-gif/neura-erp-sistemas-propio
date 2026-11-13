@@ -86,14 +86,32 @@ test("pruebasParaProyecto: host no productivo pero no sistemas-propio → sólo 
   assert.ok(!todas.includes("sistemas-propio-seguridad.spec.ts"));
 });
 
-test("derivarSlugSuite: genera slug determinístico con tipos ordenados + timestamp", () => {
+test("derivarSlugSuite: genera slug kebab-case ordenado + timestamp (≤40 chars)", () => {
   const d = new Date("2026-11-13T14:30:45.000Z");
   const slug = derivarSlugSuite(["seguridad", "disponibilidad"], d);
-  assert.equal(slug, "disponibilidad-seguridad-202611131430");
+  assert.equal(slug, "disp-sec-202611131430");
+  assert.ok(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug), `slug inválido: ${slug}`);
+  assert.ok(slug.length <= 40, `supera 40 chars: ${slug.length}`);
+});
+
+test("derivarSlugSuite: los 4 tipos combinados siguen entrando en ≤40 chars y pasan la regex", () => {
+  const d = new Date("2026-11-13T14:30:45.000Z");
+  const slug = derivarSlugSuite(["disponibilidad", "inicio_sesion", "navegacion", "seguridad"], d);
+  assert.equal(slug, "disp-login-nav-sec-202611131430");
+  assert.ok(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug));
+  assert.ok(slug.length <= 40);
 });
 
 test("derivarSlugSuite: sin tipos usa 'suite' como base", () => {
   const d = new Date("2026-01-02T03:04:05.000Z");
   const slug = derivarSlugSuite([], d);
   assert.equal(slug, "suite-202601020304");
+  assert.ok(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug));
+});
+
+test("derivarSlugSuite: incluir inicio_sesion ya no rompe la validación kebab", () => {
+  const d = new Date("2026-11-13T14:30:45.000Z");
+  const slug = derivarSlugSuite(["inicio_sesion"], d);
+  assert.equal(slug, "login-202611131430");
+  assert.ok(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug), `slug con underscore inválido: ${slug}`);
 });

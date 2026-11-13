@@ -7,7 +7,8 @@ import { NextResponse } from "next/server";
 import { authenticateRunner } from "@/lib/qa/runner-auth";
 import { handleClaim } from "@/lib/qa/handlers";
 import { buildQaNonceStore, buildQaRepo } from "@/lib/qa/route-helpers";
-import { nivelSeguridadDeSpecs, resolverRepoUrlProyecto } from "@/lib/qa/pruebas-catalogo";
+import { nivelSeguridadDeSpecs, resolverRepoUrlProyecto, codebaseDeProyecto } from "@/lib/qa/pruebas-catalogo";
+import { AI_DISCOVERY_SUITE_PREFIX } from "@/lib/qa/handle-analizar-erp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,26 +32,37 @@ export async function POST(request: Request) {
   }
 
   const { job, run, suite, project } = result.body;
+  // Suite de IA "Analizar ERP completo": slug `ai-discovery-<proyecto>`.
+  // En ese caso el run corre en modo discovery (clone + descubrir + LLM).
+  const esSuiteIaDiscovery = suite.slug.startsWith(AI_DISCOVERY_SUITE_PREFIX);
+
   // Nivel de seguridad agregado desde el catálogo. Si devuelve null o un
   // nivel no corrible ("mixed_analysis", "write_required"), en teoría el
   // handleCreateRun ya lo rechazó: acá, por safety, mapeamos a "standard".
-  const nivel = nivelSeguridadDeSpecs(suite.specs);
+  const nivelCat = nivelSeguridadDeSpecs(suite.specs);
   const safety_level:
     | "static_analysis"
+    | "discovery"
     | "anonymous_read_only"
     | "authenticated_read_only"
-    | "standard" =
-    nivel === "static_analysis" ||
-    nivel === "anonymous_read_only" ||
-    nivel === "authenticated_read_only"
-      ? nivel
+    | "standard" = esSuiteIaDiscovery
+    ? "discovery"
+    : nivelCat === "static_analysis" ||
+      nivelCat === "anonymous_read_only" ||
+      nivelCat === "authenticated_read_only"
+      ? nivelCat
       : "standard";
-  const mode: "read-only" | "write" | "static-analysis" =
-    safety_level === "static_analysis" ? "static-analysis" : "read-only";
+  const mode: "read-only" | "write" | "static-analysis" | "discovery" =
+    safety_level === "discovery"
+      ? "discovery"
+      : safety_level === "static_analysis"
+      ? "static-analysis"
+      : "read-only";
   const repo_url =
-    safety_level === "static_analysis"
+    safety_level === "static_analysis" || safety_level === "discovery"
       ? resolverRepoUrlProyecto(project.slug, project.repo_url ?? null)
       : null;
+  const codebase = codebaseDeProyecto({ slug: project.slug, target_base_url: project.target_base_url });
   // El runner saltea env-assert sólo para authenticated_read_only cuando el
   // admin del proyecto lo autorizó. El flag llega desde la DB del proyecto.
   const skip_env_assert =
@@ -62,12 +74,16 @@ export async function POST(request: Request) {
     run_id: run.id,
     project_id: run.project_id,
     suite_slug: suite.slug,
-    target_base_url: safety_level === "static_analysis" ? "" : run.target_base_url,
+    target_base_url:
+      safety_level === "static_analysis" || safety_level === "discovery"
+        ? ""
+        : run.target_base_url,
     target_env: run.target_env,
     mode,
     safety_level,
     skip_env_assert,
     ...(repo_url ? { repo_url, repo_branch: project.default_branch ?? "main" } : {}),
+    codebase,
     specs: suite.specs,
     created_at:
       typeof job.created_at === "string"

@@ -15,6 +15,8 @@ import EjecutarQaButton from "./EjecutarQaButton";
 import NuevoProyectoDialog from "./NuevoProyectoDialog";
 import EditarProyectoDialog from "./EditarProyectoDialog";
 import SuitesSection from "./SuitesSection";
+import AnalizarErpCard from "./AnalizarErpCard";
+import SeccionAvanzado from "./SeccionAvanzado";
 import FindingsSection from "./FindingsSection";
 import PermiteLecturaToggle from "./PermiteLecturaToggle";
 import { AutorizarDialog, EntregarDialog, EstadoBadge } from "./EstadoProyectoDialogs";
@@ -119,15 +121,25 @@ export default function QaCenterPanel({ projects, runs, findings }: Props) {
                     </button>
                   </div>
                 </div>
-                <SuitesSection
+                <AnalizarErpCard
                   projectId={p.id}
                   projectSlug={p.slug}
-                  permiteLecturaSinEnvAssert={p.permite_lectura_sin_env_assert === true}
+                  projectName={p.name}
+                  lastDiscovery={null}
+                  lastInforme={null}
+                  totalCostUsd={0}
                 />
-                <PermiteLecturaToggle
-                  projectId={p.id}
-                  initialValue={p.permite_lectura_sin_env_assert === true}
-                />
+                <SeccionAvanzado>
+                  <SuitesSection
+                    projectId={p.id}
+                    projectSlug={p.slug}
+                    permiteLecturaSinEnvAssert={p.permite_lectura_sin_env_assert === true}
+                  />
+                  <PermiteLecturaToggle
+                    projectId={p.id}
+                    initialValue={p.permite_lectura_sin_env_assert === true}
+                  />
+                </SeccionAvanzado>
               </li>
             ))}
           </ul>

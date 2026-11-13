@@ -671,4 +671,201 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       return { ...asProject(row), permite_lectura_sin_env_assert: row.permite_lectura_sin_env_assert === true };
     }, /* tx = */ true);
   }
+
+  // ── Analizar ERP (pipeline IA) ──────────────────────────────────────────
+
+  async insertErpDiscovery(input: {
+    project_id: string;
+    run_id: string;
+    commit_sha: string | null;
+    codebase: string | null;
+    modulos: unknown;
+    totales: unknown;
+  }): Promise<{ id: string }> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `INSERT INTO qa_center.erp_discoveries
+           (project_id, run_id, commit_sha, codebase, modulos, totales)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+         RETURNING id`,
+        [
+          input.project_id,
+          input.run_id,
+          input.commit_sha,
+          input.codebase,
+          JSON.stringify(input.modulos ?? []),
+          JSON.stringify(input.totales ?? {}),
+        ]
+      );
+      return { id: r.rows[0].id as string };
+    });
+  }
+
+  async latestErpDiscovery(projectId: string): Promise<{
+    id: string;
+    run_id: string | null;
+    codebase: string | null;
+    modulos: unknown;
+    totales: unknown;
+    created_at: string;
+  } | null> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT id, run_id, codebase, modulos, totales, created_at
+           FROM qa_center.erp_discoveries
+          WHERE project_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [projectId]
+      );
+      if (r.rowCount === 0) return null;
+      const row = r.rows[0] as Record<string, unknown>;
+      return {
+        id: row.id as string,
+        run_id: (row.run_id as string) ?? null,
+        codebase: (row.codebase as string) ?? null,
+        modulos: row.modulos,
+        totales: row.totales,
+        created_at: (row.created_at as Date).toISOString(),
+      };
+    });
+  }
+
+  async insertAiUsage(input: {
+    run_id: string;
+    step: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
+    cost_usd: number;
+    status: "ok" | "skipped_budget" | "error";
+    error_message: string | null;
+  }): Promise<void> {
+    await this.run(async (c) => {
+      await c.query(
+        `INSERT INTO qa_center.ai_usage
+           (run_id, step, model, input_tokens, output_tokens,
+            cache_read_tokens, cache_creation_tokens, cost_usd, status, error_message)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          input.run_id,
+          input.step,
+          input.model,
+          input.input_tokens | 0,
+          input.output_tokens | 0,
+          input.cache_read_tokens | 0,
+          input.cache_creation_tokens | 0,
+          input.cost_usd,
+          input.status,
+          input.error_message,
+        ]
+      );
+    });
+  }
+
+  async sumAiCostForRun(runId: string): Promise<number> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT COALESCE(SUM(cost_usd), 0)::text AS total
+           FROM qa_center.ai_usage WHERE run_id = $1`,
+        [runId]
+      );
+      return Number(r.rows[0]?.total ?? "0");
+    });
+  }
+
+  async upsertGeneratedSpecs(input: {
+    codebase: string;
+    created_by_run_id: string;
+    specs: Array<{
+      modulo: string;
+      spec_file: string;
+      spec_source: string;
+      source_sanitized_sha256: string;
+      invariante: string;
+      severidad: string;
+      requiere_sesion: boolean;
+    }>;
+  }): Promise<{ inserted: number; updated: number }> {
+    if (input.specs.length === 0) return { inserted: 0, updated: 0 };
+    return this.run(async (c) => {
+      let ins = 0;
+      let upd = 0;
+      for (const s of input.specs) {
+        const r = await c.query(
+          `INSERT INTO qa_center.generated_specs
+             (codebase, modulo, spec_file, spec_source, source_sanitized_sha256,
+              invariante, severidad, requiere_sesion, created_by_run_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (codebase, spec_file) DO UPDATE SET
+             spec_source = EXCLUDED.spec_source,
+             source_sanitized_sha256 = EXCLUDED.source_sanitized_sha256,
+             invariante = EXCLUDED.invariante,
+             severidad = EXCLUDED.severidad,
+             requiere_sesion = EXCLUDED.requiere_sesion,
+             status = 'validated',
+             updated_at = now()
+           RETURNING xmax = 0 AS inserted`,
+          [
+            input.codebase,
+            s.modulo,
+            s.spec_file,
+            s.spec_source,
+            s.source_sanitized_sha256,
+            s.invariante,
+            s.severidad,
+            s.requiere_sesion,
+            input.created_by_run_id,
+          ]
+        );
+        if (r.rows[0]?.inserted) ins += 1; else upd += 1;
+      }
+      return { inserted: ins, updated: upd };
+    }, /* tx */ true);
+  }
+
+  async upsertInformeIa(input: {
+    run_id: string;
+    project_id: string;
+    resumen: string;
+    modulos: unknown;
+  }): Promise<void> {
+    await this.run(async (c) => {
+      await c.query(
+        `INSERT INTO qa_center.informes_ia (run_id, project_id, resumen, modulos)
+         VALUES ($1, $2, $3, $4::jsonb)
+         ON CONFLICT (run_id) DO UPDATE SET
+           resumen = EXCLUDED.resumen,
+           modulos = EXCLUDED.modulos`,
+        [input.run_id, input.project_id, input.resumen, JSON.stringify(input.modulos ?? [])]
+      );
+    });
+  }
+
+  async latestInformeIa(projectId: string): Promise<{
+    run_id: string;
+    resumen: string;
+    modulos: unknown;
+    created_at: string;
+  } | null> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT run_id, resumen, modulos, created_at
+           FROM qa_center.informes_ia
+          WHERE project_id = $1
+          ORDER BY created_at DESC LIMIT 1`,
+        [projectId]
+      );
+      if (r.rowCount === 0) return null;
+      const row = r.rows[0] as Record<string, unknown>;
+      return {
+        run_id: row.run_id as string,
+        resumen: row.resumen as string,
+        modulos: row.modulos,
+        created_at: (row.created_at as Date).toISOString(),
+      };
+    });
+  }
 }

@@ -240,6 +240,75 @@ export interface QaRunsRepo {
     valor: boolean;
     actor_id: string | null;
   }): Promise<QaProject | null>;
+
+  // ── Analizar ERP (pipeline IA) ──────────────────────────────────────────
+
+  /** Persiste el output del discovery del runner. */
+  insertErpDiscovery(input: {
+    project_id: string;
+    run_id: string;
+    commit_sha: string | null;
+    codebase: string | null;
+    modulos: unknown;
+    totales: unknown;
+  }): Promise<{ id: string }>;
+
+  /** Último discovery del proyecto (para mostrar en el panel). */
+  latestErpDiscovery(projectId: string): Promise<{
+    id: string;
+    run_id: string | null;
+    codebase: string | null;
+    modulos: unknown;
+    totales: unknown;
+    created_at: string;
+  } | null>;
+
+  /** Inserta uso de API de LLM para control de costos. */
+  insertAiUsage(input: {
+    run_id: string;
+    step: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
+    cost_usd: number;
+    status: "ok" | "skipped_budget" | "error";
+    error_message: string | null;
+  }): Promise<void>;
+
+  /** Suma del costo USD por run para mostrar en el panel. */
+  sumAiCostForRun(runId: string): Promise<number>;
+
+  /** Persiste specs generados por IA + sanitizados para reuso cross-ERP. */
+  upsertGeneratedSpecs(input: {
+    codebase: string;
+    created_by_run_id: string;
+    specs: Array<{
+      modulo: string;
+      spec_file: string;
+      spec_source: string;
+      source_sanitized_sha256: string;
+      invariante: string;
+      severidad: string;
+      requiere_sesion: boolean;
+    }>;
+  }): Promise<{ inserted: number; updated: number }>;
+
+  /** Guarda el informe humano del run. */
+  upsertInformeIa(input: {
+    run_id: string;
+    project_id: string;
+    resumen: string;
+    modulos: unknown;
+  }): Promise<void>;
+
+  latestInformeIa(projectId: string): Promise<{
+    run_id: string;
+    resumen: string;
+    modulos: unknown;
+    created_at: string;
+  } | null>;
 }
 
 export type QaFindingSeverity = "blocker" | "critical" | "major" | "minor" | "info";

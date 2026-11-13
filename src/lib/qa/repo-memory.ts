@@ -255,4 +255,45 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
     (this as unknown as { projects: Map<string, QaProject> }).projects?.set?.(input.project_id, next);
     return next;
   }
+
+  // ── Pipeline IA ───────────────────────────────────────────────────────
+  insertedDiscoveries: Array<{ project_id: string; run_id: string; modulos: unknown; totales: unknown }> = [];
+  insertedUsage: Array<{ run_id: string; step: string; cost_usd: number; status: string }> = [];
+  insertedGeneratedSpecs: Array<{ codebase: string; spec_file: string; invariante: string }> = [];
+  insertedInformes: Array<{ run_id: string; resumen: string }> = [];
+
+  async insertErpDiscovery(input: Parameters<QaRunsRepo["insertErpDiscovery"]>[0]): Promise<{ id: string }> {
+    this.insertedDiscoveries.push({ project_id: input.project_id, run_id: input.run_id, modulos: input.modulos, totales: input.totales });
+    return { id: `discov-${this.insertedDiscoveries.length}` };
+  }
+  async latestErpDiscovery(projectId: string): Promise<{
+    id: string; run_id: string | null; codebase: string | null; modulos: unknown; totales: unknown; created_at: string;
+  } | null> {
+    const found = [...this.insertedDiscoveries].reverse().find((d) => d.project_id === projectId);
+    if (!found) return null;
+    return { id: "mem", run_id: found.run_id, codebase: null, modulos: found.modulos, totales: found.totales, created_at: new Date().toISOString() };
+  }
+  async insertAiUsage(input: Parameters<QaRunsRepo["insertAiUsage"]>[0]): Promise<void> {
+    this.insertedUsage.push({ run_id: input.run_id, step: input.step, cost_usd: input.cost_usd, status: input.status });
+  }
+  async sumAiCostForRun(runId: string): Promise<number> {
+    return this.insertedUsage.filter((u) => u.run_id === runId).reduce((n, u) => n + u.cost_usd, 0);
+  }
+  async upsertGeneratedSpecs(input: Parameters<QaRunsRepo["upsertGeneratedSpecs"]>[0]): Promise<{ inserted: number; updated: number }> {
+    let ins = 0, upd = 0;
+    for (const s of input.specs) {
+      const existing = this.insertedGeneratedSpecs.find((x) => x.codebase === input.codebase && x.spec_file === s.spec_file);
+      if (existing) upd += 1;
+      else { this.insertedGeneratedSpecs.push({ codebase: input.codebase, spec_file: s.spec_file, invariante: s.invariante }); ins += 1; }
+    }
+    return { inserted: ins, updated: upd };
+  }
+  async upsertInformeIa(input: Parameters<QaRunsRepo["upsertInformeIa"]>[0]): Promise<void> {
+    this.insertedInformes.push({ run_id: input.run_id, resumen: input.resumen });
+  }
+  async latestInformeIa(_projectId: string): Promise<{ run_id: string; resumen: string; modulos: unknown; created_at: string } | null> {
+    if (this.insertedInformes.length === 0) return null;
+    const last = this.insertedInformes[this.insertedInformes.length - 1];
+    return { run_id: last.run_id, resumen: last.resumen, modulos: [], created_at: new Date().toISOString() };
+  }
 }

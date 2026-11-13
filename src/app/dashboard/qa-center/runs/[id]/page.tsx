@@ -54,14 +54,14 @@ export default async function QaRunDetailPage({ params }: { params: Promise<Para
       <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="run-stats">
         <Stat label="Estado"><StatusBadge status={run.status} /></Stat>
         <Stat label="Duración">{run.duration_ms != null ? `${run.duration_ms} ms` : "—"}</Stat>
-        <Stat label="Target">{run.target_base_url}</Stat>
-        <Stat label="env_assert">
-          {run.env_assert_passed === null ? "—" : run.env_assert_passed ? "✓ passed" : "✗ failed"}
+        <Stat label="Entorno probado">{run.target_base_url}</Stat>
+        <Stat label="Verificación de entorno">
+          {run.env_assert_passed === null ? "—" : run.env_assert_passed ? "✓ válida" : "✗ falló"}
         </Stat>
-        <Stat label="Passed">{run.totals.passed}</Stat>
-        <Stat label="Failed">{run.totals.failed}</Stat>
-        <Stat label="Skipped">{run.totals.skipped}</Stat>
-        <Stat label="Flaky">{run.totals.flaky}</Stat>
+        <Stat label="Pasaron">{run.totals.passed}</Stat>
+        <Stat label="Fallaron">{run.totals.failed}</Stat>
+        <Stat label="Omitidas">{run.totals.skipped}</Stat>
+        <Stat label="Inestables">{run.totals.flaky}</Stat>
       </section>
 
       {run.summary && (
@@ -115,19 +115,19 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    queued: "bg-slate-100 text-slate-700",
-    running: "bg-blue-100 text-blue-700",
-    passed: "bg-emerald-100 text-emerald-700",
-    failed: "bg-rose-100 text-rose-700",
-    aborted: "bg-amber-100 text-amber-700",
-    error: "bg-red-100 text-red-700",
-    skipped: "bg-slate-100 text-slate-500",
-    flaky: "bg-amber-100 text-amber-800",
-    timed_out: "bg-rose-100 text-rose-700",
+  const map: Record<string, { cls: string; label: string }> = {
+    queued:    { cls: "bg-slate-100 text-slate-700",     label: "en cola" },
+    running:   { cls: "bg-blue-100 text-blue-700",       label: "ejecutando" },
+    passed:    { cls: "bg-emerald-100 text-emerald-700", label: "pasó" },
+    failed:    { cls: "bg-rose-100 text-rose-700",       label: "falló" },
+    aborted:   { cls: "bg-amber-100 text-amber-700",     label: "abortado" },
+    error:     { cls: "bg-red-100 text-red-700",         label: "error" },
+    skipped:   { cls: "bg-slate-100 text-slate-500",     label: "omitida" },
+    flaky:     { cls: "bg-amber-100 text-amber-800",     label: "inestable" },
+    timed_out: { cls: "bg-rose-100 text-rose-700",       label: "tiempo excedido" },
   };
-  const cls = map[status] ?? "bg-slate-100 text-slate-700";
-  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
+  const entry = map[status] ?? { cls: "bg-slate-100 text-slate-700", label: status };
+  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${entry.cls}`}>{entry.label}</span>;
 }
 
 function ErrorPane({ title, detail }: { title: string; detail: string }) {

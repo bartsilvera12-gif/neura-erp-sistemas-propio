@@ -104,7 +104,7 @@ export default function QaCenterPanel({ projects, runs, findings }: Props) {
         {runs.data.length === 0 ? (
           <EmptyState
             title="Sin ejecuciones todavía"
-            hint='Cargá un proyecto + suite y ejecutá con "Ejecutar QA".'
+            hint='Cargá un proyecto + suite y ejecutá con "Ejecutar pruebas".'
           />
         ) : (
           <ul className="divide-y rounded-lg border bg-white" data-testid="lista-runs">
@@ -117,7 +117,7 @@ export default function QaCenterPanel({ projects, runs, findings }: Props) {
                   {r.id.slice(0, 8)}
                 </Link>
                 <span><StatusBadge status={r.status} /></span>
-                <span className="text-slate-600">{r.trigger}</span>
+                <span className="text-slate-600">{traducirTrigger(r.trigger)}</span>
                 <span className="text-slate-600">{r.duration_ms != null ? `${r.duration_ms} ms` : "—"}</span>
                 <span className="text-xs text-slate-400">
                   {new Date(r.created_at).toLocaleString("es-PY")}
@@ -173,16 +173,26 @@ function EmptyState({ title, hint }: { title: string; hint: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    queued: "bg-slate-100 text-slate-700",
-    running: "bg-blue-100 text-blue-700",
-    passed: "bg-emerald-100 text-emerald-700",
-    failed: "bg-rose-100 text-rose-700",
-    aborted: "bg-amber-100 text-amber-700",
-    error: "bg-red-100 text-red-700",
+  const map: Record<string, { cls: string; label: string }> = {
+    queued:  { cls: "bg-slate-100 text-slate-700",     label: "en cola" },
+    running: { cls: "bg-blue-100 text-blue-700",       label: "ejecutando" },
+    passed:  { cls: "bg-emerald-100 text-emerald-700", label: "pasó" },
+    failed:  { cls: "bg-rose-100 text-rose-700",       label: "falló" },
+    aborted: { cls: "bg-amber-100 text-amber-700",     label: "abortado" },
+    error:   { cls: "bg-red-100 text-red-700",         label: "error" },
   };
-  const cls = map[status] ?? "bg-slate-100 text-slate-700";
-  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${cls}`}>{status}</span>;
+  const entry = map[status] ?? { cls: "bg-slate-100 text-slate-700", label: status };
+  return <span className={`rounded px-2 py-0.5 text-xs font-medium ${entry.cls}`}>{entry.label}</span>;
+}
+
+function traducirTrigger(trigger: string): string {
+  const map: Record<string, string> = {
+    manual: "manual",
+    webhook_pr: "por PR (webhook)",
+    cron: "programada",
+    retry: "reintento",
+  };
+  return map[trigger] ?? trigger;
 }
 
 function MigrationPendingBanner({

@@ -89,7 +89,7 @@ export default function EjecutarQaButton({ projects, disabled }: Props) {
         className="rounded bg-slate-200 px-3 py-1 text-xs text-slate-500"
         title="Cargá al menos un proyecto para habilitar"
       >
-        Ejecutar QA
+        Ejecutar pruebas
       </button>
     );
   }
@@ -101,12 +101,12 @@ export default function EjecutarQaButton({ projects, disabled }: Props) {
         data-testid="btn-ejecutar-qa"
         className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700"
       >
-        Ejecutar QA
+        Ejecutar pruebas
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="dlg-ejecutar">
           <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-lg">
-            <h3 className="mb-3 text-lg font-semibold">Encolar nuevo run</h3>
+            <h3 className="mb-3 text-lg font-semibold">Encolar nueva ejecución</h3>
 
             <label className="mb-3 block text-sm">
               <span className="text-slate-600">Proyecto</span>
@@ -125,7 +125,7 @@ export default function EjecutarQaButton({ projects, disabled }: Props) {
             </label>
 
             <label className="mb-3 block text-sm">
-              <span className="text-slate-600">Suite</span>
+              <span className="text-slate-600">Suite de pruebas</span>
               <select
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1 disabled:bg-slate-100"
                 data-testid="sel-suite"
@@ -137,7 +137,7 @@ export default function EjecutarQaButton({ projects, disabled }: Props) {
                 {!suitesLoading && suites.length === 0 && <option value="">Sin suites habilitadas</option>}
                 {suites.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.slug}) · {s.specs.length} spec{s.specs.length === 1 ? "" : "s"}
+                    {s.name} · {s.specs.length} prueba{s.specs.length === 1 ? "" : "s"}
                   </option>
                 ))}
               </select>
@@ -173,7 +173,7 @@ export default function EjecutarQaButton({ projects, disabled }: Props) {
                 data-testid="btn-encolar"
                 className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
               >
-                {busy ? "Encolando…" : "Encolar"}
+                {busy ? "Encolando…" : "Ejecutar"}
               </button>
             </div>
           </div>

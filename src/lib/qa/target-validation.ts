@@ -58,8 +58,11 @@ export function validateSpecs(specs: unknown): { ok: true; specs: string[] } | {
       continue;
     }
     const t = s.trim();
-    // Sin separadores de path ni rutas relativas; sólo nombre de archivo spec.
-    if (!/^[A-Za-z0-9_\-.]+\.spec\.ts$/.test(t)) {
+    // Nombre de archivo spec, opcionalmente dentro de subcarpetas simples
+    // ("funcional/ventas.spec.ts"). Prohibido: '..', rutas absolutas, '\\'.
+    const okFormat = /^(?:[A-Za-z0-9_\-]+\/)*[A-Za-z0-9_\-.]+\.spec\.ts$/.test(t);
+    const noTraversal = !t.includes("..") && !t.startsWith("/") && !t.includes("\\");
+    if (!okFormat || !noTraversal) {
       bad.push(t);
       continue;
     }

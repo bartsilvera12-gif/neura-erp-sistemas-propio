@@ -37,6 +37,8 @@ export const CODEBASE_POR_SLUG: Readonly<Record<string, CodebaseProyecto>> = {
   "demo-fake-app": "fake-app",
   // ERPs de cliente del codebase neura-erp:
   "erp-roldan-pendiente-entrega": "erp-neura",
+  // Fixture aislada para verificar runner end-to-end:
+  "qa-fixture-app": "erp-neura",
 };
 
 export function codebaseDeProyecto(p: { slug: string }): CodebaseProyecto {

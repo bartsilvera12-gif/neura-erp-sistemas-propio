@@ -62,26 +62,39 @@ export async function POST(request: Request) {
     safety_level === "static_analysis" || safety_level === "discovery"
       ? resolverRepoUrlProyecto(project.slug, project.repo_url ?? null)
       : null;
-  const codebase = codebaseDeProyecto({ slug: project.slug, target_base_url: project.target_base_url });
+  const codebase = codebaseDeProyecto({ slug: project.slug });
   // El runner saltea env-assert sólo para authenticated_read_only cuando el
   // admin del proyecto lo autorizó. El flag llega desde la DB del proyecto.
   const skip_env_assert =
     safety_level === "authenticated_read_only" &&
     project.permite_lectura_sin_env_assert === true;
 
+  // Para discovery conservamos target_base_url: el runner necesita conocer el
+  // dominio real para ejecutar los specs IA generados. La ejecución sólo se
+  // dispara si (a) permite_lectura_sin_env_assert=true, o (b) env-assert
+  // responde con lectura_autenticada_safe. En ambos casos el runner aplica
+  // el sandbox network-intercept que confina al host del baseUrl.
+  const target_base_url_final =
+    safety_level === "static_analysis" ? "" : run.target_base_url;
+
+  // Para discovery permitimos skip_env_assert cuando el admin lo autorizó.
+  const skip_env_assert_final =
+    (safety_level === "authenticated_read_only" ||
+      safety_level === "discovery") &&
+    project.permite_lectura_sin_env_assert === true
+      ? true
+      : skip_env_assert;
+
   const flat = {
     job_id: job.id,
     run_id: run.id,
     project_id: run.project_id,
     suite_slug: suite.slug,
-    target_base_url:
-      safety_level === "static_analysis" || safety_level === "discovery"
-        ? ""
-        : run.target_base_url,
+    target_base_url: target_base_url_final,
     target_env: run.target_env,
     mode,
     safety_level,
-    skip_env_assert,
+    skip_env_assert: skip_env_assert_final,
     ...(repo_url ? { repo_url, repo_branch: project.default_branch ?? "main" } : {}),
     codebase,
     specs: suite.specs,

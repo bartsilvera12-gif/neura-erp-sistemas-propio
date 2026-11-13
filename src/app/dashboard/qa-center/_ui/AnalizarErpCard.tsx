@@ -2,11 +2,14 @@
 
 /**
  * Card principal del proyecto: botón único "Analizar ERP completo".
- * Debajo: últimos resultados IA y costo acumulado. La sección manual queda
- * colapsada como "Avanzado".
+ * Debajo: prerrequisitos, cobertura por módulo del último análisis e informe
+ * en español sencillo. La sección manual queda colapsada como "Avanzado".
  */
 
 import { useState } from "react";
+import PrerequisitosChecklist from "./PrerequisitosChecklist";
+import CoberturaIAViewer, { type CoberturaModulo } from "./CoberturaIAViewer";
+import InformeIaViewer from "./InformeIaViewer";
 
 type DiscoveryResumen = {
   created_at: string;
@@ -15,7 +18,18 @@ type DiscoveryResumen = {
 };
 type InformeResumen = {
   resumen: string;
-  modulos: Array<{ nombre: string; funciona_bien?: string[]; fallas?: Array<{ funcion_revisada?: string; recomendacion?: string }> }>;
+  modulos: Array<{
+    nombre: string;
+    funciona_bien?: string[];
+    fallas?: Array<{
+      funcion_revisada?: string;
+      resultado_esperado?: string;
+      resultado_obtenido?: string;
+      recomendacion?: string;
+    }>;
+    pendientes?: Array<{ funcion_revisada?: string; motivo?: string }>;
+  }>;
+  parcial?: boolean;
   created_at: string;
 };
 
@@ -26,6 +40,10 @@ export type AnalizarErpCardProps = {
   lastDiscovery: DiscoveryResumen | null;
   lastInforme: InformeResumen | null;
   totalCostUsd: number;
+  cobertura: CoberturaModulo[];
+  togglePermiteLectura: boolean;
+  anthropicConfigured: boolean | null;
+  credencialesRoRunnerConfigured: boolean | null;
 };
 
 export default function AnalizarErpCard(props: AnalizarErpCardProps) {
@@ -71,8 +89,8 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
           </h3>
           <p className="mt-1 text-xs text-slate-600">
             Cloná el repositorio, descubrimos los módulos, interpretamos las reglas
-            de negocio y preparamos pruebas funcionales de lectura. Sin modificar
-            el ERP ni enviar mensajes.
+            de negocio, generamos y ejecutamos pruebas funcionales de lectura, y
+            emitimos un informe en español. Sin modificar el ERP ni enviar mensajes.
           </p>
         </div>
         <button
@@ -103,36 +121,26 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
         <div className="rounded border bg-white p-2">
           <p className="text-slate-500">Costo acumulado (IA)</p>
           <p className="mt-0.5 font-medium text-slate-800">
-            USD {props.totalCostUsd.toFixed(4)}
+            USD {props.totalCostUsd.toFixed(4)} <span className="text-slate-500">/ límite USD 2.00 por corrida</span>
           </p>
         </div>
       </div>
 
+      <PrerequisitosChecklist
+        togglePermiteLectura={props.togglePermiteLectura}
+        anthropicConfigured={props.anthropicConfigured}
+        credencialesRoRunnerConfigured={props.credencialesRoRunnerConfigured}
+      />
+
+      <CoberturaIAViewer cobertura={props.cobertura} />
+
       {props.lastInforme && (
-        <div className="mt-3 rounded border bg-white p-3">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Último informe IA</p>
-          <p className="mt-1 text-sm text-slate-800">{props.lastInforme.resumen}</p>
-          {Array.isArray(props.lastInforme.modulos) && props.lastInforme.modulos.length > 0 && (
-            <ul className="mt-2 space-y-2 text-xs">
-              {props.lastInforme.modulos.slice(0, 6).map((m, i) => (
-                <li key={i} className="rounded bg-slate-50 p-2">
-                  <p className="font-semibold text-slate-700">{m.nombre}</p>
-                  {Array.isArray(m.funciona_bien) && m.funciona_bien.length > 0 && (
-                    <p className="text-emerald-700">
-                      ✓ Funciona: {m.funciona_bien.slice(0, 2).join(" · ")}
-                    </p>
-                  )}
-                  {Array.isArray(m.fallas) && m.fallas.length > 0 && (
-                    <p className="text-rose-700">
-                      ✗ {m.fallas.length} hallazgo(s)
-                      {m.fallas[0]?.recomendacion ? ` — ${m.fallas[0].recomendacion}` : ""}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <InformeIaViewer
+          resumen={props.lastInforme.resumen}
+          modulos={props.lastInforme.modulos}
+          parcial={props.lastInforme.parcial}
+          createdAt={props.lastInforme.created_at}
+        />
       )}
     </div>
   );

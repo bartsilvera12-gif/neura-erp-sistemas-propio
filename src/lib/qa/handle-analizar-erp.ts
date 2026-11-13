@@ -58,7 +58,7 @@ export async function handleAnalizarErp(
       },
     };
   }
-  const codebase = codebaseDeProyecto({ slug: project.slug, target_base_url: project.target_base_url });
+  const codebase = codebaseDeProyecto({ slug: project.slug });
 
   const suiteSlug = `ai-discovery-${project.slug}`;
   let suites = await input.repo.listSuitesForProject(project.id);

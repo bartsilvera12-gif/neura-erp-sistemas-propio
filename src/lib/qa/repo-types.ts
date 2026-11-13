@@ -309,6 +309,48 @@ export interface QaRunsRepo {
     modulos: unknown;
     created_at: string;
   } | null>;
+
+  /**
+   * Lista los specs IA validados para un codebase (para que el runner los
+   * ejecute). Sólo retorna specs con status='validated' y estado_ejecucion
+   * distinto de blocked_safety.
+   */
+  listGeneratedSpecsForCodebase(codebase: string): Promise<Array<{
+    id: string;
+    codebase: string;
+    modulo: string;
+    spec_file: string;
+    spec_source: string;
+    source_sanitized_sha256: string;
+    invariante: string;
+    severidad: string;
+    requiere_sesion: boolean;
+    estado_ejecucion: string;
+  }>>;
+
+  /**
+   * Actualiza el ciclo de ejecución de un spec IA tras una corrida.
+   * Admite estados: pending, executed_pass, executed_fail, executed_error,
+   * blocked_env_assert, blocked_safety.
+   */
+  updateGeneratedSpecEstado(input: {
+    codebase: string;
+    spec_file: string;
+    estado: "pending" | "executed_pass" | "executed_fail" | "executed_error" | "blocked_env_assert" | "blocked_safety";
+    run_id: string | null;
+    error_message?: string | null;
+  }): Promise<void>;
+
+  /** Cobertura actual por módulo para un codebase (para la UI). */
+  coberturaPorModuloParaCodebase(codebase: string): Promise<Array<{
+    modulo: string;
+    pending: number;
+    executed_pass: number;
+    executed_fail: number;
+    executed_error: number;
+    blocked_env_assert: number;
+    blocked_safety: number;
+  }>>;
 }
 
 export type QaFindingSeverity = "blocker" | "critical" | "major" | "minor" | "info";

@@ -668,7 +668,9 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
          VALUES ($1, 'set_permite_lectura_sin_env_assert', 'project', $2, $3::jsonb)`,
         [input.actor_id ?? "system", input.project_id, JSON.stringify({ valor: input.valor })]
       );
-      return { ...asProject(row), permite_lectura_sin_env_assert: row.permite_lectura_sin_env_assert === true };
+      const proj = asProject(row);
+      if (!proj) return null;
+      return { ...proj, permite_lectura_sin_env_assert: row.permite_lectura_sin_env_assert === true };
     }, /* tx = */ true);
   }
 
@@ -841,6 +843,101 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
            modulos = EXCLUDED.modulos`,
         [input.run_id, input.project_id, input.resumen, JSON.stringify(input.modulos ?? [])]
       );
+    });
+  }
+
+  async listGeneratedSpecsForCodebase(codebase: string): Promise<Array<{
+    id: string;
+    codebase: string;
+    modulo: string;
+    spec_file: string;
+    spec_source: string;
+    source_sanitized_sha256: string;
+    invariante: string;
+    severidad: string;
+    requiere_sesion: boolean;
+    estado_ejecucion: string;
+  }>> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT id, codebase, modulo, spec_file, spec_source, source_sanitized_sha256,
+                invariante, severidad, requiere_sesion, estado_ejecucion
+           FROM qa_center.generated_specs
+          WHERE codebase = $1
+            AND status = 'validated'
+            AND estado_ejecucion <> 'blocked_safety'
+          ORDER BY modulo, spec_file`,
+        [codebase]
+      );
+      return r.rows.map((row: Record<string, unknown>) => ({
+        id: String(row.id),
+        codebase: String(row.codebase),
+        modulo: String(row.modulo),
+        spec_file: String(row.spec_file),
+        spec_source: String(row.spec_source),
+        source_sanitized_sha256: String(row.source_sanitized_sha256),
+        invariante: String(row.invariante),
+        severidad: String(row.severidad),
+        requiere_sesion: Boolean(row.requiere_sesion),
+        estado_ejecucion: String(row.estado_ejecucion),
+      }));
+    });
+  }
+
+  async updateGeneratedSpecEstado(input: {
+    codebase: string;
+    spec_file: string;
+    estado: "pending" | "executed_pass" | "executed_fail" | "executed_error" | "blocked_env_assert" | "blocked_safety";
+    run_id: string | null;
+    error_message?: string | null;
+  }): Promise<void> {
+    await this.run(async (c) => {
+      await c.query(
+        `UPDATE qa_center.generated_specs
+            SET estado_ejecucion = $3,
+                last_run_id = $4,
+                last_executed_at = now(),
+                last_error = $5,
+                updated_at = now()
+          WHERE codebase = $1 AND spec_file = $2`,
+        [input.codebase, input.spec_file, input.estado, input.run_id, input.error_message ?? null]
+      );
+    });
+  }
+
+  async coberturaPorModuloParaCodebase(codebase: string): Promise<Array<{
+    modulo: string;
+    pending: number;
+    executed_pass: number;
+    executed_fail: number;
+    executed_error: number;
+    blocked_env_assert: number;
+    blocked_safety: number;
+  }>> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `SELECT modulo,
+                SUM((estado_ejecucion='pending')::int)            AS pending,
+                SUM((estado_ejecucion='executed_pass')::int)      AS executed_pass,
+                SUM((estado_ejecucion='executed_fail')::int)      AS executed_fail,
+                SUM((estado_ejecucion='executed_error')::int)     AS executed_error,
+                SUM((estado_ejecucion='blocked_env_assert')::int) AS blocked_env_assert,
+                SUM((estado_ejecucion='blocked_safety')::int)     AS blocked_safety
+           FROM qa_center.generated_specs
+          WHERE codebase = $1
+          GROUP BY modulo
+          ORDER BY modulo`,
+        [codebase]
+      );
+      return r.rows.map((row: Record<string, unknown>) => ({
+        modulo: String(row.modulo),
+        pending: Number(row.pending ?? 0),
+        executed_pass: Number(row.executed_pass ?? 0),
+        executed_fail: Number(row.executed_fail ?? 0),
+        executed_error: Number(row.executed_error ?? 0),
+        blocked_env_assert: Number(row.blocked_env_assert ?? 0),
+        blocked_safety: Number(row.blocked_safety ?? 0),
+      }));
     });
   }
 

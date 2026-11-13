@@ -257,4 +257,43 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
   async entregarProyecto(_input: Parameters<QaRunsRepo["entregarProyecto"]>[0]): ReturnType<QaRunsRepo["entregarProyecto"]> {
     throw new Error("SupabaseQaRunsRepo.entregarProyecto no implementado — usar PostgresQaRunsRepo");
   }
+
+  // ── Stubs: todos los métodos que agrega la interfaz y que SupabaseQaRunsRepo
+  //    no cubre por diseño (sólo PostgresQaRunsRepo los implementa). ──
+  async insertFindings(_input: Parameters<QaRunsRepo["insertFindings"]>[0]): ReturnType<QaRunsRepo["insertFindings"]> {
+    throw new Error("SupabaseQaRunsRepo.insertFindings no implementado — usar PostgresQaRunsRepo");
+  }
+  async setPermiteLecturaSinEnvAssert(_input: Parameters<QaRunsRepo["setPermiteLecturaSinEnvAssert"]>[0]): ReturnType<QaRunsRepo["setPermiteLecturaSinEnvAssert"]> {
+    throw new Error("SupabaseQaRunsRepo.setPermiteLecturaSinEnvAssert no implementado — usar PostgresQaRunsRepo");
+  }
+  async insertErpDiscovery(_input: Parameters<QaRunsRepo["insertErpDiscovery"]>[0]): ReturnType<QaRunsRepo["insertErpDiscovery"]> {
+    throw new Error("SupabaseQaRunsRepo.insertErpDiscovery no implementado — usar PostgresQaRunsRepo");
+  }
+  async latestErpDiscovery(_projectId: string): ReturnType<QaRunsRepo["latestErpDiscovery"]> {
+    return null;
+  }
+  async insertAiUsage(_input: Parameters<QaRunsRepo["insertAiUsage"]>[0]): ReturnType<QaRunsRepo["insertAiUsage"]> {
+    throw new Error("SupabaseQaRunsRepo.insertAiUsage no implementado — usar PostgresQaRunsRepo");
+  }
+  async sumAiCostForRun(_runId: string): Promise<number> {
+    return 0;
+  }
+  async upsertGeneratedSpecs(_input: Parameters<QaRunsRepo["upsertGeneratedSpecs"]>[0]): ReturnType<QaRunsRepo["upsertGeneratedSpecs"]> {
+    throw new Error("SupabaseQaRunsRepo.upsertGeneratedSpecs no implementado — usar PostgresQaRunsRepo");
+  }
+  async upsertInformeIa(_input: Parameters<QaRunsRepo["upsertInformeIa"]>[0]): ReturnType<QaRunsRepo["upsertInformeIa"]> {
+    throw new Error("SupabaseQaRunsRepo.upsertInformeIa no implementado — usar PostgresQaRunsRepo");
+  }
+  async latestInformeIa(_projectId: string): ReturnType<QaRunsRepo["latestInformeIa"]> {
+    return null;
+  }
+  async listGeneratedSpecsForCodebase(_codebase: string): ReturnType<QaRunsRepo["listGeneratedSpecsForCodebase"]> {
+    return [];
+  }
+  async updateGeneratedSpecEstado(_input: Parameters<QaRunsRepo["updateGeneratedSpecEstado"]>[0]): ReturnType<QaRunsRepo["updateGeneratedSpecEstado"]> {
+    throw new Error("SupabaseQaRunsRepo.updateGeneratedSpecEstado no implementado — usar PostgresQaRunsRepo");
+  }
+  async coberturaPorModuloParaCodebase(_codebase: string): ReturnType<QaRunsRepo["coberturaPorModuloParaCodebase"]> {
+    return [];
+  }
 }

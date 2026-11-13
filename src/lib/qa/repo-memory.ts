@@ -259,8 +259,13 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
   // ── Pipeline IA ───────────────────────────────────────────────────────
   insertedDiscoveries: Array<{ project_id: string; run_id: string; modulos: unknown; totales: unknown }> = [];
   insertedUsage: Array<{ run_id: string; step: string; cost_usd: number; status: string }> = [];
-  insertedGeneratedSpecs: Array<{ codebase: string; spec_file: string; invariante: string }> = [];
-  insertedInformes: Array<{ run_id: string; resumen: string }> = [];
+  insertedGeneratedSpecs: Array<{
+    codebase: string; modulo: string; spec_file: string; spec_source: string;
+    source_sanitized_sha256: string; invariante: string; severidad: string;
+    requiere_sesion: boolean; estado_ejecucion: string;
+    last_run_id: string | null; last_error: string | null;
+  }> = [];
+  insertedInformes: Array<{ run_id: string; resumen: string; modulos: unknown }> = [];
 
   async insertErpDiscovery(input: Parameters<QaRunsRepo["insertErpDiscovery"]>[0]): Promise<{ id: string }> {
     this.insertedDiscoveries.push({ project_id: input.project_id, run_id: input.run_id, modulos: input.modulos, totales: input.totales });
@@ -283,17 +288,104 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
     let ins = 0, upd = 0;
     for (const s of input.specs) {
       const existing = this.insertedGeneratedSpecs.find((x) => x.codebase === input.codebase && x.spec_file === s.spec_file);
-      if (existing) upd += 1;
-      else { this.insertedGeneratedSpecs.push({ codebase: input.codebase, spec_file: s.spec_file, invariante: s.invariante }); ins += 1; }
+      if (existing) {
+        existing.modulo = s.modulo;
+        existing.spec_source = s.spec_source;
+        existing.source_sanitized_sha256 = s.source_sanitized_sha256;
+        existing.invariante = s.invariante;
+        existing.severidad = s.severidad;
+        existing.requiere_sesion = s.requiere_sesion;
+        upd += 1;
+      } else {
+        this.insertedGeneratedSpecs.push({
+          codebase: input.codebase,
+          modulo: s.modulo,
+          spec_file: s.spec_file,
+          spec_source: s.spec_source,
+          source_sanitized_sha256: s.source_sanitized_sha256,
+          invariante: s.invariante,
+          severidad: s.severidad,
+          requiere_sesion: s.requiere_sesion,
+          estado_ejecucion: "pending",
+          last_run_id: null,
+          last_error: null,
+        });
+        ins += 1;
+      }
     }
     return { inserted: ins, updated: upd };
   }
-  async upsertInformeIa(input: Parameters<QaRunsRepo["upsertInformeIa"]>[0]): Promise<void> {
-    this.insertedInformes.push({ run_id: input.run_id, resumen: input.resumen });
+
+  async listGeneratedSpecsForCodebase(codebase: string): Promise<Array<{
+    id: string; codebase: string; modulo: string; spec_file: string; spec_source: string;
+    source_sanitized_sha256: string; invariante: string; severidad: string; requiere_sesion: boolean;
+    estado_ejecucion: string;
+  }>> {
+    return this.insertedGeneratedSpecs
+      .filter((x) => x.codebase === codebase && x.estado_ejecucion !== "blocked_safety")
+      .map((x, i) => ({
+        id: `gen-${i}`,
+        codebase: x.codebase,
+        modulo: x.modulo,
+        spec_file: x.spec_file,
+        spec_source: x.spec_source,
+        source_sanitized_sha256: x.source_sanitized_sha256,
+        invariante: x.invariante,
+        severidad: x.severidad,
+        requiere_sesion: x.requiere_sesion,
+        estado_ejecucion: x.estado_ejecucion,
+      }));
   }
+
+  async updateGeneratedSpecEstado(input: {
+    codebase: string; spec_file: string;
+    estado: "pending" | "executed_pass" | "executed_fail" | "executed_error" | "blocked_env_assert" | "blocked_safety";
+    run_id: string | null; error_message?: string | null;
+  }): Promise<void> {
+    const found = this.insertedGeneratedSpecs.find((x) => x.codebase === input.codebase && x.spec_file === input.spec_file);
+    if (!found) return;
+    found.estado_ejecucion = input.estado;
+    found.last_run_id = input.run_id;
+    found.last_error = input.error_message ?? null;
+  }
+
+  async coberturaPorModuloParaCodebase(codebase: string): Promise<Array<{
+    modulo: string; pending: number; executed_pass: number; executed_fail: number;
+    executed_error: number; blocked_env_assert: number; blocked_safety: number;
+  }>> {
+    const porMod = new Map<string, {
+      modulo: string; pending: number; executed_pass: number; executed_fail: number;
+      executed_error: number; blocked_env_assert: number; blocked_safety: number;
+    }>();
+    for (const x of this.insertedGeneratedSpecs) {
+      if (x.codebase !== codebase) continue;
+      const cur = porMod.get(x.modulo) ?? {
+        modulo: x.modulo, pending: 0, executed_pass: 0, executed_fail: 0,
+        executed_error: 0, blocked_env_assert: 0, blocked_safety: 0,
+      };
+      // Type-safe increment (evitamos cast a Record<string, number> inseguro)
+      switch (x.estado_ejecucion) {
+        case "pending": cur.pending += 1; break;
+        case "executed_pass": cur.executed_pass += 1; break;
+        case "executed_fail": cur.executed_fail += 1; break;
+        case "executed_error": cur.executed_error += 1; break;
+        case "blocked_env_assert": cur.blocked_env_assert += 1; break;
+        case "blocked_safety": cur.blocked_safety += 1; break;
+      }
+      porMod.set(x.modulo, cur);
+    }
+    return [...porMod.values()].sort((a, b) => a.modulo.localeCompare(b.modulo));
+  }
+
+  async upsertInformeIa(input: Parameters<QaRunsRepo["upsertInformeIa"]>[0]): Promise<void> {
+    const existing = this.insertedInformes.find((x) => x.run_id === input.run_id);
+    if (existing) { existing.resumen = input.resumen; existing.modulos = input.modulos; }
+    else this.insertedInformes.push({ run_id: input.run_id, resumen: input.resumen, modulos: input.modulos });
+  }
+
   async latestInformeIa(_projectId: string): Promise<{ run_id: string; resumen: string; modulos: unknown; created_at: string } | null> {
     if (this.insertedInformes.length === 0) return null;
     const last = this.insertedInformes[this.insertedInformes.length - 1];
-    return { run_id: last.run_id, resumen: last.resumen, modulos: [], created_at: new Date().toISOString() };
+    return { run_id: last.run_id, resumen: last.resumen, modulos: last.modulos, created_at: new Date().toISOString() };
   }
 }

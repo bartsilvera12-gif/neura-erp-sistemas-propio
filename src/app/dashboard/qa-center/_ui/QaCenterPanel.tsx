@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { QaListResult, QaProjectRow, QaRunRow } from "@/lib/qa/db";
 import type { QaFindingRow } from "@/lib/qa/repo-types";
+import type { CoberturaModulo } from "./CoberturaIAViewer";
 import EjecutarQaButton from "./EjecutarQaButton";
 import NuevoProyectoDialog from "./NuevoProyectoDialog";
 import EditarProyectoDialog from "./EditarProyectoDialog";
@@ -21,13 +22,50 @@ import FindingsSection from "./FindingsSection";
 import PermiteLecturaToggle from "./PermiteLecturaToggle";
 import { AutorizarDialog, EntregarDialog, EstadoBadge } from "./EstadoProyectoDialogs";
 
+export type AiEstadoProyecto = {
+  projectId: string;
+  totalCostUsd: number;
+  cobertura: CoberturaModulo[];
+  lastDiscovery: {
+    created_at: string;
+    modulos: Array<{ nombre: string; totalRutas?: number }> | null;
+    totales: Record<string, number> | null;
+  } | null;
+  lastInforme: {
+    resumen: string;
+    modulos: Array<{
+      nombre: string;
+      funciona_bien?: string[];
+      fallas?: Array<{
+        funcion_revisada?: string;
+        resultado_esperado?: string;
+        resultado_obtenido?: string;
+        recomendacion?: string;
+      }>;
+      pendientes?: Array<{ funcion_revisada?: string; motivo?: string }>;
+    }>;
+    parcial?: boolean;
+    created_at: string;
+  } | null;
+};
+
 type Props = {
   projects: QaListResult<QaProjectRow>;
   runs: QaListResult<QaRunRow>;
   findings?: QaFindingRow[];
+  aiEstado?: Record<string, AiEstadoProyecto>;
+  anthropicConfigured?: boolean | null;
+  credencialesRoRunnerConfigured?: boolean | null;
 };
 
-export default function QaCenterPanel({ projects, runs, findings }: Props) {
+export default function QaCenterPanel({
+  projects,
+  runs,
+  findings,
+  aiEstado = {},
+  anthropicConfigured = null,
+  credencialesRoRunnerConfigured = null,
+}: Props) {
   const migrationPending =
     projects.migration_status !== "ready" || runs.migration_status !== "ready";
 
@@ -125,9 +163,13 @@ export default function QaCenterPanel({ projects, runs, findings }: Props) {
                   projectId={p.id}
                   projectSlug={p.slug}
                   projectName={p.name}
-                  lastDiscovery={null}
-                  lastInforme={null}
-                  totalCostUsd={0}
+                  lastDiscovery={aiEstado[p.id]?.lastDiscovery ?? null}
+                  lastInforme={aiEstado[p.id]?.lastInforme ?? null}
+                  totalCostUsd={aiEstado[p.id]?.totalCostUsd ?? 0}
+                  cobertura={aiEstado[p.id]?.cobertura ?? []}
+                  togglePermiteLectura={p.permite_lectura_sin_env_assert === true}
+                  anthropicConfigured={anthropicConfigured}
+                  credencialesRoRunnerConfigured={credencialesRoRunnerConfigured}
                 />
                 <SeccionAvanzado>
                   <SuitesSection

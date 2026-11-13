@@ -51,10 +51,29 @@ const discoverySchema = z.object({
       })
     )
     .default([]),
+  ejecucion_specs: z
+    .array(
+      z.object({
+        modulo: z.string(),
+        spec_file: z.string(),
+        estado: z.enum([
+          "pending",
+          "executed_pass",
+          "executed_fail",
+          "executed_error",
+          "blocked_env_assert",
+          "blocked_safety",
+        ]),
+        error_message: z.string().nullable(),
+        results: z.array(z.unknown()).default([]),
+      })
+    )
+    .default([]),
   informe: z
     .object({
       resumen: z.string(),
       modulos: z.array(z.unknown()),
+      parcial: z.boolean().optional(),
     })
     .optional()
     .nullable(),
@@ -117,6 +136,19 @@ export async function POST(request: Request) {
       });
     }
 
+    // Ciclo de ejecución de specs IA: actualiza estado por spec persistido.
+    if (p.codebase && p.ejecucion_specs.length > 0) {
+      for (const e of p.ejecucion_specs) {
+        await repo.updateGeneratedSpecEstado({
+          codebase: p.codebase,
+          spec_file: e.spec_file,
+          estado: e.estado,
+          run_id: p.run_id,
+          error_message: e.error_message,
+        });
+      }
+    }
+
     if (p.informe) {
       await repo.upsertInformeIa({
         run_id: p.run_id,
@@ -127,13 +159,18 @@ export async function POST(request: Request) {
     }
 
     const totalCost = await repo.sumAiCostForRun(p.run_id);
+    const cobertura = p.codebase
+      ? await repo.coberturaPorModuloParaCodebase(p.codebase)
+      : [];
 
     return NextResponse.json(
       {
         ok: true,
         modulos_descubiertos: p.discovery.modulos.length,
         specs_persistidos: specsResult,
+        specs_ejecutados: p.ejecucion_specs.length,
         total_cost_usd: totalCost,
+        cobertura,
       },
       { status: 201 }
     );

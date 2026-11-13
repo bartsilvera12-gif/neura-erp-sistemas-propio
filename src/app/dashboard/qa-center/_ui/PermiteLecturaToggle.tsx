@@ -37,8 +37,14 @@ export default function PermiteLecturaToggle({ projectId, initialValue, onChange
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permite_lectura_sin_env_assert: nuevo }),
       });
-      const body = (await res.json()) as { error?: string };
-      if (!res.ok) { setErr(body.error ?? `HTTP ${res.status}`); return; }
+      // Defensa contra respuesta sin body: leemos texto y parseamos con fallback.
+      const text = await res.text();
+      let body: { error?: string } = {};
+      try { body = text ? (JSON.parse(text) as { error?: string }) : {}; } catch { /* body no-json */ }
+      if (!res.ok) {
+        setErr(body.error ?? `HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`);
+        return;
+      }
       setValor(nuevo);
       onChange?.(nuevo);
     } catch (e) {

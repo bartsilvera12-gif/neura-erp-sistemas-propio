@@ -33,34 +33,42 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const auth = await assertQaCenterAccess(request);
-  if (!auth.ok) return auth.response;
-  const { id } = await context.params;
-  if (!UUID_RE.test(id)) {
-    return NextResponse.json({ error: "id debe ser UUID", code: "validation" }, { status: 400 });
+  // Wrapper total: cualquier excepción devuelve JSON con detalle para que la
+  // UI nunca reciba body vacío ("Unexpected end of JSON input").
+  try {
+    const auth = await assertQaCenterAccess(request);
+    if (!auth.ok) return auth.response;
+    const { id } = await context.params;
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ error: "id debe ser UUID", code: "validation" }, { status: 400 });
+    }
+
+    const raw = await request.json().catch(() => null);
+    const parsed = bodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "payload inválido", code: "validation", detail: parsed.error.message },
+        { status: 400 }
+      );
+    }
+
+    const repo = buildQaRepo();
+    if (!repo) return NextResponse.json({ error: "QA_DB_URL no configurada", code: "internal" }, { status: 500 });
+
+    const project = await repo.getProject(id);
+    if (!project) return NextResponse.json({ error: "proyecto no existe", code: "project_not_found" }, { status: 404 });
+
+    const updated = await repo.setPermiteLecturaSinEnvAssert({
+      project_id: id,
+      valor: parsed.data.permite_lectura_sin_env_assert,
+      actor_id: auth.user.id,
+    });
+    if (!updated) return NextResponse.json({ error: "no se pudo actualizar", code: "internal" }, { status: 500 });
+
+    return NextResponse.json({ project: updated }, { status: 200 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "error desconocido";
+    console.error("[qa-admin-project PATCH] error:", err);
+    return NextResponse.json({ error: msg, code: "internal_exception" }, { status: 500 });
   }
-
-  const raw = await request.json().catch(() => null);
-  const parsed = bodySchema.safeParse(raw);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "payload inválido", code: "validation", detail: parsed.error.message },
-      { status: 400 }
-    );
-  }
-
-  const repo = buildQaRepo();
-  if (!repo) return NextResponse.json({ error: "QA_DB_URL no configurada", code: "internal" }, { status: 500 });
-
-  const project = await repo.getProject(id);
-  if (!project) return NextResponse.json({ error: "proyecto no existe", code: "project_not_found" }, { status: 404 });
-
-  const updated = await repo.setPermiteLecturaSinEnvAssert({
-    project_id: id,
-    valor: parsed.data.permite_lectura_sin_env_assert,
-    actor_id: auth.user.id,
-  });
-  if (!updated) return NextResponse.json({ error: "no se pudo actualizar", code: "internal" }, { status: 500 });
-
-  return NextResponse.json({ project: updated }, { status: 200 });
 }

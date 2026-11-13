@@ -24,6 +24,7 @@ export type QaProject = {
   default_branch: string;
   estado_entrega: "en_desarrollo" | "en_qa" | "entregado";
   autorizacion_qa_hasta: string | null;
+  repo_url?: string | null;
 };
 
 export type QaSuite = {
@@ -201,6 +202,22 @@ export interface QaRunsRepo {
    * encolar ni ejecutar runs mientras esté en ese estado).
    */
   entregarProyecto(input: { project_id: string; usuario_id: string | null }): Promise<QaProject | null>;
+
+  /**
+   * Inserta un lote de findings (una fila por hallazgo). Reusable para la
+   * auditoría estática: el runner emite findings tras clonar el repo.
+   * `description` completa debe incluir file:line y evidencia; el handler
+   * las compone a partir del payload.
+   */
+  insertFindings(input: {
+    run_id: string;
+    project_id: string;
+    findings: Array<{
+      title: string;
+      description: string;
+      severity: QaFindingSeverity;
+    }>;
+  }): Promise<{ inserted: number }>;
 }
 
 export type QaFindingSeverity = "blocker" | "critical" | "major" | "minor" | "info";

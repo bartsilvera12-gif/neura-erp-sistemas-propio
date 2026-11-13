@@ -213,4 +213,25 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
   async entregarProyecto(_input: Parameters<QaRunsRepo["entregarProyecto"]>[0]): ReturnType<QaRunsRepo["entregarProyecto"]> {
     throw new Error("InMemoryQaRunsRepo.entregarProyecto no implementado — usar PostgresQaRunsRepo");
   }
+
+  readonly insertedFindings: Array<{
+    run_id: string;
+    project_id: string;
+    title: string;
+    description: string;
+    severity: "blocker" | "critical" | "major" | "minor" | "info";
+  }> = [];
+
+  async insertFindings(input: Parameters<QaRunsRepo["insertFindings"]>[0]): ReturnType<QaRunsRepo["insertFindings"]> {
+    for (const f of input.findings) {
+      this.insertedFindings.push({
+        run_id: input.run_id,
+        project_id: input.project_id,
+        title: f.title,
+        description: f.description,
+        severity: f.severity,
+      });
+    }
+    return { inserted: input.findings.length };
+  }
 }

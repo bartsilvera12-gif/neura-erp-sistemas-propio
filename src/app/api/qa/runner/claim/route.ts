@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { authenticateRunner } from "@/lib/qa/runner-auth";
 import { handleClaim } from "@/lib/qa/handlers";
 import { buildQaNonceStore, buildQaRepo } from "@/lib/qa/route-helpers";
+import { nivelSeguridadDeSpecs, resolverRepoUrlProyecto } from "@/lib/qa/pruebas-catalogo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,29 +26,35 @@ export async function POST(request: Request) {
   }
   const result = await handleClaim({ runnerId: auth.runnerId, repo });
   if (result.body === null) return new NextResponse(null, { status: 204 });
-  // Guard explícito: handleClaim es `HandlerResult<ClaimedJob | null>` cuyo
-  // body puede ser también `{error, code, detail}` si se agrega una rama de
-  // error en el handler. Antes del destructure confirmamos que es el shape
-  // ClaimedJob — fail-closed: cualquier otra forma se pasa tal cual al runner.
   if (!result.ok || !("job" in result.body)) {
     return NextResponse.json(result.body, { status: result.status });
   }
 
-  // Adaptador al contrato wire del runner (flat). El handler devuelve
-  // {job, run, project, suite}; el runner espera campos planos. Mantener
-  // este mapeo acá evita tocar el handler que es consumido por tests.
-  const { job, run, suite } = result.body;
+  const { job, run, suite, project } = result.body;
+  // Nivel de seguridad agregado desde el catálogo. Si devuelve null o un
+  // nivel no corrible ("mixed_analysis", "write_required"), en teoría el
+  // handleCreateRun ya lo rechazó: acá, por safety, mapeamos a "standard".
+  const nivel = nivelSeguridadDeSpecs(suite.specs);
+  const safety_level: "static_analysis" | "anonymous_read_only" | "standard" =
+    nivel === "static_analysis" || nivel === "anonymous_read_only" ? nivel : "standard";
+  const mode: "read-only" | "write" | "static-analysis" =
+    safety_level === "static_analysis" ? "static-analysis" : "read-only";
+  const repo_url =
+    safety_level === "static_analysis"
+      ? resolverRepoUrlProyecto(project.slug, project.repo_url ?? null)
+      : null;
+
   const flat = {
     job_id: job.id,
     run_id: run.id,
     project_id: run.project_id,
     suite_slug: suite.slug,
-    target_base_url: run.target_base_url,
+    target_base_url: safety_level === "static_analysis" ? "" : run.target_base_url,
     target_env: run.target_env,
-    mode: "read-only" as const,
+    mode,
+    safety_level,
+    ...(repo_url ? { repo_url, repo_branch: project.default_branch ?? "main" } : {}),
     specs: suite.specs,
-    // `job.created_at` es `string` según QaRunnerJob. Cubrimos el borde por
-    // si algún repo entrega un Date (p.ej. driver que no castea a texto).
     created_at:
       typeof job.created_at === "string"
         ? job.created_at

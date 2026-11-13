@@ -38,7 +38,7 @@ export type QaExecutor = {
 
 const PROJECT_COLS =
   "id, slug, name, target_base_url, target_env, default_branch, " +
-  "estado_entrega, autorizacion_qa_hasta";
+  "estado_entrega, autorizacion_qa_hasta, repo_url";
 const SUITE_COLS =
   "id, project_id, slug, name, tags, specs, enabled";
 const RUN_COLS =
@@ -59,6 +59,7 @@ function asProject(row: Record<string, unknown> | undefined): QaProject | null {
     default_branch: String(row.default_branch),
     estado_entrega: (row.estado_entrega as QaProject["estado_entrega"]) ?? "en_desarrollo",
     autorizacion_qa_hasta: (row.autorizacion_qa_hasta as string | null) ?? null,
+    repo_url: (row.repo_url as string | null) ?? null,
   };
 }
 function asSuite(row: Record<string, unknown> | undefined): QaSuite | null {
@@ -591,5 +592,35 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
         stack_trace: (row.stack_trace as string | null) ?? null,
       }));
     });
+  }
+
+  async insertFindings(input: {
+    run_id: string;
+    project_id: string;
+    findings: Array<{
+      title: string;
+      description: string;
+      severity: QaFindingRow["severity"];
+    }>;
+  }): Promise<{ inserted: number }> {
+    if (input.findings.length === 0) return { inserted: 0 };
+    return this.run(async (c) => {
+      // Batch INSERT en una sola query con VALUES posicionales.
+      const values: unknown[] = [];
+      const placeholders: string[] = [];
+      let i = 1;
+      for (const f of input.findings) {
+        placeholders.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}::qa_center.finding_severity)`);
+        values.push(input.project_id, input.run_id, f.title, f.description, f.severity);
+      }
+      const r = await c.query(
+        `INSERT INTO qa_center.findings
+           (project_id, run_id, title, description, severity)
+         VALUES ${placeholders.join(", ")}
+         RETURNING id`,
+        values
+      );
+      return { inserted: r.rowCount ?? 0 };
+    }, /* tx = */ true);
   }
 }

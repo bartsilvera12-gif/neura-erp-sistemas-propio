@@ -14,6 +14,7 @@
 import type { QaProjectRow } from "@/lib/qa/db";
 
 export type TipoDePrueba =
+  | "auditoria_estatica"
   | "disponibilidad"
   | "inicio_sesion"
   | "navegacion"
@@ -45,6 +46,18 @@ export function codebaseDeProyecto(p: { slug: string }): CodebaseProyecto {
   return CODEBASE_POR_SLUG[p.slug] ?? "otro";
 }
 
+/**
+ * Clase de efectos que puede producir una prueba. Se usa para gatear runs
+ * sobre ERPs con credenciales productivas activas: sólo `lectura_anonima`
+ * puede correrse contra un target donde `prod_safe=false` pero
+ * `lectura_anonima_safe=true`. Las otras dos exigen `prod_safe=true`.
+ */
+export type EfectoPrueba =
+  | "analisis_estatico"
+  | "lectura_anonima"
+  | "lectura_con_sesion"
+  | "escritura";
+
 export type PruebaDisponible = {
   /** Identificador interno estable (= archivo spec). */
   spec_file: string;
@@ -58,6 +71,12 @@ export type PruebaDisponible = {
   tests: number;
   /** Si requiere credenciales QA (QA_TEST_USER_EMAIL/PASSWORD en el runner). */
   requiere_credenciales: boolean;
+  /**
+   * Clase de efectos. Si no se declara explícitamente, se deriva del flag
+   * `requiere_credenciales` (false → lectura_anonima; true → lectura_con_sesion).
+   * NUNCA debe quedar "escritura" implícitamente — hay que declararlo a mano.
+   */
+  efecto?: EfectoPrueba;
   /**
    * Filtro de compatibilidad con el proyecto. Se evalúa contra el proyecto
    * seleccionado; devuelve `true` si la prueba puede correr contra él.
@@ -101,7 +120,106 @@ function noEsProduccion(p: { target_env: string; target_base_url: string }): boo
   return !prodHosts.includes(host);
 }
 
+/**
+ * Un proyecto es apto para auditoría estática si tenemos URL del repo:
+ * ya sea declarada en la DB (resolvemos vía REPO_URL_OVERRIDE abajo) o
+ * mapeada en el override para proyectos cuyo repo todavía no está en DB.
+ * Para no romper acá la DI (el proyecto pasado al compatible_con no
+ * trae `repo_url`), chequeamos sólo la presencia del slug en el override:
+ * la DB se consulta más tarde al construir el job.
+ */
+function tieneRepoConocido(slug: string): boolean {
+  return Object.prototype.hasOwnProperty.call(REPO_URL_OVERRIDE, slug) ||
+    Object.prototype.hasOwnProperty.call(CODEBASE_POR_SLUG, slug);
+}
+
 export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
+  // ──────────────────────────────────────────────────────────────────────
+  // Auditoría estática: corre sobre el repositorio Git del proyecto.
+  // No toca el ERP publicado; no requiere env-assert. Compatible con
+  // cualquier proyecto que declare repo_url (o esté mapeado al override).
+  // ──────────────────────────────────────────────────────────────────────
+  // Static-analysis: compatible con cualquier proyecto que tenga repo_url
+  // conocido (en DB o vía REPO_URL_OVERRIDE). No depende del dominio.
+  // Nota: el helper tieneRepoConocido se declara después; la llamada se
+  // evalúa en tiempo de ejecución, no al definir el array.
+  {
+    spec_file: "static-secret-scan.spec.ts",
+    nombre: "Estática · Secretos en el código",
+    descripcion:
+      "Busca JWT, SERVICE_ROLE, tokens de Stripe, AWS, GitHub y otras claves hardcodeadas en el repositorio.",
+    tipo: "auditoria_estatica",
+    tests: 1,
+    requiere_credenciales: false,
+    efecto: "analisis_estatico",
+    compatible_con: (p) => tieneRepoConocido(p.slug),
+  },
+  {
+    spec_file: "static-service-role-usage.spec.ts",
+    nombre: "Estática · Uso de SERVICE_ROLE",
+    descripcion:
+      "Marca cada uso de SUPABASE_SERVICE_ROLE_KEY; bloqueador si aparece en rutas /api sin un guard de auth importado.",
+    tipo: "auditoria_estatica",
+    tests: 1,
+    requiere_credenciales: false,
+    efecto: "analisis_estatico",
+    compatible_con: (p) => tieneRepoConocido(p.slug),
+  },
+  {
+    spec_file: "static-unprotected-api-routes.spec.ts",
+    nombre: "Estática · Rutas API sin guard",
+    descripcion:
+      "Revisa src/app/api/**/route.ts: si exporta GET/POST/… sin importar helpers de auth conocidos, lo reporta.",
+    tipo: "auditoria_estatica",
+    tests: 1,
+    requiere_credenciales: false,
+    efecto: "analisis_estatico",
+    compatible_con: (p) => tieneRepoConocido(p.slug),
+  },
+  {
+    spec_file: "static-npm-audit.spec.ts",
+    nombre: "Estática · Dependencias vulnerables",
+    descripcion:
+      "Ejecuta npm audit --omit=dev contra el lockfile del repo y reporta cada vulnerabilidad high/critical como bloqueador.",
+    tipo: "auditoria_estatica",
+    tests: 1,
+    requiere_credenciales: false,
+    efecto: "analisis_estatico",
+    compatible_con: (p) => tieneRepoConocido(p.slug),
+  },
+  {
+    spec_file: "static-security-headers.spec.ts",
+    nombre: "Estática · Cabeceras de seguridad",
+    descripcion:
+      "Verifica que middleware.ts o next.config declaren CSP, HSTS, X-Frame-Options, X-Content-Type-Options y Referrer-Policy.",
+    tipo: "auditoria_estatica",
+    tests: 1,
+    requiere_credenciales: false,
+    efecto: "analisis_estatico",
+    compatible_con: (p) => tieneRepoConocido(p.slug),
+  },
+  {
+    spec_file: "static-env-assert-contract.spec.ts",
+    nombre: "Estática · Contrato env-assert",
+    descripcion:
+      "Chequea presencia y shape básico del endpoint /api/qa/env-assert en el código fuente. Su ausencia es info (no bloquea estática).",
+    tipo: "auditoria_estatica",
+    tests: 1,
+    requiere_credenciales: false,
+    efecto: "analisis_estatico",
+    compatible_con: (p) => tieneRepoConocido(p.slug),
+  },
+  {
+    spec_file: "static-sql-injection-patterns.spec.ts",
+    nombre: "Estática · Patrones de SQL interpolada",
+    descripcion:
+      "Detecta template literals con interpolación dentro de queries (pg.query, supabase.rpc, sql`...`) — posibles sitios de inyección.",
+    tipo: "auditoria_estatica",
+    tests: 1,
+    requiere_credenciales: false,
+    efecto: "analisis_estatico",
+    compatible_con: (p) => tieneRepoConocido(p.slug),
+  },
   {
     spec_file: "availability.spec.ts",
     nombre: "Disponibilidad básica",
@@ -126,6 +244,7 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tipo: "auditoria_integral",
     tests: 3,
     requiere_credenciales: false,
+    efecto: "lectura_anonima",
     compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
@@ -136,6 +255,7 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tipo: "auditoria_integral",
     tests: 3,
     requiere_credenciales: false,
+    efecto: "lectura_anonima",
     compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
@@ -146,6 +266,7 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tipo: "auditoria_integral",
     tests: 3,
     requiere_credenciales: false,
+    efecto: "lectura_anonima",
     compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
@@ -156,6 +277,7 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tipo: "auditoria_integral",
     tests: 2,
     requiere_credenciales: false,
+    efecto: "lectura_anonima",
     compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
@@ -166,6 +288,7 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tipo: "auditoria_integral",
     tests: 3,
     requiere_credenciales: false,
+    efecto: "lectura_anonima",
     compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
@@ -176,6 +299,7 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tipo: "auditoria_integral",
     tests: 2,
     requiere_credenciales: false,
+    efecto: "lectura_anonima",
     compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
@@ -186,6 +310,7 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tipo: "auditoria_integral",
     tests: 1,
     requiere_credenciales: false,
+    efecto: "lectura_anonima",
     compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
@@ -271,6 +396,12 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
 ];
 
 const ETIQUETAS_TIPO: Record<TipoDePrueba, { etiqueta: string; descripcion: string; orden: number }> = {
+  auditoria_estatica: {
+    etiqueta: "Auditoría estática de código",
+    descripcion:
+      "Análisis del repositorio Git sin tocar el ERP publicado. Secretos, dependencias, rutas API sin guard, cabeceras de seguridad, patrones de SQL interpolada y contrato env-assert.",
+    orden: 0,
+  },
   disponibilidad: {
     etiqueta: "Disponibilidad",
     descripcion: "Que el sitio responda, que el servidor esté arriba, que no filtre secretos.",
@@ -326,6 +457,70 @@ export function specsPermitidas(): Set<string> {
 }
 
 /**
+ * Efecto declarado (o derivado) de una spec. Default seguro:
+ * - requiere_credenciales=false  → "lectura_anonima"
+ * - requiere_credenciales=true   → "lectura_con_sesion"
+ * "escritura" NUNCA es default: hay que declararlo explícitamente.
+ */
+export function efectoDeSpec(spec_file: string): EfectoPrueba | null {
+  const p = CATALOGO_PRUEBAS.find((x) => x.spec_file === spec_file);
+  if (!p) return null;
+  if (p.efecto) return p.efecto;
+  return p.requiere_credenciales ? "lectura_con_sesion" : "lectura_anonima";
+}
+
+/**
+ * Nivel de seguridad agregado de una lista de specs:
+ * - "static_analysis"       → todas son analisis_estatico (sobre repo)
+ * - "anonymous_read_only"   → todas son lectura_anonima (anónima runtime)
+ * - "standard"              → al menos una es lectura_con_sesion
+ * - "write_required"        → al menos una es escritura (no se permite ejecutar hoy)
+ * - "mixed_analysis"        → mezcla analisis_estatico con otra clase (no permitido)
+ * - null                    → alguna spec no está en el catálogo
+ */
+export type NivelSeguridadRun =
+  | "static_analysis"
+  | "anonymous_read_only"
+  | "standard"
+  | "write_required"
+  | "mixed_analysis";
+
+export function nivelSeguridadDeSpecs(specs: ReadonlyArray<string>): NivelSeguridadRun | null {
+  if (specs.length === 0) return null;
+  let tieneSesion = false;
+  let tieneEstatico = false;
+  let tieneRuntime = false;
+  for (const s of specs) {
+    const e = efectoDeSpec(s);
+    if (!e) return null;
+    if (e === "escritura") return "write_required";
+    if (e === "analisis_estatico") tieneEstatico = true;
+    else {
+      tieneRuntime = true;
+      if (e === "lectura_con_sesion") tieneSesion = true;
+    }
+  }
+  if (tieneEstatico && tieneRuntime) return "mixed_analysis";
+  if (tieneEstatico) return "static_analysis";
+  return tieneSesion ? "standard" : "anonymous_read_only";
+}
+
+/**
+ * Override temporal del repo_url por slug de proyecto. Si la DB no tiene
+ * `repo_url` configurado para el proyecto, acá se puede inyectar sin
+ * modificar la columna.
+ */
+export const REPO_URL_OVERRIDE: Readonly<Record<string, string>> = {
+  "erp-roldan-pendiente-entrega": "https://github.com/bartsilvera12-gif/neura-erp-roldan",
+};
+
+export function resolverRepoUrlProyecto(slug: string, repoUrl: string | null | undefined): string | null {
+  const existente = (repoUrl ?? "").trim();
+  if (existente.length > 0) return existente;
+  return REPO_URL_OVERRIDE[slug] ?? null;
+}
+
+/**
  * Deriva un slug legible y estable a partir de los tipos seleccionados y la fecha.
  * Ejemplo: tipos=[disponibilidad, seguridad] → "disponibilidad-seguridad-20261113-1430".
  */
@@ -334,6 +529,7 @@ export function specsPermitidas(): Set<string> {
  * Si se agrega un nuevo TipoDePrueba, declararlo acá también.
  */
 const CODIGO_CORTO: Record<TipoDePrueba, string> = {
+  auditoria_estatica: "estatic",
   disponibilidad: "disp",
   inicio_sesion: "login",
   navegacion: "nav",

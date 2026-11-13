@@ -42,6 +42,18 @@ export default function SuitesSection({ projectId, projectSlug, onChange }: Prop
       </button>
       {open && (
         <div className="border-t border-slate-200 px-3 py-3">
+          {projectSlug === "erp-roldan-pendiente-entrega" && (
+            <div
+              className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900"
+              data-testid="roldan-static-only-banner"
+            >
+              <strong>Instancia productiva — sólo análisis estático habilitado.</strong>
+              <br />
+              Las pruebas que tocan el dominio publicado (lecturas y escrituras runtime) están
+              bloqueadas hasta aislar datos e integraciones. La auditoría estática corre sobre
+              el repositorio, sin tocar el ERP ni sus credenciales.
+            </div>
+          )}
           {loading && <p className="text-xs text-slate-500">Cargando suites…</p>}
           {err && <p className="text-xs text-rose-600">Error: {err}</p>}
           {!loading && !err && suites.length === 0 && (
@@ -93,7 +105,13 @@ type PruebaUi = {
   spec_file: string;
   nombre: string;
   descripcion: string;
-  tipo: "disponibilidad" | "inicio_sesion" | "navegacion" | "seguridad" | "auditoria_integral";
+  tipo:
+    | "auditoria_estatica"
+    | "disponibilidad"
+    | "inicio_sesion"
+    | "navegacion"
+    | "seguridad"
+    | "auditoria_integral";
   tests: number;
   requiere_credenciales: boolean;
 };

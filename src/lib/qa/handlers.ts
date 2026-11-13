@@ -45,15 +45,30 @@ export type HandlerErrorCode =
   | "internal";
 
 import { puedeEjecutarRun } from "./project-estado";
+import { nivelSeguridadDeSpecs, type NivelSeguridadRun } from "./pruebas-catalogo";
 
 const UUID = z.string().uuid();
 
 /**
- * Pre-flight env-assert del target. `QA_ENV=staging` por sí solo no alcanza:
- * exigimos que el endpoint responda prod_safe=true. Fail-closed ante cualquier
- * respuesta no esperada (404, HTML, 5xx, timeout, formato inválido).
+ * Pre-flight env-assert del target.
+ *
+ * Dos niveles de exigencia según el riesgo real del run:
+ *   - "standard": requiere `prod_safe: true`. Para runs con specs que usan
+ *     sesión o escriben. Credenciales productivas rompen este gate.
+ *   - "anonymous_read_only": requiere que env-assert EXISTA, responda JSON
+ *     con `env ∈ {staging,preview,local}`, y traiga `lectura_anonima_safe: true`
+ *     en el body. `prod_safe: false` es ACEPTADO en este nivel porque las
+ *     specs nunca envían cookie — las credenciales productivas quedan inertes.
+ *
+ * Nunca se saltea el endpoint ni se ignoran sus señales: se interpretan
+ * contra el riesgo específico del run.
  */
-async function preflightEnvAssert(targetBaseUrl: string): Promise<{ ok: true } | { ok: false; razon: string }> {
+async function preflightEnvAssert(
+  targetBaseUrl: string,
+  nivel: NivelSeguridadRun = "standard"
+): Promise<{ ok: true } | { ok: false; razon: string }> {
+  // Auditoría estática: no toca el ERP publicado; nada que preflightear.
+  if (nivel === "static_analysis") return { ok: true };
   const url = targetBaseUrl.replace(/\/$/, "") + "/api/qa/env-assert";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
@@ -69,7 +84,25 @@ async function preflightEnvAssert(targetBaseUrl: string): Promise<{ ok: true } |
     if (!ct.includes("application/json")) {
       return { ok: false, razon: "El target no expone /api/qa/env-assert como JSON. No es un entorno QA-ready." };
     }
-    const body = (await res.json()) as { prod_safe?: unknown; reasons?: unknown };
+    const body = (await res.json()) as {
+      env?: unknown;
+      prod_safe?: unknown;
+      lectura_anonima_safe?: unknown;
+      reasons?: unknown;
+    };
+    const envOk = typeof body.env === "string" && ["staging", "preview", "local"].includes(body.env);
+    if (!envOk) {
+      return { ok: false, razon: "env-assert no declara env ∈ {staging,preview,local}." };
+    }
+    if (nivel === "anonymous_read_only") {
+      if (body.lectura_anonima_safe === true) return { ok: true };
+      const reasons = Array.isArray(body.reasons) ? body.reasons.join(" · ") : "sin detalle";
+      return {
+        ok: false,
+        razon: `env-assert no declara lectura_anonima_safe=true (${reasons}). Este modo requiere que el target lo apruebe explícitamente.`,
+      };
+    }
+    // nivel="standard": exige prod_safe=true (comportamiento histórico)
     if (body.prod_safe !== true) {
       const reasons = Array.isArray(body.reasons) ? body.reasons.join(" · ") : "sin detalle";
       return { ok: false, razon: `env-assert devolvió prod_safe=false (${reasons}).` };
@@ -174,16 +207,50 @@ export async function handleCreateRun(input: {
     return { ok: false, status: 403, body: { error: veredicto.razon, code: codeMap[veredicto.codigo] } };
   }
 
-  // Pre-flight env-assert: el runner lo valida antes de abrir el browser, pero
-  // acá adelantamos el chequeo para no encolar jobs que el runner va a abortar.
-  // Fail-closed: si env-assert no responde JSON válido con prod_safe=true, se rechaza.
-  const envCheck = await (input.preflight ?? preflightEnvAssert)(project.target_base_url);
-  if (!envCheck.ok) {
+  // Nivel de seguridad agregado por el catálogo:
+  //  - static_analysis: el runner clona el repo; NO se preflightea env-assert.
+  //  - anonymous_read_only: env-assert con lectura_anonima_safe=true.
+  //  - standard: env-assert con prod_safe=true (histórico).
+  //  - write_required / mixed_analysis: bloqueados.
+  const nivel = nivelSeguridadDeSpecs(suite.specs);
+  if (nivel === null) {
     return {
       ok: false,
       status: 400,
-      body: { error: envCheck.razon, code: "env_assert_failed" },
+      body: { error: "alguna spec del suite no está en el catálogo autorizado", code: "spec_not_authorized" },
     };
+  }
+  if (nivel === "write_required") {
+    return {
+      ok: false,
+      status: 403,
+      body: { error: "las suites con specs de escritura están temporalmente bloqueadas", code: "spec_not_authorized" },
+    };
+  }
+  if (nivel === "mixed_analysis") {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: "no se permite mezclar auditoría estática con pruebas runtime en el mismo suite",
+        code: "spec_not_authorized",
+      },
+    };
+  }
+
+  // Pre-flight env-assert con el nivel calculado. Para static_analysis
+  // nunca se consulta el endpoint (el runner clona el repo), ni siquiera
+  // un preflight inyectado por tests — la ausencia de red en ese modo
+  // es parte de la garantía de aislamiento.
+  if (nivel !== "static_analysis") {
+    const envCheck = await (input.preflight ?? ((url) => preflightEnvAssert(url, nivel)))(project.target_base_url);
+    if (!envCheck.ok) {
+      return {
+        ok: false,
+        status: 400,
+        body: { error: envCheck.razon, code: "env_assert_failed" },
+      };
+    }
   }
 
   const result = await input.repo.createRunAndJob({
@@ -264,6 +331,67 @@ export async function handleReportResult(input: {
 
   const outcome = await input.repo.insertResultIdempotent(input.runId, parsed.data as ResultPayload);
   return { ok: true, status: 200, body: { outcome } };
+}
+
+// ──────────────────────────────────────────────────────── report-findings
+
+const findingItemSchema = z.object({
+  spec_file: z.string().min(1).max(200),
+  title: z.string().min(1).max(300),
+  description: z.string().max(4000).default(""),
+  severity: z.enum(["blocker", "critical", "major", "minor", "info"]),
+  file: z.string().max(500).default(""),
+  line: z.number().int().nonnegative().nullable().default(null),
+  evidence: z.string().max(4000).default(""),
+});
+
+const reportFindingsSchema = z.object({
+  run_id: UUID,
+  project_id: UUID,
+  findings: z.array(findingItemSchema).min(1).max(500),
+});
+
+export async function handleReportFindings(input: {
+  runnerId: string;
+  body: unknown;
+  repo: QaRunsRepo;
+}): Promise<HandlerResult<{ inserted: number }>> {
+  const parsed = reportFindingsSchema.safeParse(input.body);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "findings inválidos", code: "validation", detail: parsed.error.message },
+    };
+  }
+  const run = await input.repo.getRun(parsed.data.run_id);
+  if (!run) return { ok: false, status: 404, body: { error: "run no existe", code: "run_not_found" } };
+  if (run.project_id !== parsed.data.project_id) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "project_id no coincide con el run", code: "validation" },
+    };
+  }
+  const rows = parsed.data.findings.map((f) => {
+    const loc = f.file ? `${f.file}${typeof f.line === "number" ? `:${f.line}` : ""}` : "";
+    const description =
+      [
+        loc ? `Ubicación: ${loc}` : null,
+        `Spec: ${f.spec_file}`,
+        f.description ? `\n${f.description}` : null,
+        f.evidence ? `\n\nEvidencia:\n${f.evidence}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    return { title: f.title, description, severity: f.severity };
+  });
+  const out = await input.repo.insertFindings({
+    run_id: parsed.data.run_id,
+    project_id: parsed.data.project_id,
+    findings: rows,
+  });
+  return { ok: true, status: 201, body: { inserted: out.inserted } };
 }
 
 // ──────────────────────────────────────────────────────────── finish-run

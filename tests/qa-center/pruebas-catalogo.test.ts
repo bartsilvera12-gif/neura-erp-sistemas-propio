@@ -16,9 +16,15 @@ import {
 
 const RUNNER_SPECS_DIR = resolve(process.cwd(), "..", "qa-runner", "src", "playwright", "specs");
 
-test("catálogo: cada spec_file apunta a un archivo .spec.ts real del runner", () => {
+test("catálogo: cada spec_file apunta a un archivo .spec.ts real del runner (excepto estática)", () => {
   for (const p of CATALOGO_PRUEBAS) {
     assert.match(p.spec_file, /^[A-Za-z0-9_\-.]+\.spec\.ts$/, `spec_file inválido: ${p.spec_file}`);
+    // Las specs de auditoría estática no corresponden a archivos Playwright;
+    // mapean a analyzers del runner (src/analyzers/*.ts). Sólo validamos shape.
+    if (p.tipo === "auditoria_estatica") {
+      assert.ok(p.spec_file.startsWith("static-"), `spec estática sin prefijo: ${p.spec_file}`);
+      continue;
+    }
     const abs = resolve(RUNNER_SPECS_DIR, p.spec_file);
     assert.ok(existsSync(abs), `no existe en runner: ${abs}`);
   }
@@ -69,13 +75,24 @@ test("specsPermitidas(): retorna todas las del catálogo", () => {
   assert.equal(set.size, CATALOGO_PRUEBAS.length);
 });
 
-test("pruebasParaProyecto: target productivo → lista vacía", () => {
+test("pruebasParaProyecto: target productivo (slug desconocido) → lista vacía", () => {
   const grupos = pruebasParaProyecto({
     slug: "cualquiera",
     target_base_url: "https://sistemas.neura.com.py",
     target_env: "staging",
   });
-  assert.equal(grupos.length, 0, "no debe haber pruebas contra hosts productivos");
+  assert.equal(grupos.length, 0, "no debe haber pruebas contra hosts productivos para slugs no mapeados");
+});
+
+test("pruebasParaProyecto: slug mapeado → incluye auditoría estática en orden 0", () => {
+  const grupos = pruebasParaProyecto({
+    slug: "erp-roldan-pendiente-entrega",
+    target_base_url: "https://roldanehijos.neura.com.py",
+    target_env: "staging",
+  });
+  const tipos = grupos.map((g) => g.tipo);
+  assert.equal(tipos[0], "auditoria_estatica", "la estática debe aparecer primero");
+  assert.ok(grupos[0]!.pruebas.length === 7, "7 analyzers estáticos registrados");
 });
 
 test("pruebasParaProyecto: QA sobre sistemas-propio → incluye disponibilidad + login-page + seguridad", () => {

@@ -251,4 +251,10 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
   async listFindings(_opts: { projectId?: string; limit?: number } = {}): Promise<QaFindingRow[]> {
     return [];
   }
+  async autorizarProyecto(_input: Parameters<QaRunsRepo["autorizarProyecto"]>[0]): ReturnType<QaRunsRepo["autorizarProyecto"]> {
+    throw new Error("SupabaseQaRunsRepo.autorizarProyecto no implementado — usar PostgresQaRunsRepo");
+  }
+  async entregarProyecto(_input: Parameters<QaRunsRepo["entregarProyecto"]>[0]): ReturnType<QaRunsRepo["entregarProyecto"]> {
+    throw new Error("SupabaseQaRunsRepo.entregarProyecto no implementado — usar PostgresQaRunsRepo");
+  }
 }

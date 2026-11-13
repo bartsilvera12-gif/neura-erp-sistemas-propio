@@ -10,6 +10,8 @@ const PROJECT: QaProject = {
   target_base_url: "http://127.0.0.1:4555",
   target_env: "local",
   default_branch: "main",
+  estado_entrega: "en_qa",
+  autorizacion_qa_hasta: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
 };
 const SUITE: QaSuite = {
   id: "22222222-2222-4222-8222-222222222222",

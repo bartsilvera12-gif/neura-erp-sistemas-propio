@@ -17,6 +17,8 @@ const PROJECT: QaProject = {
   target_base_url: "https://qa-sistemas.neura.test",
   target_env: "staging",
   default_branch: "main",
+  estado_entrega: "en_qa",
+  autorizacion_qa_hasta: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
 };
 const SUITE: QaSuite = {
   id: "22222222-2222-4222-8222-222222222222",
@@ -35,9 +37,12 @@ function seededRepo() {
   return repo;
 }
 
+/** Stub de pre-flight env-assert para tests: no toca la red. */
+const okPreflight = async () => ({ ok: true as const });
+
 test("createRun: valida payload", async () => {
   const repo = seededRepo();
-  const r = await handleCreateRun({ body: { project_id: "no-uuid" }, userId: null, repo });
+  const r = await handleCreateRun({ preflight: okPreflight, body: { project_id: "no-uuid" }, userId: null, repo });
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.status, 400);
@@ -48,7 +53,7 @@ test("createRun: valida payload", async () => {
 test("createRun: rechaza suite de otro proyecto", async () => {
   const repo = seededRepo();
   repo.seedSuite({ ...SUITE, id: "33333333-3333-4333-8333-333333333333", project_id: "99999999-9999-4999-8999-999999999999" });
-  const r = await handleCreateRun({
+  const r = await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: "33333333-3333-4333-8333-333333333333" },
     userId: null,
     repo,
@@ -60,7 +65,7 @@ test("createRun: rechaza suite de otro proyecto", async () => {
 test("createRun: rechaza suite deshabilitado", async () => {
   const repo = seededRepo();
   repo.seedSuite({ ...SUITE, enabled: false });
-  const r = await handleCreateRun({
+  const r = await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: SUITE.id },
     userId: null,
     repo,
@@ -71,12 +76,12 @@ test("createRun: rechaza suite deshabilitado", async () => {
 
 test("createRun: idempotente por client_request_id", async () => {
   const repo = seededRepo();
-  const first = await handleCreateRun({
+  const first = await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: SUITE.id, client_request_id: "cri-1" },
     userId: "u-1",
     repo,
   });
-  const second = await handleCreateRun({
+  const second = await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: SUITE.id, client_request_id: "cri-1" },
     userId: "u-1",
     repo,
@@ -91,7 +96,7 @@ test("createRun: idempotente por client_request_id", async () => {
 
 test("claim: atómico — solo un runner se lleva el job", async () => {
   const repo = seededRepo();
-  await handleCreateRun({
+  await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: SUITE.id },
     userId: null,
     repo,
@@ -115,7 +120,7 @@ test("heartbeat: payload inválido → 400", async () => {
 
 test("reportResult: rechaza spec no autorizado por el suite", async () => {
   const repo = seededRepo();
-  const created = await handleCreateRun({
+  const created = await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: SUITE.id },
     userId: null,
     repo,
@@ -143,7 +148,7 @@ test("reportResult: rechaza spec no autorizado por el suite", async () => {
 
 test("reportResult: idempotente por (spec_file, test_title)", async () => {
   const repo = seededRepo();
-  const created = await handleCreateRun({
+  const created = await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: SUITE.id },
     userId: null,
     repo,
@@ -171,7 +176,7 @@ test("reportResult: idempotente por (spec_file, test_title)", async () => {
 
 test("finishRun: solo el claimer puede finalizar", async () => {
   const repo = seededRepo();
-  await handleCreateRun({
+  await handleCreateRun({ preflight: okPreflight,
     body: { project_id: PROJECT.id, suite_id: SUITE.id },
     userId: null,
     repo,

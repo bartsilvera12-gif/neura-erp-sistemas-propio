@@ -75,6 +75,8 @@ export async function POST(request: Request) {
   }
 
   const result = await handleCreateRun({ body, userId: auth.user.id, repo });
+  // NOTE: handleCreateRun hace el pre-flight env-assert con fetch real a
+  // target/api/qa/env-assert. No necesitamos inyectar nada acá.
   return NextResponse.json(result.body, {
     status: result.status,
     headers: { "Cache-Control": "no-store" },

@@ -37,6 +37,8 @@ export type QaProjectRow = {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  estado_entrega: "en_desarrollo" | "en_qa" | "entregado";
+  autorizacion_qa_hasta: string | null;
 };
 
 export type QaRunRow = {
@@ -89,6 +91,8 @@ function projectToRow(p: QaProject): QaProjectRow {
     archived_at: null,
     created_at: "",
     updated_at: "",
+    estado_entrega: p.estado_entrega,
+    autorizacion_qa_hasta: p.autorizacion_qa_hasta,
   };
 }
 

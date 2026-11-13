@@ -37,7 +37,8 @@ export type QaExecutor = {
 };
 
 const PROJECT_COLS =
-  "id, slug, name, target_base_url, target_env, default_branch";
+  "id, slug, name, target_base_url, target_env, default_branch, " +
+  "estado_entrega, autorizacion_qa_hasta";
 const SUITE_COLS =
   "id, project_id, slug, name, tags, specs, enabled";
 const RUN_COLS =
@@ -56,6 +57,8 @@ function asProject(row: Record<string, unknown> | undefined): QaProject | null {
     target_base_url: String(row.target_base_url),
     target_env: row.target_env as QaProject["target_env"],
     default_branch: String(row.default_branch),
+    estado_entrega: (row.estado_entrega as QaProject["estado_entrega"]) ?? "en_desarrollo",
+    autorizacion_qa_hasta: (row.autorizacion_qa_hasta as string | null) ?? null,
   };
 }
 function asSuite(row: Record<string, unknown> | undefined): QaSuite | null {
@@ -513,6 +516,59 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
         updated_at: String(row.updated_at),
       }));
     });
+  }
+
+  async autorizarProyecto(input: {
+    project_id: string;
+    usuario_id: string | null;
+    declaraciones: Record<string, boolean>;
+    autorizado_hasta: string;
+  }): Promise<QaProject | null> {
+    return this.run(async (c) => {
+      await c.query(
+        `INSERT INTO qa_center.project_autorizaciones
+           (project_id, usuario_id, declaraciones, autorizado_hasta)
+         VALUES ($1, $2, $3::jsonb, $4)`,
+        [input.project_id, input.usuario_id, JSON.stringify(input.declaraciones), input.autorizado_hasta]
+      );
+      const r = await c.query(
+        `UPDATE qa_center.projects
+            SET estado_entrega = 'en_qa',
+                autorizacion_qa_hasta = $2,
+                updated_at = now()
+          WHERE id = $1 AND archived_at IS NULL AND estado_entrega <> 'entregado'
+          RETURNING ${PROJECT_COLS}`,
+        [input.project_id, input.autorizado_hasta]
+      );
+      await c.query(
+        `INSERT INTO qa_center.audit_log (actor, action, entity_type, entity_id, payload)
+         VALUES ($1, 'project_autorizar', 'project', $2, $3::jsonb)`,
+        [input.usuario_id ?? "system", input.project_id, JSON.stringify({ autorizado_hasta: input.autorizado_hasta })]
+      );
+      return r.rows[0] ? asProject(r.rows[0]) : null;
+    }, /* tx = */ true);
+  }
+
+  async entregarProyecto(input: { project_id: string; usuario_id: string | null }): Promise<QaProject | null> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `UPDATE qa_center.projects
+            SET estado_entrega = 'entregado',
+                autorizacion_qa_hasta = NULL,
+                updated_at = now()
+          WHERE id = $1 AND archived_at IS NULL
+          RETURNING ${PROJECT_COLS}`,
+        [input.project_id]
+      );
+      if (r.rows[0]) {
+        await c.query(
+          `INSERT INTO qa_center.audit_log (actor, action, entity_type, entity_id)
+           VALUES ($1, 'project_entregar', 'project', $2)`,
+          [input.usuario_id ?? "system", input.project_id]
+        );
+      }
+      return r.rows[0] ? asProject(r.rows[0]) : null;
+    }, /* tx = */ true);
   }
 
   async listResultsForRun(runId: string): Promise<ResultPayload[]> {

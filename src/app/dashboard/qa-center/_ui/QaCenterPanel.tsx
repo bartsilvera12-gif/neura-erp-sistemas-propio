@@ -16,6 +16,7 @@ import NuevoProyectoDialog from "./NuevoProyectoDialog";
 import EditarProyectoDialog from "./EditarProyectoDialog";
 import SuitesSection from "./SuitesSection";
 import FindingsSection from "./FindingsSection";
+import { AutorizarDialog, EntregarDialog, EstadoBadge } from "./EstadoProyectoDialogs";
 
 type Props = {
   projects: QaListResult<QaProjectRow>;
@@ -29,7 +30,11 @@ export default function QaCenterPanel({ projects, runs, findings }: Props) {
 
   const [showNew, setShowNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [autorizandoId, setAutorizandoId] = useState<string | null>(null);
+  const [entregandoId, setEntregandoId] = useState<string | null>(null);
   const editing = editingId ? projects.data.find((p) => p.id === editingId) ?? null : null;
+  const autorizando = autorizandoId ? projects.data.find((p) => p.id === autorizandoId) ?? null : null;
+  const entregando = entregandoId ? projects.data.find((p) => p.id === entregandoId) ?? null : null;
 
   const reload = (): void => { window.location.reload(); };
 
@@ -71,16 +76,39 @@ export default function QaCenterPanel({ projects, runs, findings }: Props) {
             {projects.data.map((p) => (
               <li key={p.id} className="px-4 py-3" data-testid={`row-proy-${p.slug}`}>
                 <div className="flex items-center justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium">{p.name}</p>
                     <p className="text-xs text-slate-500">
                       {p.slug} · branch {p.default_branch} · {p.target_env}
                     </p>
+                    <p className="mt-1">
+                      <EstadoBadge estado={p.estado_entrega} vence={p.autorizacion_qa_hasta} />
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
                       {p.target_base_url}
                     </span>
+                    {p.estado_entrega !== "entregado" && (
+                      <button
+                        onClick={() => setAutorizandoId(p.id)}
+                        data-testid={`btn-autorizar-${p.slug}`}
+                        className="rounded border border-emerald-600 bg-white px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
+                        title="Firmar autorización de QA Desarrollo por 72h"
+                      >
+                        {p.estado_entrega === "en_qa" ? "Renovar QA" : "Autorizar QA"}
+                      </button>
+                    )}
+                    {p.estado_entrega !== "entregado" && (
+                      <button
+                        onClick={() => setEntregandoId(p.id)}
+                        data-testid={`btn-entregar-${p.slug}`}
+                        className="rounded border border-red-600 bg-white px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                        title="Marcar como entregado al cliente (bloqueo total de QA)"
+                      >
+                        Entregar
+                      </button>
+                    )}
                     <button
                       onClick={() => setEditingId(p.id)}
                       data-testid={`btn-editar-${p.slug}`}
@@ -148,6 +176,21 @@ export default function QaCenterPanel({ projects, runs, findings }: Props) {
           project={editing}
           onClose={() => setEditingId(null)}
           onSaved={() => { setEditingId(null); reload(); }}
+        />
+      )}
+      {autorizando && (
+        <AutorizarDialog
+          projectId={autorizando.id}
+          onClose={() => setAutorizandoId(null)}
+          onDone={() => { setAutorizandoId(null); reload(); }}
+        />
+      )}
+      {entregando && (
+        <EntregarDialog
+          projectId={entregando.id}
+          projectName={entregando.name}
+          onClose={() => setEntregandoId(null)}
+          onDone={() => { setEntregandoId(null); reload(); }}
         />
       )}
     </div>

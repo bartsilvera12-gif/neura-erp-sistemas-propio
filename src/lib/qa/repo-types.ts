@@ -22,6 +22,8 @@ export type QaProject = {
   target_base_url: string;
   target_env: QaTargetEnv;
   default_branch: string;
+  estado_entrega: "en_desarrollo" | "en_qa" | "entregado";
+  autorizacion_qa_hasta: string | null;
 };
 
 export type QaSuite = {
@@ -180,6 +182,25 @@ export interface QaRunsRepo {
 
   /** Hallazgos (findings) — lista para el panel. Por proyecto si se provee. */
   listFindings(opts?: { projectId?: string; limit?: number }): Promise<QaFindingRow[]>;
+
+  // ── Ciclo de vida: autorizar / entregar ───────────────────────────────
+
+  /**
+   * Registra una autorización firmada y pasa el proyecto a `en_qa`
+   * con `autorizacion_qa_hasta=hasta`. Deja fila en project_autorizaciones.
+   */
+  autorizarProyecto(input: {
+    project_id: string;
+    usuario_id: string | null;
+    declaraciones: Record<string, boolean>;
+    autorizado_hasta: string;
+  }): Promise<QaProject | null>;
+
+  /**
+   * Marca un proyecto como `entregado`. Bloqueo total (no se pueden
+   * encolar ni ejecutar runs mientras esté en ese estado).
+   */
+  entregarProyecto(input: { project_id: string; usuario_id: string | null }): Promise<QaProject | null>;
 }
 
 export type QaFindingSeverity = "blocker" | "critical" | "major" | "minor" | "info";

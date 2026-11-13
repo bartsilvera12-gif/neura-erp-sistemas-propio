@@ -38,9 +38,49 @@ export type HandlerErrorCode =
   | "spec_not_authorized"
   | "run_not_found"
   | "not_owner"
+  | "project_entregado"
+  | "project_no_autorizado"
+  | "autorizacion_vencida"
+  | "env_assert_failed"
   | "internal";
 
+import { puedeEjecutarRun } from "./project-estado";
+
 const UUID = z.string().uuid();
+
+/**
+ * Pre-flight env-assert del target. `QA_ENV=staging` por sí solo no alcanza:
+ * exigimos que el endpoint responda prod_safe=true. Fail-closed ante cualquier
+ * respuesta no esperada (404, HTML, 5xx, timeout, formato inválido).
+ */
+async function preflightEnvAssert(targetBaseUrl: string): Promise<{ ok: true } | { ok: false; razon: string }> {
+  const url = targetBaseUrl.replace(/\/$/, "") + "/api/qa/env-assert";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(url, { method: "GET", signal: controller.signal, headers: { Accept: "application/json" } });
+    if (res.status === 403) {
+      return { ok: false, razon: "El target devolvió env-assert=forbidden_production. No se puede ejecutar." };
+    }
+    if (!res.ok) {
+      return { ok: false, razon: `env-assert del target respondió HTTP ${res.status}.` };
+    }
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      return { ok: false, razon: "El target no expone /api/qa/env-assert como JSON. No es un entorno QA-ready." };
+    }
+    const body = (await res.json()) as { prod_safe?: unknown; reasons?: unknown };
+    if (body.prod_safe !== true) {
+      const reasons = Array.isArray(body.reasons) ? body.reasons.join(" · ") : "sin detalle";
+      return { ok: false, razon: `env-assert devolvió prod_safe=false (${reasons}).` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, razon: `Error consultando env-assert: ${err instanceof Error ? err.message : "desconocido"}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const createRunSchema = z.object({
   project_id: UUID,
@@ -88,6 +128,12 @@ export async function handleCreateRun(input: {
   body: unknown;
   userId: string | null;
   repo: QaRunsRepo;
+  /**
+   * Función que valida el env-assert del target antes de encolar. Por default
+   * hace `fetch` real a `target/api/qa/env-assert` y exige prod_safe=true.
+   * En tests se puede inyectar un mock que devuelva {ok:true} sin red.
+   */
+  preflight?: (targetBaseUrl: string) => Promise<{ ok: true } | { ok: false; razon: string }>;
 }): Promise<HandlerResult<{ run: QaRun; job: QaRunnerJob; created: boolean }>> {
   const parsed = createRunSchema.safeParse(input.body);
   if (!parsed.success) {
@@ -116,6 +162,30 @@ export async function handleCreateRun(input: {
     return { ok: false, status: 400, body: { error: "suite deshabilitada", code: "suite_disabled" } };
   }
 
+  // Gate de ciclo de vida: `entregado` bloquea TODO, sin autorización vigente no se encola.
+  const veredicto = puedeEjecutarRun(project);
+  if (!veredicto.ok) {
+    const codeMap: Record<typeof veredicto.codigo, HandlerErrorCode> = {
+      entregado: "project_entregado",
+      no_autorizado: "project_no_autorizado",
+      autorizacion_vencida: "autorizacion_vencida",
+      estado_desconocido: "project_no_autorizado",
+    };
+    return { ok: false, status: 403, body: { error: veredicto.razon, code: codeMap[veredicto.codigo] } };
+  }
+
+  // Pre-flight env-assert: el runner lo valida antes de abrir el browser, pero
+  // acá adelantamos el chequeo para no encolar jobs que el runner va a abortar.
+  // Fail-closed: si env-assert no responde JSON válido con prod_safe=true, se rechaza.
+  const envCheck = await (input.preflight ?? preflightEnvAssert)(project.target_base_url);
+  if (!envCheck.ok) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: envCheck.razon, code: "env_assert_failed" },
+    };
+  }
+
   const result = await input.repo.createRunAndJob({
     project,
     suite,
@@ -135,6 +205,17 @@ export async function handleClaim(input: {
 }): Promise<HandlerResult<ClaimedJob | null>> {
   const claimed = await input.repo.claimNextJob(input.runnerId);
   if (!claimed) return { ok: true, status: 204, body: null };
+  // Doble chequeo del estado al momento del claim: el proyecto puede haberse
+  // marcado entregado o la autorización puede haber vencido entre el encolado
+  // y el pick. Si falla, el job queda bloqueado y el runner no lo recibe.
+  const veredicto = puedeEjecutarRun(claimed.project);
+  if (!veredicto.ok) {
+    return {
+      ok: false,
+      status: 403,
+      body: { error: veredicto.razon, code: veredicto.codigo === "entregado" ? "project_entregado" : "project_no_autorizado" },
+    };
+  }
   return { ok: true, status: 200, body: claimed };
 }
 

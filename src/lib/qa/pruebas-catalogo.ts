@@ -17,7 +17,31 @@ export type TipoDePrueba =
   | "disponibilidad"
   | "inicio_sesion"
   | "navegacion"
-  | "seguridad";
+  | "seguridad"
+  | "auditoria_integral";
+
+/**
+ * Codebase del proyecto. Lo asignamos explícitamente por slug — NO por dominio:
+ * dos ERPs distintos pueden compartir TLD y no compartir código.
+ */
+export type CodebaseProyecto = "sistemas-propio" | "erp-neura" | "fake-app" | "otro";
+
+/**
+ * Mapa de slug → codebase. Única fuente de verdad de la compatibilidad.
+ * Al registrar un proyecto nuevo del equipo Neura, agregar su slug acá.
+ */
+export const CODEBASE_POR_SLUG: Readonly<Record<string, CodebaseProyecto>> = {
+  "sistemas-propio-qa": "sistemas-propio",
+  "erp-neura": "sistemas-propio",
+  "erp-local": "sistemas-propio",
+  "demo-fake-app": "fake-app",
+  // ERPs de cliente del codebase neura-erp:
+  "erp-roldan-pendiente-entrega": "erp-neura",
+};
+
+export function codebaseDeProyecto(p: { slug: string }): CodebaseProyecto {
+  return CODEBASE_POR_SLUG[p.slug] ?? "otro";
+}
 
 export type PruebaDisponible = {
   /** Identificador interno estable (= archivo spec). */
@@ -49,18 +73,18 @@ export type GrupoDePruebas = {
 
 /**
  * Proyectos considerados "sistemas-propio" (nuestro ERP Neura).
- * Las specs específicas de este ERP sólo se ofrecen si el target lo es.
+ * Compatibilidad por codebase declarado — no se infiere por dominio.
  */
 function esSistemasPropio(p: { slug: string; target_base_url: string }): boolean {
-  const slug = (p.slug ?? "").toLowerCase();
-  const host = safeHost(p.target_base_url);
-  return (
-    slug.includes("sistemas-propio") ||
-    slug.includes("erp-neura") ||
-    host === "qa-sistemas.neura.com.py" ||
-    host === "localhost" ||
-    host === "127.0.0.1"
-  );
+  return codebaseDeProyecto(p) === "sistemas-propio";
+}
+
+/** Proyectos del codebase genérico neura-erp (ERPs de clientes). */
+function esErpNeura(p: { slug: string; target_base_url: string }): boolean {
+  const kind = codebaseDeProyecto(p);
+  // sistemas-propio también deriva del codebase neura-erp y puede correr las
+  // specs de auditoría integral; por eso ambos aceptan auditoria_integral.
+  return kind === "erp-neura" || kind === "sistemas-propio";
 }
 
 function safeHost(url: string): string {
@@ -85,6 +109,122 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     tests: 2,
     requiere_credenciales: false,
     compatible_con: (p) => noEsProduccion(p),
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Auditoría integral del ERP (codebase neura-erp y sistemas-propio).
+  // 10 specs anónimas + autenticadas; las autenticadas se omiten si no hay
+  // QA_TEST_USER_EMAIL/PASSWORD configuradas en el runner.
+  // ──────────────────────────────────────────────────────────────────────
+  {
+    spec_file: "erp-neura-availability.spec.ts",
+    nombre: "Auditoría · Disponibilidad y cabeceras",
+    descripcion:
+      "Verifica que la instancia responda, que las cabeceras no filtren JWT ni service-role y que las cookies de auth sean HttpOnly.",
+    tipo: "auditoria_integral",
+    tests: 3,
+    requiere_credenciales: false,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-login-page.spec.ts",
+    nombre: "Auditoría · Página de login",
+    descripcion:
+      "Verifica que /login carga, el formulario está completo y credenciales inválidas no permiten entrar.",
+    tipo: "auditoria_integral",
+    tests: 3,
+    requiere_credenciales: false,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-api-contratos.spec.ts",
+    nombre: "Auditoría · Contratos API (anónimo)",
+    descripcion:
+      "Verifica que endpoints protegidos devuelvan 401 JSON válido sin sesión y que no filtren data anónimamente (20 rutas revisadas en código antes de incluirse).",
+    tipo: "auditoria_integral",
+    tests: 3,
+    requiere_credenciales: false,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-headers-safety.spec.ts",
+    nombre: "Auditoría · Cabeceras de seguridad",
+    descripcion:
+      "Verifica que ninguna cabecera filtre JWT, service-role, keys ni URLs de BD. Chequea Cache-Control en /login.",
+    tipo: "auditoria_integral",
+    tests: 2,
+    requiere_credenciales: false,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-rutas-publicas.spec.ts",
+    nombre: "Auditoría · Rutas estáticas públicas",
+    descripcion:
+      "Verifica favicon, robots.txt (si existe) y manejo correcto de 404 sin crashear el server.",
+    tipo: "auditoria_integral",
+    tests: 3,
+    requiere_credenciales: false,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-env-assert.spec.ts",
+    nombre: "Auditoría · Endpoint env-assert",
+    descripcion:
+      "Verifica que el ERP exponga /api/qa/env-assert con contrato correcto. Falla claramente si el ERP no lo tiene (prerrequisito de QA Center).",
+    tipo: "auditoria_integral",
+    tests: 2,
+    requiere_credenciales: false,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-deploy-info.spec.ts",
+    nombre: "Auditoría · Metadata de deploy",
+    descripcion:
+      "Verifica que /api/deploy-info (si existe) devuelva JSON con metadata de versión.",
+    tipo: "auditoria_integral",
+    tests: 1,
+    requiere_credenciales: false,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-dashboard-render.spec.ts",
+    nombre: "Auditoría · Dashboard tras login",
+    descripcion:
+      "Tras iniciar sesión, verifica que el dashboard cargue sin errores JS y que el menú lateral renderice. Omitida si no hay credenciales de prueba.",
+    tipo: "auditoria_integral",
+    tests: 2,
+    requiere_credenciales: true,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-navegacion-menu.spec.ts",
+    nombre: "Auditoría · Navegación de módulos (listados)",
+    descripcion:
+      "Visita los listados de los 18 módulos principales (ventas, compras, inventario, clientes, reportes, etc.) y verifica que ninguno devuelva 500. 100% lectura, nunca abre /nueva ni /editar.",
+    tipo: "auditoria_integral",
+    tests: 18,
+    requiere_credenciales: true,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-reportes-listado.spec.ts",
+    nombre: "Auditoría · Reportes (lectura pura)",
+    descripcion:
+      "Abre 5 reportes clave (ventas, libro-ventas, libro-compras, estado-cuenta, cuentas-por-pagar) y verifica que rendericen. No genera PDFs ni exporta.",
+    tipo: "auditoria_integral",
+    tests: 5,
+    requiere_credenciales: true,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "erp-neura-permisos.spec.ts",
+    nombre: "Auditoría · Permisos del usuario QA",
+    descripcion:
+      "Verifica que el usuario QA (rol limitado) NO acceda a /admin/empresas, /admin/usuarios ni vea links de admin en el dashboard.",
+    tipo: "auditoria_integral",
+    tests: 3,
+    requiere_credenciales: true,
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
   },
   {
     spec_file: "sistemas-propio-login-page.spec.ts",
@@ -149,6 +289,12 @@ const ETIQUETAS_TIPO: Record<TipoDePrueba, { etiqueta: string; descripcion: stri
     descripcion: "Que las rutas sensibles estén bloqueadas y las defensas estén activas.",
     orden: 4,
   },
+  auditoria_integral: {
+    etiqueta: "Auditoría integral del ERP",
+    descripcion:
+      "Cobertura amplia por módulo (disponibilidad, login, API, cabeceras, navegación, reportes, permisos). Reutilizable para todos los ERP del codebase Neura.",
+    orden: 5,
+  },
 };
 
 /** Dado un proyecto, devuelve los grupos de pruebas compatibles con él. */
@@ -190,6 +336,7 @@ const CODIGO_CORTO: Record<TipoDePrueba, string> = {
   inicio_sesion: "login",
   navegacion: "nav",
   seguridad: "sec",
+  auditoria_integral: "audit",
 };
 
 export function derivarSlugSuite(tipos: TipoDePrueba[], ahora: Date = new Date()): string {

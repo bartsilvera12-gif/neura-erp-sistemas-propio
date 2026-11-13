@@ -93,7 +93,7 @@ type PruebaUi = {
   spec_file: string;
   nombre: string;
   descripcion: string;
-  tipo: "disponibilidad" | "inicio_sesion" | "navegacion" | "seguridad";
+  tipo: "disponibilidad" | "inicio_sesion" | "navegacion" | "seguridad" | "auditoria_integral";
   tests: number;
   requiere_credenciales: boolean;
 };
@@ -257,6 +257,7 @@ const CODIGO_CORTO_CLIENTE: Record<string, string> = {
   inicio_sesion: "login",
   navegacion: "nav",
   seguridad: "sec",
+  auditoria_integral: "audit",
 };
 function derivarSlugCliente(tipos: string[], ahora: Date): string {
   const codigos = (tipos.length ? [...new Set(tipos)] : ["suite"])

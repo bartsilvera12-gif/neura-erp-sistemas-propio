@@ -70,8 +70,12 @@ export default async function QaRunDetailPage({ params }: { params: Promise<Para
         </p>
       )}
 
+      {results.length > 0 && (
+        <DesgloseModulos results={results} />
+      )}
+
       <section>
-        <h2 className="mb-2 text-base font-semibold">Resultados</h2>
+        <h2 className="mb-2 text-base font-semibold">Resultados detallados</h2>
         {results.length === 0 ? (
           <div className="rounded border border-dashed bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
             Todavía no hay resultados reportados.
@@ -102,6 +106,75 @@ export default async function QaRunDetailPage({ params }: { params: Promise<Para
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Infiere el módulo auditado a partir del nombre del spec_file.
+ * Reutiliza convención: `erp-neura-<modulo>.spec.ts` → módulo.
+ * Fallback: primer segmento del spec_file sin extensión.
+ */
+function modulodeSpec(spec_file: string): string {
+  const base = spec_file.replace(/\.spec\.ts$/i, "");
+  const m = base.match(/^erp-neura-(.+)$/);
+  if (m) return m[1];
+  const m2 = base.match(/^sistemas-propio-(.+)$/);
+  if (m2) return m2[1];
+  return base;
+}
+
+type ResultadoItem = { spec_file: string; status: string };
+
+function DesgloseModulos({ results }: { results: ReadonlyArray<ResultadoItem> }) {
+  const porModulo = new Map<string, { passed: number; failed: number; skipped: number; flaky: number; timedout: number; total: number }>();
+  for (const r of results) {
+    const key = modulodeSpec(r.spec_file);
+    const entry = porModulo.get(key) ?? { passed: 0, failed: 0, skipped: 0, flaky: 0, timedout: 0, total: 0 };
+    entry.total++;
+    if (r.status === "passed") entry.passed++;
+    else if (r.status === "failed") entry.failed++;
+    else if (r.status === "skipped") entry.skipped++;
+    else if (r.status === "flaky") entry.flaky++;
+    else if (r.status === "timed_out") entry.timedout++;
+    porModulo.set(key, entry);
+  }
+  const filas = [...porModulo.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return (
+    <section className="mb-6" data-testid="desglose-modulos">
+      <h2 className="mb-2 text-base font-semibold">Cobertura por módulo</h2>
+      <div className="overflow-hidden rounded-lg border bg-white">
+        <table className="w-full text-xs">
+          <thead className="bg-slate-50 text-left text-slate-600">
+            <tr>
+              <th className="px-3 py-2 font-medium">Módulo</th>
+              <th className="px-2 py-2 font-medium text-emerald-700">Pasaron</th>
+              <th className="px-2 py-2 font-medium text-rose-700">Fallaron</th>
+              <th className="px-2 py-2 font-medium text-slate-500">Omitidas</th>
+              <th className="px-2 py-2 font-medium text-amber-700">Inestables</th>
+              <th className="px-2 py-2 font-medium text-rose-600">Tiempo excedido</th>
+              <th className="px-3 py-2 font-medium">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map(([modulo, e]) => (
+              <tr key={modulo} className="border-t">
+                <td className="px-3 py-2 font-medium text-slate-800">{modulo}</td>
+                <td className="px-2 py-2 text-emerald-700">{e.passed}</td>
+                <td className="px-2 py-2 text-rose-700">{e.failed}</td>
+                <td className="px-2 py-2 text-slate-500">{e.skipped}</td>
+                <td className="px-2 py-2 text-amber-700">{e.flaky}</td>
+                <td className="px-2 py-2 text-rose-600">{e.timedout}</td>
+                <td className="px-3 py-2 text-slate-800">{e.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-1 text-[10px] text-slate-500">
+        Las pruebas omitidas incluyen las que requieren un usuario QA (QA_TEST_USER_*)
+        cuando aún no está configurado en el runner. Ese "pendiente de cobertura" se marca como omitida.
+      </p>
+    </section>
   );
 }
 

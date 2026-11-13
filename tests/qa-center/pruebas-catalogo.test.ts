@@ -24,6 +24,34 @@ test("catálogo: cada spec_file apunta a un archivo .spec.ts real del runner", (
   }
 });
 
+test("catálogo: tipo auditoria_integral tiene al menos 10 pruebas declaradas", () => {
+  const n = CATALOGO_PRUEBAS.filter((p) => p.tipo === "auditoria_integral").length;
+  assert.ok(n >= 10, `se esperaban ≥10 pruebas de auditoría; hay ${n}`);
+});
+
+test("pruebasParaProyecto: Roldán (slug con mapeo erp-neura) → ve el grupo auditoría integral", async () => {
+  const { pruebasParaProyecto } = await import("../../src/lib/qa/pruebas-catalogo");
+  const grupos = pruebasParaProyecto({
+    slug: "erp-roldan-pendiente-entrega",
+    target_base_url: "https://roldanehijos.neura.com.py",
+    target_env: "staging",
+  });
+  const auditoria = grupos.find((g) => g.tipo === "auditoria_integral");
+  assert.ok(auditoria, "no apareció el grupo auditoria_integral");
+  assert.ok(auditoria!.pruebas.length >= 10, `cantidad pruebas en auditoría: ${auditoria!.pruebas.length}`);
+});
+
+test("pruebasParaProyecto: proyecto sin mapeo en CODEBASE_POR_SLUG NO ve auditoría integral", async () => {
+  const { pruebasParaProyecto } = await import("../../src/lib/qa/pruebas-catalogo");
+  const grupos = pruebasParaProyecto({
+    slug: "cliente-desconocido-sin-mapeo",
+    target_base_url: "https://cualquier-cosa.example",
+    target_env: "staging",
+  });
+  const auditoria = grupos.find((g) => g.tipo === "auditoria_integral");
+  assert.equal(auditoria, undefined, "no debería ofrecer auditoría a un codebase desconocido");
+});
+
 test("catálogo: slugs/spec_file únicos, tests > 0, nombre y descripción no vacíos", () => {
   const vistos = new Set<string>();
   for (const p of CATALOGO_PRUEBAS) {
@@ -62,16 +90,18 @@ test("pruebasParaProyecto: QA sobre sistemas-propio → incluye disponibilidad +
   assert.ok(todas.includes("sistemas-propio-seguridad.spec.ts"), "falta seguridad específica");
 });
 
-test("pruebasParaProyecto: proyecto genérico localhost → excluye las específicas de sistemas-propio sólo si slug no matchea", () => {
-  // localhost matchea esSistemasPropio (host whitelist), por lo cual incluye las específicas.
+test("pruebasParaProyecto: proyecto sin mapeo explícito → NO ve las específicas (no identifica por dominio)", () => {
+  // Nueva política: compatibilidad por codebase declarado, nunca por dominio.
+  // slug "demo-x" no está en CODEBASE_POR_SLUG → codebase="otro" → solo disponibilidad genérica.
   const grupos = pruebasParaProyecto({
     slug: "demo-x",
     target_base_url: "http://localhost:3000",
     target_env: "local",
   });
   const todas = grupos.flatMap((g) => g.pruebas.map((p) => p.spec_file));
-  assert.ok(todas.includes("availability.spec.ts"));
-  assert.ok(todas.includes("sistemas-propio-login-page.spec.ts"));
+  assert.ok(todas.includes("availability.spec.ts"), "siempre debería ofrecer disponibilidad genérica");
+  assert.ok(!todas.includes("sistemas-propio-login-page.spec.ts"),
+    "no debería ofrecer specs de sistemas-propio a un codebase desconocido");
 });
 
 test("pruebasParaProyecto: host no productivo pero no sistemas-propio → sólo las genéricas", () => {

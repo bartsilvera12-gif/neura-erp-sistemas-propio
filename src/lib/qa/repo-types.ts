@@ -25,6 +25,12 @@ export type QaProject = {
   estado_entrega: "en_desarrollo" | "en_qa" | "entregado";
   autorizacion_qa_hasta: string | null;
   repo_url?: string | null;
+  /**
+   * El admin certificó que el ERP tiene usuario QA de sólo lectura y autoriza
+   * correr suites "authenticated_read_only" aunque no exista env-assert
+   * runtime. NUNCA aplica a suites con escritura o lectura no estricta.
+   */
+  permite_lectura_sin_env_assert?: boolean;
 };
 
 export type QaSuite = {
@@ -216,8 +222,24 @@ export interface QaRunsRepo {
       title: string;
       description: string;
       severity: QaFindingSeverity;
+      funcion_revisada?: string | null;
+      resultado_esperado?: string | null;
+      resultado_obtenido?: string | null;
+      recomendacion?: string | null;
+      evidencia_url?: string | null;
+      modulo_negocio?: string | null;
     }>;
   }): Promise<{ inserted: number }>;
+
+  /**
+   * Admin-only: alterna el flag `permite_lectura_sin_env_assert` del proyecto.
+   * El caller debe haber verificado el rol admin antes de llamar.
+   */
+  setPermiteLecturaSinEnvAssert(input: {
+    project_id: string;
+    valor: boolean;
+    actor_id: string | null;
+  }): Promise<QaProject | null>;
 }
 
 export type QaFindingSeverity = "blocker" | "critical" | "major" | "minor" | "info";

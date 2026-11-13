@@ -4,10 +4,15 @@ import { useEffect, useState } from "react";
 
 type Suite = { id: string; slug: string; name: string; tags: string[]; specs: string[]; enabled: boolean };
 
-type Props = { projectId: string; projectSlug: string; onChange?: () => void };
+type Props = {
+  projectId: string;
+  projectSlug: string;
+  permiteLecturaSinEnvAssert?: boolean;
+  onChange?: () => void;
+};
 
 /** Bloque colapsable: lista de suites + crear nueva. */
-export default function SuitesSection({ projectId, projectSlug, onChange }: Props) {
+export default function SuitesSection({ projectId, projectSlug, permiteLecturaSinEnvAssert, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [suites, setSuites] = useState<Suite[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,11 +52,21 @@ export default function SuitesSection({ projectId, projectSlug, onChange }: Prop
               className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900"
               data-testid="roldan-static-only-banner"
             >
-              <strong>Instancia productiva — sólo análisis estático habilitado.</strong>
+              <strong>Instancia productiva — auditoría disponible por capas.</strong>
               <br />
-              Las pruebas que tocan el dominio publicado (lecturas y escrituras runtime) están
-              bloqueadas hasta aislar datos e integraciones. La auditoría estática corre sobre
-              el repositorio, sin tocar el ERP ni sus credenciales.
+              <strong>✅ Habilitada</strong>: auditoría estática del código (siempre segura).{" "}
+              {permiteLecturaSinEnvAssert ? (
+                <>
+                  <strong>✅ Habilitada</strong>: auditoría funcional de lectura — el admin autorizó correr
+                  contra el ERP con el usuario QA de sólo lectura.
+                </>
+              ) : (
+                <>
+                  <strong>🔒 Bloqueada</strong>: auditoría funcional de lectura. Requiere (a) usuario QA de
+                  sólo lectura en el ERP y (b) toggle de autorización del admin del proyecto.
+                </>
+              )}{" "}
+              <strong>🔒 Bloqueada</strong>: cualquier prueba de escritura (sin excepción).
             </div>
           )}
           {loading && <p className="text-xs text-slate-500">Cargando suites…</p>}

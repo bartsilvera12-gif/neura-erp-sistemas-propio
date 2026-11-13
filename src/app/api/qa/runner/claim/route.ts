@@ -35,14 +35,27 @@ export async function POST(request: Request) {
   // nivel no corrible ("mixed_analysis", "write_required"), en teoría el
   // handleCreateRun ya lo rechazó: acá, por safety, mapeamos a "standard".
   const nivel = nivelSeguridadDeSpecs(suite.specs);
-  const safety_level: "static_analysis" | "anonymous_read_only" | "standard" =
-    nivel === "static_analysis" || nivel === "anonymous_read_only" ? nivel : "standard";
+  const safety_level:
+    | "static_analysis"
+    | "anonymous_read_only"
+    | "authenticated_read_only"
+    | "standard" =
+    nivel === "static_analysis" ||
+    nivel === "anonymous_read_only" ||
+    nivel === "authenticated_read_only"
+      ? nivel
+      : "standard";
   const mode: "read-only" | "write" | "static-analysis" =
     safety_level === "static_analysis" ? "static-analysis" : "read-only";
   const repo_url =
     safety_level === "static_analysis"
       ? resolverRepoUrlProyecto(project.slug, project.repo_url ?? null)
       : null;
+  // El runner saltea env-assert sólo para authenticated_read_only cuando el
+  // admin del proyecto lo autorizó. El flag llega desde la DB del proyecto.
+  const skip_env_assert =
+    safety_level === "authenticated_read_only" &&
+    project.permite_lectura_sin_env_assert === true;
 
   const flat = {
     job_id: job.id,
@@ -53,6 +66,7 @@ export async function POST(request: Request) {
     target_env: run.target_env,
     mode,
     safety_level,
+    skip_env_assert,
     ...(repo_url ? { repo_url, repo_branch: project.default_branch ?? "main" } : {}),
     specs: suite.specs,
     created_at:

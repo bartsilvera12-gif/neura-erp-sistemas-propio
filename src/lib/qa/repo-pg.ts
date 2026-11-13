@@ -38,7 +38,7 @@ export type QaExecutor = {
 
 const PROJECT_COLS =
   "id, slug, name, target_base_url, target_env, default_branch, " +
-  "estado_entrega, autorizacion_qa_hasta, repo_url";
+  "estado_entrega, autorizacion_qa_hasta, repo_url, permite_lectura_sin_env_assert";
 const SUITE_COLS =
   "id, project_id, slug, name, tags, specs, enabled";
 const RUN_COLS =
@@ -60,6 +60,7 @@ function asProject(row: Record<string, unknown> | undefined): QaProject | null {
     estado_entrega: (row.estado_entrega as QaProject["estado_entrega"]) ?? "en_desarrollo",
     autorizacion_qa_hasta: (row.autorizacion_qa_hasta as string | null) ?? null,
     repo_url: (row.repo_url as string | null) ?? null,
+    permite_lectura_sin_env_assert: row.permite_lectura_sin_env_assert === true,
   };
 }
 function asSuite(row: Record<string, unknown> | undefined): QaSuite | null {
@@ -601,6 +602,12 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       title: string;
       description: string;
       severity: QaFindingRow["severity"];
+      funcion_revisada?: string | null;
+      resultado_esperado?: string | null;
+      resultado_obtenido?: string | null;
+      recomendacion?: string | null;
+      evidencia_url?: string | null;
+      modulo_negocio?: string | null;
     }>;
   }): Promise<{ inserted: number }> {
     if (input.findings.length === 0) return { inserted: 0 };
@@ -610,17 +617,58 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       const placeholders: string[] = [];
       let i = 1;
       for (const f of input.findings) {
-        placeholders.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}::qa_center.finding_severity)`);
-        values.push(input.project_id, input.run_id, f.title, f.description, f.severity);
+        placeholders.push(
+          `($${i++}, $${i++}, $${i++}, $${i++}, $${i++}::qa_center.finding_severity, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`
+        );
+        values.push(
+          input.project_id,
+          input.run_id,
+          f.title,
+          f.description,
+          f.severity,
+          f.funcion_revisada ?? null,
+          f.resultado_esperado ?? null,
+          f.resultado_obtenido ?? null,
+          f.recomendacion ?? null,
+          f.evidencia_url ?? null,
+          f.modulo_negocio ?? null
+        );
       }
       const r = await c.query(
         `INSERT INTO qa_center.findings
-           (project_id, run_id, title, description, severity)
+           (project_id, run_id, title, description, severity,
+            funcion_revisada, resultado_esperado, resultado_obtenido,
+            recomendacion, evidencia_url, modulo_negocio)
          VALUES ${placeholders.join(", ")}
          RETURNING id`,
         values
       );
       return { inserted: r.rowCount ?? 0 };
+    }, /* tx = */ true);
+  }
+
+  async setPermiteLecturaSinEnvAssert(input: {
+    project_id: string;
+    valor: boolean;
+    actor_id: string | null;
+  }): Promise<QaProject | null> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `UPDATE qa_center.projects
+            SET permite_lectura_sin_env_assert = $2,
+                updated_at = now()
+          WHERE id = $1
+        RETURNING ${PROJECT_COLS}, permite_lectura_sin_env_assert`,
+        [input.project_id, input.valor]
+      );
+      if (r.rowCount === 0) return null;
+      const row = r.rows[0] as Record<string, unknown>;
+      await c.query(
+        `INSERT INTO qa_center.audit_log (actor, action, entity_type, entity_id, payload)
+         VALUES ($1, 'set_permite_lectura_sin_env_assert', 'project', $2, $3::jsonb)`,
+        [input.actor_id ?? "system", input.project_id, JSON.stringify({ valor: input.valor })]
+      );
+      return { ...asProject(row), permite_lectura_sin_env_assert: row.permite_lectura_sin_env_assert === true };
     }, /* tx = */ true);
   }
 }

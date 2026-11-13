@@ -220,6 +220,12 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
     title: string;
     description: string;
     severity: "blocker" | "critical" | "major" | "minor" | "info";
+    funcion_revisada?: string | null;
+    resultado_esperado?: string | null;
+    resultado_obtenido?: string | null;
+    recomendacion?: string | null;
+    evidencia_url?: string | null;
+    modulo_negocio?: string | null;
   }> = [];
 
   async insertFindings(input: Parameters<QaRunsRepo["insertFindings"]>[0]): ReturnType<QaRunsRepo["insertFindings"]> {
@@ -230,8 +236,23 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
         title: f.title,
         description: f.description,
         severity: f.severity,
+        funcion_revisada: f.funcion_revisada ?? null,
+        resultado_esperado: f.resultado_esperado ?? null,
+        resultado_obtenido: f.resultado_obtenido ?? null,
+        recomendacion: f.recomendacion ?? null,
+        evidencia_url: f.evidencia_url ?? null,
+        modulo_negocio: f.modulo_negocio ?? null,
       });
     }
     return { inserted: input.findings.length };
+  }
+
+  async setPermiteLecturaSinEnvAssert(input: Parameters<QaRunsRepo["setPermiteLecturaSinEnvAssert"]>[0]): ReturnType<QaRunsRepo["setPermiteLecturaSinEnvAssert"]> {
+    // Busca el proyecto en el mapa in-memory y actualiza el flag.
+    const p = (this as unknown as { projects: Map<string, QaProject> }).projects?.get?.(input.project_id);
+    if (!p) return null;
+    const next: QaProject = { ...p, permite_lectura_sin_env_assert: input.valor };
+    (this as unknown as { projects: Map<string, QaProject> }).projects?.set?.(input.project_id, next);
+    return next;
   }
 }

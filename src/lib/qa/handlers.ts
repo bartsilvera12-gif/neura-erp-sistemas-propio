@@ -102,6 +102,15 @@ async function preflightEnvAssert(
         razon: `env-assert no declara lectura_anonima_safe=true (${reasons}). Este modo requiere que el target lo apruebe explícitamente.`,
       };
     }
+    if (nivel === "authenticated_read_only") {
+      const bodyAny = body as { lectura_autenticada_safe?: unknown };
+      if (bodyAny.lectura_autenticada_safe === true) return { ok: true };
+      const reasons = Array.isArray(body.reasons) ? body.reasons.join(" · ") : "sin detalle";
+      return {
+        ok: false,
+        razon: `env-assert no declara lectura_autenticada_safe=true (${reasons}). Este modo requiere aprobación explícita del target o el override del admin del proyecto.`,
+      };
+    }
     // nivel="standard": exige prod_safe=true (comportamiento histórico)
     if (body.prod_safe !== true) {
       const reasons = Array.isArray(body.reasons) ? body.reasons.join(" · ") : "sin detalle";
@@ -238,11 +247,15 @@ export async function handleCreateRun(input: {
     };
   }
 
-  // Pre-flight env-assert con el nivel calculado. Para static_analysis
-  // nunca se consulta el endpoint (el runner clona el repo), ni siquiera
-  // un preflight inyectado por tests — la ausencia de red en ese modo
-  // es parte de la garantía de aislamiento.
-  if (nivel !== "static_analysis") {
+  // Pre-flight env-assert con el nivel calculado.
+  //  - static_analysis: nunca se consulta (el runner clona el repo).
+  //  - authenticated_read_only + proyecto con `permite_lectura_sin_env_assert`:
+  //    el admin certificó aislamiento; se omite el preflight; el runner
+  //    recibirá skip_env_assert=true en el job.
+  const skipEnvAssert =
+    nivel === "authenticated_read_only" &&
+    project.permite_lectura_sin_env_assert === true;
+  if (nivel !== "static_analysis" && !skipEnvAssert) {
     const envCheck = await (input.preflight ?? ((url) => preflightEnvAssert(url, nivel)))(project.target_base_url);
     if (!envCheck.ok) {
       return {
@@ -343,6 +356,13 @@ const findingItemSchema = z.object({
   file: z.string().max(500).default(""),
   line: z.number().int().nonnegative().nullable().default(null),
   evidence: z.string().max(4000).default(""),
+  // Campos del reporte funcional (opcionales — las otras clases de prueba no los usan).
+  funcion_revisada: z.string().max(300).optional(),
+  resultado_esperado: z.string().max(1000).optional(),
+  resultado_obtenido: z.string().max(1000).optional(),
+  recomendacion: z.string().max(1000).optional(),
+  evidencia_url: z.string().url().max(1000).optional(),
+  modulo_negocio: z.string().max(100).optional(),
 });
 
 const reportFindingsSchema = z.object({
@@ -384,7 +404,17 @@ export async function handleReportFindings(input: {
       ]
         .filter(Boolean)
         .join("\n");
-    return { title: f.title, description, severity: f.severity };
+    return {
+      title: f.title,
+      description,
+      severity: f.severity,
+      funcion_revisada: f.funcion_revisada ?? null,
+      resultado_esperado: f.resultado_esperado ?? null,
+      resultado_obtenido: f.resultado_obtenido ?? null,
+      recomendacion: f.recomendacion ?? null,
+      evidencia_url: f.evidencia_url ?? null,
+      modulo_negocio: f.modulo_negocio ?? null,
+    };
   });
   const out = await input.repo.insertFindings({
     run_id: parsed.data.run_id,

@@ -18,7 +18,8 @@ const RUNNER_SPECS_DIR = resolve(process.cwd(), "..", "qa-runner", "src", "playw
 
 test("catálogo: cada spec_file apunta a un archivo .spec.ts real del runner (excepto estática)", () => {
   for (const p of CATALOGO_PRUEBAS) {
-    assert.match(p.spec_file, /^[A-Za-z0-9_\-.]+\.spec\.ts$/, `spec_file inválido: ${p.spec_file}`);
+    // spec_file puede incluir subdirectorios (ej. funcional/ventas.spec.ts)
+    assert.match(p.spec_file, /^[A-Za-z0-9_\-./]+\.spec\.ts$/, `spec_file inválido: ${p.spec_file}`);
     // Las specs de auditoría estática no corresponden a archivos Playwright;
     // mapean a analyzers del runner (src/analyzers/*.ts). Sólo validamos shape.
     if (p.tipo === "auditoria_estatica") {
@@ -58,21 +59,30 @@ test("pruebasParaProyecto: proyecto sin mapeo en CODEBASE_POR_SLUG NO ve auditor
   assert.equal(auditoria, undefined, "no debería ofrecer auditoría a un codebase desconocido");
 });
 
-test("catálogo: slugs/spec_file únicos, tests > 0, nombre y descripción no vacíos", () => {
-  const vistos = new Set<string>();
+test("catálogo: cada entrada tiene tests>0, nombre y descripción no vacíos; nombre único", () => {
+  const vistosNombre = new Set<string>();
   for (const p of CATALOGO_PRUEBAS) {
-    assert.ok(!vistos.has(p.spec_file), `duplicado: ${p.spec_file}`);
-    vistos.add(p.spec_file);
-    assert.ok(p.tests > 0, `tests debe ser > 0 para ${p.spec_file}`);
-    assert.ok(p.nombre.length >= 3, `nombre vacío en ${p.spec_file}`);
-    assert.ok(p.descripcion.length >= 10, `descripción corta en ${p.spec_file}`);
+    // El spec_file puede repetirse (una spec Playwright con varios tests
+    // tildables por separado), pero el NOMBRE debe ser único.
+    assert.ok(!vistosNombre.has(p.nombre), `nombre duplicado: ${p.nombre}`);
+    vistosNombre.add(p.nombre);
+    assert.ok(p.tests > 0, `tests debe ser > 0 para ${p.nombre}`);
+    assert.ok(p.nombre.length >= 3, `nombre vacío: ${p.spec_file}`);
+    assert.ok(p.descripcion.length >= 10, `descripción corta: ${p.nombre}`);
   }
 });
 
-test("specsPermitidas(): retorna todas las del catálogo", () => {
+test("specsPermitidas(): cubre todos los spec_file del catálogo (dedupe permitido)", () => {
   const set = specsPermitidas();
-  for (const p of CATALOGO_PRUEBAS) assert.ok(set.has(p.spec_file));
-  assert.equal(set.size, CATALOGO_PRUEBAS.length);
+  for (const p of CATALOGO_PRUEBAS) assert.ok(set.has(p.spec_file), `${p.spec_file} ausente`);
+  // Un mismo spec_file puede aparecer varias veces en el catálogo si contiene
+  // tests seleccionables individualmente (p.ej. funcional/ventas.spec.ts con
+  // 4 invariantes). El Set dedupe → size ≤ length.
+  assert.ok(set.size <= CATALOGO_PRUEBAS.length);
+  assert.ok(set.size > 0);
+  // Pero la combinación (spec_file, nombre) sí debe ser única:
+  const combinaciones = new Set(CATALOGO_PRUEBAS.map((p) => `${p.spec_file}::${p.nombre}`));
+  assert.equal(combinaciones.size, CATALOGO_PRUEBAS.length);
 });
 
 test("pruebasParaProyecto: target productivo (slug desconocido) → lista vacía", () => {

@@ -15,6 +15,7 @@ import type { QaProjectRow } from "@/lib/qa/db";
 
 export type TipoDePrueba =
   | "auditoria_estatica"
+  | "auditoria_funcional_negocio"
   | "disponibilidad"
   | "inicio_sesion"
   | "navegacion"
@@ -56,6 +57,7 @@ export type EfectoPrueba =
   | "analisis_estatico"
   | "lectura_anonima"
   | "lectura_con_sesion"
+  | "lectura_autenticada_estricta"
   | "escritura";
 
 export type PruebaDisponible = {
@@ -77,6 +79,17 @@ export type PruebaDisponible = {
    * NUNCA debe quedar "escritura" implícitamente — hay que declararlo a mano.
    */
   efecto?: EfectoPrueba;
+  /**
+   * Marca que esta prueba JAMÁS envía POST ni toca formularios de creación /
+   * edición / borrado. Específica de auditoría funcional del negocio. Habilita
+   * el nivel de seguridad "authenticated_read_only" en runs 100% de este tipo.
+   */
+  solo_lectura_estricta?: boolean;
+  /**
+   * Módulo de negocio al que pertenece (Ventas, Compras, Caja, etc.). Se usa
+   * en la UI y en los reportes para agrupar por área.
+   */
+  modulo_negocio?: string;
   /**
    * Filtro de compatibilidad con el proyecto. Se evalúa contra el proyecto
    * seleccionado; devuelve `true` si la prueba puede correr contra él.
@@ -393,6 +406,278 @@ export const CATALOGO_PRUEBAS: ReadonlyArray<PruebaDisponible> = [
     requiere_credenciales: false,
     compatible_con: (p) => noEsProduccion(p) && esSistemasPropio(p),
   },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Auditoría funcional del negocio — 100% LECTURA ESTRICTA.
+  // Un usuario QA con rol de sólo lectura inicia sesión, las specs consultan
+  // endpoints GET y verifican consistencia de cálculos (totales, saldos,
+  // stock, duplicados). NUNCA envían POST, nunca tocan botones de edición.
+  // Compatible con cualquier proyecto del codebase neura-erp.
+  // ──────────────────────────────────────────────────────────────────────
+  {
+    spec_file: "funcional/ventas.spec.ts",
+    nombre: "Ventas · Últimas 20 operaciones se listan",
+    descripcion: "Trae las últimas 20 ventas con GET y verifica que el endpoint responde sin error.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Ventas",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/ventas.spec.ts",
+    nombre: "Ventas · El total coincide con la suma de ítems − descuento",
+    descripcion: "Para cada venta: Σ(cantidad × precio) − descuento debe igualar el total informado.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Ventas",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/ventas.spec.ts",
+    nombre: "Ventas · Cabecera y detalle son coherentes",
+    descripcion: "Una venta tomada al azar tiene al menos un ítem y su cuerpo responde sin romper.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Ventas",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/ventas.spec.ts",
+    nombre: "Ventas · Totales del día coinciden con el reporte",
+    descripcion: "Si existe /api/reportes/ventas, debe responder 200 para el mes en curso.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Ventas",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/compras.spec.ts",
+    nombre: "Compras · Últimas 20 se listan",
+    descripcion: "GET /api/compras con limit=20 responde 200 y entrega un listado.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Compras",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/compras.spec.ts",
+    nombre: "Compras · Total coincide con Σ (costo × cantidad) de ítems",
+    descripcion: "Para cada compra: la suma de costo × cantidad por ítem debe igualar el total informado.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Compras",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/compras.spec.ts",
+    nombre: "Compras · El proveedor cargado existe en el catálogo",
+    descripcion: "El proveedor_id de una compra al azar debe existir en /api/proveedores.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Compras",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/inventario.spec.ts",
+    nombre: "Inventario · Los productos listados tienen stock numérico",
+    descripcion: "Los primeros 20 productos deben tener stock_actual como número finito.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Inventario",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/inventario.spec.ts",
+    nombre: "Inventario · Stock actual = inicial + movimientos",
+    descripcion: "Para un producto al azar, stock_actual debe igualar stock_inicial + Σ(movimientos.cantidad).",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Inventario",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/inventario.spec.ts",
+    nombre: "Inventario · Productos bajo mínimo se identifican",
+    descripcion: "GET /api/inventario/bajo-minimo debe responder 200 y devolver JSON.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Inventario",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/caja.spec.ts",
+    nombre: "Caja · Cierre del día = apertura + ingresos − egresos",
+    descripcion: "El saldo declarado de cada caja debe igualar apertura + ingresos − egresos.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Caja",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/caja.spec.ts",
+    nombre: "Caja · Cada movimiento tiene categoría",
+    descripcion: "Ningún movimiento de caja puede tener la categoría vacía.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Caja",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/caja.spec.ts",
+    nombre: "Caja · Máximo una caja abierta por sucursal",
+    descripcion: "No puede haber dos cajas en estado abierta simultáneas en una misma sucursal.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Caja",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/clientes.spec.ts",
+    nombre: "Clientes · Últimos 20 se listan",
+    descripcion: "GET /api/clientes con limit=20 responde 200.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Clientes",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/clientes.spec.ts",
+    nombre: "Clientes · Búsqueda por teléfono devuelve 1+ resultado",
+    descripcion: "Buscar el teléfono de un cliente existente no puede devolver vacío.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Clientes",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/clientes.spec.ts",
+    nombre: "Clientes · No hay documentos duplicados",
+    descripcion: "En las últimas 200 fichas de cliente, ningún número de documento aparece dos veces.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Clientes",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/cobranzas.spec.ts",
+    nombre: "Cobranzas · Últimos 20 pagos se listan",
+    descripcion: "GET /api/pagos con limit=20 responde 200.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Cobranzas",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/cobranzas.spec.ts",
+    nombre: "Cobranzas · Saldo de cliente = facturado − pagado",
+    descripcion: "Para una cuenta corriente al azar, el saldo debe igualar facturado − pagado.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Cobranzas",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/cobranzas.spec.ts",
+    nombre: "Cobranzas · Cuentas con saldo a favor del cliente se identifican",
+    descripcion: "GET /api/cobros/cuentas?saldo=negativo debe responder 200 si el filtro existe.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Cobranzas",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/reportes.spec.ts",
+    nombre: "Reportes · Total ventas del mes = suma de ventas individuales",
+    descripcion: "El total agregado en /api/reportes/ventas?mes=X debe coincidir con la suma de ventas listadas en ese mes.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Reportes",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/reportes.spec.ts",
+    nombre: "Reportes · Gastos del mes = compras + egresos de caja",
+    descripcion: "GET /api/reportes/ingresos-egresos debe responder 200 para el mes en curso.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Reportes",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
+  {
+    spec_file: "funcional/reportes.spec.ts",
+    nombre: "Reportes · Ningún total es NaN o null",
+    descripcion: "En los reportes principales del mes, el JSON no debe contener NaN ni `\"total\": null`.",
+    tipo: "auditoria_funcional_negocio",
+    tests: 1,
+    requiere_credenciales: true,
+    efecto: "lectura_autenticada_estricta",
+    solo_lectura_estricta: true,
+    modulo_negocio: "Reportes",
+    compatible_con: (p) => noEsProduccion(p) && esErpNeura(p),
+  },
 ];
 
 const ETIQUETAS_TIPO: Record<TipoDePrueba, { etiqueta: string; descripcion: string; orden: number }> = {
@@ -402,31 +687,37 @@ const ETIQUETAS_TIPO: Record<TipoDePrueba, { etiqueta: string; descripcion: stri
       "Análisis del repositorio Git sin tocar el ERP publicado. Secretos, dependencias, rutas API sin guard, cabeceras de seguridad, patrones de SQL interpolada y contrato env-assert.",
     orden: 0,
   },
+  auditoria_funcional_negocio: {
+    etiqueta: "Auditoría funcional del negocio",
+    descripcion:
+      "Pruebas de lectura sobre Ventas, Compras, Inventario, Caja, Clientes, Cobranzas y Reportes. Requieren un usuario QA de sólo lectura. Nunca escriben ni envían mensajes.",
+    orden: 1,
+  },
   disponibilidad: {
     etiqueta: "Disponibilidad",
     descripcion: "Que el sitio responda, que el servidor esté arriba, que no filtre secretos.",
-    orden: 1,
+    orden: 2,
   },
   inicio_sesion: {
     etiqueta: "Inicio de sesión",
     descripcion: "Que la página de login funcione y que el acceso con usuario esté operativo.",
-    orden: 2,
+    orden: 3,
   },
   navegacion: {
     etiqueta: "Navegación",
     descripcion: "Que las páginas internas abran correctamente tras loguear.",
-    orden: 3,
+    orden: 4,
   },
   seguridad: {
     etiqueta: "Seguridad y aislamiento",
     descripcion: "Que las rutas sensibles estén bloqueadas y las defensas estén activas.",
-    orden: 4,
+    orden: 5,
   },
   auditoria_integral: {
     etiqueta: "Auditoría integral del ERP",
     descripcion:
       "Cobertura amplia por módulo (disponibilidad, login, API, cabeceras, navegación, reportes, permisos). Reutilizable para todos los ERP del codebase Neura.",
-    orden: 5,
+    orden: 6,
   },
 };
 
@@ -481,6 +772,7 @@ export function efectoDeSpec(spec_file: string): EfectoPrueba | null {
 export type NivelSeguridadRun =
   | "static_analysis"
   | "anonymous_read_only"
+  | "authenticated_read_only"
   | "standard"
   | "write_required"
   | "mixed_analysis";
@@ -490,19 +782,36 @@ export function nivelSeguridadDeSpecs(specs: ReadonlyArray<string>): NivelSeguri
   let tieneSesion = false;
   let tieneEstatico = false;
   let tieneRuntime = false;
+  let tieneROEstricto = false;
+  let tieneSesionNoEstricta = false;
   for (const s of specs) {
+    const entrada = CATALOGO_PRUEBAS.find((p) => p.spec_file === s && soloLecturaEstricta(p, s));
     const e = efectoDeSpec(s);
     if (!e) return null;
     if (e === "escritura") return "write_required";
-    if (e === "analisis_estatico") tieneEstatico = true;
-    else {
-      tieneRuntime = true;
-      if (e === "lectura_con_sesion") tieneSesion = true;
+    if (e === "analisis_estatico") {
+      tieneEstatico = true;
+      continue;
+    }
+    tieneRuntime = true;
+    if (e === "lectura_autenticada_estricta" || (entrada && entrada.solo_lectura_estricta)) {
+      tieneROEstricto = true;
+    } else if (e === "lectura_con_sesion") {
+      tieneSesion = true;
+      tieneSesionNoEstricta = true;
     }
   }
   if (tieneEstatico && tieneRuntime) return "mixed_analysis";
   if (tieneEstatico) return "static_analysis";
+  // Mezcla entre lectura_autenticada_estricta y lectura_con_sesion no-estricta
+  // cae a "standard" por seguridad (la no-estricta puede tener efectos).
+  if (tieneROEstricto && !tieneSesionNoEstricta) return "authenticated_read_only";
   return tieneSesion ? "standard" : "anonymous_read_only";
+}
+
+function soloLecturaEstricta(p: PruebaDisponible, spec: string): boolean {
+  if (p.spec_file !== spec) return false;
+  return p.solo_lectura_estricta === true || p.efecto === "lectura_autenticada_estricta";
 }
 
 /**
@@ -530,6 +839,7 @@ export function resolverRepoUrlProyecto(slug: string, repoUrl: string | null | u
  */
 const CODIGO_CORTO: Record<TipoDePrueba, string> = {
   auditoria_estatica: "estatic",
+  auditoria_funcional_negocio: "funcneg",
   disponibilidad: "disp",
   inicio_sesion: "login",
   navegacion: "nav",

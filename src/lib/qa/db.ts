@@ -39,6 +39,7 @@ export type QaProjectRow = {
   updated_at: string;
   estado_entrega: "en_desarrollo" | "en_qa" | "entregado";
   autorizacion_qa_hasta: string | null;
+  permite_lectura_sin_env_assert?: boolean;
 };
 
 export type QaRunRow = {
@@ -93,6 +94,7 @@ function projectToRow(p: QaProject): QaProjectRow {
     updated_at: "",
     estado_entrega: p.estado_entrega,
     autorizacion_qa_hasta: p.autorizacion_qa_hasta,
+    permite_lectura_sin_env_assert: p.permite_lectura_sin_env_assert === true,
   };
 }
 

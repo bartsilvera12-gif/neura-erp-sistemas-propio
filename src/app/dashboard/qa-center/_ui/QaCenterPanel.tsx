@@ -122,14 +122,28 @@ export default function QaCenterPanel({
                     <p className="text-xs text-slate-500">
                       {p.slug} · branch {p.default_branch} · {p.target_env}
                     </p>
+                    {p.repo_url && (
+                      <p className="mt-1 text-xs" data-testid={`repo-chip-${p.slug}`}>
+                        <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
+                          <span>repo</span>
+                          <span className="text-slate-900">{p.repo_url.replace("https://github.com/", "")}</span>
+                        </span>
+                      </p>
+                    )}
                     <p className="mt-1">
                       <EstadoBadge estado={p.estado_entrega} vence={p.autorizacion_qa_hasta} />
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
-                      {p.target_base_url}
-                    </span>
+                    {p.target_base_url ? (
+                      <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                        {p.target_base_url}
+                      </span>
+                    ) : (
+                      <span className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700" title="Proyecto sólo de análisis de repositorio">
+                        sin URL
+                      </span>
+                    )}
                     {p.estado_entrega !== "entregado" && (
                       <button
                         onClick={() => setAutorizandoId(p.id)}

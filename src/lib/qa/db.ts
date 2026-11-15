@@ -85,7 +85,7 @@ function projectToRow(p: QaProject): QaProjectRow {
     id: p.id,
     slug: p.slug,
     name: p.name,
-    repo_url: null,
+    repo_url: p.repo_url ?? null,
     default_branch: p.default_branch,
     target_base_url: p.target_base_url,
     target_env: p.target_env,

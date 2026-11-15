@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { assertQaCenterAccess } from "@/lib/qa/auth";
 import { buildQaRepo } from "@/lib/qa/route-helpers";
 import { validateTargetBaseUrl } from "@/lib/qa/target-validation";
+import { esRepoAutorizado, normalizarRepoUrl } from "@/lib/qa/repos-autorizados";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,12 +68,33 @@ export async function PATCH(
     patch.target_env = target_env;
   }
   if (body.target_base_url !== undefined) {
-    const envForCheck = target_env ?? (await repo.getProject(id))?.target_env ?? "staging";
-    const v = validateTargetBaseUrl(String(body.target_base_url), envForCheck);
-    if (!v.ok) {
-      return NextResponse.json({ error: v.reason, code: "validation", field: "target_base_url" }, { status: 400 });
+    const raw = String(body.target_base_url).trim();
+    if (raw === "") {
+      // Permitido: proyecto sólo de análisis de repositorio, sin URL.
+      patch.target_base_url = "";
+    } else {
+      const envForCheck = target_env ?? (await repo.getProject(id))?.target_env ?? "staging";
+      const v = validateTargetBaseUrl(raw, envForCheck);
+      if (!v.ok) {
+        return NextResponse.json({ error: v.reason, code: "validation", field: "target_base_url" }, { status: 400 });
+      }
+      patch.target_base_url = raw;
     }
-    patch.target_base_url = String(body.target_base_url).trim();
+  }
+  if (body.repo_url !== undefined) {
+    const raw = typeof body.repo_url === "string" ? body.repo_url.trim() : "";
+    if (raw === "") {
+      patch.repo_url = null;
+    } else {
+      const norm = normalizarRepoUrl(raw);
+      if (!norm || !esRepoAutorizado(norm)) {
+        return NextResponse.json(
+          { error: "repositorio no autorizado", code: "validation", field: "repo_url" },
+          { status: 400 }
+        );
+      }
+      patch.repo_url = norm;
+    }
   }
 
   const updated = await repo.updateProject(id, patch as Parameters<typeof repo.updateProject>[1]);

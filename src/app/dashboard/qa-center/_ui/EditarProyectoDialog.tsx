@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { QaProjectRow } from "@/lib/qa/db";
+import RepoSelector from "./RepoSelector";
 
 type Props = {
   project: QaProjectRow;
@@ -11,9 +12,11 @@ type Props = {
 
 export default function EditarProyectoDialog({ project, onClose, onSaved }: Props) {
   const [name, setName] = useState(project.name);
+  const [repoUrl, setRepoUrl] = useState<string | null>(project.repo_url);
   const [targetBaseUrl, setTargetBaseUrl] = useState(project.target_base_url);
   const [targetEnv, setTargetEnv] = useState<"staging" | "preview" | "local">(project.target_env);
   const [defaultBranch, setDefaultBranch] = useState(project.default_branch);
+  const [mostrarAvanzado, setMostrarAvanzado] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -24,10 +27,16 @@ export default function EditarProyectoDialog({ project, onClose, onSaved }: Prop
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name, target_base_url: targetBaseUrl, target_env: targetEnv, default_branch: defaultBranch,
+          name,
+          repo_url: repoUrl ?? "",
+          target_base_url: targetBaseUrl,
+          target_env: targetEnv,
+          default_branch: defaultBranch,
         }),
       });
-      const body = (await res.json()) as { data?: unknown; error?: string; field?: string };
+      const text = await res.text();
+      let body: { data?: unknown; error?: string; field?: string } = {};
+      try { body = text ? (JSON.parse(text) as typeof body) : {}; } catch { /* ignore */ }
       if (!res.ok || !body.data) {
         setErr(`${body.error ?? "fallo"}${body.field ? ` (${body.field})` : ""}`);
         return;
@@ -40,26 +49,47 @@ export default function EditarProyectoDialog({ project, onClose, onSaved }: Prop
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="dlg-editar-proyecto">
-      <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-lg">
+      <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-lg">
         <h3 className="mb-1 text-lg font-semibold">Editar proyecto</h3>
         <p className="mb-3 text-xs font-mono text-slate-500">{project.slug}</p>
         <div className="space-y-3 text-sm">
+          <label className="block"><span className="mb-1 block text-slate-600">Repositorio del ERP</span>
+            <RepoSelector value={repoUrl} onChange={(url) => setRepoUrl(url)} testid="ed-repo" />
+          </label>
           <label className="block"><span className="mb-1 block text-slate-600">Nombre</span>
             <input data-testid="ed-name" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded border border-slate-300 px-2 py-1" />
           </label>
-          <label className="block"><span className="mb-1 block text-slate-600">Target base URL</span>
-            <input data-testid="ed-url" value={targetBaseUrl} onChange={(e) => setTargetBaseUrl(e.target.value)} className="w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs" />
-          </label>
-          <label className="block"><span className="mb-1 block text-slate-600">Entorno</span>
-            <select data-testid="ed-env" value={targetEnv} onChange={(e) => setTargetEnv(e.target.value as typeof targetEnv)} className="w-full rounded border border-slate-300 px-2 py-1">
-              <option value="staging">staging</option>
-              <option value="preview">preview</option>
-              <option value="local">local</option>
-            </select>
-          </label>
-          <label className="block"><span className="mb-1 block text-slate-600">Branch</span>
-            <input data-testid="ed-branch" value={defaultBranch} onChange={(e) => setDefaultBranch(e.target.value)} className="w-full rounded border border-slate-300 px-2 py-1" />
-          </label>
+
+          <div className="rounded border border-slate-200">
+            <button
+              type="button"
+              data-testid="btn-avanzado-edit"
+              onClick={() => setMostrarAvanzado((v) => !v)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <span>Configuración avanzada</span>
+              <span className="text-slate-400">{mostrarAvanzado ? "▲" : "▼"}</span>
+            </button>
+            {mostrarAvanzado && (
+              <div className="space-y-3 border-t border-slate-200 px-3 py-3">
+                <label className="block"><span className="mb-1 block text-slate-600">URL del ERP (opcional)</span>
+                  <input data-testid="ed-url" value={targetBaseUrl} onChange={(e) => setTargetBaseUrl(e.target.value)}
+                    placeholder="(opcional)" className="w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs" />
+                </label>
+                <label className="block"><span className="mb-1 block text-slate-600">Entorno</span>
+                  <select data-testid="ed-env" value={targetEnv} onChange={(e) => setTargetEnv(e.target.value as typeof targetEnv)} className="w-full rounded border border-slate-300 px-2 py-1">
+                    <option value="staging">staging</option>
+                    <option value="preview">preview</option>
+                    <option value="local">local</option>
+                  </select>
+                </label>
+                <label className="block"><span className="mb-1 block text-slate-600">Branch</span>
+                  <input data-testid="ed-branch" value={defaultBranch} onChange={(e) => setDefaultBranch(e.target.value)} className="w-full rounded border border-slate-300 px-2 py-1" />
+                </label>
+              </div>
+            )}
+          </div>
+
           {err && <p className="text-xs text-rose-600" data-testid="dlg-err-edit">{err}</p>}
         </div>
         <div className="mt-4 flex items-center justify-end gap-2">

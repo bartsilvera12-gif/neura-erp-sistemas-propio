@@ -11,6 +11,7 @@ import {
   validateTargetBaseUrl,
   validateSlug,
 } from "@/lib/qa/target-validation";
+import { esRepoAutorizado, normalizarRepoUrl } from "@/lib/qa/repos-autorizados";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,12 +63,38 @@ export async function POST(request: Request) {
   if (!["staging", "preview", "local"].includes(target_env)) {
     return NextResponse.json({ error: "target_env inválido", code: "validation", field: "target_env" }, { status: 400 });
   }
-  const targetV = validateTargetBaseUrl(String(body.target_base_url ?? ""), target_env);
-  if (!targetV.ok) {
+
+  // repo_url opcional pero whitelisted. target_base_url opcional (análisis
+  // sólo de repositorio). Al menos uno de los dos debe estar presente.
+  const rawRepoUrl = typeof body.repo_url === "string" ? body.repo_url.trim() : "";
+  const rawTargetUrl = typeof body.target_base_url === "string" ? body.target_base_url.trim() : "";
+  if (!rawRepoUrl && !rawTargetUrl) {
     return NextResponse.json(
-      { error: targetV.reason, code: "validation", field: "target_base_url" },
+      { error: "especificá al menos un repositorio o una URL del ERP", code: "validation", field: "repo_url" },
       { status: 400 }
     );
+  }
+  let repoUrlFinal: string | null = null;
+  if (rawRepoUrl) {
+    const norm = normalizarRepoUrl(rawRepoUrl);
+    if (!norm || !esRepoAutorizado(norm)) {
+      return NextResponse.json(
+        { error: "repositorio no autorizado", code: "validation", field: "repo_url" },
+        { status: 400 }
+      );
+    }
+    repoUrlFinal = norm;
+  }
+  let targetBaseUrlFinal = "";
+  if (rawTargetUrl) {
+    const targetV = validateTargetBaseUrl(rawTargetUrl, target_env);
+    if (!targetV.ok) {
+      return NextResponse.json(
+        { error: targetV.reason, code: "validation", field: "target_base_url" },
+        { status: 400 }
+      );
+    }
+    targetBaseUrlFinal = rawTargetUrl;
   }
 
   const default_branch = typeof body.default_branch === "string" && body.default_branch.trim()
@@ -77,10 +104,11 @@ export async function POST(request: Request) {
   const result = await repo.createProject({
     slug: slugV.slug,
     name,
-    target_base_url: String(body.target_base_url).trim(),
+    target_base_url: targetBaseUrlFinal,
     target_env,
     default_branch,
     owner_user_id: auth.user.id,
+    repo_url: repoUrlFinal,
   });
   if ("conflict" in result) {
     return NextResponse.json(

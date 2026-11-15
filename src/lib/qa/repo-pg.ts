@@ -370,8 +370,8 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       if (dup.rowCount && dup.rowCount > 0) return { conflict: "slug" } as const;
       const r = await c.query(
         `INSERT INTO qa_center.projects
-           (slug, name, target_base_url, target_env, default_branch, owner_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (slug, name, target_base_url, target_env, default_branch, owner_user_id, repo_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING ${PROJECT_COLS}`,
         [
           input.slug,
@@ -380,6 +380,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
           input.target_env,
           input.default_branch ?? "main",
           input.owner_user_id ?? null,
+          input.repo_url ?? null,
         ]
       );
       return asProject(r.rows[0]) as QaProject;
@@ -388,7 +389,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
 
   async updateProject(
     projectId: string,
-    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch">>
+    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch" | "repo_url">>
   ): Promise<QaProject | null> {
     return this.run(async (c) => {
       const sets: string[] = [];
@@ -398,6 +399,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       if (patch.target_base_url !== undefined) { sets.push(`target_base_url = $${i++}`); params.push(patch.target_base_url); }
       if (patch.target_env !== undefined) { sets.push(`target_env = $${i++}`); params.push(patch.target_env); }
       if (patch.default_branch !== undefined) { sets.push(`default_branch = $${i++}`); params.push(patch.default_branch); }
+      if (patch.repo_url !== undefined) { sets.push(`repo_url = $${i++}`); params.push(patch.repo_url); }
       if (sets.length === 0) return (await this.getProject(projectId));
       sets.push(`updated_at = now()`);
       params.push(projectId);

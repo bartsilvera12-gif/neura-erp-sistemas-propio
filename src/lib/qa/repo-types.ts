@@ -159,12 +159,13 @@ export interface QaRunsRepo {
     target_env: QaTargetEnv;
     default_branch?: string;
     owner_user_id?: string | null;
+    repo_url?: string | null;
   }): Promise<QaProject | { conflict: "slug" }>;
 
   /** Actualiza campos editables de un proyecto. No cambia el slug. */
   updateProject(
     projectId: string,
-    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch">>
+    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch" | "repo_url">>
   ): Promise<QaProject | null>;
 
   /** Crea un suite. Duplicados por (project_id, slug) → conflict. */

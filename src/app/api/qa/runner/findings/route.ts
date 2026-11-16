@@ -24,9 +24,12 @@ export async function POST(request: Request) {
   if (!repo) {
     return NextResponse.json({ error: "QA_DB_URL no configurada o Postgres inalcanzable", code: "internal" }, { status: 500 });
   }
+  // authenticateRunner ya consumio el stream con request.text(), asi que
+  // request.json() aqui devolvia null/throw. Usamos el helper que reutiliza
+  // el texto ya leido.
   let body: unknown;
   try {
-    body = await request.json();
+    body = auth.bodyJson();
   } catch {
     return NextResponse.json({ error: "body no es JSON", code: "validation" }, { status: 400 });
   }

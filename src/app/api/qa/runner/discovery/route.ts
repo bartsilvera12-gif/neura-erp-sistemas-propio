@@ -88,7 +88,14 @@ export async function POST(request: Request) {
     const auth = await authenticateRunner(request, nonceStore);
     if (!auth.ok) return auth.response;
 
-    const raw = await request.json().catch(() => null);
+    // BUG HISTORICO: usabamos request.json() aqui, pero authenticateRunner
+    // ya consumio el stream con request.text(). El body llegaba como null
+    // y zod rechazaba todo con "expected object, received null", perdiendo
+    // el output completo del pipeline IA (discovery, specs, usage, informe).
+    // Hay que leer del helper auth.bodyJson() que reutiliza el texto ya leido.
+    const raw = (() => {
+      try { return auth.bodyJson(); } catch { return null; }
+    })();
     const parsed = discoverySchema.safeParse(raw);
     if (!parsed.success) {
       // Emitimos un resumen breve del primer issue para que el runner lo

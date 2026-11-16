@@ -11,7 +11,8 @@ import {
   validateTargetBaseUrl,
   validateSlug,
 } from "@/lib/qa/target-validation";
-import { esRepoAutorizado, normalizarRepoUrl } from "@/lib/qa/repos-autorizados";
+import { normalizarRepoUrl } from "@/lib/qa/repos-autorizados";
+import { verificarRepoAutorizado } from "@/lib/qa/github-repos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,13 +78,20 @@ export async function POST(request: Request) {
   let repoUrlFinal: string | null = null;
   if (rawRepoUrl) {
     const norm = normalizarRepoUrl(rawRepoUrl);
-    if (!norm || !esRepoAutorizado(norm)) {
+    if (!norm) {
       return NextResponse.json(
-        { error: "repositorio no autorizado", code: "validation", field: "repo_url" },
+        { error: "URL de repositorio inválida", code: "validation", field: "repo_url" },
         { status: 400 }
       );
     }
-    repoUrlFinal = norm;
+    const meta = await verificarRepoAutorizado(norm);
+    if (!meta) {
+      return NextResponse.json(
+        { error: "repositorio no autorizado por GitHub o fuera de los owners permitidos", code: "validation", field: "repo_url" },
+        { status: 400 }
+      );
+    }
+    repoUrlFinal = meta.url;
   }
   let targetBaseUrlFinal = "";
   if (rawTargetUrl) {

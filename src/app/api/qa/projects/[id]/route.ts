@@ -6,7 +6,8 @@ import { NextResponse } from "next/server";
 import { assertQaCenterAccess } from "@/lib/qa/auth";
 import { buildQaRepo } from "@/lib/qa/route-helpers";
 import { validateTargetBaseUrl } from "@/lib/qa/target-validation";
-import { esRepoAutorizado, normalizarRepoUrl } from "@/lib/qa/repos-autorizados";
+import { normalizarRepoUrl } from "@/lib/qa/repos-autorizados";
+import { verificarRepoAutorizado } from "@/lib/qa/github-repos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,13 +88,20 @@ export async function PATCH(
       patch.repo_url = null;
     } else {
       const norm = normalizarRepoUrl(raw);
-      if (!norm || !esRepoAutorizado(norm)) {
+      if (!norm) {
         return NextResponse.json(
-          { error: "repositorio no autorizado", code: "validation", field: "repo_url" },
+          { error: "URL de repositorio inválida", code: "validation", field: "repo_url" },
           { status: 400 }
         );
       }
-      patch.repo_url = norm;
+      const meta = await verificarRepoAutorizado(norm);
+      if (!meta) {
+        return NextResponse.json(
+          { error: "repositorio no autorizado por GitHub o fuera de los owners permitidos", code: "validation", field: "repo_url" },
+          { status: 400 }
+        );
+      }
+      patch.repo_url = meta.url;
     }
   }
 

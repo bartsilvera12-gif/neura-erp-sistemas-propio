@@ -29,7 +29,11 @@ export function isQaOnlyMode(): boolean {
  * rechaza con 405 incluso en rutas permitidas (previene PUT/DELETE/PATCH en
  * endpoints que fueron pensados sólo lectura/escritura acotada).
  */
-const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "POST"]);
+// PATCH/PUT/DELETE son necesarios para endpoints admin del panel QA (toggles de
+// proyecto, edición de suites, borrado de runs). La autorización real la hace
+// cada handler via assertQaCenterAccess; este gate sólo cierra la puerta a rutas
+// ajenas al QA Center, no decide por método HTTP dentro del panel.
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"]);
 
 /** Prefijos de PATH que, bajo QA-only, pasan al handler sin rewrite. */
 const ALLOWED_PATH_PREFIXES: ReadonlyArray<string> = [

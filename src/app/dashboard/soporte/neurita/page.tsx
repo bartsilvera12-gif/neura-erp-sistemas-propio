@@ -90,8 +90,10 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
 }
 
 /** Paleta de la torta: los mismos tonos que usa el resto de Soporte. */
-const COLORES = ["#4FAEB2", "#8b5cf6", "#f59e0b", "#0ea5e9", "#f43f5e", "#10b981", "#6366f1", "#ec4899", "#84cc16"];
-const GRIS_TORTA = "#cbd5e1";
+const COLORES = [
+  "#4FAEB2", "#8b5cf6", "#f59e0b", "#0ea5e9", "#f43f5e", "#10b981", "#6366f1", "#ec4899",
+  "#84cc16", "#14b8a6", "#a855f7", "#eab308", "#3b82f6", "#ef4444", "#22c55e", "#f97316",
+];
 
 /**
  * Las cargas a mano (el gasto previo a la tabla) llegan con un texto largo
@@ -99,21 +101,24 @@ const GRIS_TORTA = "#cbd5e1";
  */
 const nombreCorto = (n: string) => (/^carga inicial/i.test(n) ? "Carga inicial" : n.replace(/^neura-erp-/, ""));
 
-/** Un arco de la dona, de `desde` a `hasta` en vueltas (0 a 1). */
-function arco(desde: number, hasta: number, r = 78, rInt = 46) {
+/** Una porción de torta, de `desde` a `hasta` en vueltas (0 a 1). */
+function porcion(desde: number, hasta: number, r = 88) {
   const p = (t: number, radio: number) => {
     const a = 2 * Math.PI * t - Math.PI / 2;
     return [90 + radio * Math.cos(a), 90 + radio * Math.sin(a)];
   };
   // Una sola porción que ocupa todo el círculo no se puede dibujar con un arco.
-  const completo = hasta - desde >= 0.999;
-  const fin = completo ? desde + 0.999 : hasta;
+  if (hasta - desde >= 0.999) return `M 90 2 A ${r} ${r} 0 1 1 89.9 2 Z`;
   const [x1, y1] = p(desde, r);
-  const [x2, y2] = p(fin, r);
-  const [x3, y3] = p(fin, rInt);
-  const [x4, y4] = p(desde, rInt);
-  const grande = fin - desde > 0.5 ? 1 : 0;
-  return `M ${x1} ${y1} A ${r} ${r} 0 ${grande} 1 ${x2} ${y2} L ${x3} ${y3} A ${rInt} ${rInt} 0 ${grande} 0 ${x4} ${y4} Z`;
+  const [x2, y2] = p(hasta, r);
+  const grande = hasta - desde > 0.5 ? 1 : 0;
+  return `M 90 90 L ${x1} ${y1} A ${r} ${r} 0 ${grande} 1 ${x2} ${y2} Z`;
+}
+
+/** Dónde cae la etiqueta de una porción: a mitad de su ángulo, hacia afuera. */
+function centro(desde: number, hasta: number, radio = 56) {
+  const a = 2 * Math.PI * ((desde + hasta) / 2) - Math.PI / 2;
+  return { x: 90 + radio * Math.cos(a), y: 90 + radio * Math.sin(a) };
 }
 
 export default function NeuritaPage() {
@@ -439,8 +444,8 @@ export default function NeuritaPage() {
             <Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" />
           ) : (
             (() => {
-              // Las cargas a mano se juntan, y de ahí en más entran las ocho
-              // más caras: una torta con treinta porciones no dice nada.
+              // Las cargas a mano se juntan en una sola porción; de ahí en más
+              // entran todos los sistemas, sin agrupar en "otros".
               const juntos = new Map<string, { usd: number; tickets: number; vueltas: number }>();
               for (const x of d.sistemas) {
                 const k = nombreCorto(x.nombre);
@@ -450,51 +455,54 @@ export default function NeuritaPage() {
                 a.vueltas += x.vueltas;
                 juntos.set(k, a);
               }
-              const orden = [...juntos.entries()].map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.usd - a.usd);
-              const top = orden.slice(0, 8);
-              const resto = orden.slice(8);
-              const porciones = resto.length
-                ? [...top, { nombre: `Otros (${resto.length})`, usd: resto.reduce((a, x) => a + x.usd, 0), tickets: resto.reduce((a, x) => a + x.tickets, 0), vueltas: resto.reduce((a, x) => a + x.vueltas, 0) }]
-                : top;
+              const porciones = [...juntos.entries()].map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.usd - a.usd);
               const total = porciones.reduce((a, x) => a + x.usd, 0) || 1;
               let acum = 0;
               const conArco = porciones.map((x, i) => {
                 const desde = acum / total;
                 acum += x.usd;
-                return { ...x, desde, hasta: acum / total, color: resto.length && i === porciones.length - 1 ? GRIS_TORTA : COLORES[i % COLORES.length] };
+                return { ...x, desde, hasta: acum / total, pct: (x.usd / total) * 100, color: COLORES[i % COLORES.length] };
               });
               return (
-                <div className="flex flex-col items-center gap-8 lg:flex-row lg:items-center">
+                <div className="flex flex-col items-center">
                   <svg
                     viewBox="0 0 180 180"
-                    className="h-64 w-64 shrink-0 sm:h-72 sm:w-72 lg:h-[340px] lg:w-[340px]"
+                    className="h-[300px] w-[300px] sm:h-[380px] sm:w-[380px] lg:h-[440px] lg:w-[440px]"
                     role="img"
                     aria-label="Gasto por sistema"
                   >
                     {conArco.map((x) => (
-                      <path key={x.nombre} d={arco(x.desde, x.hasta)} fill={x.color}>
-                        <title>{`${x.nombre}: ${usd(x.usd)} (${Math.round((x.usd / total) * 100)}%)`}</title>
+                      <path key={x.nombre} d={porcion(x.desde, x.hasta)} fill={x.color} stroke="#fff" strokeWidth={0.8}>
+                        <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
                       </path>
                     ))}
-                    <text x="90" y="84" textAnchor="middle" className="fill-slate-400 text-[7px] font-semibold uppercase tracking-wider">Total</text>
-                    <text x="90" y="98" textAnchor="middle" className="fill-slate-800 text-[12px] font-semibold">{usd(total)}</text>
-                    <text x="90" y="108" textAnchor="middle" className="fill-slate-400 text-[6px]">{porciones.length} sistemas</text>
+                    {/* El nombre va adentro sólo si la porción da el ancho; si no, se lee en la leyenda. */}
+                    {conArco
+                      .filter((x) => x.pct >= 6)
+                      .map((x) => {
+                        const c = centro(x.desde, x.hasta);
+                        return (
+                          <g key={`et-${x.nombre}`} className="pointer-events-none">
+                            <text x={c.x} y={c.y - 1} textAnchor="middle" className="fill-white text-[5.5px] font-semibold">
+                              {x.nombre.length > 14 ? `${x.nombre.slice(0, 13)}…` : x.nombre}
+                            </text>
+                            <text x={c.x} y={c.y + 5.5} textAnchor="middle" className="fill-white/85 text-[5px]">
+                              {Math.round(x.pct)}%
+                            </text>
+                          </g>
+                        );
+                      })}
                   </svg>
-                  <ul className="w-full min-w-0 space-y-0.5">
+                  <p className="mt-1 text-[12px] text-slate-500">
+                    {usd(total)} en {porciones.length} {porciones.length === 1 ? "sistema" : "sistemas"}
+                  </p>
+                  {/* Leyenda secundaria: para las porciones finas que no entran en el gráfico. */}
+                  <ul className="mt-4 flex w-full flex-wrap justify-center gap-x-4 gap-y-1.5 border-t border-slate-100 pt-3">
                     {conArco.map((x) => (
-                      <li key={x.nombre} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: x.color }} aria-hidden />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-medium text-slate-700">{x.nombre}</span>
-                          <span className="block text-[11px] text-slate-400">
-                            {x.tickets ? `${x.tickets} ${x.tickets === 1 ? "ticket" : "tickets"} · ` : ""}
-                            {x.vueltas} {x.vueltas === 1 ? "vuelta" : "vueltas"}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-right">
-                          <span className="block text-[13px] font-semibold tabular-nums text-slate-700">{usd(x.usd)}</span>
-                          <span className="block text-[11px] tabular-nums text-slate-400">{Math.round((x.usd / total) * 100)}%</span>
-                        </span>
+                      <li key={x.nombre} className="flex items-center gap-1.5 text-[11px] text-slate-400" title={`${usd(x.usd)} · ${x.vueltas} vueltas`}>
+                        <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: x.color }} aria-hidden />
+                        <span className="text-slate-500">{x.nombre}</span>
+                        <span className="tabular-nums">{x.pct < 1 ? "<1" : Math.round(x.pct)}%</span>
                       </li>
                     ))}
                   </ul>

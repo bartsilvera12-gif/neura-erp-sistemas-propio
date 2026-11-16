@@ -21,6 +21,22 @@ const LINEA = rgb(0.85, 0.87, 0.89);
 const VERDE = rgb(0.06, 0.6, 0.45);
 const ROJO = rgb(0.75, 0.21, 0.21);
 
+const RE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Lee `desde`/`hasta` de la URL. Fechas inválidas se ignoran, no rompen. */
+function rangoDe(request: Request) {
+  const sp = new URL(request.url).searchParams;
+  const leer = (k: string) => {
+    const v = sp.get(k) ?? "";
+    return RE_FECHA.test(v) ? v : null;
+  };
+  let desde = leer("desde");
+  let hasta = leer("hasta");
+  // Rango al revés: se da vuelta en vez de devolver vacío.
+  if (desde && hasta && hasta < desde) [desde, hasta] = [hasta, desde];
+  return { desde, hasta };
+}
+
 const usd = (n: number | null) =>
   n == null ? "-" : `US$ ${n.toLocaleString("es-PY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const nro = (n: number) => `#${String(n).padStart(4, "0")}`;
@@ -42,7 +58,8 @@ export async function GET(request: Request) {
   const auth = await requireSoporteApi(request);
   if (!auth.ok) return sinPermiso(auth);
   try {
-    const d = await datosNeurita(auth);
+    const rango = rangoDe(request);
+    const d = await datosNeurita(auth, rango);
     const pdf = await PDFDocument.create();
     const normal = await pdf.embedFont(StandardFonts.Helvetica);
     const negrita = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -70,7 +87,10 @@ export async function GET(request: Request) {
     // ---------------------------------------------------------------- cabecera
     pagina.drawRectangle({ x: 0, y: ALTO - 70, width: ANCHO, height: 70, color: rgb(0.97, 0.96, 1) });
     texto(d.agente?.nombre ?? "Neurita", M, ALTO - 38, 20, negrita, VIOLETA);
-    texto("Agente de IA de soporte - que hizo y cuanto costo", M, ALTO - 55, 9.5, normal, GRIS);
+    const periodo = d.rango.activo
+      ? `Periodo: ${d.rango.desde ?? "el inicio"} a ${d.rango.hasta ?? "hoy"}`
+      : "Todo el historial";
+    texto(`Agente de IA de soporte - ${periodo}`, M, ALTO - 55, 9.5, normal, GRIS);
     const ahora = new Intl.DateTimeFormat("es-PY", {
       timeZone: TZ_PY, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
     }).format(new Date());
@@ -82,9 +102,9 @@ export async function GET(request: Request) {
     const pctMes = d.gasto.topeMes > 0 ? Math.round((d.gasto.mes / d.gasto.topeMes) * 100) : 0;
     const pctVuelta = d.trabajo.resueltos > 0 ? Math.round((d.trabajo.volvieron / d.trabajo.resueltos) * 100) : null;
     const tarjetas: { t: string; v: string; p: string }[] = [
-      { t: "GASTO HOY", v: usd(d.gasto.hoy), p: `${d.gasto.vueltasHoy} vueltas del modelo` },
+      { t: d.rango.activo ? "GASTO DEL PERIODO" : "GASTO HOY", v: usd(d.rango.activo ? d.gasto.periodo : d.gasto.hoy), p: `${d.rango.activo ? d.gasto.vueltasPeriodo : d.gasto.vueltasHoy} vueltas del modelo` },
       { t: "ESTE MES", v: usd(d.gasto.mes), p: `${pctMes}% del tope de ${usd(d.gasto.topeMes)}` },
-      { t: "TOTAL", v: usd(d.gasto.total), p: "desde que empezo a informar" },
+      { t: "TOTAL HISTORICO", v: usd(d.gasto.total), p: "desde que empezo a informar" },
       { t: "RESUELTOS", v: String(d.trabajo.resueltos), p: `${d.trabajo.abiertos} abiertos ahora` },
       { t: "COSTO POR TICKET", v: usd(d.trabajo.costoPorTicket), p: "todo lo gastado / resueltos" },
       { t: "LE VOLVIERON", v: pctVuelta == null ? "-" : `${pctVuelta}%`, p: `${d.trabajo.volvieron} de ${d.trabajo.resueltos}` },
@@ -102,7 +122,7 @@ export async function GET(request: Request) {
     y -= 78;
 
     // ---------------------------------------------------------------- gasto por día
-    texto("Gasto de los ultimos 14 dias", M, y, 11, negrita);
+    texto(d.rango.activo ? `Gasto por dia (${d.dias.length} dias)` : "Gasto de los ultimos 14 dias", M, y, 11, negrita);
     y -= 12;
     const pico = Math.max(0.01, ...d.dias.map((x) => x.usd));
     const altoG = 70;
@@ -156,7 +176,7 @@ export async function GET(request: Request) {
     };
 
     tabla(
-      "En que esta ahora",
+      "En que esta ahora (no depende del periodo)",
       [{ t: "TICKET", ancho: 56 }, { t: "ASUNTO", ancho: 330 }, { t: "CLIENTE", ancho: 190 }, { t: "VUELTAS", ancho: 60, der: true }, { t: "COSTO", ancho: 126, der: true }],
       d.abiertos.map((t) => [nro(t.numero), t.asunto, t.cliente ?? "-", String(t.vueltas), usd(t.usd)]),
       "No tiene ningun ticket abierto."
@@ -201,11 +221,12 @@ export async function GET(request: Request) {
     });
 
     const bytes = await pdf.save();
+    const sufijo = d.rango.activo ? `${d.rango.desde ?? "inicio"}_${d.rango.hasta ?? "hoy"}` : "";
     const hoyNombre = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     return new Response(bytes as unknown as BodyInit, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="neurita-${hoyNombre}.pdf"`,
+        "Content-Disposition": `attachment; filename="neurita-${sufijo || hoyNombre}.pdf"`,
         "Cache-Control": "no-store",
       },
     });

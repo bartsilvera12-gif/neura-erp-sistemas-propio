@@ -63,7 +63,14 @@ async function porLotes<T>(consulta: (desde: number, hasta: number) => PromiseLi
  * Todo lo que muestra el tablero de Neurita. Lo usan la pantalla y el PDF, así
  * que el número que se ve y el que se descarga salen del mismo cálculo.
  */
-export async function datosNeurita(auth: SoporteContexto) {
+export type RangoNeurita = { desde: string | null; hasta: string | null };
+
+/** Días que abarca el gráfico cuando no hay rango elegido. */
+const DIAS_POR_DEFECTO = 14;
+/** Tope de barras: un rango de un año dibujado día por día no se lee. */
+const MAX_BARRAS = 45;
+
+export async function datosNeurita(auth: SoporteContexto, rango: RangoNeurita = { desde: null, hasta: null }) {
 
     const catalog = createServiceRoleClient();
     const { data: usuarios, error: eUsr } = await catalog.from("usuarios").select("id, nombre, email").eq("empresa_id", auth.empresaId);
@@ -76,6 +83,12 @@ export async function datosNeurita(auth: SoporteContexto) {
 
     const hoy = hoyPy();
     const mes = hoy.slice(0, 7);
+    // El rango filtra por el día de Paraguay que trae cada aviso, que es el
+    // mismo criterio con el que se guardó: no hay conversión de zona de por medio.
+    const { desde, hasta } = rango;
+    const enRango = (f: string | null | undefined) =>
+      typeof f === "string" && (!desde || f >= desde) && (!hasta || f <= hasta);
+    const hayRango = Boolean(desde || hasta);
 
     const gastos = await porLotes<FilaGasto>((d, h) =>
       auth.sb.from("soporte_agente_gastos").select("fecha, ticket_numero, usd, detalle").eq("empresa_id", auth.empresaId).order("fecha").range(d, h)
@@ -87,10 +100,19 @@ export async function datosNeurita(auth: SoporteContexto) {
     const usdPorTicket = new Map<number, number>();
     const vueltasPorTicket = new Map<number, number>();
     let vueltasHoy = 0;
-    for (const g of gastos) {
+    let usdPeriodo = 0;
+    let vueltasPeriodo = 0;
+    // `gastos` queda filtrado para todo lo que mira el período; el total
+    // histórico y el del mes se calculan antes, sobre la lista completa.
+    const gastosTodos = gastos;
+    for (const g of gastosTodos) {
       const usd = Number(g.usd ?? 0);
       if (!Number.isFinite(usd)) continue;
       usdTotal += usd;
+      if (enRango(g.fecha)) {
+        usdPeriodo += usd;
+        if (g.ticket_numero != null) vueltasPeriodo++;
+      }
       // Un aviso sin número de ticket no es una vuelta del modelo: es una carga
       // hecha a mano (el gasto previo a esta tabla). Suma plata, no vueltas.
       if (g.fecha === hoy) {
@@ -98,11 +120,12 @@ export async function datosNeurita(auth: SoporteContexto) {
         if (g.ticket_numero != null) vueltasHoy++;
       }
       if (typeof g.fecha === "string" && g.fecha.startsWith(mes)) usdMes += usd;
-      if (g.ticket_numero != null) {
+      if (g.ticket_numero != null && enRango(g.fecha)) {
         usdPorTicket.set(g.ticket_numero, (usdPorTicket.get(g.ticket_numero) ?? 0) + usd);
         vueltasPorTicket.set(g.ticket_numero, (vueltasPorTicket.get(g.ticket_numero) ?? 0) + 1);
       }
     }
+    const gastosPeriodo = hayRango ? gastosTodos.filter((g) => enRango(g.fecha)) : gastosTodos;
 
     // Tickets y su historial de estados. Con el historial se sabe QUIÉN resolvió
     // cada uno y cuándo, que es lo que `responsable_id` solo no dice.
@@ -144,8 +167,15 @@ export async function datosNeurita(auth: SoporteContexto) {
       resueltosPor.set(h.usuario_id, xs);
     }
 
+    /** El día de Paraguay de un instante, para comparar contra el rango. */
+    const diaPy = (ms: number) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+
     const resumenDe = (usuarioId: string) => {
-      const xs = resueltosPor.get(usuarioId) ?? [];
+      // El rango se aplica sobre CUÁNDO se resolvió: los tiempos y las
+      // reaperturas se siguen calculando con todo el historial, que es lo que
+      // permite saber si un ticket del período volvió después.
+      const xs = (resueltosPor.get(usuarioId) ?? []).filter((x) => !hayRango || enRango(diaPy(x.cuando)));
       // Un ticket resuelto dos veces (volvió y se arregló de nuevo) cuenta una.
       const unicos = new Set(xs.map((x) => x.ticket));
       // "Volvió" = lo dio por resuelto y después alguien lo reabrió. Es la única
@@ -170,7 +200,7 @@ export async function datosNeurita(auth: SoporteContexto) {
       : 0;
 
     // Lo que trabajó hoy, tomado de los avisos de gasto (un aviso = una vuelta).
-    const numerosHoy = [...new Set(gastos.filter((g) => g.fecha === hoy && g.ticket_numero != null).map((g) => g.ticket_numero as number))];
+    const numerosHoy = [...new Set(gastosPeriodo.filter((g) => g.ticket_numero != null).map((g) => g.ticket_numero as number))];
     const deHoy = numerosHoy
       .map((numero) => {
         const t: TicketFila | undefined = porNumeroTodos.get(numero);
@@ -186,19 +216,33 @@ export async function datosNeurita(auth: SoporteContexto) {
       })
       .sort((a, b) => b.usd - a.usd);
 
-    // Últimos 14 días: el gasto diario, para ver si se está yendo de escala.
+    /**
+     * El gasto día por día. Sin rango, los últimos 14. Con rango, el rango —
+     * recortado a los últimos MAX_BARRAS días, porque más barras no se leen.
+     */
     const dias: { fecha: string; usd: number; vueltas: number }[] = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(`${hoy}T12:00:00Z`);
-      d.setUTCDate(d.getUTCDate() - i);
-      const f = d.toISOString().slice(0, 10);
-      const delDia = gastos.filter((g) => g.fecha === f);
-      dias.push({ fecha: f, usd: red(delDia.reduce((a, g) => a + Number(g.usd ?? 0), 0)), vueltas: delDia.length });
+    const sumaDia = (f: string) => {
+      const d = gastosTodos.filter((g) => g.fecha === f);
+      return { fecha: f, usd: red(d.reduce((a, g) => a + Number(g.usd ?? 0), 0)), vueltas: d.length };
+    };
+    const diaMenos = (base: string, n: number) => {
+      const d = new Date(`${base}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - n);
+      return d.toISOString().slice(0, 10);
+    };
+    const finSerie = hasta && hasta < hoy ? hasta : hoy;
+    let largo = DIAS_POR_DEFECTO;
+    if (hayRango && desde) {
+      const ms = Date.parse(`${finSerie}T12:00:00Z`) - Date.parse(`${desde}T12:00:00Z`);
+      largo = Math.min(MAX_BARRAS, Math.max(1, Math.round(ms / 86_400_000) + 1));
+    } else if (hayRango) {
+      largo = MAX_BARRAS;
     }
+    for (let i = largo - 1; i >= 0; i--) dias.push(sumaDia(diaMenos(finSerie, i)));
 
     // Por sistema: `detalle` guarda el repo del cliente en el que trabajó.
     const porSistema = new Map<string, { usd: number; vueltas: number; tickets: Set<number> }>();
-    for (const g of gastos) {
+    for (const g of gastosPeriodo) {
       const nombre = (g.detalle ?? "").trim() || "sin identificar";
       const x = porSistema.get(nombre) ?? { usd: 0, vueltas: 0, tickets: new Set<number>() };
       x.usd += Number(g.usd ?? 0);
@@ -244,7 +288,7 @@ export async function datosNeurita(auth: SoporteContexto) {
     // Todo lo que resolvió, no solo lo que tiene gasto informado: los tickets
     // anteriores a esta tabla también son trabajo suyo.
     const resueltosLista = agente
-      ? [...(resueltosPor.get(agente.id) ?? [])]
+      ? [...(resueltosPor.get(agente.id) ?? []).filter((x) => !hayRango || enRango(diaPy(x.cuando)))]
           .reduce((acc, x) => {
             // Un ticket resuelto dos veces aparece una sola vez, con la última.
             const prev = acc.get(x.ticket);
@@ -264,11 +308,21 @@ export async function datosNeurita(auth: SoporteContexto) {
     const vueltas = [...vueltasPorTicket.values()];
     return {
       agente: agente ? { id: agente.id, nombre: agente.nombre ?? "Neurita" } : null,
-      gasto: { hoy: red(usdHoy), mes: red(usdMes), total: red(usdTotal), topeMes: TOPE_MES_USD, vueltasHoy },
+      rango: { desde: desde ?? null, hasta: hasta ?? null, activo: hayRango, diasGrafico: dias.length },
+      gasto: {
+        hoy: red(usdHoy),
+        mes: red(usdMes),
+        total: red(usdTotal),
+        topeMes: TOPE_MES_USD,
+        vueltasHoy,
+        // Lo gastado dentro del rango. Sin rango es igual al total.
+        periodo: red(hayRango ? usdPeriodo : usdTotal),
+        vueltasPeriodo: hayRango ? vueltasPeriodo : [...vueltasPorTicket.values()].reduce((a, b) => a + b, 0),
+      },
       trabajo: {
         resueltos: mio.resueltos,
         abiertos,
-        costoPorTicket: mio.resueltos ? red(usdTotal / mio.resueltos) : null,
+        costoPorTicket: mio.resueltos ? red((hayRango ? usdPeriodo : usdTotal) / mio.resueltos) : null,
         medianaMinutos: mio.medianaMinutos == null ? null : Math.round(mio.medianaMinutos),
         vueltasMediana: mediana(vueltas),
         volvieron: mio.volvieron,

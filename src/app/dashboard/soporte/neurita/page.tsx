@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity, Download, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity, Download, Loader2, CalendarDays, X } from "lucide-react";
 import { apiSoporte } from "../_ui/api";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseBoton } from "../_ui/ui";
@@ -11,7 +11,8 @@ type Ficha = { id: string | null; numero: number; asunto: string; cliente: strin
 
 type Resp = {
   agente: { id: string; nombre: string } | null;
-  gasto: { hoy: number; mes: number; total: number; topeMes: number; vueltasHoy: number };
+  rango: { desde: string | null; hasta: string | null; activo: boolean; diasGrafico: number };
+  gasto: { hoy: number; mes: number; total: number; topeMes: number; vueltasHoy: number; periodo: number; vueltasPeriodo: number };
   trabajo: {
     resueltos: number;
     abiertos: number;
@@ -92,6 +93,33 @@ export default function NeuritaPage() {
   const [d, setD] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bajando, setBajando] = useState(false);
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+
+  /** `?desde=…&hasta=…` o vacío. Lo usan la consulta y la descarga del PDF. */
+  const query = useMemo(() => {
+    const p = new URLSearchParams();
+    if (desde) p.set("desde", desde);
+    if (hasta) p.set("hasta", hasta);
+    const q = p.toString();
+    return q ? `?${q}` : "";
+  }, [desde, hasta]);
+
+  /** Día de hoy en hora local, que es la que ve quien usa la pantalla. */
+  const diaISO = (resta = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() - resta);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const atajo = (dias: number | "mes") => {
+    if (dias === "mes") {
+      setDesde(diaISO().slice(0, 8) + "01");
+      setHasta(diaISO());
+      return;
+    }
+    setDesde(diaISO(dias));
+    setHasta(diaISO());
+  };
 
   /**
    * El PDF lo arma el servidor con los mismos datos de la pantalla. Se pide con
@@ -100,7 +128,7 @@ export default function NeuritaPage() {
   const descargar = async () => {
     setBajando(true);
     try {
-      const r = await fetchWithSupabaseSession("/api/soporte/neurita/pdf", { cache: "no-store" });
+      const r = await fetchWithSupabaseSession(`/api/soporte/neurita/pdf${query}`, { cache: "no-store" });
       if (!r || !r.ok) throw new Error("No se pudo generar el PDF");
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
@@ -120,7 +148,7 @@ export default function NeuritaPage() {
   useEffect(() => {
     let vivo = true;
     const traer = () =>
-      apiSoporte<Resp>("/api/soporte/neurita")
+      apiSoporte<Resp>(`/api/soporte/neurita${query}`)
         .then((r) => {
           if (!vivo) return;
           setD(r);
@@ -133,7 +161,7 @@ export default function NeuritaPage() {
       vivo = false;
       clearInterval(t);
     };
-  }, []);
+  }, [query]);
 
   if (error) return <Pagina><Aviso>{error}</Aviso></Pagina>;
   if (!d) return <Pagina><Cargando /></Pagina>;
@@ -158,10 +186,66 @@ export default function NeuritaPage() {
         }
       />
 
+      {/* Filtro de fechas: los atajos cubren el 90% y las dos cajas el resto. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <CalendarDays className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+        {([["Hoy", 0], ["7 días", 6], ["30 días", 29], ["Este mes", "mes"]] as const).map(([et, v]) => (
+          <button
+            key={et}
+            type="button"
+            onClick={() => atajo(v as number | "mes")}
+            className="rounded-lg border border-slate-200 px-2.5 py-1 text-[12px] font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+          >
+            {et}
+          </button>
+        ))}
+        <span className="mx-1 h-5 w-px bg-slate-200" aria-hidden />
+        <label className="sr-only" htmlFor="neurita-desde">Desde</label>
+        <input
+          id="neurita-desde"
+          type="date"
+          value={desde}
+          max={hasta || undefined}
+          onChange={(e) => setDesde(e.target.value)}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-[12px] text-slate-700 outline-none focus:border-[#7DCFD2]"
+        />
+        <span className="text-[12px] text-slate-400">a</span>
+        <label className="sr-only" htmlFor="neurita-hasta">Hasta</label>
+        <input
+          id="neurita-hasta"
+          type="date"
+          value={hasta}
+          min={desde || undefined}
+          onChange={(e) => setHasta(e.target.value)}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-[12px] text-slate-700 outline-none focus:border-[#7DCFD2]"
+        />
+        {(desde || hasta) && (
+          <button
+            type="button"
+            onClick={() => {
+              setDesde("");
+              setHasta("");
+            }}
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden /> Todo el historial
+          </button>
+        )}
+        <span className="ml-auto text-[11px] text-slate-400">
+          {d.rango.activo ? "Los números de abajo son del período elegido" : "Sin filtro: todo el historial"}
+        </span>
+      </div>
+
       <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <Dato etiqueta="Gastó hoy" valor={usd(gasto.hoy)} pie={`${gasto.vueltasHoy} ${gasto.vueltasHoy === 1 ? "vuelta" : "vueltas"} del modelo`} icono={Wallet} tono="text-violet-500" />
+        <Dato
+          etiqueta={d.rango.activo ? "Gasto del período" : "Gastó hoy"}
+          valor={usd(d.rango.activo ? gasto.periodo : gasto.hoy)}
+          pie={`${d.rango.activo ? gasto.vueltasPeriodo : gasto.vueltasHoy} ${(d.rango.activo ? gasto.vueltasPeriodo : gasto.vueltasHoy) === 1 ? "vuelta" : "vueltas"} del modelo`}
+          icono={Wallet}
+          tono="text-violet-500"
+        />
         <Dato etiqueta="Este mes" valor={usd(gasto.mes)} pie={`${pctMes}% del tope de ${usd(gasto.topeMes)}`} icono={Wallet} tono="text-violet-500" />
-        <Dato etiqueta="Total" valor={usd(gasto.total)} pie="desde que empezó a informar" icono={Wallet} />
+        <Dato etiqueta="Total histórico" valor={usd(gasto.total)} pie="no cambia con el filtro" icono={Wallet} />
         <Dato etiqueta="Resueltos" valor={String(trabajo.resueltos)} pie={trabajo.abiertos ? `${trabajo.abiertos} abiertos ahora` : "ninguno abierto"} icono={CheckCircle2} tono="text-emerald-500" />
         <Dato etiqueta="Costo por ticket" valor={trabajo.costoPorTicket == null ? "—" : usd(trabajo.costoPorTicket)} pie="todo lo gastado ÷ resueltos" icono={Wallet} />
         <Dato
@@ -184,7 +268,7 @@ export default function NeuritaPage() {
         />
       </div>
 
-      <Tarjeta titulo="Gasto de los últimos 14 días" icono={Activity} tono="violeta" className="mb-5">
+      <Tarjeta titulo={d.rango.activo ? `Gasto por día (${d.rango.diasGrafico} días)` : "Gasto de los últimos 14 días"} icono={Activity} tono="violeta" className="mb-5">
         <div className="flex h-40 gap-1.5">
           {d.dias.map((x) => (
             <div
@@ -207,7 +291,7 @@ export default function NeuritaPage() {
       </Tarjeta>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Tarjeta titulo="En qué está ahora" icono={Bot} tono="violeta" padding="p-0">
+        <Tarjeta titulo="En qué está ahora" icono={Bot} tono="violeta" padding="p-0" accion={<span className="text-[11px] text-slate-400">no depende del filtro</span>}>
           {d.abiertos.length === 0 ? (
             <div className="p-5"><Vacio titulo="No tiene nada abierto" detalle="Cuando tome un ticket aparece acá, con cuánto hace que lo tiene." icono={Bot} tono="violeta" /></div>
           ) : (
@@ -244,9 +328,9 @@ export default function NeuritaPage() {
           )}
         </Tarjeta>
 
-        <Tarjeta titulo="Lo que trabajó hoy" icono={Bot} tono="violeta" padding="p-0">
+        <Tarjeta titulo={d.rango.activo ? "Lo que trabajó en el período" : "Lo que trabajó hoy"} icono={Bot} tono="violeta" padding="p-0">
           {d.hoy.length === 0 ? (
-            <div className="p-5"><Vacio titulo="Hoy todavía no trabajó" icono={Bot} tono="violeta" /></div>
+            <div className="p-5"><Vacio titulo={d.rango.activo ? "No trabajó nada en ese período" : "Hoy todavía no trabajó"} icono={Bot} tono="violeta" /></div>
           ) : (
             <table className="w-full text-left text-[13px]">
               <tbody>

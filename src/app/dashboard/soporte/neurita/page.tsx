@@ -100,7 +100,7 @@ const GRIS_TORTA = "#cbd5e1";
 const nombreCorto = (n: string) => (/^carga inicial/i.test(n) ? "Carga inicial" : n.replace(/^neura-erp-/, ""));
 
 /** Un arco de la dona, de `desde` a `hasta` en vueltas (0 a 1). */
-function arco(desde: number, hasta: number, r = 70, rInt = 42) {
+function arco(desde: number, hasta: number, r = 78, rInt = 46) {
   const p = (t: number, radio: number) => {
     const a = 2 * Math.PI * t - Math.PI / 2;
     return [90 + radio * Math.cos(a), 90 + radio * Math.sin(a)];
@@ -464,41 +464,40 @@ export default function NeuritaPage() {
                 return { ...x, desde, hasta: acum / total, color: resto.length && i === porciones.length - 1 ? GRIS_TORTA : COLORES[i % COLORES.length] };
               });
               return (
-                <div className="flex flex-col items-center gap-6 md:flex-row md:items-start">
-                  <svg viewBox="0 0 180 180" className="h-44 w-44 shrink-0" role="img" aria-label="Gasto por sistema">
+                <div className="flex flex-col items-center gap-8 lg:flex-row lg:items-center">
+                  <svg
+                    viewBox="0 0 180 180"
+                    className="h-64 w-64 shrink-0 sm:h-72 sm:w-72 lg:h-[340px] lg:w-[340px]"
+                    role="img"
+                    aria-label="Gasto por sistema"
+                  >
                     {conArco.map((x) => (
                       <path key={x.nombre} d={arco(x.desde, x.hasta)} fill={x.color}>
                         <title>{`${x.nombre}: ${usd(x.usd)} (${Math.round((x.usd / total) * 100)}%)`}</title>
                       </path>
                     ))}
-                    <text x="90" y="86" textAnchor="middle" className="fill-slate-400 text-[9px] font-semibold uppercase">Total</text>
-                    <text x="90" y="101" textAnchor="middle" className="fill-slate-700 text-[13px] font-semibold">{usd(total)}</text>
+                    <text x="90" y="84" textAnchor="middle" className="fill-slate-400 text-[7px] font-semibold uppercase tracking-wider">Total</text>
+                    <text x="90" y="98" textAnchor="middle" className="fill-slate-800 text-[12px] font-semibold">{usd(total)}</text>
+                    <text x="90" y="108" textAnchor="middle" className="fill-slate-400 text-[6px]">{porciones.length} sistemas</text>
                   </svg>
-                  <table className="w-full text-left text-[13px]">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                        <th className="py-2">Sistema</th>
-                        <th className="py-2 text-right">Tickets</th>
-                        <th className="py-2 text-right">Vueltas</th>
-                        <th className="py-2 text-right">Gasto</th>
-                        <th className="py-2 pl-3 text-right">%</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {conArco.map((x) => (
-                        <tr key={x.nombre} className="border-b border-slate-100 last:border-0">
-                          <td className="py-2">
-                            <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm align-middle" style={{ backgroundColor: x.color }} aria-hidden />
-                            <span className="align-middle font-medium text-slate-700">{x.nombre}</span>
-                          </td>
-                          <td className="py-2 text-right tabular-nums text-slate-600">{x.tickets || "—"}</td>
-                          <td className="py-2 text-right tabular-nums text-slate-600">{x.vueltas}</td>
-                          <td className="py-2 text-right font-semibold tabular-nums text-slate-700">{usd(x.usd)}</td>
-                          <td className="py-2 pl-3 text-right tabular-nums text-slate-400">{Math.round((x.usd / total) * 100)}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <ul className="w-full min-w-0 space-y-0.5">
+                    {conArco.map((x) => (
+                      <li key={x.nombre} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: x.color }} aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-medium text-slate-700">{x.nombre}</span>
+                          <span className="block text-[11px] text-slate-400">
+                            {x.tickets ? `${x.tickets} ${x.tickets === 1 ? "ticket" : "tickets"} · ` : ""}
+                            {x.vueltas} {x.vueltas === 1 ? "vuelta" : "vueltas"}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-[13px] font-semibold tabular-nums text-slate-700">{usd(x.usd)}</span>
+                          <span className="block text-[11px] tabular-nums text-slate-400">{Math.round((x.usd / total) * 100)}%</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               );
             })()

@@ -178,12 +178,12 @@ export async function despacharNotificacionesPendientes(opts: { dryRun?: boolean
       if (contactId) {
         const { data: ct } = await sb
           .from("chat_contacts")
-          .select("nombre, telefono")
+          .select("name, phone_number")
           .eq("id", contactId)
           .maybeSingle();
         who = (
-          (ct as { nombre?: string | null } | null)?.nombre ||
-          (ct as { telefono?: string | null } | null)?.telefono ||
+          (ct as { name?: string | null } | null)?.name ||
+          (ct as { phone_number?: string | null } | null)?.phone_number ||
           ""
         )
           .toString()

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity, Download, Loader2, CalendarDays, X } from "lucide-react";
+import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity, Download, Loader2, CalendarDays, X, ChevronDown } from "lucide-react";
 import { apiSoporte } from "../_ui/api";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseBoton } from "../_ui/ui";
@@ -93,6 +93,30 @@ export default function NeuritaPage() {
   const [d, setD] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bajando, setBajando] = useState(false);
+  /**
+   * Las listas se muestran recortadas: "Todo lo que resolvió" puede traer
+   * cientos de filas y hace la página larguísima. Cada una se despliega sola.
+   */
+  const TOPE_LISTA = 8;
+  const [abiertas, setAbiertas] = useState<Record<string, boolean>>({});
+  const recortar = <T,>(clave: string, xs: T[]) => (abiertas[clave] ? xs : xs.slice(0, TOPE_LISTA));
+  const VerMas = ({ clave, total }: { clave: string; total: number }) => {
+    if (total <= TOPE_LISTA) return null;
+    const abierta = !!abiertas[clave];
+    return (
+      <div className="border-t border-slate-100 px-5 py-2.5">
+        <button
+          type="button"
+          onClick={() => setAbiertas((p) => ({ ...p, [clave]: !p[clave] }))}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#2F7F83] hover:underline"
+        >
+          {abierta ? "Ver menos" : `Ver las ${total}`}
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${abierta ? "rotate-180" : ""}`} aria-hidden />
+        </button>
+      </div>
+    );
+  };
+
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
 
@@ -295,9 +319,10 @@ export default function NeuritaPage() {
           {d.abiertos.length === 0 ? (
             <div className="p-5"><Vacio titulo="No tiene nada abierto" detalle="Cuando tome un ticket aparece acá, con cuánto hace que lo tiene." icono={Bot} tono="violeta" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <tbody>
-                {d.abiertos.map((t) => (
+                {recortar("abiertos", d.abiertos).map((t) => (
                   <FilaTicket
                     key={t.numero}
                     t={t}
@@ -311,6 +336,8 @@ export default function NeuritaPage() {
                 ))}
               </tbody>
             </table>
+            <VerMas clave="abiertos" total={d.abiertos.length} />
+            </>
           )}
         </Tarjeta>
 
@@ -318,13 +345,16 @@ export default function NeuritaPage() {
           {d.volvieronLista.length === 0 ? (
             <div className="p-5"><Vacio titulo="Ninguno volvió" detalle="Los tickets que dio por resueltos y después se reabrieron aparecen acá." icono={RotateCcw} tono="rosa" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <tbody>
-                {d.volvieronLista.map((t) => (
+                {recortar("volvieron", d.volvieronLista).map((t) => (
                   <FilaTicket key={t.numero} t={t} extra={<td className="px-5 py-3 text-right tabular-nums text-[12px] text-slate-500">{t.vueltas} {t.vueltas === 1 ? "vuelta" : "vueltas"}</td>} />
                 ))}
               </tbody>
             </table>
+            <VerMas clave="volvieron" total={d.volvieronLista.length} />
+            </>
           )}
         </Tarjeta>
 
@@ -332,9 +362,10 @@ export default function NeuritaPage() {
           {d.hoy.length === 0 ? (
             <div className="p-5"><Vacio titulo={d.rango.activo ? "No trabajó nada en ese período" : "Hoy todavía no trabajó"} icono={Bot} tono="violeta" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <tbody>
-                {d.hoy.map((t) => (
+                {recortar("trabajados", d.hoy).map((t) => (
                   <FilaTicket
                     key={t.numero}
                     t={t}
@@ -348,6 +379,8 @@ export default function NeuritaPage() {
                 ))}
               </tbody>
             </table>
+            <VerMas clave="trabajados" total={d.hoy.length} />
+            </>
           )}
         </Tarjeta>
 
@@ -378,6 +411,7 @@ export default function NeuritaPage() {
           {d.sistemas.length === 0 ? (
             <div className="p-5"><Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <thead>
                 <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
@@ -388,7 +422,7 @@ export default function NeuritaPage() {
                 </tr>
               </thead>
               <tbody>
-                {d.sistemas.map((s) => (
+                {recortar("sistemas", d.sistemas).map((s) => (
                   <tr key={s.nombre} className="border-b border-slate-100 last:border-0">
                     <td className="px-5 py-3 font-medium text-slate-700">{s.nombre}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.tickets || "—"}</td>
@@ -398,6 +432,8 @@ export default function NeuritaPage() {
                 ))}
               </tbody>
             </table>
+            <VerMas clave="sistemas" total={d.sistemas.length} />
+            </>
           )}
         </Tarjeta>
 
@@ -405,6 +441,7 @@ export default function NeuritaPage() {
           {d.resueltos.length === 0 ? (
             <div className="p-5"><Vacio titulo="Todavía no resolvió ninguno" icono={CheckCircle2} tono="verde" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <thead>
                 <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
@@ -414,7 +451,7 @@ export default function NeuritaPage() {
                 </tr>
               </thead>
               <tbody>
-                {d.resueltos.map((t) => (
+                {recortar("resueltos", d.resueltos).map((t) => (
                   <FilaTicket
                     key={t.numero}
                     t={t}
@@ -440,6 +477,8 @@ export default function NeuritaPage() {
                 ))}
               </tbody>
             </table>
+            <VerMas clave="resueltos" total={d.resueltos.length} />
+            </>
           )}
         </Tarjeta>
       </div>

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity } from "lucide-react";
+import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity, Download, Loader2 } from "lucide-react";
 import { apiSoporte } from "../_ui/api";
-import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio } from "../_ui/ui";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseBoton } from "../_ui/ui";
 
 type Ficha = { id: string | null; numero: number; asunto: string; cliente: string | null; estado_codigo: string | null; usd: number; vueltas: number };
 
@@ -90,6 +91,31 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
 export default function NeuritaPage() {
   const [d, setD] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bajando, setBajando] = useState(false);
+
+  /**
+   * El PDF lo arma el servidor con los mismos datos de la pantalla. Se pide con
+   * la sesión (no es una URL pública) y se entrega como descarga.
+   */
+  const descargar = async () => {
+    setBajando(true);
+    try {
+      const r = await fetchWithSupabaseSession("/api/soporte/neurita/pdf", { cache: "no-store" });
+      if (!r || !r.ok) throw new Error("No se pudo generar el PDF");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `neurita-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      // Sin revoke, el blob queda en memoria mientras viva la pestaña.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo generar el PDF");
+    } finally {
+      setBajando(false);
+    }
+  };
 
   useEffect(() => {
     let vivo = true;
@@ -119,7 +145,18 @@ export default function NeuritaPage() {
 
   return (
     <Pagina>
-      <Encabezado titulo={d.agente?.nombre ?? "Neurita"} subtitulo="Qué hizo y cuánto costó el agente de IA" icono={Bot} tono="violeta" />
+      <Encabezado
+        titulo={d.agente?.nombre ?? "Neurita"}
+        subtitulo="Qué hizo y cuánto costó el agente de IA"
+        icono={Bot}
+        tono="violeta"
+        acciones={
+          <button type="button" onClick={descargar} disabled={bajando} className={claseBoton("secundario")}>
+            {bajando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+            {bajando ? "Generando…" : "Descargar PDF"}
+          </button>
+        }
+      />
 
       <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <Dato etiqueta="Gastó hoy" valor={usd(gasto.hoy)} pie={`${gasto.vueltasHoy} ${gasto.vueltasHoy === 1 ? "vuelta" : "vueltas"} del modelo`} icono={Wallet} tono="text-violet-500" />

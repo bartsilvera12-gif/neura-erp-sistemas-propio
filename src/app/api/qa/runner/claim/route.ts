@@ -8,7 +8,7 @@ import { authenticateRunner } from "@/lib/qa/runner-auth";
 import { handleClaim } from "@/lib/qa/handlers";
 import { buildQaNonceStore, buildQaRepo } from "@/lib/qa/route-helpers";
 import { nivelSeguridadDeSpecs, resolverRepoUrlProyecto, codebaseDeProyecto } from "@/lib/qa/pruebas-catalogo";
-import { AI_DISCOVERY_SUITE_PREFIX } from "@/lib/qa/handle-analizar-erp";
+import { AI_DISCOVERY_SUITE_PREFIX, AI_INTERACTION_SUITE_PREFIX } from "@/lib/qa/handle-analizar-erp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +35,10 @@ export async function POST(request: Request) {
   // Suite de IA "Analizar ERP completo": slug `ai-discovery-<proyecto>`.
   // En ese caso el run corre en modo discovery (clone + descubrir + LLM).
   const esSuiteIaDiscovery = suite.slug.startsWith(AI_DISCOVERY_SUITE_PREFIX);
+  // Suite de agente interactivo sandbox: slug `ai-interaction-<proyecto>`.
+  // El runner navega la UI con Playwright y opera formularios ficticios.
+  // Solo se ejecuta contra hosts en la allowlist del runner (fixture-app).
+  const esSuiteInteraction = suite.slug.startsWith(AI_INTERACTION_SUITE_PREFIX);
 
   // Nivel de seguridad agregado desde el catálogo. Si devuelve null o un
   // nivel no corrible ("mixed_analysis", "write_required"), en teoría el
@@ -45,18 +49,23 @@ export async function POST(request: Request) {
     | "discovery"
     | "anonymous_read_only"
     | "authenticated_read_only"
-    | "standard" = esSuiteIaDiscovery
+    | "interaction_sandbox"
+    | "standard" = esSuiteInteraction
+    ? "interaction_sandbox"
+    : esSuiteIaDiscovery
     ? "discovery"
     : nivelCat === "static_analysis" ||
       nivelCat === "anonymous_read_only" ||
       nivelCat === "authenticated_read_only"
       ? nivelCat
       : "standard";
-  const mode: "read-only" | "write" | "static-analysis" | "discovery" =
+  const mode: "read-only" | "write" | "static-analysis" | "discovery" | "interaction-sandbox" =
     safety_level === "discovery"
       ? "discovery"
       : safety_level === "static_analysis"
       ? "static-analysis"
+      : safety_level === "interaction_sandbox"
+      ? "interaction-sandbox"
       : "read-only";
   const repo_url =
     safety_level === "static_analysis" || safety_level === "discovery"

@@ -90,10 +90,12 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
 }
 
 /** Paleta de la torta: los mismos tonos que usa el resto de Soporte. */
-const COLORES = [
-  "#4FAEB2", "#8b5cf6", "#f59e0b", "#0ea5e9", "#f43f5e", "#10b981", "#6366f1", "#ec4899",
-  "#84cc16", "#14b8a6", "#a855f7", "#eab308", "#3b82f6", "#ef4444", "#22c55e", "#f97316",
-];
+/**
+ * Un color por porción, generado con el ángulo áureo: cada tono queda lejos
+ * del anterior, así que nunca se repiten ni con cuarenta sistemas. Una lista
+ * fija de colores se agotaba y dejaba porciones vecinas del mismo tono.
+ */
+const colorPorcion = (i: number) => `hsl(${(186 + i * 137.508) % 360} 64% ${i % 2 ? 58 : 50}%)`;
 
 /**
  * Las cargas a mano (el gasto previo a la tabla) llegan con un texto largo
@@ -461,7 +463,7 @@ export default function NeuritaPage() {
               const conArco = porciones.map((x, i) => {
                 const desde = acum / total;
                 acum += x.usd;
-                return { ...x, desde, hasta: acum / total, pct: (x.usd / total) * 100, color: COLORES[i % COLORES.length] };
+                return { ...x, desde, hasta: acum / total, pct: (x.usd / total) * 100, color: colorPorcion(i) };
               });
               return (
                 <div className="flex flex-col items-center">
@@ -472,13 +474,13 @@ export default function NeuritaPage() {
                     aria-label="Gasto por sistema"
                   >
                     {conArco.map((x) => (
-                      <path key={x.nombre} d={porcion(x.desde, x.hasta)} fill={x.color} stroke="#fff" strokeWidth={0.8}>
+                      <path key={x.nombre} d={porcion(x.desde, x.hasta)} fill={x.color}>
                         <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
                       </path>
                     ))}
                     {/* El nombre va adentro sólo si la porción da el ancho; si no, se lee en la leyenda. */}
                     {conArco
-                      .filter((x) => x.pct >= 6)
+                      .filter((x) => x.pct >= 7)
                       .map((x) => {
                         const c = centro(x.desde, x.hasta);
                         return (

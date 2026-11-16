@@ -15,7 +15,8 @@ import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { statfs } from "node:fs";
 import { promisify } from "node:util";
-import { assertQaCenterAccess } from "@/lib/qa/auth";
+import { authenticateRunner } from "@/lib/qa/runner-auth";
+import { buildQaNonceStore } from "@/lib/qa/route-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,11 @@ export const dynamic = "force-dynamic";
 const statfsAsync = promisify(statfs);
 
 export async function GET(request: Request) {
-  const auth = await assertQaCenterAccess(request);
+  // Auth via HMAC del runner — mismo secret que el resto de endpoints runner.
+  // Read-only, no datos sensibles.
+  const nonceStore = buildQaNonceStore();
+  if (!nonceStore) return NextResponse.json({ error: "QA_DB_URL no configurada", code: "internal" }, { status: 500 });
+  const auth = await authenticateRunner(request, nonceStore);
   if (!auth.ok) return auth.response;
 
   const [meminfo, loadavg, cpuinfo, diskRoot, diskData] = await Promise.all([

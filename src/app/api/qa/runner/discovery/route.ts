@@ -91,8 +91,26 @@ export async function POST(request: Request) {
     const raw = await request.json().catch(() => null);
     const parsed = discoverySchema.safeParse(raw);
     if (!parsed.success) {
+      // Emitimos un resumen breve del primer issue para que el runner lo
+      // vea en su log, y además lo mandamos a stderr para poder leerlo
+      // desde Coolify sin reencolar.
+      const issues = parsed.error.issues.map((i) => ({
+        path: i.path.join("."),
+        code: i.code,
+        message: i.message,
+      }));
+      const brief = issues
+        .slice(0, 5)
+        .map((i) => `${i.path || "<root>"}: ${i.message}`)
+        .join(" | ");
+      console.error("[runner/discovery POST] payload inválido:", JSON.stringify(issues, null, 2));
       return NextResponse.json(
-        { error: "payload inválido", code: "validation", detail: parsed.error.message },
+        {
+          error: "payload inválido",
+          code: "validation",
+          detail: brief,
+          issues,
+        },
         { status: 400 }
       );
     }

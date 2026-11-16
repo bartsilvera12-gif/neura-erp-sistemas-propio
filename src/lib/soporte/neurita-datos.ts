@@ -252,8 +252,7 @@ export async function datosNeurita(auth: SoporteContexto, rango: RangoNeurita = 
     }
     const sistemas = [...porSistema.entries()]
       .map(([nombre, x]) => ({ nombre, usd: red(x.usd), vueltas: x.vueltas, tickets: x.tickets.size }))
-      .sort((a, b) => b.usd - a.usd)
-      .slice(0, 8);
+      .sort((a, b) => b.usd - a.usd);
 
     const ficha = (t: TicketFila) => ({
       id: t.id,

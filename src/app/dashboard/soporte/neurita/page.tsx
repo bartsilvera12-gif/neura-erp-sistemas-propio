@@ -89,6 +89,33 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
   );
 }
 
+/** Paleta de la torta: los mismos tonos que usa el resto de Soporte. */
+const COLORES = ["#4FAEB2", "#8b5cf6", "#f59e0b", "#0ea5e9", "#f43f5e", "#10b981", "#6366f1", "#ec4899", "#84cc16"];
+const GRIS_TORTA = "#cbd5e1";
+
+/**
+ * Las cargas a mano (el gasto previo a la tabla) llegan con un texto largo
+ * como nombre de sistema. En la torta se juntan en una sola porción.
+ */
+const nombreCorto = (n: string) => (/^carga inicial/i.test(n) ? "Carga inicial" : n.replace(/^neura-erp-/, ""));
+
+/** Un arco de la dona, de `desde` a `hasta` en vueltas (0 a 1). */
+function arco(desde: number, hasta: number, r = 70, rInt = 42) {
+  const p = (t: number, radio: number) => {
+    const a = 2 * Math.PI * t - Math.PI / 2;
+    return [90 + radio * Math.cos(a), 90 + radio * Math.sin(a)];
+  };
+  // Una sola porción que ocupa todo el círculo no se puede dibujar con un arco.
+  const completo = hasta - desde >= 0.999;
+  const fin = completo ? desde + 0.999 : hasta;
+  const [x1, y1] = p(desde, r);
+  const [x2, y2] = p(fin, r);
+  const [x3, y3] = p(fin, rInt);
+  const [x4, y4] = p(desde, rInt);
+  const grande = fin - desde > 0.5 ? 1 : 0;
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${grande} 1 ${x2} ${y2} L ${x3} ${y3} A ${rInt} ${rInt} 0 ${grande} 0 ${x4} ${y4} Z`;
+}
+
 export default function NeuritaPage() {
   const [d, setD] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -407,33 +434,74 @@ export default function NeuritaPage() {
           )}
         </Tarjeta>
 
-        <Tarjeta titulo="En qué sistemas gastó" icono={Server} tono="celeste" padding="p-0" className="xl:col-span-2">
+        <Tarjeta titulo="En qué sistemas gastó" icono={Server} tono="celeste" className="xl:col-span-2">
           {d.sistemas.length === 0 ? (
-            <div className="p-5"><Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" /></div>
+            <Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" />
           ) : (
-            <>
-            <table className="w-full text-left text-[13px]">
-              <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  <th className="px-5 py-2.5">Sistema</th>
-                  <th className="px-3 py-2.5 text-right">Tickets</th>
-                  <th className="px-3 py-2.5 text-right">Vueltas</th>
-                  <th className="px-5 py-2.5 text-right">Gasto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recortar("sistemas", d.sistemas).map((s) => (
-                  <tr key={s.nombre} className="border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-3 font-medium text-slate-700">{s.nombre}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.tickets || "—"}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.vueltas}</td>
-                    <td className="px-5 py-3 text-right font-semibold tabular-nums text-slate-700">{usd(s.usd)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <VerMas clave="sistemas" total={d.sistemas.length} />
-            </>
+            (() => {
+              // Las cargas a mano se juntan, y de ahí en más entran las ocho
+              // más caras: una torta con treinta porciones no dice nada.
+              const juntos = new Map<string, { usd: number; tickets: number; vueltas: number }>();
+              for (const x of d.sistemas) {
+                const k = nombreCorto(x.nombre);
+                const a = juntos.get(k) ?? { usd: 0, tickets: 0, vueltas: 0 };
+                a.usd += x.usd;
+                a.tickets += x.tickets;
+                a.vueltas += x.vueltas;
+                juntos.set(k, a);
+              }
+              const orden = [...juntos.entries()].map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.usd - a.usd);
+              const top = orden.slice(0, 8);
+              const resto = orden.slice(8);
+              const porciones = resto.length
+                ? [...top, { nombre: `Otros (${resto.length})`, usd: resto.reduce((a, x) => a + x.usd, 0), tickets: resto.reduce((a, x) => a + x.tickets, 0), vueltas: resto.reduce((a, x) => a + x.vueltas, 0) }]
+                : top;
+              const total = porciones.reduce((a, x) => a + x.usd, 0) || 1;
+              let acum = 0;
+              const conArco = porciones.map((x, i) => {
+                const desde = acum / total;
+                acum += x.usd;
+                return { ...x, desde, hasta: acum / total, color: resto.length && i === porciones.length - 1 ? GRIS_TORTA : COLORES[i % COLORES.length] };
+              });
+              return (
+                <div className="flex flex-col items-center gap-6 md:flex-row md:items-start">
+                  <svg viewBox="0 0 180 180" className="h-44 w-44 shrink-0" role="img" aria-label="Gasto por sistema">
+                    {conArco.map((x) => (
+                      <path key={x.nombre} d={arco(x.desde, x.hasta)} fill={x.color}>
+                        <title>{`${x.nombre}: ${usd(x.usd)} (${Math.round((x.usd / total) * 100)}%)`}</title>
+                      </path>
+                    ))}
+                    <text x="90" y="86" textAnchor="middle" className="fill-slate-400 text-[9px] font-semibold uppercase">Total</text>
+                    <text x="90" y="101" textAnchor="middle" className="fill-slate-700 text-[13px] font-semibold">{usd(total)}</text>
+                  </svg>
+                  <table className="w-full text-left text-[13px]">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                        <th className="py-2">Sistema</th>
+                        <th className="py-2 text-right">Tickets</th>
+                        <th className="py-2 text-right">Vueltas</th>
+                        <th className="py-2 text-right">Gasto</th>
+                        <th className="py-2 pl-3 text-right">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conArco.map((x) => (
+                        <tr key={x.nombre} className="border-b border-slate-100 last:border-0">
+                          <td className="py-2">
+                            <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm align-middle" style={{ backgroundColor: x.color }} aria-hidden />
+                            <span className="align-middle font-medium text-slate-700">{x.nombre}</span>
+                          </td>
+                          <td className="py-2 text-right tabular-nums text-slate-600">{x.tickets || "—"}</td>
+                          <td className="py-2 text-right tabular-nums text-slate-600">{x.vueltas}</td>
+                          <td className="py-2 text-right font-semibold tabular-nums text-slate-700">{usd(x.usd)}</td>
+                          <td className="py-2 pl-3 text-right tabular-nums text-slate-400">{Math.round((x.usd / total) * 100)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()
           )}
         </Tarjeta>
 

@@ -11,6 +11,7 @@ import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveQaAccess } from "@/lib/qa/authorize";
 import { buildQaRepo } from "@/lib/qa/route-helpers";
+import RunTimeline from "./_ui/RunTimeline";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "QA Center — Run" };
@@ -69,6 +70,8 @@ export default async function QaRunDetailPage({ params }: { params: Promise<Para
           {run.summary}
         </p>
       )}
+
+      <RunTimeline runId={run.id} initialStatus={run.status} />
 
       {results.length > 0 && (
         <DesgloseModulos results={results} />

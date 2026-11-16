@@ -383,6 +383,45 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
     else this.insertedInformes.push({ run_id: input.run_id, resumen: input.resumen, modulos: input.modulos });
   }
 
+  // Buffer in-memory de eventos del timeline. Usado por los tests del panel.
+  private runEvents: Array<{
+    id: string; run_id: string; ts: string; fase: string;
+    modulo: string | null; submodulo: string | null; accion: string | null;
+    estado: string; mensaje: string | null; evidence_path: string | null;
+    payload: Record<string, unknown> | null;
+  }> = [];
+
+  async insertRunEvents(events: Parameters<QaRunsRepo["insertRunEvents"]>[0]): Promise<void> {
+    for (const e of events) {
+      this.runEvents.push({
+        id: String(this.runEvents.length + 1),
+        run_id: e.run_id,
+        ts: new Date().toISOString(),
+        fase: e.fase,
+        modulo: e.modulo,
+        submodulo: e.submodulo,
+        accion: e.accion,
+        estado: e.estado,
+        mensaje: e.mensaje,
+        evidence_path: e.evidence_path,
+        payload: e.payload,
+      });
+    }
+  }
+
+  async listRunEvents(
+    run_id: string,
+    opts: { since: Date | null; limit: number }
+  ): ReturnType<QaRunsRepo["listRunEvents"]> {
+    const sinceTs = opts.since ? opts.since.getTime() : 0;
+    const matches = this.runEvents
+      .filter((e) => e.run_id === run_id)
+      .filter((e) => new Date(e.ts).getTime() > sinceTs)
+      .sort((a, b) => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id))
+      .slice(0, opts.limit);
+    return matches;
+  }
+
   async latestInformeIa(_projectId: string): Promise<{ run_id: string; resumen: string; modulos: unknown; created_at: string } | null> {
     if (this.insertedInformes.length === 0) return null;
     const last = this.insertedInformes[this.insertedInformes.length - 1];

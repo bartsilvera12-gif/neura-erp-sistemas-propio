@@ -361,6 +361,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
     target_env: QaProject["target_env"];
     default_branch?: string;
     owner_user_id?: string | null;
+    repo_url?: string | null;
   }): Promise<QaProject | { conflict: "slug" }> {
     return this.run(async (c) => {
       const dup = await c.query(
@@ -828,6 +829,96 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       }
       return { inserted: ins, updated: upd };
     }, /* tx */ true);
+  }
+
+  /**
+   * Inserta uno o varios eventos de progreso en vivo del agente QA.
+   * El runner los emite spec-por-spec; la UI del run los pinta en timeline.
+   */
+  async insertRunEvents(events: Array<{
+    run_id: string;
+    fase: string;
+    modulo: string | null;
+    submodulo: string | null;
+    accion: string | null;
+    estado: string;
+    mensaje: string | null;
+    evidence_path: string | null;
+    payload: Record<string, unknown> | null;
+  }>): Promise<void> {
+    if (events.length === 0) return;
+    await this.run(async (c) => {
+      // Insert batch con UNNEST para una sola roundtrip.
+      const run_ids   = events.map((e) => e.run_id);
+      const fases     = events.map((e) => e.fase);
+      const modulos   = events.map((e) => e.modulo);
+      const submods   = events.map((e) => e.submodulo);
+      const acciones  = events.map((e) => e.accion);
+      const estados   = events.map((e) => e.estado);
+      const mensajes  = events.map((e) => e.mensaje);
+      const evidences = events.map((e) => e.evidence_path);
+      const payloads  = events.map((e) => (e.payload !== null ? JSON.stringify(e.payload) : null));
+      await c.query(
+        `INSERT INTO qa_center.run_events
+           (run_id, fase, modulo, submodulo, accion, estado, mensaje, evidence_path, payload)
+         SELECT * FROM UNNEST(
+           $1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[],
+           $6::text[], $7::text[], $8::text[], $9::jsonb[]
+         )`,
+        [run_ids, fases, modulos, submods, acciones, estados, mensajes, evidences, payloads]
+      );
+    });
+  }
+
+  /**
+   * Lista eventos del run (asc), opcionalmente desde un timestamp hacia adelante.
+   * Usado por el polling del timeline en la UI.
+   */
+  async listRunEvents(
+    run_id: string,
+    opts: { since: Date | null; limit: number }
+  ): Promise<Array<{
+    id: string;
+    ts: string;
+    fase: string;
+    modulo: string | null;
+    submodulo: string | null;
+    accion: string | null;
+    estado: string;
+    mensaje: string | null;
+    evidence_path: string | null;
+    payload: Record<string, unknown> | null;
+  }>> {
+    return this.run(async (c) => {
+      const args: unknown[] = [run_id];
+      let where = "run_id = $1";
+      if (opts.since) {
+        args.push(opts.since.toISOString());
+        where += ` AND ts > $${args.length}`;
+      }
+      args.push(opts.limit);
+      const limitIdx = args.length;
+      const r = await c.query(
+        `SELECT id, ts, fase, modulo, submodulo, accion, estado, mensaje, evidence_path, payload
+           FROM qa_center.run_events
+          WHERE ${where}
+          ORDER BY ts ASC, id ASC
+          LIMIT $${limitIdx}`,
+        args
+      );
+      return r.rows.map((row: Record<string, unknown>) => ({
+        id: String(row.id),
+        ts: row.ts instanceof Date ? row.ts.toISOString() : String(row.ts),
+        fase: String(row.fase),
+        modulo: row.modulo === null ? null : String(row.modulo),
+        submodulo: row.submodulo === null ? null : String(row.submodulo),
+        accion: row.accion === null ? null : String(row.accion),
+        estado: String(row.estado),
+        mensaje: row.mensaje === null ? null : String(row.mensaje),
+        evidence_path: row.evidence_path === null ? null : String(row.evidence_path),
+        payload: row.payload === null ? null : (row.payload as Record<string, unknown>),
+      }));
+    });
   }
 
   async upsertInformeIa(input: {

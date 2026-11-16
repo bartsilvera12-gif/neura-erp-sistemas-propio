@@ -304,6 +304,36 @@ export interface QaRunsRepo {
     modulos: unknown;
   }): Promise<void>;
 
+  /** Agrega eventos de progreso en vivo del agente QA durante un run. */
+  insertRunEvents(events: Array<{
+    run_id: string;
+    fase: string;
+    modulo: string | null;
+    submodulo: string | null;
+    accion: string | null;
+    estado: string;
+    mensaje: string | null;
+    evidence_path: string | null;
+    payload: Record<string, unknown> | null;
+  }>): Promise<void>;
+
+  /** Lee eventos de un run para el polling del timeline (orden asc). */
+  listRunEvents(
+    run_id: string,
+    opts: { since: Date | null; limit: number }
+  ): Promise<Array<{
+    id: string;
+    ts: string;
+    fase: string;
+    modulo: string | null;
+    submodulo: string | null;
+    accion: string | null;
+    estado: string;
+    mensaje: string | null;
+    evidence_path: string | null;
+    payload: Record<string, unknown> | null;
+  }>>;
+
   latestInformeIa(projectId: string): Promise<{
     run_id: string;
     resumen: string;

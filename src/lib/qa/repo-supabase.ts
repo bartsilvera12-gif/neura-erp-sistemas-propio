@@ -284,6 +284,12 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
   async upsertInformeIa(_input: Parameters<QaRunsRepo["upsertInformeIa"]>[0]): ReturnType<QaRunsRepo["upsertInformeIa"]> {
     throw new Error("SupabaseQaRunsRepo.upsertInformeIa no implementado — usar PostgresQaRunsRepo");
   }
+  async insertRunEvents(_events: Parameters<QaRunsRepo["insertRunEvents"]>[0]): ReturnType<QaRunsRepo["insertRunEvents"]> {
+    throw new Error("SupabaseQaRunsRepo.insertRunEvents no implementado — usar PostgresQaRunsRepo");
+  }
+  async listRunEvents(_run_id: string, _opts: { since: Date | null; limit: number }): ReturnType<QaRunsRepo["listRunEvents"]> {
+    return [];
+  }
   async latestInformeIa(_projectId: string): ReturnType<QaRunsRepo["latestInformeIa"]> {
     return null;
   }

@@ -134,6 +134,11 @@ const colorPorcion = (i: number) => {
   const { s: sat, l } = tonos(i);
   return `hsl(${PALETA[i % PALETA.length][0]} ${sat}% ${l}%)`;
 };
+/** La cara del corte, a mitad de camino entre la tapa y la pared. */
+const colorCorte = (i: number) => {
+  const { s: sat, l } = tonos(i);
+  return `hsl(${PALETA[i % PALETA.length][0]} ${sat}% ${Math.max(24, l - 9)}%)`;
+};
 /** El costado va más oscuro: es lo que da la sensación de volumen. */
 const colorPared = (i: number) => {
   const { s: sat, l } = tonos(i);
@@ -197,6 +202,16 @@ function pared(desde: number, hasta: number): string | null {
   const a = borde(ini);
   const b = borde(fin);
   return `M ${a.x} ${a.y} A ${RX} ${RY} 0 0 1 ${b.x} ${b.y} L ${b.x} ${b.y + ALTO3D} A ${RX} ${RY} 0 0 0 ${a.x} ${a.y + ALTO3D} Z`;
+}
+
+/**
+ * Una de las dos caras rectas del corte, del centro al borde. Solo se ven
+ * cuando la porción se separa del resto: mientras está en su lugar, las tapan
+ * las vecinas.
+ */
+function caraCorte(t: number) {
+  const b = borde(t);
+  return `M ${CX} ${CY} L ${b.x} ${b.y} L ${b.x} ${b.y + ALTO3D} L ${CX} ${CY + ALTO3D} Z`;
 }
 
 /** Dónde cae la etiqueta de una porción: a mitad de su ángulo, sobre la tapa. */
@@ -554,6 +569,7 @@ export default function NeuritaPage() {
                   pct: (x.usd / total) * 100,
                   color: colorPorcion(i),
                   sombra: colorPared(i),
+                  corte: colorCorte(i),
                 };
               });
               // Las paredes se dibujan de atrás hacia adelante: si no, una
@@ -581,6 +597,30 @@ export default function NeuritaPage() {
                         className="pointer-events-none transition-transform duration-200 ease-out"
                       />
                     ))}
+                    {/*
+                      La porción elevada muestra sus dos caras del corte. Sin
+                      esto, una porción de atrás —que no tiene pared, porque su
+                      lado de afuera mira para el otro lado— se eleva como una
+                      lámina sin espesor.
+                    */}
+                    {conArco
+                      .filter((x) => x.nombre === porcionActiva)
+                      .flatMap((x) => [
+                        <path
+                          key={`c1-${x.nombre}`}
+                          d={caraCorte(x.desde)}
+                          fill={x.sombra}
+                          transform={salto(x.desde, x.hasta, true)}
+                          className="pointer-events-none"
+                        />,
+                        <path
+                          key={`c2-${x.nombre}`}
+                          d={caraCorte(x.hasta)}
+                          fill={x.corte}
+                          transform={salto(x.desde, x.hasta, true)}
+                          className="pointer-events-none"
+                        />,
+                      ])}
                     {/* La elevada va última: si no, la porción siguiente le pasa por encima. */}
                     {[...conArco]
                       .sort((a, b) => Number(a.nombre === porcionActiva) - Number(b.nombre === porcionActiva))

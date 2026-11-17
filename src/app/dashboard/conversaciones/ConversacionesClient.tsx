@@ -104,6 +104,7 @@ import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { ChannelBadge } from "@/components/chat/ChannelBadge";
 import dynamic from "next/dynamic";
 import { puedeCargarSoporte } from "./SoporteTicketModal";
+import { linkAlMapa, ubicacionDelMensaje } from "@/lib/chat/ubicacion";
 
 // La ventana de Soporte sólo se descarga cuando alguien la abre.
 const SoporteTicketModal = dynamic(() => import("./SoporteTicketModal"), { ssr: false });
@@ -5016,6 +5017,33 @@ export function ConversacionesClient({
                             })()
                           ) : m.message_type === "contacts" ? (
                             <ContactCardsView message={m} fromMe={m.from_me} />
+                          ) : m.message_type === "location" && ubicacionDelMensaje(m.raw_payload) ? (
+                            (() => {
+                              const u = ubicacionDelMensaje(m.raw_payload)!;
+                              return (
+                                <a
+                                  href={linkAlMapa(u)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`flex items-center gap-2.5 rounded-lg px-1 py-0.5 ${m.from_me ? "text-white" : "text-slate-800"} hover:opacity-90`}
+                                >
+                                  <span
+                                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-base ${m.from_me ? "bg-white/20" : "bg-slate-100"}`}
+                                    aria-hidden
+                                  >
+                                    📍
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block font-semibold underline underline-offset-2">
+                                      {u.nombre || "Ubicación"} · Ver en el mapa
+                                    </span>
+                                    <span className={`block text-[11px] ${m.from_me ? "text-sky-100" : "text-slate-500"}`}>
+                                      {u.direccion || `${u.lat.toFixed(5)}, ${u.lng.toFixed(5)}`}
+                                    </span>
+                                  </span>
+                                </a>
+                              );
+                            })()
                           ) : (
                             // "[reaction]" y "[revoke]" son rótulos internos del ERP; al
                             // asesor hay que decirle qué pasó, no mostrarle el código.

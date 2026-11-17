@@ -105,18 +105,18 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
  * leyéndose como una familia en vez de como colores sueltos.
  */
 const PALETA: [number, number, number][] = [
-  [351, 71, 62], // coral
-  [205, 82, 64], // celeste
-  [42, 85, 62],  // amarillo
-  [168, 45, 50], // verde agua
-  [247, 66, 71], // lavanda
-  [22, 85, 65],  // naranja
-  [150, 42, 55], // verde
-  [330, 68, 71], // rosa
-  [226, 60, 60], // azul
-  [28, 48, 62],  // arena
-  [288, 45, 66], // violeta
-  [188, 52, 60], // turquesa
+  [214, 82, 58], // azul
+  [45, 92, 60],  // amarillo
+  [24, 90, 58],  // naranja
+  [350, 72, 54], // rojo
+  [118, 48, 52], // verde
+  [262, 60, 64], // violeta
+  [190, 70, 50], // turquesa
+  [330, 65, 62], // rosa
+  [150, 45, 48], // verde agua
+  [30, 55, 60],  // arena
+  [285, 45, 60], // lila
+  [200, 55, 62], // celeste
 ];
 
 /**
@@ -156,63 +156,79 @@ const nombreCorto = (n: string) => (/^carga inicial/i.test(n) ? "Carga inicial" 
  * Torta con volumen: la tapa es un círculo achatado (elipse) y el costado una
  * pared extruida hacia abajo. Sin librería de gráficos: es geometría y SVG.
  */
-const CX = 100;
-const CY = 70;
-const RX = 92;
-const RY = 50;
-const ALTO3D = 26;
-/** Cuánto se separa y cuánto sube una porción al pasarle el cursor. */
-const SALTO = 5;
-const ELEVACION = 10;
-
 /**
- * La porción se despega hacia su lado y sube: la pared la acompaña, así que
- * queda flotando sobre la torta en vez de deslizarse sobre el plano.
+ * Dona 3D. Se arma acostada —tapa en elipse, espesor hacia abajo— y después se
+ * gira entera con GIRO: queda de frente, apenas girada para que asome el espesor
+ * de un costado.
+ *
+ * Qué se ve de cada porción depende de dónde cae en ese marco acostado:
+ *  - la pared de AFUERA, solo en la mitad de adelante;
+ *  - la pared de ADENTRO, solo en la mitad de atrás, a través del agujero.
+ * Lo demás queda tapado y no se dibuja.
  */
-function salto(desde: number, hasta: number, activo: boolean) {
-  if (!activo) return undefined;
-  const a = 2 * Math.PI * ((desde + hasta) / 2) - Math.PI / 2;
-  return `translate(${SALTO * Math.cos(a)} ${SALTO * Math.sin(a) * (RY / RX) - ELEVACION})`;
+const DONA = { R: 82, r: 52, K: 0.8, D: 18, GIRO: -90, INICIO: 0.38 };
+/**
+ * Cuánto se despega una porción al pasarle el cursor. De frente, "subirla"
+ * deja un hueco y se ve roto: lo natural es que se aleje del centro.
+ */
+const SEPARA = 9;
+/** La dirección hacia afuera de una porción. En el marco acostado ya es radial. */
+function hacia(t0: number, t1: number) {
+  const a = 2 * Math.PI * ((t0 + t1) / 2) - Math.PI / 2;
+  return { x: SEPARA * Math.cos(a), y: SEPARA * DONA.K * Math.sin(a) };
 }
 
-/** Punto del borde de la tapa, para una vuelta `t` (0 a 1). */
-function borde(t: number, dy = 0) {
+const enAro = (t: number, rad: number, dy = 0) => {
   const a = 2 * Math.PI * t - Math.PI / 2;
-  return { x: CX + RX * Math.cos(a), y: CY + RY * Math.sin(a) + dy, a };
+  return { x: rad * Math.cos(a), y: rad * DONA.K * Math.sin(a) + dy };
+};
+const n2 = (v: number) => v.toFixed(2);
+
+/** La tapa de una porción: un trozo de aro. */
+function tapaAro(t0: number, t1: number): string {
+  if (t1 - t0 >= 0.999) return `${tapaAro(t0, t0 + 0.5)} ${tapaAro(t0 + 0.5, t1 - 0.0001)}`;
+  const { R, r, K } = DONA;
+  const g = t1 - t0 > 0.5 ? 1 : 0;
+  const a = enAro(t0, R), b = enAro(t1, R), c = enAro(t1, r), d = enAro(t0, r);
+  return `M ${n2(a.x)} ${n2(a.y)} A ${R} ${R * K} 0 ${g} 1 ${n2(b.x)} ${n2(b.y)} L ${n2(c.x)} ${n2(c.y)} A ${r} ${r * K} 0 ${g} 0 ${n2(d.x)} ${n2(d.y)} Z`;
 }
 
-/** La tapa de una porción. */
-function tapa(desde: number, hasta: number) {
-  if (hasta - desde >= 0.999) {
-    return `M ${CX} ${CY - RY} A ${RX} ${RY} 0 1 1 ${CX - 0.01} ${CY - RY} Z`;
+/** Recorta [t0, t1] a las ventanas dadas, contemplando que los ángulos pasan de 1. */
+function tramos(t0: number, t1: number, ventanas: [number, number][]) {
+  const out: [number, number][] = [];
+  for (const k of [-1, 0, 1, 2]) {
+    for (const [lo, hi] of ventanas) {
+      const i = Math.max(t0, lo + k);
+      const e = Math.min(t1, hi + k);
+      if (e > i) out.push([i, e]);
+    }
   }
-  const p1 = borde(desde);
-  const p2 = borde(hasta);
-  const grande = hasta - desde > 0.5 ? 1 : 0;
-  return `M ${CX} ${CY} L ${p1.x} ${p1.y} A ${RX} ${RY} 0 ${grande} 1 ${p2.x} ${p2.y} Z`;
+  return out;
 }
 
-/**
- * La pared de una porción, si asoma por el frente. Solo se ve la mitad de
- * adelante de la torta: el tramo de la porción que cae ahí.
- */
-function pared(desde: number, hasta: number): string | null {
-  const ini = Math.max(desde, 0.25);
-  const fin = Math.min(hasta, 0.75);
-  if (fin <= ini) return null;
-  const a = borde(ini);
-  const b = borde(fin);
-  return `M ${a.x} ${a.y} A ${RX} ${RY} 0 0 1 ${b.x} ${b.y} L ${b.x} ${b.y + ALTO3D} A ${RX} ${RY} 0 0 0 ${a.x} ${a.y + ALTO3D} Z`;
+/** Una franja de pared cilíndrica, del borde de la tapa hacia abajo. */
+function franja(i: number, e: number, rad: number) {
+  const { K, D } = DONA;
+  const a = enAro(i, rad), b = enAro(e, rad);
+  return `M ${n2(a.x)} ${n2(a.y)} A ${rad} ${rad * K} 0 0 1 ${n2(b.x)} ${n2(b.y)} L ${n2(b.x)} ${n2(b.y + D)} A ${rad} ${rad * K} 0 0 0 ${n2(a.x)} ${n2(a.y + D)} Z`;
 }
-
 /**
- * Una de las dos caras rectas del corte, del centro al borde. Solo se ven
- * cuando la porción se separa del resto: mientras está en su lugar, las tapan
- * las vecinas.
+ * Una cara del corte: el plano que va del borde de adentro al de afuera, con
+ * su espesor. Sin estas, una porción despegada es tapa y pared sueltas — se ve
+ * como una hoja doblada y se ve "a través".
  */
-function caraCorte(t: number) {
-  const b = borde(t);
-  return `M ${CX} ${CY} L ${b.x} ${b.y} L ${b.x} ${b.y + ALTO3D} L ${CX} ${CY + ALTO3D} Z`;
+function caraAro(t: number) {
+  const { R, r, D } = DONA;
+  const a = enAro(t, r), b = enAro(t, R);
+  return `M ${n2(a.x)} ${n2(a.y)} L ${n2(b.x)} ${n2(b.y)} L ${n2(b.x)} ${n2(b.y + D)} L ${n2(a.x)} ${n2(a.y + D)} Z`;
+}
+const paredAfuera = (t0: number, t1: number) => tramos(t0, t1, [[0.25, 0.75]]).map(([i, e]) => franja(i, e, DONA.R));
+const paredAdentro = (t0: number, t1: number) => tramos(t0, t1, [[-0.25, 0.25]]).map(([i, e]) => franja(i, e, DONA.r));
+
+/** Del marco acostado al de la pantalla: aplica el giro. Para ubicar etiquetas. */
+function girado(x: number, y: number) {
+  const a = (DONA.GIRO * Math.PI) / 180;
+  return { x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) };
 }
 
 /* ---------------------------------------------------- gasto por día en 3D */
@@ -223,12 +239,6 @@ const punto = (x: number, v: number, z: number, esc: number) =>
 const trazo = (pts: readonly (readonly [number, number])[]) =>
   pts.map(([x, y], i) => `${i ? "L" : "M"} ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ");
 const vuelta = (pts: readonly (readonly [number, number])[]) => trazo([...pts].reverse()).slice(1);
-
-/** Dónde cae la etiqueta de una porción: a mitad de su ángulo, sobre la tapa. */
-function centro(desde: number, hasta: number, r = 0.62) {
-  const a = 2 * Math.PI * ((desde + hasta) / 2) - Math.PI / 2;
-  return { x: CX + RX * r * Math.cos(a), y: CY + RY * r * Math.sin(a) };
-}
 
 export default function NeuritaPage() {
   const [d, setD] = useState<Resp | null>(null);
@@ -606,8 +616,7 @@ export default function NeuritaPage() {
             <Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" />
           ) : (
             (() => {
-              // Las cargas a mano se juntan en una sola porción; de ahí en más
-              // entran todos los sistemas, sin agrupar en "otros".
+              // Las cargas a mano se juntan en una sola porción; el resto entra completo.
               const juntos = new Map<string, { usd: number; tickets: number; vueltas: number }>();
               for (const x of d.sistemas) {
                 const k = nombreCorto(x.nombre);
@@ -621,140 +630,151 @@ export default function NeuritaPage() {
               const total = porciones.reduce((a, x) => a + x.usd, 0) || 1;
               let acum = 0;
               const conArco = porciones.map((x, i) => {
-                const desde = acum / total;
+                const t0 = DONA.INICIO + acum / total;
                 acum += x.usd;
                 return {
                   ...x,
-                  desde,
-                  hasta: acum / total,
+                  t0,
+                  t1: DONA.INICIO + acum / total,
                   pct: (x.usd / total) * 100,
                   color: colorPorcion(i),
-                  sombra: colorPared(i),
                   corte: colorCorte(i),
+                  sombra: colorPared(i),
                 };
               });
-              // Las paredes se dibujan de atrás hacia adelante: si no, una
-              // porción del fondo tapa a la de adelante.
-              const paredes = conArco
-                .map((x) => ({ ...x, d: pared(x.desde, x.hasta), prof: borde((x.desde + x.hasta) / 2).y }))
-                .filter((x): x is typeof x & { d: string } => !!x.d)
-                .sort((a, b) => a.prof - b.prof);
+              const activa = porcionActiva;
+              const act = conArco.find((x) => x.nombre === activa) ?? null;
+              const iAct = act ? conArco.indexOf(act) : -1;
+              const previa = act ? conArco[(iAct - 1 + conArco.length) % conArco.length] : null;
+              const siguiente = act ? conArco[(iAct + 1) % conArco.length] : null;
+              const mov = act ? hacia(act.t0, act.t1) : { x: 0, y: 0 };
+              // Paredes de afuera de atrás hacia adelante. La de la pieza despegada va aparte.
+              const afuera = conArco
+                .filter((x) => x !== act)
+                .flatMap((x) => paredAfuera(x.t0, x.t1).map((d0) => ({ x, d: d0, z: enAro((x.t0 + x.t1) / 2, DONA.R).y })))
+                .sort((a, b) => a.z - b.z);
+              const adentro = conArco.flatMap((x) => paredAdentro(x.t0, x.t1).map((d0) => ({ x, d: d0 })));
+              const { r, K } = DONA;
+              const agujero = `M ${r} 0 A ${r} ${r * K} 0 1 1 ${-r} 0 A ${r} ${r * K} 0 1 1 ${r} 0 Z`;
               return (
                 <div className="flex flex-col items-center">
-                  <svg
-                    viewBox="0 0 200 156"
-                    className="w-full max-w-[560px]"
-                    role="img"
-                    aria-label="Gasto por sistema"
-                  >
-                    {[...paredes]
-                      .sort((a, b) => Number(a.nombre === porcionActiva) - Number(b.nombre === porcionActiva))
-                      .map((x) => (
-                      <path
-                        key={`p-${x.nombre}`}
-                        d={x.d}
-                        fill={x.sombra}
-                        transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
-                        className="pointer-events-none transition-transform duration-200 ease-out"
-                      />
-                    ))}
-                    {/*
-                      La porción elevada muestra sus dos caras del corte. Sin
-                      esto, una porción de atrás —que no tiene pared, porque su
-                      lado de afuera mira para el otro lado— se eleva como una
-                      lámina sin espesor.
-                    */}
-                    {conArco
-                      .filter((x) => x.nombre === porcionActiva)
-                      .flatMap((x) => [
-                        <path
-                          key={`c1-${x.nombre}`}
-                          d={caraCorte(x.desde)}
-                          fill={x.sombra}
-                          transform={salto(x.desde, x.hasta, true)}
-                          className="pointer-events-none"
-                        />,
-                        <path
-                          key={`c2-${x.nombre}`}
-                          d={caraCorte(x.hasta)}
-                          fill={x.corte}
-                          transform={salto(x.desde, x.hasta, true)}
-                          className="pointer-events-none"
-                        />,
-                      ])}
-                    {/* La elevada va última: si no, la porción siguiente le pasa por encima. */}
-                    {[...conArco]
-                      .sort((a, b) => Number(a.nombre === porcionActiva) - Number(b.nombre === porcionActiva))
-                      .map((x) => (
-                        <path
-                          key={x.nombre}
-                          d={tapa(x.desde, x.hasta)}
-                          fill={x.color}
-                          transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
-                          className="pointer-events-none transition-transform duration-200 ease-out"
-                        />
+                  <svg viewBox="-130 -100 260 210" className="w-full max-w-[520px]" role="img" aria-label="Gasto por sistema">
+                    <defs>
+                      <clipPath id="neurita-hueco">
+                        <path d={agujero} />
+                      </clipPath>
+                      <radialGradient id="neurita-sombra">
+                        <stop offset="0" stopColor="#0f172a" stopOpacity="0.16" />
+                        <stop offset="1" stopColor="#0f172a" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
+                    {/* La sombra en el piso: es lo que la hace parecer apoyada y no pegada. */}
+                    <ellipse cx="6" cy="94" rx="84" ry="12" fill="url(#neurita-sombra)" />
+                    <g transform={`rotate(${DONA.GIRO})`}>
+                      {/* Lo que se ve por el agujero: la pared interna de la mitad de atrás. */}
+                      <g clipPath="url(#neurita-hueco)">
+                        {adentro.map(({ x, d: d0 }, i) => (
+                          <path key={`in-${x.nombre}-${i}`} d={d0} fill={x.corte} className="pointer-events-none" />
+                        ))}
+                      </g>
+                      {afuera.map(({ x, d: d0 }, i) => (
+                        <path key={`out-${x.nombre}-${i}`} d={d0} fill={x.sombra} className="pointer-events-none" />
                       ))}
-                    {/* El nombre entra sólo en las porciones anchas; de 4% a 10% va
-                        solo el porcentaje, y lo más fino se lee en la leyenda. */}
+                      {/* El hueco que deja la pieza: las vecinas muestran su cara del corte. */}
+                      {act && previa && siguiente && (
+                        <g className="pointer-events-none">
+                          <path d={caraAro(act.t0)} fill={previa.corte} />
+                          <path d={caraAro(act.t1)} fill={siguiente.corte} />
+                        </g>
+                      )}
+                      {conArco
+                        .filter((x) => x !== act)
+                        .map((x) => (
+                          <path key={x.nombre} d={tapaAro(x.t0, x.t1)} fill={x.color} className="pointer-events-none" />
+                        ))}
+                      {/* La pieza despegada, entera: caras del corte, paredes y tapa. */}
+                      {act && (
+                        <g
+                          transform={`translate(${mov.x} ${mov.y})`}
+                          className="pointer-events-none"
+                          style={{ transition: "transform 200ms ease-out" }}
+                        >
+                          <path d={caraAro(act.t0)} fill={act.corte} />
+                          <path d={caraAro(act.t1)} fill={act.corte} />
+                          {paredAdentro(act.t0, act.t1).map((d0, i) => (
+                            <path key={`ain-${i}`} d={d0} fill={act.corte} />
+                          ))}
+                          {paredAfuera(act.t0, act.t1).map((d0, i) => (
+                            <path key={`aout-${i}`} d={d0} fill={act.sombra} />
+                          ))}
+                          <path d={tapaAro(act.t0, act.t1)} fill={act.color} />
+                        </g>
+                      )}
+                      {/*
+                        El cursor se escucha sobre aros que NO se mueven. Si escucharan
+                        las piezas, al despegarse saldrían de abajo del mouse y titilaría.
+                      */}
+                      {conArco.map((x) => (
+                        <path
+                          key={`hit-${x.nombre}`}
+                          d={tapaAro(x.t0, x.t1)}
+                          fill="transparent"
+                          onMouseEnter={() => setPorcionActiva(x.nombre)}
+                          onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
+                          className="cursor-pointer"
+                        >
+                          <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
+                        </path>
+                      ))}
+                    </g>
+                    {/* Los porcentajes van sin girar, para que se lean derechos. */}
                     {conArco
-                      .filter((x) => x.pct >= 4 && x.pct < 10)
+                      .filter((x) => x.pct >= 6)
                       .map((x) => {
-                        const c = centro(x.desde, x.hasta, 0.68);
+                        const v = x.nombre === activa ? hacia(x.t0, x.t1) : { x: 0, y: 0 };
+                        const m = enAro((x.t0 + x.t1) / 2, (DONA.R + DONA.r) / 2);
+                        const g = girado(m.x + v.x, m.y + v.y);
                         return (
                           <text
-                            key={`pc-${x.nombre}`}
-                            x={c.x}
-                            y={c.y + 2}
+                            key={`pct-${x.nombre}`}
+                            x={g.x}
+                            y={g.y + 2.5}
                             textAnchor="middle"
-                            transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
-                            className="pointer-events-none fill-white text-[5px] font-semibold transition-transform duration-200 ease-out"
+                            className="pointer-events-none fill-white text-[7px] font-bold transition-all duration-200"
                           >
                             {Math.round(x.pct)}%
                           </text>
                         );
                       })}
-                    {conArco
-                      .filter((x) => x.pct >= 10)
-                      .map((x) => {
-                        const c = centro(x.desde, x.hasta);
-                        return (
-                          <g
-                            key={`et-${x.nombre}`}
-                            transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
-                            className="pointer-events-none transition-transform duration-200 ease-out"
-                          >
-                            <text x={c.x} y={c.y - 1} textAnchor="middle" className="fill-white text-[5.5px] font-semibold">
-                              {x.nombre.length > 14 ? `${x.nombre.slice(0, 13)}…` : x.nombre}
-                            </text>
-                            <text x={c.x} y={c.y + 5.5} textAnchor="middle" className="fill-white/85 text-[5px]">
-                              {Math.round(x.pct)}%
-                            </text>
-                          </g>
-                        );
-                      })}
-                    {/*
-                      El cursor se escucha acá, sobre porciones que NO se mueven.
-                      Antes escuchaban las tapas: al elevarse salían de abajo del
-                      cursor, se soltaba el hover, volvían a su lugar y arrancaba
-                      de nuevo — titilaba sin parar en los bordes.
-                    */}
-                    {conArco.map((x) => (
-                      <path
-                        key={`hit-${x.nombre}`}
-                        d={tapa(x.desde, x.hasta)}
-                        fill="transparent"
-                        onMouseEnter={() => setPorcionActiva(x.nombre)}
-                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
-                        className="cursor-pointer"
-                      >
-                        <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
-                      </path>
-                    ))}
                   </svg>
-                  <p className="mt-1 text-[12px] text-slate-500">
-                    {usd(total)} en {porciones.length} {porciones.length === 1 ? "sistema" : "sistemas"}
-                  </p>
-                  {/* Leyenda secundaria: para las porciones finas que no entran en el gráfico. */}
+                  {/* Lo que dice la porción elevada, o el total si no hay ninguna. */}
+                  <div className="-mt-1 h-9 text-center">
+                    {activa ? (
+                      (() => {
+                        const x = conArco.find((y) => y.nombre === activa);
+                        if (!x) return null;
+                        return (
+                          <>
+                            <p className="text-[14px] font-semibold text-slate-800">
+                              {x.nombre} · {usd(x.usd)}
+                            </p>
+                            <p className="text-[11px] text-slate-400">
+                              {x.pct.toFixed(1)}% del gasto
+                              {x.tickets ? ` · ${x.tickets} ${x.tickets === 1 ? "ticket" : "tickets"}` : ""} · {x.vueltas} vueltas
+                            </p>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <>
+                        <p className="text-[14px] font-semibold text-slate-800">{usd(total)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          en {porciones.length} {porciones.length === 1 ? "sistema" : "sistemas"} · pasá el cursor por una porción
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  {/* Leyenda secundaria: para las porciones finas que no tienen etiqueta. */}
                   <ul className="mt-4 flex w-full flex-wrap justify-center gap-x-4 gap-y-1.5 border-t border-slate-100 pt-3">
                     {conArco.map((x) => (
                       <li
@@ -762,9 +782,8 @@ export default function NeuritaPage() {
                         onMouseEnter={() => setPorcionActiva(x.nombre)}
                         onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
                         className={`flex cursor-default items-center gap-1.5 rounded px-1 text-[11px] transition-colors ${
-                          porcionActiva === x.nombre ? "bg-slate-100 text-slate-600" : "text-slate-400"
+                          activa === x.nombre ? "bg-slate-100 text-slate-600" : "text-slate-400"
                         }`}
-                        title={`${usd(x.usd)} · ${x.vueltas} vueltas`}
                       >
                         <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: x.color }} aria-hidden />
                         <span className="text-slate-500">{x.nombre}</span>

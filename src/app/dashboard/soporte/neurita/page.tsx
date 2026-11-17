@@ -118,17 +118,26 @@ const PALETA: [number, number, number][] = [
   [188, 52, 60], // turquesa
 ];
 
-/** El brillo del anillo: la primera vuelta como está, después más oscuro y más claro. */
-const brillo = (i: number) => [0, -13, 11, -22][Math.floor(i / PALETA.length) % 4];
-
-const colorPorcion = (i: number) => {
+/**
+ * Los doce primeros (los que pesan) van a color pleno. De ahí en más son
+ * porciones de menos del 3%: se repiten los mismos tonos pero lavados, para
+ * que la cola no compita con lo que importa. Oscurecerlos, como antes,
+ * ensuciaba la torta entera.
+ */
+function tonos(i: number) {
   const [h, sat, l] = PALETA[i % PALETA.length];
-  return `hsl(${h} ${sat}% ${Math.min(82, Math.max(28, l + brillo(i)))}%)`;
+  const cola = Math.floor(i / PALETA.length);
+  if (!cola) return { s: sat, l };
+  return { s: Math.round(sat * 0.38), l: Math.min(84, l + 12 + cola * 3) };
+}
+const colorPorcion = (i: number) => {
+  const { s: sat, l } = tonos(i);
+  return `hsl(${PALETA[i % PALETA.length][0]} ${sat}% ${l}%)`;
 };
 /** El costado va más oscuro: es lo que da la sensación de volumen. */
 const colorPared = (i: number) => {
-  const [h, sat, l] = PALETA[i % PALETA.length];
-  return `hsl(${h} ${sat}% ${Math.min(70, Math.max(18, l + brillo(i) - 17))}%)`;
+  const { s: sat, l } = tonos(i);
+  return `hsl(${PALETA[i % PALETA.length][0]} ${sat}% ${Math.max(20, l - 17)}%)`;
 };
 
 /**
@@ -146,14 +155,18 @@ const CY = 70;
 const RX = 92;
 const RY = 50;
 const ALTO3D = 26;
-/** Cuánto se separa una porción al pasarle el cursor. */
-const SALTO = 7;
+/** Cuánto se separa y cuánto sube una porción al pasarle el cursor. */
+const SALTO = 5;
+const ELEVACION = 10;
 
-/** Hacia dónde se mueve una porción al elevarse: por su propio ángulo. */
+/**
+ * La porción se despega hacia su lado y sube: la pared la acompaña, así que
+ * queda flotando sobre la torta en vez de deslizarse sobre el plano.
+ */
 function salto(desde: number, hasta: number, activo: boolean) {
   if (!activo) return undefined;
   const a = 2 * Math.PI * ((desde + hasta) / 2) - Math.PI / 2;
-  return `translate(${SALTO * Math.cos(a)} ${SALTO * Math.sin(a) * (RY / RX) - 3})`;
+  return `translate(${SALTO * Math.cos(a)} ${SALTO * Math.sin(a) * (RY / RX) - ELEVACION})`;
 }
 
 /** Punto del borde de la tapa, para una vuelta `t` (0 a 1). */
@@ -557,28 +570,29 @@ export default function NeuritaPage() {
                     role="img"
                     aria-label="Gasto por sistema"
                   >
-                    {paredes.map((x) => (
+                    {[...paredes]
+                      .sort((a, b) => Number(a.nombre === porcionActiva) - Number(b.nombre === porcionActiva))
+                      .map((x) => (
                       <path
                         key={`p-${x.nombre}`}
                         d={x.d}
                         fill={x.sombra}
                         transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
-                        className="transition-transform duration-200 ease-out"
+                        className="pointer-events-none transition-transform duration-200 ease-out"
                       />
                     ))}
-                    {conArco.map((x) => (
-                      <path
-                        key={x.nombre}
-                        d={tapa(x.desde, x.hasta)}
-                        fill={x.color}
-                        transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
-                        onMouseEnter={() => setPorcionActiva(x.nombre)}
-                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
-                        className="cursor-pointer transition-transform duration-200 ease-out"
-                      >
-                        <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
-                      </path>
-                    ))}
+                    {/* La elevada va última: si no, la porción siguiente le pasa por encima. */}
+                    {[...conArco]
+                      .sort((a, b) => Number(a.nombre === porcionActiva) - Number(b.nombre === porcionActiva))
+                      .map((x) => (
+                        <path
+                          key={x.nombre}
+                          d={tapa(x.desde, x.hasta)}
+                          fill={x.color}
+                          transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
+                          className="pointer-events-none transition-transform duration-200 ease-out"
+                        />
+                      ))}
                     {/* El nombre entra sólo en las porciones anchas; de 4% a 10% va
                         solo el porcentaje, y lo más fino se lee en la leyenda. */}
                     {conArco
@@ -617,6 +631,24 @@ export default function NeuritaPage() {
                           </g>
                         );
                       })}
+                    {/*
+                      El cursor se escucha acá, sobre porciones que NO se mueven.
+                      Antes escuchaban las tapas: al elevarse salían de abajo del
+                      cursor, se soltaba el hover, volvían a su lugar y arrancaba
+                      de nuevo — titilaba sin parar en los bordes.
+                    */}
+                    {conArco.map((x) => (
+                      <path
+                        key={`hit-${x.nombre}`}
+                        d={tapa(x.desde, x.hasta)}
+                        fill="transparent"
+                        onMouseEnter={() => setPorcionActiva(x.nombre)}
+                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
+                        className="cursor-pointer"
+                      >
+                        <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
+                      </path>
+                    ))}
                   </svg>
                   <p className="mt-1 text-[12px] text-slate-500">
                     {usd(total)} en {porciones.length} {porciones.length === 1 ? "sistema" : "sistemas"}

@@ -89,61 +89,18 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
   );
 }
 
-/** Paleta de la torta: los mismos tonos que usa el resto de Soporte. */
 /**
- * Un color por porción, generado con el ángulo áureo: cada tono queda lejos
- * del anterior, así que nunca se repiten ni con cuarenta sistemas. Una lista
- * fija de colores se agotaba y dejaba porciones vecinas del mismo tono.
+ * Colores de la dona: 24 tonos vivos, alternando cálido y frío para que dos
+ * porciones vecinas nunca se parezcan. Las porciones chicas usan la segunda
+ * docena (los mismos tonos, un punto más claros), nunca grises lavados.
  */
-/**
- * Paleta de la torta: doce tonos elegidos a mano, alternando cálido y frío
- * para que dos porciones vecinas nunca se parezcan. Rotar el tono por fórmula
- * daba combinaciones chillonas (magenta al lado de lima).
- *
- * Con más de doce sistemas se repite la base cambiando el brillo, que sigue
- * leyéndose como una familia en vez de como colores sueltos.
- */
-const PALETA: [number, number, number][] = [
-  [214, 82, 58], // azul
-  [45, 92, 60],  // amarillo
-  [24, 90, 58],  // naranja
-  [350, 72, 54], // rojo
-  [118, 48, 52], // verde
-  [262, 60, 64], // violeta
-  [190, 70, 50], // turquesa
-  [330, 65, 62], // rosa
-  [150, 45, 48], // verde agua
-  [30, 55, 60],  // arena
-  [285, 45, 60], // lila
-  [200, 55, 62], // celeste
+const COLORES = [
+  "#3b82f6", "#f59e0b", "#10b981", "#f43f5e", "#8b5cf6", "#06b6d4",
+  "#f97316", "#ec4899", "#84cc16", "#6366f1", "#14b8a6", "#d946ef",
+  "#60a5fa", "#fbbf24", "#34d399", "#fb7185", "#a78bfa", "#22d3ee",
+  "#fb923c", "#f472b6", "#a3e635", "#818cf8", "#2dd4bf", "#e879f9",
 ];
-
-/**
- * Los doce primeros (los que pesan) van a color pleno. De ahí en más son
- * porciones de menos del 3%: se repiten los mismos tonos pero lavados, para
- * que la cola no compita con lo que importa. Oscurecerlos, como antes,
- * ensuciaba la torta entera.
- */
-function tonos(i: number) {
-  const [h, sat, l] = PALETA[i % PALETA.length];
-  const cola = Math.floor(i / PALETA.length);
-  if (!cola) return { s: sat, l };
-  return { s: Math.round(sat * 0.38), l: Math.min(84, l + 12 + cola * 3) };
-}
-const colorPorcion = (i: number) => {
-  const { s: sat, l } = tonos(i);
-  return `hsl(${PALETA[i % PALETA.length][0]} ${sat}% ${l}%)`;
-};
-/** La cara del corte, a mitad de camino entre la tapa y la pared. */
-const colorCorte = (i: number) => {
-  const { s: sat, l } = tonos(i);
-  return `hsl(${PALETA[i % PALETA.length][0]} ${sat}% ${Math.max(24, l - 9)}%)`;
-};
-/** El costado va más oscuro: es lo que da la sensación de volumen. */
-const colorPared = (i: number) => {
-  const { s: sat, l } = tonos(i);
-  return `hsl(${PALETA[i % PALETA.length][0]} ${sat}% ${Math.max(20, l - 17)}%)`;
-};
+const colorPorcion = (i: number) => COLORES[i % COLORES.length];
 
 /**
  * Las cargas a mano (el gasto previo a la tabla) llegan con un texto largo
@@ -152,92 +109,24 @@ const colorPared = (i: number) => {
 const nombreCorto = (n: string) => (/^carga inicial/i.test(n) ? "Carga inicial" : n.replace(/^neura-erp-/, ""));
 
 /**
- * Torta con volumen: la tapa es un círculo achatado (elipse) y el costado una
- * pared extruida hacia abajo. Sin librería de gráficos: es geometría y SVG.
+ * Dona plana, de frente y quieta. Sin librería de gráficos: es geometría y SVG.
+ * Arranca arriba (t = 0) y gira en sentido horario.
  */
-/**
- * Dona 3D. Se arma acostada —tapa en elipse, espesor hacia abajo— y después se
- * gira entera con GIRO: queda de frente, apenas girada para que asome el espesor
- * de un costado.
- *
- * Qué se ve de cada porción depende de dónde cae en ese marco acostado:
- *  - la pared de AFUERA, solo en la mitad de adelante;
- *  - la pared de ADENTRO, solo en la mitad de atrás, a través del agujero.
- * Lo demás queda tapado y no se dibuja.
- */
-const DONA = { R: 82, r: 52, K: 0.8, D: 18, GIRO: -90, INICIO: 0.38 };
-/**
- * Cuánto se despega una porción al pasarle el cursor. De frente, "subirla"
- * deja un hueco y se ve roto: lo natural es que se aleje del centro.
- */
-const SEPARA = 6;
-/** La dirección hacia afuera de una porción. En el marco acostado ya es radial. */
-function hacia(t0: number, t1: number) {
-  const a = 2 * Math.PI * ((t0 + t1) / 2) - Math.PI / 2;
-  return { x: SEPARA * Math.cos(a), y: SEPARA * DONA.K * Math.sin(a) };
-}
+const DONA = { R: 100, r: 50 };
 
-const enAro = (t: number, rad: number, dy = 0) => {
+const punto = (t: number, rad: number) => {
   const a = 2 * Math.PI * t - Math.PI / 2;
-  return { x: rad * Math.cos(a), y: rad * DONA.K * Math.sin(a) + dy };
+  return { x: rad * Math.cos(a), y: rad * Math.sin(a) };
 };
 const n2 = (v: number) => v.toFixed(2);
 
-/** La tapa de una porción: un trozo de aro. */
-function tapaAro(t0: number, t1: number): string {
-  if (t1 - t0 >= 0.999) return `${tapaAro(t0, t0 + 0.5)} ${tapaAro(t0 + 0.5, t1 - 0.0001)}`;
-  const { R, r, K } = DONA;
+/** Una porción: un trozo de aro entre t0 y t1. */
+function arco(t0: number, t1: number): string {
+  if (t1 - t0 >= 0.999) return `${arco(t0, t0 + 0.5)} ${arco(t0 + 0.5, t1 - 0.0001)}`;
+  const { R, r } = DONA;
   const g = t1 - t0 > 0.5 ? 1 : 0;
-  const a = enAro(t0, R), b = enAro(t1, R), c = enAro(t1, r), d = enAro(t0, r);
-  return `M ${n2(a.x)} ${n2(a.y)} A ${R} ${R * K} 0 ${g} 1 ${n2(b.x)} ${n2(b.y)} L ${n2(c.x)} ${n2(c.y)} A ${r} ${r * K} 0 ${g} 0 ${n2(d.x)} ${n2(d.y)} Z`;
-}
-
-/** Recorta [t0, t1] a las ventanas dadas, contemplando que los ángulos pasan de 1. */
-function tramos(t0: number, t1: number, ventanas: [number, number][]) {
-  const out: [number, number][] = [];
-  for (const k of [-1, 0, 1, 2]) {
-    for (const [lo, hi] of ventanas) {
-      const i = Math.max(t0, lo + k);
-      const e = Math.min(t1, hi + k);
-      if (e > i) out.push([i, e]);
-    }
-  }
-  return out;
-}
-
-/** Una franja de pared cilíndrica, del borde de la tapa hacia abajo. */
-function franja(i: number, e: number, rad: number) {
-  const { K, D } = DONA;
-  const a = enAro(i, rad), b = enAro(e, rad);
-  return `M ${n2(a.x)} ${n2(a.y)} A ${rad} ${rad * K} 0 0 1 ${n2(b.x)} ${n2(b.y)} L ${n2(b.x)} ${n2(b.y + D)} A ${rad} ${rad * K} 0 0 0 ${n2(a.x)} ${n2(a.y + D)} Z`;
-}
-/**
- * Una cara del corte: el plano que va del borde de adentro al de afuera, con
- * su espesor. Sin estas, una porción despegada es tapa y pared sueltas — se ve
- * como una hoja doblada y se ve "a través".
- */
-function caraAro(t: number) {
-  const { R, r, D } = DONA;
-  const a = enAro(t, r), b = enAro(t, R);
-  return `M ${n2(a.x)} ${n2(a.y)} L ${n2(b.x)} ${n2(b.y)} L ${n2(b.x)} ${n2(b.y + D)} L ${n2(a.x)} ${n2(a.y + D)} Z`;
-}
-/**
- * Una cara del corte se ve solo si apunta hacia la cámara. Dibujar las dos
- * siempre dejaba un "ala" de la cara escondida asomando por el costado.
- * La del final de una pieza mira hacia adelante en el sentido del giro; la del
- * principio, hacia atrás.
- */
-const anguloAro = (t: number) => 2 * Math.PI * t - Math.PI / 2;
-const seVeFinal = (t: number) => Math.cos(anguloAro(t)) > 0;
-const seVeInicio = (t: number) => Math.cos(anguloAro(t)) < 0;
-
-const paredAfuera = (t0: number, t1: number) => tramos(t0, t1, [[0.25, 0.75]]).map(([i, e]) => franja(i, e, DONA.R));
-const paredAdentro = (t0: number, t1: number) => tramos(t0, t1, [[-0.25, 0.25]]).map(([i, e]) => franja(i, e, DONA.r));
-
-/** Del marco acostado al de la pantalla: aplica el giro. Para ubicar etiquetas. */
-function girado(x: number, y: number) {
-  const a = (DONA.GIRO * Math.PI) / 180;
-  return { x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) };
+  const a = punto(t0, R), b = punto(t1, R), c = punto(t1, r), d = punto(t0, r);
+  return `M ${n2(a.x)} ${n2(a.y)} A ${R} ${R} 0 ${g} 1 ${n2(b.x)} ${n2(b.y)} L ${n2(c.x)} ${n2(c.y)} A ${r} ${r} 0 ${g} 0 ${n2(d.x)} ${n2(d.y)} Z`;
 }
 
 export default function NeuritaPage() {
@@ -579,109 +468,37 @@ export default function NeuritaPage() {
               const total = porciones.reduce((a, x) => a + x.usd, 0) || 1;
               let acum = 0;
               const conArco = porciones.map((x, i) => {
-                const t0 = DONA.INICIO + acum / total;
+                const t0 = acum / total;
                 acum += x.usd;
-                return {
-                  ...x,
-                  t0,
-                  t1: DONA.INICIO + acum / total,
-                  pct: (x.usd / total) * 100,
-                  color: colorPorcion(i),
-                  corte: colorCorte(i),
-                  sombra: colorPared(i),
-                };
+                return { ...x, t0, t1: acum / total, pct: (x.usd / total) * 100, color: colorPorcion(i) };
               });
               const activa = porcionActiva;
-              const act = conArco.find((x) => x.nombre === activa) ?? null;
-              const mov = act ? hacia(act.t0, act.t1) : { x: 0, y: 0 };
-              // Paredes de afuera de atrás hacia adelante. La de la pieza despegada va aparte.
-              const afuera = conArco
-                .filter((x) => x !== act)
-                .flatMap((x) => paredAfuera(x.t0, x.t1).map((d0) => ({ x, d: d0, z: enAro((x.t0 + x.t1) / 2, DONA.R).y })))
-                .sort((a, b) => a.z - b.z);
-              // La pared interna de la pieza que sale tampoco se queda: si no, deja
-              // su "sombra" en el agujero.
-              const adentro = conArco
-                .filter((x) => x !== act)
-                .flatMap((x) => paredAdentro(x.t0, x.t1).map((d0) => ({ x, d: d0 })));
-              const { r, K } = DONA;
-              const agujero = `M ${r} 0 A ${r} ${r * K} 0 1 1 ${-r} 0 A ${r} ${r * K} 0 1 1 ${r} 0 Z`;
               return (
                 <div className="flex flex-col items-center">
-                  <svg viewBox="-130 -100 260 210" className="w-full max-w-[520px]" role="img" aria-label="Gasto por sistema">
-                    <defs>
-                      <clipPath id="neurita-hueco">
-                        <path d={agujero} />
-                      </clipPath>
-                      <radialGradient id="neurita-sombra">
-                        <stop offset="0" stopColor="#0f172a" stopOpacity="0.16" />
-                        <stop offset="1" stopColor="#0f172a" stopOpacity="0" />
-                      </radialGradient>
-                    </defs>
-                    {/* La sombra en el piso: es lo que la hace parecer apoyada y no pegada. */}
-                    <ellipse cx="6" cy="94" rx="84" ry="12" fill="url(#neurita-sombra)" />
-                    <g transform={`rotate(${DONA.GIRO})`}>
-                      {/* Lo que se ve por el agujero: la pared interna de la mitad de atrás. */}
-                      <g clipPath="url(#neurita-hueco)">
-                        {adentro.map(({ x, d: d0 }, i) => (
-                          <path key={`in-${x.nombre}-${i}`} d={d0} fill={x.corte} className="pointer-events-none" />
-                        ))}
-                      </g>
-                      {afuera.map(({ x, d: d0 }, i) => (
-                        <path key={`out-${x.nombre}-${i}`} d={d0} fill={x.sombra} className="pointer-events-none" />
-                      ))}
-                      {conArco
-                        .filter((x) => x !== act)
-                        .map((x) => (
-                          <path key={x.nombre} d={tapaAro(x.t0, x.t1)} fill={x.color} className="pointer-events-none" />
-                        ))}
-                      {/* La pieza despegada, entera: caras del corte, paredes y tapa. */}
-                      {act && (
-                        <g
-                          transform={`translate(${mov.x} ${mov.y})`}
-                          className="pointer-events-none"
-                          style={{ transition: "transform 200ms ease-out" }}
-                        >
-                          {/* Las caras laterales van en el tono de pared: con luz de arriba, solo la tapa es clara. */}
-                          {seVeInicio(act.t0) && <path d={caraAro(act.t0)} fill={act.sombra} />}
-                          {seVeFinal(act.t1) && <path d={caraAro(act.t1)} fill={act.sombra} />}
-                          {paredAfuera(act.t0, act.t1).map((d0, i) => (
-                            <path key={`aout-${i}`} d={d0} fill={act.sombra} />
-                          ))}
-                          <path d={tapaAro(act.t0, act.t1)} fill={act.color} />
-                        </g>
-                      )}
-                      {/*
-                        El cursor se escucha sobre aros que NO se mueven. Si escucharan
-                        las piezas, al despegarse saldrían de abajo del mouse y titilaría.
-                      */}
-                      {conArco.map((x) => (
-                        <path
-                          key={`hit-${x.nombre}`}
-                          d={tapaAro(x.t0, x.t1)}
-                          fill="transparent"
-                          onMouseEnter={() => setPorcionActiva(x.nombre)}
-                          onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
-                          className="cursor-pointer"
-                        >
-                          <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
-                        </path>
-                      ))}
-                    </g>
-                    {/* Los porcentajes van sin girar, para que se lean derechos. */}
+                  <svg viewBox="-102 -102 204 204" className="w-full max-w-[420px]" role="img" aria-label="Gasto por sistema">
+                    {conArco.map((x) => (
+                      <path
+                        key={x.nombre}
+                        d={arco(x.t0, x.t1)}
+                        fill={x.color}
+                        onMouseEnter={() => setPorcionActiva(x.nombre)}
+                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
+                        className="cursor-pointer"
+                      >
+                        <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
+                      </path>
+                    ))}
                     {conArco
-                      .filter((x) => x.pct >= 6)
+                      .filter((x) => x.pct >= 5)
                       .map((x) => {
-                        const v = x.nombre === activa ? hacia(x.t0, x.t1) : { x: 0, y: 0 };
-                        const m = enAro((x.t0 + x.t1) / 2, (DONA.R + DONA.r) / 2);
-                        const g = girado(m.x + v.x, m.y + v.y);
+                        const m = punto((x.t0 + x.t1) / 2, (DONA.R + DONA.r) / 2);
                         return (
                           <text
                             key={`pct-${x.nombre}`}
-                            x={g.x}
-                            y={g.y + 2.5}
+                            x={m.x}
+                            y={m.y + 3.5}
                             textAnchor="middle"
-                            className="pointer-events-none fill-white text-[7px] font-bold transition-all duration-200"
+                            className="pointer-events-none fill-white text-[10px] font-bold"
                           >
                             {Math.round(x.pct)}%
                           </text>

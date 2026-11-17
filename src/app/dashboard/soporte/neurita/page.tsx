@@ -171,7 +171,7 @@ const DONA = { R: 82, r: 52, K: 0.8, D: 18, GIRO: -90, INICIO: 0.38 };
  * Cuánto se despega una porción al pasarle el cursor. De frente, "subirla"
  * deja un hueco y se ve roto: lo natural es que se aleje del centro.
  */
-const SEPARA = 9;
+const SEPARA = 6;
 /** La dirección hacia afuera de una porción. En el marco acostado ya es radial. */
 function hacia(t0: number, t1: number) {
   const a = 2 * Math.PI * ((t0 + t1) / 2) - Math.PI / 2;
@@ -222,6 +222,16 @@ function caraAro(t: number) {
   const a = enAro(t, r), b = enAro(t, R);
   return `M ${n2(a.x)} ${n2(a.y)} L ${n2(b.x)} ${n2(b.y)} L ${n2(b.x)} ${n2(b.y + D)} L ${n2(a.x)} ${n2(a.y + D)} Z`;
 }
+/**
+ * Una cara del corte se ve solo si apunta hacia la cámara. Dibujar las dos
+ * siempre dejaba un "ala" de la cara escondida asomando por el costado.
+ * La del final de una pieza mira hacia adelante en el sentido del giro; la del
+ * principio, hacia atrás.
+ */
+const anguloAro = (t: number) => 2 * Math.PI * t - Math.PI / 2;
+const seVeFinal = (t: number) => Math.cos(anguloAro(t)) > 0;
+const seVeInicio = (t: number) => Math.cos(anguloAro(t)) < 0;
+
 const paredAfuera = (t0: number, t1: number) => tramos(t0, t1, [[0.25, 0.75]]).map(([i, e]) => franja(i, e, DONA.R));
 const paredAdentro = (t0: number, t1: number) => tramos(t0, t1, [[-0.25, 0.25]]).map(([i, e]) => franja(i, e, DONA.r));
 
@@ -683,8 +693,8 @@ export default function NeuritaPage() {
                       {/* El hueco que deja la pieza: las vecinas muestran su cara del corte. */}
                       {act && previa && siguiente && (
                         <g className="pointer-events-none">
-                          <path d={caraAro(act.t0)} fill={previa.corte} />
-                          <path d={caraAro(act.t1)} fill={siguiente.corte} />
+                          {seVeFinal(act.t0) && <path d={caraAro(act.t0)} fill={previa.sombra} />}
+                          {seVeInicio(act.t1) && <path d={caraAro(act.t1)} fill={siguiente.sombra} />}
                         </g>
                       )}
                       {conArco
@@ -699,8 +709,9 @@ export default function NeuritaPage() {
                           className="pointer-events-none"
                           style={{ transition: "transform 200ms ease-out" }}
                         >
-                          <path d={caraAro(act.t0)} fill={act.corte} />
-                          <path d={caraAro(act.t1)} fill={act.corte} />
+                          {/* Las caras laterales van en el tono de pared: con luz de arriba, solo la tapa es clara. */}
+                          {seVeInicio(act.t0) && <path d={caraAro(act.t0)} fill={act.sombra} />}
+                          {seVeFinal(act.t1) && <path d={caraAro(act.t1)} fill={act.sombra} />}
                           {paredAdentro(act.t0, act.t1).map((d0, i) => (
                             <path key={`ain-${i}`} d={d0} fill={act.corte} />
                           ))}

@@ -5137,7 +5137,7 @@ export function ConversacionesClient({
                   ref={fileInputRef}
                   type="file"
                   className="hidden"
-                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.apk,.zip"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.apk,.zip"
                   onChange={(e) => void handleSendFile(e)}
                 />
                 {sendError && (

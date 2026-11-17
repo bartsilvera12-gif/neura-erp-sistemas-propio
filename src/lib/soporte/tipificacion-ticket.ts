@@ -191,12 +191,22 @@ export async function crearTipificacionConTicket(
     exigirProyecto: boolean;
     origen: "tipificacion_cliente" | "conversacion";
     conversationId?: string | null;
+    /**
+     * Responsable elegido a mano por quien carga (opcional). Si no viene, o es el
+     * mismo que el automático, manda la asignación automática de siempre. Que la
+     * persona pueda quedar a cargo (Desarrollo/QA, o el principal de guardia en su
+     * franja) lo valida `prepararTicket`.
+     */
+    responsableElegidoId?: string | null;
   }
 ): Promise<ResultadoAlta> {
   const tipoCodigo = TIPO_TICKET_DE_GESTION[args.tipoGestion];
   if (!tipoCodigo) return { ok: false, mensaje: "Ese tipo de gestión no crea tickets", status: 400 };
 
-  const asignacion = await responsableAutomatico(soporte.sb, soporte.empresaId, tipoCodigo);
+  const automatica = await responsableAutomatico(soporte.sb, soporte.empresaId, tipoCodigo);
+  const elegido = args.responsableElegidoId?.trim() || null;
+  const asignacion: { responsableId: string | null; motivo: MotivoAsignacion | "elegido" } =
+    elegido && elegido !== automatica.responsableId ? { responsableId: elegido, motivo: "elegido" } : automatica;
   const prep = await prepararTicket(
     soporte,
     {

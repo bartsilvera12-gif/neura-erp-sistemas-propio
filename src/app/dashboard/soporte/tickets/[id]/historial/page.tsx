@@ -89,7 +89,10 @@ function describir(e: Evento): Vista {
     case "resuelto_guardia":
       return { ...estado("Resuelto en guardia", CheckCircle2, "bg-emerald-100 text-emerald-700"), nota: "Horario de guardia: sin revisión de QA" };
     case "cierre":
-      return estado("Ticket cerrado", Lock, "bg-slate-200 text-slate-700");
+      return {
+        ...estado("Ticket cerrado", Lock, "bg-slate-200 text-slate-700"),
+        nota: e.metadata?.automatico ? "Cierre automático: pasaron 24 h en Revisión cliente" : null,
+      };
     case "cancelacion":
       return estado("Ticket cancelado", XCircle, "bg-rose-100 text-rose-700");
     case "reapertura":

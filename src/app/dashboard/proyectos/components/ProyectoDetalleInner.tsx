@@ -800,7 +800,15 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
    */
   const [posMenu, setPosMenu] = useState<{
     left: number;
-    top: number;
+    /** Abriendo hacia abajo: distancia desde arriba de la ventana. */
+    top?: number;
+    /**
+     * Abriendo hacia arriba: distancia desde ABAJO de la ventana. Se ancla por el
+     * borde de abajo para que la lista quede pegada al cuadro sea cual sea su
+     * alto; con `top` calculado desde el alto máximo, una lista de un solo nombre
+     * quedaba flotando 288 px más arriba, encima del título del proyecto.
+     */
+    bottom?: number;
     maxHeight: number;
     haciaArriba: boolean;
   } | null>(null);
@@ -851,7 +859,9 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
       const ancho = 256;
       setPosMenu({
         left: Math.max(MARGEN, Math.min(caja.left, window.innerWidth - ancho - MARGEN)),
-        top: haciaArriba ? Math.max(MARGEN, caja.top - MARGEN - alto) : caja.bottom + MARGEN,
+        ...(haciaArriba
+          ? { bottom: window.innerHeight - caja.top + MARGEN }
+          : { top: caja.bottom + MARGEN }),
         maxHeight: alto,
         haciaArriba,
       });
@@ -972,7 +982,7 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
             el modal del detalle (llega a z-[110]). Mismo valor que el panel de
             FechaSelect, por el mismo motivo.
           */
-          style={{ left: posMenu.left, top: posMenu.top, maxHeight: posMenu.maxHeight, zIndex: 1000 }}
+          style={{ left: posMenu.left, top: posMenu.top, bottom: posMenu.bottom, maxHeight: posMenu.maxHeight, zIndex: 1000 }}
         >
           {sugeridos.map((c) => (
             <li key={c.id}>

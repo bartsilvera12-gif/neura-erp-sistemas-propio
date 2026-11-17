@@ -240,29 +240,6 @@ export async function datosNeurita(auth: SoporteContexto, rango: RangoNeurita = 
     }
     for (let i = largo - 1; i >= 0; i--) dias.push(sumaDia(diaMenos(finSerie, i)));
 
-    /**
-     * El gasto de cada día abierto por sistema, para el gráfico apilado: las
-     * cuatro cuentas más caras del período y todo el resto junto. Más capas no
-     * se distinguen, y menos esconden a quién se le fue la plata.
-     */
-    const CAPAS = 4;
-    const gastoDe = (fecha: string, filtro: (detalle: string) => boolean) =>
-      red(
-        gastosTodos
-          .filter((g) => g.fecha === fecha && filtro((g.detalle ?? "").trim()))
-          .reduce((a, g) => a + Number(g.usd ?? 0), 0)
-      );
-    const porNombre = new Map<string, number>();
-    for (const g of gastosPeriodo) {
-      const n = (g.detalle ?? "").trim() || "sin identificar";
-      porNombre.set(n, (porNombre.get(n) ?? 0) + Number(g.usd ?? 0));
-    }
-    const principales = [...porNombre.entries()].sort((a, b) => b[1] - a[1]).slice(0, CAPAS).map(([n]) => n);
-    const capas = [
-      ...principales.map((n) => ({ nombre: n, valores: dias.map((d) => gastoDe(d.fecha, (x) => x === n)) })),
-      { nombre: "Otros", valores: dias.map((d) => gastoDe(d.fecha, (x) => !principales.includes(x))) },
-    ].filter((c) => c.valores.some((v) => v > 0));
-
     // Por sistema: `detalle` guarda el repo del cliente en el que trabajó.
     const porSistema = new Map<string, { usd: number; vueltas: number; tickets: Set<number> }>();
     for (const g of gastosPeriodo) {
@@ -352,7 +329,6 @@ export async function datosNeurita(auth: SoporteContexto, rango: RangoNeurita = 
       },
       hoy: deHoy,
       dias,
-      capas,
       sistemas,
       volvieronLista,
       abiertos: abiertosLista,

@@ -24,6 +24,7 @@ type Resp = {
   };
   hoy: Ficha[];
   dias: { fecha: string; usd: number; vueltas: number }[];
+  capas: { nombre: string; valores: number[] }[];
   sistemas: { nombre: string; usd: number; vueltas: number; tickets: number }[];
   volvieronLista: Ficha[];
   abiertos: (Ficha & { desde: string })[];
@@ -213,6 +214,15 @@ function caraCorte(t: number) {
   const b = borde(t);
   return `M ${CX} ${CY} L ${b.x} ${b.y} L ${b.x} ${b.y + ALTO3D} L ${CX} ${CY + ALTO3D} Z`;
 }
+
+/* ---------------------------------------------------- gasto por día en 3D */
+/** La profundidad va hacia arriba a la derecha; cada serie, una cordillera. */
+const G = { ox: 16, oy: 168, ancho: 210, alto: 74, kx: 0.7, ky: -0.46, espesor: 16, paso: 18 };
+const punto = (x: number, v: number, z: number, esc: number) =>
+  [G.ox + x + z * G.kx, G.oy - v * esc + z * G.ky] as const;
+const trazo = (pts: readonly (readonly [number, number])[]) =>
+  pts.map(([x, y], i) => `${i ? "L" : "M"} ${x.toFixed(2)} ${y.toFixed(2)}`).join(" ");
+const vuelta = (pts: readonly (readonly [number, number])[]) => trazo([...pts].reverse()).slice(1);
 
 /** Dónde cae la etiqueta de una porción: a mitad de su ángulo, sobre la tapa. */
 function centro(desde: number, hasta: number, r = 0.62) {
@@ -425,26 +435,77 @@ export default function NeuritaPage() {
         />
       </div>
 
-      <Tarjeta titulo={d.rango.activo ? `Gasto por día (${d.rango.diasGrafico} días)` : "Gasto de los últimos 14 días"} icono={Activity} tono="violeta" className="mb-5">
-        <div className="flex h-40 gap-1.5">
-          {d.dias.map((x) => (
-            <div
-              key={x.fecha}
-              className="flex h-full min-w-0 flex-1 flex-col items-center gap-1"
-              title={`${diaCorto(x.fecha)} · ${usd(x.usd)} · ${x.vueltas} ${x.vueltas === 1 ? "vuelta" : "vueltas"}`}
-            >
-              <span className="h-4 text-[10px] tabular-nums leading-4 text-slate-500">{x.usd > 0 ? x.usd.toFixed(2) : ""}</span>
-              {/* La caja marca el alto; la barra se apoya en su piso. */}
-              <div className="relative w-full flex-1">
-                <div
-                  className={`absolute bottom-0 w-full rounded-t ${x.usd > 0 ? "bg-violet-400" : "bg-slate-100"}`}
-                  style={{ height: x.usd > 0 ? `${Math.max(6, (x.usd / picoDia) * 100)}%` : "2px" }}
-                />
+      <Tarjeta
+        titulo={d.rango.activo ? `Gasto por día (${d.rango.diasGrafico} días)` : "Gasto de los últimos 14 días"}
+        icono={Activity}
+        tono="violeta"
+        className="mb-5"
+      >
+        {d.capas.length === 0 || d.dias.length < 2 ? (
+          <Vacio titulo="Todavía no hay gasto para graficar" icono={Activity} tono="violeta" />
+        ) : (
+          (() => {
+            const n = d.dias.length;
+            const pico = Math.max(0.01, ...d.capas.flatMap((c) => c.valores));
+            const esc = G.alto / pico;
+            const dx = G.ancho / (n - 1);
+            // De atrás hacia adelante: la última serie es la más cercana y tapa
+            // a las de atrás, que es lo que arma la profundidad.
+            const cordilleras = d.capas.map((c, k) => {
+              const z0 = (d.capas.length - 1 - k) * G.paso;
+              const z1 = z0 + G.espesor;
+              const atras = c.valores.map((v, i) => punto(i * dx, v, z0, esc));
+              const frente = c.valores.map((v, i) => punto(i * dx, v, z1, esc));
+              const base = c.valores.map((_, i) => punto(i * dx, 0, z1, esc));
+              const [h, sat, l] = PALETA[k % PALETA.length];
+              const der = [
+                punto(G.ancho, 0, z0, esc),
+                punto(G.ancho, c.valores[n - 1], z0, esc),
+                punto(G.ancho, c.valores[n - 1], z1, esc),
+                punto(G.ancho, 0, z1, esc),
+              ];
+              return {
+                nombre: c.nombre,
+                z0,
+                total: c.valores.reduce((a, b) => a + b, 0),
+                pared: `${trazo(frente)} ${vuelta(base)} Z`,
+                tapa: `${trazo(atras)} ${vuelta(frente)} Z`,
+                lado: `${trazo(der)} Z`,
+                cTapa: `hsl(${h} ${sat}% ${l + 6}%)`,
+                cPared: `hsl(${h} ${sat}% ${l - 12}%)`,
+                cLado: `hsl(${h} ${sat}% ${l - 24}%)`,
+              };
+            });
+            return (
+              <div>
+                <svg viewBox="0 0 340 200" className="w-full" role="img" aria-label="Gasto por día y por sistema">
+                  {[...cordilleras]
+                    .sort((a, b) => b.z0 - a.z0)
+                    .map((c) => (
+                      <g key={c.nombre}>
+                        <title>{`${c.nombre}: ${usd(c.total)} en el período`}</title>
+                        <path d={c.pared} fill={c.cPared} />
+                        <path d={c.tapa} fill={c.cTapa} />
+                        <path d={c.lado} fill={c.cLado} />
+                      </g>
+                    ))}
+                </svg>
+                <div className="-mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                  <span>{d.dias[0].fecha.slice(8, 10)}/{d.dias[0].fecha.slice(5, 7)}</span>
+                  <ul className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+                    {cordilleras.map((c) => (
+                      <li key={c.nombre} className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: c.cTapa }} aria-hidden />
+                        <span className="text-slate-500">{c.nombre}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <span>{d.dias[n - 1].fecha.slice(8, 10)}/{d.dias[n - 1].fecha.slice(5, 7)}</span>
+                </div>
               </div>
-              <span className="text-[10px] tabular-nums text-slate-400">{diaCorto(x.fecha)}</span>
-            </div>
-          ))}
-        </div>
+            );
+          })()
+        )}
       </Tarjeta>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">

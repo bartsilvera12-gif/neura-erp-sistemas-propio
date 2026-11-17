@@ -95,7 +95,10 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
  * del anterior, así que nunca se repiten ni con cuarenta sistemas. Una lista
  * fija de colores se agotaba y dejaba porciones vecinas del mismo tono.
  */
-const colorPorcion = (i: number) => `hsl(${(186 + i * 137.508) % 360} 64% ${i % 2 ? 58 : 50}%)`;
+const hue = (i: number) => (186 + i * 137.508) % 360;
+const colorPorcion = (i: number) => `hsl(${hue(i)} 64% ${i % 2 ? 58 : 50}%)`;
+/** El costado va más oscuro: es lo que da la sensación de volumen. */
+const colorPared = (i: number) => `hsl(${hue(i)} 60% ${i % 2 ? 42 : 35}%)`;
 
 /**
  * Las cargas a mano (el gasto previo a la tabla) llegan con un texto largo
@@ -103,24 +106,50 @@ const colorPorcion = (i: number) => `hsl(${(186 + i * 137.508) % 360} 64% ${i % 
  */
 const nombreCorto = (n: string) => (/^carga inicial/i.test(n) ? "Carga inicial" : n.replace(/^neura-erp-/, ""));
 
-/** Una porción de torta, de `desde` a `hasta` en vueltas (0 a 1). */
-function porcion(desde: number, hasta: number, r = 88) {
-  const p = (t: number, radio: number) => {
-    const a = 2 * Math.PI * t - Math.PI / 2;
-    return [90 + radio * Math.cos(a), 90 + radio * Math.sin(a)];
-  };
-  // Una sola porción que ocupa todo el círculo no se puede dibujar con un arco.
-  if (hasta - desde >= 0.999) return `M 90 2 A ${r} ${r} 0 1 1 89.9 2 Z`;
-  const [x1, y1] = p(desde, r);
-  const [x2, y2] = p(hasta, r);
-  const grande = hasta - desde > 0.5 ? 1 : 0;
-  return `M 90 90 L ${x1} ${y1} A ${r} ${r} 0 ${grande} 1 ${x2} ${y2} Z`;
+/**
+ * Torta con volumen: la tapa es un círculo achatado (elipse) y el costado una
+ * pared extruida hacia abajo. Sin librería de gráficos: es geometría y SVG.
+ */
+const CX = 100;
+const CY = 70;
+const RX = 92;
+const RY = 50;
+const ALTO3D = 20;
+
+/** Punto del borde de la tapa, para una vuelta `t` (0 a 1). */
+function borde(t: number, dy = 0) {
+  const a = 2 * Math.PI * t - Math.PI / 2;
+  return { x: CX + RX * Math.cos(a), y: CY + RY * Math.sin(a) + dy, a };
 }
 
-/** Dónde cae la etiqueta de una porción: a mitad de su ángulo, hacia afuera. */
-function centro(desde: number, hasta: number, radio = 56) {
+/** La tapa de una porción. */
+function tapa(desde: number, hasta: number) {
+  if (hasta - desde >= 0.999) {
+    return `M ${CX} ${CY - RY} A ${RX} ${RY} 0 1 1 ${CX - 0.01} ${CY - RY} Z`;
+  }
+  const p1 = borde(desde);
+  const p2 = borde(hasta);
+  const grande = hasta - desde > 0.5 ? 1 : 0;
+  return `M ${CX} ${CY} L ${p1.x} ${p1.y} A ${RX} ${RY} 0 ${grande} 1 ${p2.x} ${p2.y} Z`;
+}
+
+/**
+ * La pared de una porción, si asoma por el frente. Solo se ve la mitad de
+ * adelante de la torta: el tramo de la porción que cae ahí.
+ */
+function pared(desde: number, hasta: number): string | null {
+  const ini = Math.max(desde, 0.25);
+  const fin = Math.min(hasta, 0.75);
+  if (fin <= ini) return null;
+  const a = borde(ini);
+  const b = borde(fin);
+  return `M ${a.x} ${a.y} A ${RX} ${RY} 0 0 1 ${b.x} ${b.y} L ${b.x} ${b.y + ALTO3D} A ${RX} ${RY} 0 0 0 ${a.x} ${a.y + ALTO3D} Z`;
+}
+
+/** Dónde cae la etiqueta de una porción: a mitad de su ángulo, sobre la tapa. */
+function centro(desde: number, hasta: number, r = 0.62) {
   const a = 2 * Math.PI * ((desde + hasta) / 2) - Math.PI / 2;
-  return { x: 90 + radio * Math.cos(a), y: 90 + radio * Math.sin(a) };
+  return { x: CX + RX * r * Math.cos(a), y: CY + RY * r * Math.sin(a) };
 }
 
 export default function NeuritaPage() {
@@ -463,24 +492,51 @@ export default function NeuritaPage() {
               const conArco = porciones.map((x, i) => {
                 const desde = acum / total;
                 acum += x.usd;
-                return { ...x, desde, hasta: acum / total, pct: (x.usd / total) * 100, color: colorPorcion(i) };
+                return {
+                  ...x,
+                  desde,
+                  hasta: acum / total,
+                  pct: (x.usd / total) * 100,
+                  color: colorPorcion(i),
+                  sombra: colorPared(i),
+                };
               });
+              // Las paredes se dibujan de atrás hacia adelante: si no, una
+              // porción del fondo tapa a la de adelante.
+              const paredes = conArco
+                .map((x) => ({ ...x, d: pared(x.desde, x.hasta), prof: borde((x.desde + x.hasta) / 2).y }))
+                .filter((x): x is typeof x & { d: string } => !!x.d)
+                .sort((a, b) => a.prof - b.prof);
               return (
                 <div className="flex flex-col items-center">
                   <svg
-                    viewBox="0 0 180 180"
-                    className="h-[300px] w-[300px] sm:h-[380px] sm:w-[380px] lg:h-[440px] lg:w-[440px]"
+                    viewBox="0 0 200 150"
+                    className="w-full max-w-[520px]"
                     role="img"
                     aria-label="Gasto por sistema"
                   >
+                    {paredes.map((x) => (
+                      <path key={`p-${x.nombre}`} d={x.d} fill={x.sombra} />
+                    ))}
                     {conArco.map((x) => (
-                      <path key={x.nombre} d={porcion(x.desde, x.hasta)} fill={x.color}>
+                      <path key={x.nombre} d={tapa(x.desde, x.hasta)} fill={x.color}>
                         <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
                       </path>
                     ))}
-                    {/* El nombre va adentro sólo si la porción da el ancho; si no, se lee en la leyenda. */}
+                    {/* El nombre entra sólo en las porciones anchas; de 4% a 10% va
+                        solo el porcentaje, y lo más fino se lee en la leyenda. */}
                     {conArco
-                      .filter((x) => x.pct >= 7)
+                      .filter((x) => x.pct >= 4 && x.pct < 10)
+                      .map((x) => {
+                        const c = centro(x.desde, x.hasta, 0.68);
+                        return (
+                          <text key={`pc-${x.nombre}`} x={c.x} y={c.y + 2} textAnchor="middle" className="pointer-events-none fill-white text-[5px] font-semibold">
+                            {Math.round(x.pct)}%
+                          </text>
+                        );
+                      })}
+                    {conArco
+                      .filter((x) => x.pct >= 10)
                       .map((x) => {
                         const c = centro(x.desde, x.hasta);
                         return (

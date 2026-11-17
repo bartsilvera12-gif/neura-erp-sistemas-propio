@@ -95,10 +95,41 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
  * del anterior, así que nunca se repiten ni con cuarenta sistemas. Una lista
  * fija de colores se agotaba y dejaba porciones vecinas del mismo tono.
  */
-const hue = (i: number) => (186 + i * 137.508) % 360;
-const colorPorcion = (i: number) => `hsl(${hue(i)} 64% ${i % 2 ? 58 : 50}%)`;
+/**
+ * Paleta de la torta: doce tonos elegidos a mano, alternando cálido y frío
+ * para que dos porciones vecinas nunca se parezcan. Rotar el tono por fórmula
+ * daba combinaciones chillonas (magenta al lado de lima).
+ *
+ * Con más de doce sistemas se repite la base cambiando el brillo, que sigue
+ * leyéndose como una familia en vez de como colores sueltos.
+ */
+const PALETA: [number, number, number][] = [
+  [351, 71, 62], // coral
+  [205, 82, 64], // celeste
+  [42, 85, 62],  // amarillo
+  [168, 45, 50], // verde agua
+  [247, 66, 71], // lavanda
+  [22, 85, 65],  // naranja
+  [150, 42, 55], // verde
+  [330, 68, 71], // rosa
+  [226, 60, 60], // azul
+  [28, 48, 62],  // arena
+  [288, 45, 66], // violeta
+  [188, 52, 60], // turquesa
+];
+
+/** El brillo del anillo: la primera vuelta como está, después más oscuro y más claro. */
+const brillo = (i: number) => [0, -13, 11, -22][Math.floor(i / PALETA.length) % 4];
+
+const colorPorcion = (i: number) => {
+  const [h, sat, l] = PALETA[i % PALETA.length];
+  return `hsl(${h} ${sat}% ${Math.min(82, Math.max(28, l + brillo(i)))}%)`;
+};
 /** El costado va más oscuro: es lo que da la sensación de volumen. */
-const colorPared = (i: number) => `hsl(${hue(i)} 60% ${i % 2 ? 42 : 35}%)`;
+const colorPared = (i: number) => {
+  const [h, sat, l] = PALETA[i % PALETA.length];
+  return `hsl(${h} ${sat}% ${Math.min(70, Math.max(18, l + brillo(i) - 17))}%)`;
+};
 
 /**
  * Las cargas a mano (el gasto previo a la tabla) llegan con un texto largo
@@ -114,7 +145,16 @@ const CX = 100;
 const CY = 70;
 const RX = 92;
 const RY = 50;
-const ALTO3D = 20;
+const ALTO3D = 26;
+/** Cuánto se separa una porción al pasarle el cursor. */
+const SALTO = 7;
+
+/** Hacia dónde se mueve una porción al elevarse: por su propio ángulo. */
+function salto(desde: number, hasta: number, activo: boolean) {
+  if (!activo) return undefined;
+  const a = 2 * Math.PI * ((desde + hasta) / 2) - Math.PI / 2;
+  return `translate(${SALTO * Math.cos(a)} ${SALTO * Math.sin(a) * (RY / RX) - 3})`;
+}
 
 /** Punto del borde de la tapa, para una vuelta `t` (0 a 1). */
 function borde(t: number, dy = 0) {
@@ -156,6 +196,8 @@ export default function NeuritaPage() {
   const [d, setD] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bajando, setBajando] = useState(false);
+  /** Porción de la torta bajo el cursor: se eleva y se separa del resto. */
+  const [porcionActiva, setPorcionActiva] = useState<string | null>(null);
   /**
    * Las listas se muestran recortadas: "Todo lo que resolvió" puede traer
    * cientos de filas y hace la página larguísima. Cada una se despliega sola.
@@ -510,16 +552,30 @@ export default function NeuritaPage() {
               return (
                 <div className="flex flex-col items-center">
                   <svg
-                    viewBox="0 0 200 150"
-                    className="w-full max-w-[520px]"
+                    viewBox="0 0 200 156"
+                    className="w-full max-w-[560px]"
                     role="img"
                     aria-label="Gasto por sistema"
                   >
                     {paredes.map((x) => (
-                      <path key={`p-${x.nombre}`} d={x.d} fill={x.sombra} />
+                      <path
+                        key={`p-${x.nombre}`}
+                        d={x.d}
+                        fill={x.sombra}
+                        transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
+                        className="transition-transform duration-200 ease-out"
+                      />
                     ))}
                     {conArco.map((x) => (
-                      <path key={x.nombre} d={tapa(x.desde, x.hasta)} fill={x.color}>
+                      <path
+                        key={x.nombre}
+                        d={tapa(x.desde, x.hasta)}
+                        fill={x.color}
+                        transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
+                        onMouseEnter={() => setPorcionActiva(x.nombre)}
+                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
+                        className="cursor-pointer transition-transform duration-200 ease-out"
+                      >
                         <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
                       </path>
                     ))}
@@ -530,7 +586,14 @@ export default function NeuritaPage() {
                       .map((x) => {
                         const c = centro(x.desde, x.hasta, 0.68);
                         return (
-                          <text key={`pc-${x.nombre}`} x={c.x} y={c.y + 2} textAnchor="middle" className="pointer-events-none fill-white text-[5px] font-semibold">
+                          <text
+                            key={`pc-${x.nombre}`}
+                            x={c.x}
+                            y={c.y + 2}
+                            textAnchor="middle"
+                            transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
+                            className="pointer-events-none fill-white text-[5px] font-semibold transition-transform duration-200 ease-out"
+                          >
                             {Math.round(x.pct)}%
                           </text>
                         );
@@ -540,7 +603,11 @@ export default function NeuritaPage() {
                       .map((x) => {
                         const c = centro(x.desde, x.hasta);
                         return (
-                          <g key={`et-${x.nombre}`} className="pointer-events-none">
+                          <g
+                            key={`et-${x.nombre}`}
+                            transform={salto(x.desde, x.hasta, porcionActiva === x.nombre)}
+                            className="pointer-events-none transition-transform duration-200 ease-out"
+                          >
                             <text x={c.x} y={c.y - 1} textAnchor="middle" className="fill-white text-[5.5px] font-semibold">
                               {x.nombre.length > 14 ? `${x.nombre.slice(0, 13)}…` : x.nombre}
                             </text>
@@ -557,7 +624,15 @@ export default function NeuritaPage() {
                   {/* Leyenda secundaria: para las porciones finas que no entran en el gráfico. */}
                   <ul className="mt-4 flex w-full flex-wrap justify-center gap-x-4 gap-y-1.5 border-t border-slate-100 pt-3">
                     {conArco.map((x) => (
-                      <li key={x.nombre} className="flex items-center gap-1.5 text-[11px] text-slate-400" title={`${usd(x.usd)} · ${x.vueltas} vueltas`}>
+                      <li
+                        key={x.nombre}
+                        onMouseEnter={() => setPorcionActiva(x.nombre)}
+                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
+                        className={`flex cursor-default items-center gap-1.5 rounded px-1 text-[11px] transition-colors ${
+                          porcionActiva === x.nombre ? "bg-slate-100 text-slate-600" : "text-slate-400"
+                        }`}
+                        title={`${usd(x.usd)} · ${x.vueltas} vueltas`}
+                      >
                         <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: x.color }} aria-hidden />
                         <span className="text-slate-500">{x.nombre}</span>
                         <span className="tabular-nums">{x.pct < 1 ? "<1" : Math.round(x.pct)}%</span>

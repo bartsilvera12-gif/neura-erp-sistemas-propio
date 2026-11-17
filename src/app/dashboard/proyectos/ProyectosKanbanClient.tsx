@@ -28,6 +28,7 @@ import ProyectoDetalleModal from "./components/ProyectoDetalleModal";
 import ProyectoNuevoModal from "./components/ProyectoNuevoModal";
 import { FancySelect } from "./components/FancySelect";
 import { TZ_PY } from "@/lib/format/hora-py";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, ArrowUpDown } from "lucide-react";
 import { BLOQUEO_RESPONSABLE_LABEL, esBloqueoResponsable } from "@/lib/proyectos/dashboard/config";
 
 type EstadoRow = {
@@ -41,6 +42,19 @@ type EstadoRow = {
   es_estado_final?: boolean;
   inactiveFallback?: boolean;
 };
+
+/**
+ * Orden del tablero. "actividad" es el de siempre (lo último que se movió arriba);
+ * "nuevos" / "viejos" ordenan por la fecha de ingreso del proyecto.
+ */
+type OrdenProyectos = "actividad" | "nuevos" | "viejos";
+const SIGUIENTE_ORDEN: Record<OrdenProyectos, OrdenProyectos> = { actividad: "nuevos", nuevos: "viejos", viejos: "actividad" };
+/** Fecha de ingreso; si no tiene, la de alta en el sistema. */
+function fechaIngresoMs(p: { fecha_ingreso?: string } & Record<string, unknown>): number {
+  const f = p.fecha_ingreso || (typeof p.created_at === "string" ? p.created_at : "");
+  const t = f ? new Date(f).getTime() : NaN;
+  return Number.isFinite(t) ? t : 0;
+}
 
 type ProyectoCard = Record<string, unknown> & {
   id: string;
@@ -568,6 +582,7 @@ function ProyectosLista({
   onMove,
   movingProjectId,
   pageSize,
+  orden,
 }: {
   proyectos: ProyectoCard[];
   estados: EstadoRow[];
@@ -577,8 +592,10 @@ function ProyectosLista({
   onMove: (proyectoId: string, estadoId: string) => void;
   movingProjectId: string | null;
   pageSize: ListPageSize;
+  orden: OrdenProyectos;
 }) {
-  const ordered = proyectos
+  // Con "más nuevos / más viejos" la lista ya viene ordenada de arriba.
+  const ordered = orden !== "actividad" ? proyectos : proyectos
     .slice()
     .sort((a, b) => {
       const ta = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
@@ -769,6 +786,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
   // (desarrollo, QA, cambios solicitados, revisión cliente, publicado/pendiente de capacitación).
   // Es un filtro CLIENTE sobre la lista ya cargada; no toca el fetch ni el select de estado.
   const [enProceso, setEnProceso] = useState(false);
+  const [orden, setOrden] = useState<OrdenProyectos>("actividad");
   const CODIGOS_EN_PROCESO: ReadonlySet<string> = new Set([
     "desarrollo",
     "qa",
@@ -1040,6 +1058,10 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
     if (enProceso) {
       base = base.filter((p) => CODIGOS_EN_PROCESO.has(p.proyecto_estado?.codigo ?? ""));
     }
+    if (orden !== "actividad") {
+      const signo = orden === "nuevos" ? -1 : 1;
+      base = base.slice().sort((a, b) => signo * (fechaIngresoMs(a) - fechaIngresoMs(b)));
+    }
     if (tokensBusqueda.length === 0) return base;
     return base.filter((p) =>
       coincideBusqueda(
@@ -1057,7 +1079,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           .join(" ")
       )
     );
-  }, [proyectos, tokensBusqueda, entregaDesde, entregaHasta, enProceso]);
+  }, [proyectos, tokensBusqueda, entregaDesde, entregaHasta, enProceso, orden]);
 
   const estadoActivoIds = useMemo(() => new Set(estados.map((e) => e.id)), [estados]);
 
@@ -1392,6 +1414,33 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           >
             En proceso
           </button>
+          {/* Orden por fecha de ingreso: cada clic pasa a más nuevos → más viejos → por actividad. */}
+          <button
+            type="button"
+            onClick={() => setOrden((o) => SIGUIENTE_ORDEN[o])}
+            aria-pressed={orden !== "actividad"}
+            title={
+              orden === "nuevos"
+                ? "Más nuevos primero (por fecha de ingreso). Clic: más viejos primero"
+                : orden === "viejos"
+                  ? "Más viejos primero (por fecha de ingreso). Clic: volver al orden por actividad"
+                  : "Ordenado por última actividad. Clic: más nuevos primero"
+            }
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+              orden !== "actividad"
+                ? "border-[#3F8E91] bg-[#3F8E91] text-white"
+                : "border-slate-200 bg-white text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            {orden === "nuevos" ? (
+              <ArrowDownWideNarrow className="h-3.5 w-3.5" aria-hidden />
+            ) : orden === "viejos" ? (
+              <ArrowUpNarrowWide className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <ArrowUpDown className="h-3.5 w-3.5" aria-hidden />
+            )}
+            {orden === "nuevos" ? "Más nuevos" : orden === "viejos" ? "Más viejos" : "Ordenar"}
+          </button>
           {/* Toggle de vista: Kanban (cards) | Lista (tabla). Mismo patrón que CRM Funnel. */}
           <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-100/80 p-0.5">
             <button
@@ -1584,6 +1633,7 @@ export default function ProyectosKanbanClient({ dataSchema }: { dataSchema: stri
           onMove={handleMove}
           movingProjectId={movingProjectId}
           pageSize={pageSize}
+          orden={orden}
         />
       ) : (
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>

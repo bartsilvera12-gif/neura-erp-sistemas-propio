@@ -297,7 +297,7 @@ export default function AccesoSistemaPanel({ proyectoId }: { proyectoId: string 
             />
           ) : (
             <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-              <Lock className="h-3.5 w-3.5" aria-hidden /> Solo un administrador puede bloquear
+              <Lock className="h-3.5 w-3.5" aria-hidden /> Sin permiso para bloquear
             </span>
           )}
         </div>

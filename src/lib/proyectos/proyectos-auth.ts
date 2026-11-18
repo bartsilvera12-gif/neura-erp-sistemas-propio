@@ -37,7 +37,12 @@ export function puedeEliminarProyectos(auth: ProyectosApiAuthOk): boolean {
  * proyecto y Gestión de clientes): los mismos administradores que pueden
  * eliminar proyectos, más los correos de esta lista.
  */
-const EMAILS_BLOQUEO_SISTEMAS = new Set(["ivanchtareas@gmail.com"]);
+const EMAILS_BLOQUEO_SISTEMAS = new Set([
+  "ivanchtareas@gmail.com",
+  // Atención al cliente (área operaciones).
+  "milagrosgomezlujan26@gmail.com",
+  "atencionalcliente@gmail.com",
+]);
 
 export function puedeBloquearSistemas(auth: ProyectosApiAuthOk): boolean {
   return puedeEliminarProyectos(auth) || (!!auth.email && EMAILS_BLOQUEO_SISTEMAS.has(auth.email));

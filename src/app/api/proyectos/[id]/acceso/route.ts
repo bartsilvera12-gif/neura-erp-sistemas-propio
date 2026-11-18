@@ -141,7 +141,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const auth = await requireProyectosApiAccess(request);
   if (!auth.ok) return NextResponse.json(errorResponse(auth.message), { status: auth.status });
   if (!puedeBloquearSistemas(auth)) {
-    return NextResponse.json(errorResponse("Solo un administrador o Ivan pueden bloquear o desbloquear sistemas"), {
+    return NextResponse.json(errorResponse("Solo administradores, Ivan y atención al cliente pueden bloquear o desbloquear sistemas"), {
       status: 403,
     });
   }

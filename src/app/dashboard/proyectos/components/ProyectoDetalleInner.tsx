@@ -894,6 +894,33 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
     requestAnimationFrame(() => area?.focus());
   }
 
+  /**
+   * Suma archivos al comentario, vengan del botón "Archivo" o arrastrados.
+   * Se acepta cualquier tipo de archivo. Las fotos de iPhone (HEIC) se pasan a
+   * JPG acá (los navegadores no las muestran); el resto de los archivos pasa igual.
+   */
+  function agregarArchivos(elegidos: File[]) {
+    if (elegidos.length === 0) return;
+    const imgs = elegidos.filter(esImagenElegida);
+    const otros = elegidos.filter((f) => !esImagenElegida(f));
+    void normalizarImagenes(imgs).then(({ listos, fallaron }) => {
+      const nuevos = [...listos, ...otros];
+      if (nuevos.length > 0) setImagenes((prev) => [...prev, ...nuevos].slice(0, 10));
+      if (fallaron.length > 0) {
+        window.alert(
+          `No se pudieron leer estas fotos: ${fallaron.join(", ")}.\n` +
+            "Probá enviarlas como JPG o sacar la captura desde la computadora."
+        );
+      }
+    });
+  }
+
+  // Arrastrar archivos sobre el comentario. El contador evita el parpadeo: al
+  // pasar por encima de un hijo (textarea, miniaturas) salta un dragleave del padre.
+  const [arrastrando, setArrastrando] = useState(false);
+  const profundidadArrastre = useRef(0);
+  const traeArchivos = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+
   // Previews locales (object URLs) que se liberan al cambiar la selección.
   useEffect(() => {
     const urls = imagenes.map((f) => URL.createObjectURL(f));
@@ -924,12 +951,37 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
           setEnviando(false);
         }
       }}
-      className="space-y-2"
+      onDragEnter={(e) => {
+        if (!traeArchivos(e) || enviando) return;
+        e.preventDefault();
+        profundidadArrastre.current += 1;
+        setArrastrando(true);
+      }}
+      onDragOver={(e) => {
+        if (!traeArchivos(e) || enviando) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(e) => {
+        if (!traeArchivos(e)) return;
+        profundidadArrastre.current = Math.max(0, profundidadArrastre.current - 1);
+        if (profundidadArrastre.current === 0) setArrastrando(false);
+      }}
+      onDrop={(e) => {
+        if (!traeArchivos(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        profundidadArrastre.current = 0;
+        setArrastrando(false);
+        if (enviando) return;
+        agregarArchivos(Array.from(e.dataTransfer.files ?? []));
+      }}
+      className={`space-y-2 rounded-xl transition-shadow ${arrastrando ? "ring-2 ring-[#4FAEB2] ring-offset-2" : ""}`}
     >
       <div className="relative">
       <textarea
         ref={areaRef}
-        className={`${inputCls} min-h-[88px]`}
+        className={`${inputCls} min-h-[88px] ${arrastrando ? "border-[#4FAEB2] bg-[#4FAEB2]/5" : ""}`}
         rows={3}
         placeholder={
           canal === "desarrollo"
@@ -1061,21 +1113,7 @@ const NuevoComentarioForm = memo(function NuevoComentarioForm({
         onChange={(e) => {
           const elegidos = Array.from(e.target.files ?? []);
           e.target.value = "";
-          if (elegidos.length === 0) return;
-          // Se acepta cualquier tipo de archivo. Las fotos de iPhone (HEIC) se pasan a
-          // JPG acá (los navegadores no las muestran); el resto de los archivos pasa igual.
-          const imgs = elegidos.filter(esImagenElegida);
-          const otros = elegidos.filter((f) => !esImagenElegida(f));
-          void normalizarImagenes(imgs).then(({ listos, fallaron }) => {
-            const nuevos = [...listos, ...otros];
-            if (nuevos.length > 0) setImagenes((prev) => [...prev, ...nuevos].slice(0, 10));
-            if (fallaron.length > 0) {
-              window.alert(
-                `No se pudieron leer estas fotos: ${fallaron.join(", ")}.\n` +
-                  "Probá enviarlas como JPG o sacar la captura desde la computadora."
-              );
-            }
-          });
+          agregarArchivos(elegidos);
         }}
       />
       <div className="flex items-center gap-2">

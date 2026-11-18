@@ -24,6 +24,7 @@ import { FechaHoraSelect } from "@/app/dashboard/proyectos/components/FechaHoraS
 import { HistorialLinea } from "@/app/dashboard/proyectos/components/HistorialLinea";
 import ProyectoQATab from "@/app/dashboard/proyectos/components/ProyectoQATab";
 import ProyectoCredencialesTab from "@/app/dashboard/proyectos/components/ProyectoCredencialesTab";
+import AccesoSistemaPanel from "@/components/proyectos/AccesoSistemaControl";
 import { RubroWebSelect } from "@/app/dashboard/proyectos/components/RubroWebSelect";
 import {
   PROYECTO_DATOS_BRIEF_FIELDS,
@@ -189,6 +190,7 @@ const TAB_IDS = [
   "comentarios",
   "archivos",
   "credenciales",
+  "acceso",
   "cambios",
   "historial",
 ] as const;
@@ -202,6 +204,7 @@ const TAB_LABELS: Record<TabId, string> = {
   comentarios: "Comentarios",
   archivos: "Archivos",
   credenciales: "Credenciales",
+  acceso: "Acceso",
   cambios: "Cambios",
   historial: "Historial",
 };
@@ -4563,6 +4566,7 @@ export default function ProyectoDetalleInner({
         })() : null}
 
         {tab === "credenciales" ? <ProyectoCredencialesTab projectId={projectId} /> : null}
+        {tab === "acceso" ? <AccesoSistemaPanel proyectoId={projectId} /> : null}
 
         {tab === "cambios" ? (() => {
           const estadoCodigo = String(

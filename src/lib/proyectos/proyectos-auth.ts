@@ -14,6 +14,8 @@ export type ProyectosApiAuthOk = {
   rol: string | null;
   /** El email está en la lista de bootstrap de super admin, más allá del rol del catálogo. */
   bootstrapSuperAdmin: boolean;
+  /** Email del usuario de Auth, en minúsculas. */
+  email: string | null;
 };
 
 export type ProyectosApiAuth =
@@ -30,6 +32,17 @@ export function puedeEliminarProyectos(auth: ProyectosApiAuthOk): boolean {
 }
 
 /** Asignaciones de un proyecto que habilitan a manejar su flujo. */
+/**
+ * Quién puede bloquear y desbloquear el sistema de un cliente (pestaña Acceso del
+ * proyecto y Gestión de clientes): los mismos administradores que pueden
+ * eliminar proyectos, más los correos de esta lista.
+ */
+const EMAILS_BLOQUEO_SISTEMAS = new Set(["ivanchtareas@gmail.com"]);
+
+export function puedeBloquearSistemas(auth: ProyectosApiAuthOk): boolean {
+  return puedeEliminarProyectos(auth) || (!!auth.email && EMAILS_BLOQUEO_SISTEMAS.has(auth.email));
+}
+
 export type AsignacionFlujo = {
   responsable_tecnico_id?: string | null;
   project_manager_id?: string | null;
@@ -109,6 +122,7 @@ export async function requireProyectosApiAccess(request: Request): Promise<Proye
       usuarioCatalogId: usuario.id,
       rol,
       bootstrapSuperAdmin,
+      email: user.email?.trim().toLowerCase() ?? null,
     };
   }
 
@@ -128,5 +142,6 @@ export async function requireProyectosApiAccess(request: Request): Promise<Proye
     usuarioCatalogId: usuario.id,
     rol: usuario.rol,
     bootstrapSuperAdmin,
+    email: user.email?.trim().toLowerCase() ?? null,
   };
 }

@@ -15,7 +15,16 @@ export type AccesoSistema = {
   sugeridos: string[];
   /** Solo admin de empresa / super admin puede bloquear y desbloquear. */
   puede_gestionar: boolean;
+  /**
+   * ¿El ERP ya obedece el botón? true si alguno de sus dominios consultó su
+   * estado en los últimos `ESCUCHA_VIGENCIA_DIAS`; false si no; null si no se
+   * pudo saber (se muestra el botón igual).
+   */
+  escucha: boolean | null;
 };
+
+/** Ventana para dar por hecho que un ERP ya tiene la versión que lee el botón. */
+export const ESCUCHA_VIGENCIA_DIAS = 7;
 
 export type AccesoSistemaAccion = "bloquear" | "desbloquear" | "dominios";
 

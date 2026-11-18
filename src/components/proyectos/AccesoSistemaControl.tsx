@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Ban, CheckCircle2, Globe, Loader2, Lock, Plus, ShieldCheck, ShieldOff, X } from "lucide-react";
+import { Ban, CheckCircle2, Code2, Globe, Loader2, Lock, Plus, ShieldCheck, ShieldOff, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { normalizarDominio, type AccesoSistema, type AccesoSistemaAccion } from "@/lib/proyectos/acceso-sistema";
 
@@ -12,6 +12,12 @@ type Estado =
   | { tipo: "cargando" }
   | { tipo: "error"; mensaje: string }
   | { tipo: "listo"; acceso: AccesoSistema };
+
+const AVISO_REQUIERE_CODIGO =
+  "Este sistema todavía no tiene el bloqueo con botón. La primera vez hay que activarlo por código (pedíselo a desarrollo); después ya se bloquea y desbloquea desde acá.";
+
+const AVISO_NO_APLICA =
+  "Figura bloqueado acá, pero el sistema del cliente todavía no consulta este botón: el bloqueo no se aplica hasta activarlo por código la primera vez.";
 
 function fechaHora(iso: string | null) {
   if (!iso) return null;
@@ -175,17 +181,31 @@ export function AccesoSistemaCompacto({ proyectoId }: { proyectoId: string }) {
   if (estado.tipo === "error") return null;
 
   const { acceso } = estado;
+  const requiereCodigo = acceso.dominios.length > 0 && acceso.escucha === false;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
         <PillEstado suspendido={acceso.suspendido} />
-        {acceso.puede_gestionar && acceso.dominios.length > 0 ? (
+        {acceso.puede_gestionar && requiereCodigo && !acceso.suspendido ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-semibold text-amber-700"
+            title={AVISO_REQUIERE_CODIGO}
+          >
+            <Code2 className="h-3 w-3" aria-hidden /> Requiere código la primera vez
+          </span>
+        ) : null}
+        {acceso.puede_gestionar && acceso.dominios.length > 0 && !(requiereCodigo && !acceso.suspendido) ? (
           <BotonAcceso
             chico
             suspendido={acceso.suspendido}
             guardando={guardando !== null}
             onConfirmar={() => void ejecutar(acceso.suspendido ? "desbloquear" : "bloquear")}
           />
+        ) : null}
+        {acceso.puede_gestionar && requiereCodigo && acceso.suspendido ? (
+          <span className="text-[10.5px] font-semibold text-amber-700" title={AVISO_NO_APLICA}>
+            El ERP todavía no lo aplica
+          </span>
         ) : null}
         {acceso.puede_gestionar && acceso.dominios.length === 0 ? (
           <Link
@@ -223,6 +243,7 @@ export default function AccesoSistemaPanel({ proyectoId }: { proyectoId: string 
 
   const { acceso } = estado;
   const puede = acceso.puede_gestionar;
+  const requiereCodigo = acceso.dominios.length > 0 && acceso.escucha === false;
 
   const agregar = async (raw: string) => {
     const d = normalizarDominio(raw);
@@ -263,7 +284,11 @@ export default function AccesoSistemaPanel({ proyectoId }: { proyectoId: string 
               </p>
             )}
           </div>
-          {puede ? (
+          {puede && requiereCodigo && !acceso.suspendido ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-800">
+              <Code2 className="h-4 w-4" aria-hidden /> Requiere código la primera vez
+            </span>
+          ) : puede ? (
             <BotonAcceso
               suspendido={acceso.suspendido}
               guardando={guardando === "bloquear" || guardando === "desbloquear"}
@@ -276,6 +301,11 @@ export default function AccesoSistemaPanel({ proyectoId }: { proyectoId: string 
             </span>
           )}
         </div>
+        {puede && requiereCodigo ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
+            {acceso.suspendido ? AVISO_NO_APLICA : AVISO_REQUIERE_CODIGO}
+          </p>
+        ) : null}
         {errorAccion ? <p className="mt-3 text-sm text-rose-600">{errorAccion}</p> : null}
       </section>
 

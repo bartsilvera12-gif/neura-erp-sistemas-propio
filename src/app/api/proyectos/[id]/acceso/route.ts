@@ -6,6 +6,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import {
   normalizarDominio,
   normalizarDominios,
+  ESCUCHA_VIGENCIA_DIAS,
   type AccesoSistema,
   type AccesoSistemaAccion,
 } from "@/lib/proyectos/acceso-sistema";
@@ -55,6 +56,30 @@ async function sugeridos(
   return out;
 }
 
+/**
+ * ¿Alguno de los dominios consultó su estado hace poco? Lo anota el endpoint
+ * público (neura.acceso_sistema_consultas). `null` si no se pudo leer.
+ */
+async function escuchaElBoton(
+  sb: Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>,
+  dominios: string[]
+): Promise<boolean | null> {
+  if (dominios.length === 0) return false;
+  try {
+    const desde = new Date(Date.now() - ESCUCHA_VIGENCIA_DIAS * 86_400_000).toISOString();
+    const { data, error } = await sb
+      .from("acceso_sistema_consultas")
+      .select("host")
+      .in("host", dominios)
+      .gte("ultima_consulta", desde)
+      .limit(1);
+    if (error) return null;
+    return (data ?? []).length > 0;
+  } catch {
+    return null;
+  }
+}
+
 async function armarRespuesta(
   sb: Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>,
   empresaId: string,
@@ -63,9 +88,10 @@ async function armarRespuesta(
 ): Promise<AccesoSistema> {
   const dominios = fila.acceso_dominios ?? [];
   const suspendido = fila.acceso_suspendido === true;
-  const [porNombre, sug] = await Promise.all([
+  const [porNombre, sug, escucha] = await Promise.all([
     suspendido ? nombreUsuario(empresaId, fila.acceso_suspendido_por) : Promise.resolve(null),
     sugeridos(sb, empresaId, fila.id, dominios),
+    escuchaElBoton(sb, dominios),
   ]);
   return {
     dominios,
@@ -74,6 +100,7 @@ async function armarRespuesta(
     suspendido_por_nombre: porNombre,
     sugeridos: sug,
     puede_gestionar: puedeGestionar,
+    escucha,
   };
 }
 
@@ -150,6 +177,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         return NextResponse.json(
           errorResponse("Cargá al menos un dominio del sistema (ej. cliente.neura.com.py) antes de bloquear"),
           { status: 400 }
+        );
+      }
+      if ((await escuchaElBoton(sb, dominios)) === false) {
+        return NextResponse.json(
+          errorResponse(
+            "Este sistema todavía no tiene el bloqueo con botón: la primera vez hay que activarlo por código."
+          ),
+          { status: 409 }
         );
       }
       patch.acceso_suspendido = true;

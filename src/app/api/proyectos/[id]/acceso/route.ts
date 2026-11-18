@@ -36,24 +36,32 @@ async function nombreUsuario(empresaId: string, usuarioId: string | null): Promi
   }
 }
 
-/** Hosts de las credenciales del proyecto que no estén ya cargados. */
-async function sugeridos(
+/**
+ * De las credenciales del proyecto: hosts que no estén ya cargados (para
+ * sugerirlos) y el primer repositorio de GitHub, que dice si el sitio sale de
+ * git o se sube a mano.
+ */
+async function desdeCredenciales(
   sb: Awaited<ReturnType<typeof getChatServiceClientForEmpresa>>,
   empresaId: string,
   proyectoId: string,
   yaCargados: string[]
-): Promise<string[]> {
+): Promise<{ sugeridos: string[]; repositorio: string | null }> {
   const { data } = await sb
     .from("proyecto_credenciales")
-    .select("url")
+    .select("url, repositorio")
     .eq("empresa_id", empresaId)
-    .eq("proyecto_id", proyectoId);
+    .eq("proyecto_id", proyectoId)
+    .order("sort_order", { ascending: true });
   const out: string[] = [];
-  for (const r of (data ?? []) as { url?: string | null }[]) {
+  let repositorio: string | null = null;
+  for (const r of (data ?? []) as { url?: string | null; repositorio?: string | null }[]) {
     const d = normalizarDominio(r.url);
     if (d && !yaCargados.includes(d) && !out.includes(d)) out.push(d);
+    const repo = (r.repositorio ?? "").trim();
+    if (!repositorio && repo) repositorio = repo;
   }
-  return out;
+  return { sugeridos: out, repositorio };
 }
 
 /**
@@ -88,9 +96,9 @@ async function armarRespuesta(
 ): Promise<AccesoSistema> {
   const dominios = fila.acceso_dominios ?? [];
   const suspendido = fila.acceso_suspendido === true;
-  const [porNombre, sug, escucha] = await Promise.all([
+  const [porNombre, cred, escucha] = await Promise.all([
     suspendido ? nombreUsuario(empresaId, fila.acceso_suspendido_por) : Promise.resolve(null),
-    sugeridos(sb, empresaId, fila.id, dominios),
+    desdeCredenciales(sb, empresaId, fila.id, dominios),
     escuchaElBoton(sb, dominios),
   ]);
   return {
@@ -98,7 +106,8 @@ async function armarRespuesta(
     suspendido,
     suspendido_at: suspendido ? fila.acceso_suspendido_at : null,
     suspendido_por_nombre: porNombre,
-    sugeridos: sug,
+    sugeridos: cred.sugeridos,
+    repositorio: cred.repositorio,
     puede_gestionar: puedeGestionar,
     escucha,
   };

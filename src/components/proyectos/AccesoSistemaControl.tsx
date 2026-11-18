@@ -13,11 +13,23 @@ type Estado =
   | { tipo: "error"; mensaje: string }
   | { tipo: "listo"; acceso: AccesoSistema };
 
-const AVISO_REQUIERE_CODIGO =
-  "Este sistema todavía no tiene el bloqueo con botón. La primera vez hay que activarlo por código (pedíselo a desarrollo); después ya se bloquea y desbloquea desde acá.";
+/**
+ * Qué hace falta para que este sistema obedezca el botón la primera vez. Con
+ * repositorio en Credenciales se activa por código (git); sin repositorio se
+ * asume un sitio que se sube a mano (zip) a Hostinger.
+ */
+function avisoPrimeraVez(acceso: AccesoSistema): string {
+  if (acceso.repositorio) {
+    return `Este sistema todavía no tiene el bloqueo con botón. La primera vez hay que activarlo por código en el repositorio ${acceso.repositorio} (pedíselo a desarrollo); después ya se bloquea y desbloquea desde acá.`;
+  }
+  return "Este sistema todavía no tiene el bloqueo con botón y no tiene repositorio de GitHub en Credenciales: si es una web que se sube por zip a Hostinger, la primera vez hay que subir a mano los archivos del bloqueo (pedíselos a desarrollo). Después ya se bloquea y desbloquea desde acá.";
+}
 
-const AVISO_NO_APLICA =
-  "Figura bloqueado acá, pero el sistema del cliente todavía no consulta este botón: el bloqueo no se aplica hasta activarlo por código la primera vez.";
+function avisoNoAplica(acceso: AccesoSistema): string {
+  return `Figura bloqueado acá, pero el sistema del cliente todavía no consulta este botón: no se aplica hasta activarlo la primera vez (${
+    acceso.repositorio ? `por código en ${acceso.repositorio}` : "subiendo por zip los archivos del bloqueo a Hostinger"
+  }).`;
+}
 
 function fechaHora(iso: string | null) {
   if (!iso) return null;
@@ -189,9 +201,9 @@ export function AccesoSistemaCompacto({ proyectoId }: { proyectoId: string }) {
         {acceso.puede_gestionar && requiereCodigo && !acceso.suspendido ? (
           <span
             className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-semibold text-amber-700"
-            title={AVISO_REQUIERE_CODIGO}
+            title={avisoPrimeraVez(acceso)}
           >
-            <Code2 className="h-3 w-3" aria-hidden /> Requiere código la primera vez
+            <Code2 className="h-3 w-3" aria-hidden /> {acceso.repositorio ? "Requiere código la primera vez" : "Requiere subir zip la primera vez"}
           </span>
         ) : null}
         {acceso.puede_gestionar && acceso.dominios.length > 0 && !(requiereCodigo && !acceso.suspendido) ? (
@@ -203,7 +215,7 @@ export function AccesoSistemaCompacto({ proyectoId }: { proyectoId: string }) {
           />
         ) : null}
         {acceso.puede_gestionar && requiereCodigo && acceso.suspendido ? (
-          <span className="text-[10.5px] font-semibold text-amber-700" title={AVISO_NO_APLICA}>
+          <span className="text-[10.5px] font-semibold text-amber-700" title={avisoNoAplica(acceso)}>
             El ERP todavía no lo aplica
           </span>
         ) : null}
@@ -286,7 +298,7 @@ export default function AccesoSistemaPanel({ proyectoId }: { proyectoId: string 
           </div>
           {puede && requiereCodigo && !acceso.suspendido ? (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-800">
-              <Code2 className="h-4 w-4" aria-hidden /> Requiere código la primera vez
+              <Code2 className="h-4 w-4" aria-hidden /> {acceso.repositorio ? "Requiere código la primera vez" : "Requiere subir zip la primera vez"}
             </span>
           ) : puede ? (
             <BotonAcceso
@@ -303,7 +315,7 @@ export default function AccesoSistemaPanel({ proyectoId }: { proyectoId: string 
         </div>
         {puede && requiereCodigo ? (
           <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
-            {acceso.suspendido ? AVISO_NO_APLICA : AVISO_REQUIERE_CODIGO}
+            {acceso.suspendido ? avisoNoAplica(acceso) : avisoPrimeraVez(acceso)}
           </p>
         ) : null}
         {errorAccion ? <p className="mt-3 text-sm text-rose-600">{errorAccion}</p> : null}

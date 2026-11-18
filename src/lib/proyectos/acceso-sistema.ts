@@ -21,6 +21,8 @@ export type AccesoSistema = {
    * pudo saber (se muestra el botón igual).
    */
   escucha: boolean | null;
+  /** Repositorio de GitHub de las credenciales (`owner/repo`); null = el sitio se sube a mano. */
+  repositorio: string | null;
 };
 
 /** Ventana para dar por hecho que un ERP ya tiene la versión que lee el botón. */

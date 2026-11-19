@@ -3,7 +3,7 @@ import { monto, texto, UUID } from "@/lib/propuestas/auth";
 import type { PiezaEnPropuesta } from "@/lib/propuestas/tipos";
 
 export const CAMPOS_PROPUESTA =
-  "id, numero, cliente_id, cliente_nombre, titulo, bajada, piezas, inversion_total, cuota_mensual, condiciones, created_at, updated_at";
+  "id, numero, cliente_id, cliente_nombre, titulo, bajada, piezas, inversion_total, cuota_mensual, condiciones, clientes_bandera, created_at, updated_at";
 
 /** Limpia lo que manda el formulario de una propuesta. */
 export function datosDePropuesta(body: Record<string, unknown>) {
@@ -25,5 +25,8 @@ export function datosDePropuesta(body: Record<string, unknown>) {
     inversion_total: monto(body.inversion_total),
     cuota_mensual: monto(body.cuota_mensual),
     condiciones: texto(body.condiciones, 800),
+    clientes_bandera: Array.isArray(body.clientes_bandera)
+      ? [...new Set((body.clientes_bandera as unknown[]).map((n) => texto(n, 60)).filter(Boolean))].slice(0, 12)
+      : [],
   };
 }

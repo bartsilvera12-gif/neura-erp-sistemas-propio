@@ -35,11 +35,12 @@ type Borrador = {
   inversion_total: number | null;
   cuota_mensual: number | null;
   condiciones: string;
+  clientes_bandera: string[];
 };
 
 const VACIO: Borrador = {
   id: null, cliente_id: null, cliente_nombre: "", titulo: "", bajada: "", piezas: [],
-  inversion_total: null, cuota_mensual: null, condiciones: CONDICIONES_POR_DEFECTO,
+  inversion_total: null, cuota_mensual: null, condiciones: CONDICIONES_POR_DEFECTO, clientes_bandera: [],
 };
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -58,13 +59,15 @@ export default function PropuestasPage() {
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [cerradas, setCerradas] = useState<Record<string, boolean>>({});
+  /** Secciones abiertas a mano. Por defecto vienen todas cerradas; al buscar se abren las que coinciden. */
+  const [abiertas, setAbiertas] = useState<Record<string, boolean>>({});
   const [b, setB] = useState<Borrador>(VACIO);
   const [sucio, setSucio] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [sobre, setSobre] = useState<number | "fin" | null>(null);
   const [editor, setEditor] = useState<{ id: string | null; seccion: string; titulo: string; descripcion: string } | null>(null);
   const [hoy, setHoy] = useState<Date | null>(null);
+  const [banderaTexto, setBanderaTexto] = useState("");
   const arrastre = useRef<{ tipo: "pieza"; id: string } | { tipo: "item"; i: number } | null>(null);
 
   useEffect(() => { setHoy(new Date()); }, []);
@@ -81,6 +84,9 @@ export default function PropuestasPage() {
       const [p, g] = await Promise.all([api<Pieza[]>("/api/propuestas/piezas"), api<Propuesta[]>("/api/propuestas")]);
       setPiezas(p);
       setGuardadas(g);
+      // Los clientes bandera casi no cambian: una propuesta nueva arranca con los de la última guardada.
+      const ultimos = g[0]?.clientes_bandera ?? [];
+      if (ultimos.length) setB((x) => (x.id === null && x.clientes_bandera.length === 0 ? { ...x, clientes_bandera: ultimos } : x));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cargar");
     } finally {
@@ -136,6 +142,16 @@ export default function PropuestasPage() {
     setSucio(true);
   }, []);
 
+  /**
+   * Dónde caería lo que se arrastra sobre la pieza `i`: antes de ella si el cursor está en su
+   * mitad de arriba, después si está en la de abajo. Sin esto, soltar una pieza sobre la
+   * siguiente (la 6 sobre la 7) significaba "antes de la 7", que es donde ya estaba.
+   */
+  const lugarSobre = (e: React.DragEvent<HTMLElement>, i: number) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientY > r.top + r.height / 2 ? i + 1 : i;
+  };
+
   const soltar = (en: number) => {
     const a = arrastre.current;
     arrastre.current = null;
@@ -173,7 +189,7 @@ export default function PropuestasPage() {
     if (!p) return;
     if (sucio && !window.confirm("Hay cambios sin guardar en esta propuesta. ¿Abrir la otra igual?")) return;
     setB({ id: p.id, cliente_id: p.cliente_id, cliente_nombre: p.cliente_nombre, titulo: p.titulo, bajada: p.bajada, piezas: p.piezas ?? [],
-      inversion_total: p.inversion_total, cuota_mensual: p.cuota_mensual, condiciones: p.condiciones });
+      inversion_total: p.inversion_total, cuota_mensual: p.cuota_mensual, condiciones: p.condiciones, clientes_bandera: p.clientes_bandera ?? [] });
     setSucio(false);
   };
 
@@ -194,8 +210,15 @@ export default function PropuestasPage() {
 
   const nueva = () => {
     if (sucio && !window.confirm("Hay cambios sin guardar. ¿Empezar una propuesta nueva igual?")) return;
-    setB(VACIO);
+    setB({ ...VACIO, clientes_bandera: guardadas[0]?.clientes_bandera ?? [] });
     setSucio(false);
+  };
+
+  const sumarBandera = (nombre: string) => {
+    const n = nombre.trim().slice(0, 60);
+    if (!n) return;
+    setB((x) => (x.clientes_bandera.some((y) => y.toLowerCase() === n.toLowerCase()) || x.clientes_bandera.length >= 12 ? x : { ...x, clientes_bandera: [...x.clientes_bandera, n] }));
+    setSucio(true);
   };
 
   // ── Piezas: alta y edición ────────────────────────────────────────────────────────────
@@ -332,10 +355,10 @@ export default function PropuestasPage() {
               <p className="px-3 py-8 text-center text-sm text-slate-500">{q ? "Ninguna pieza coincide. Probá con otra palabra o creá una nueva." : "Todavía no hay piezas cargadas."}</p>
             ) : (
               secciones.map(([sec, lista]) => {
-                const abierta = q.trim() ? true : !cerradas[sec];
+                const abierta = q.trim() ? true : !!abiertas[sec];
                 return (
                   <section key={sec} className="mb-1">
-                    <button type="button" onClick={() => setCerradas((c) => ({ ...c, [sec]: !c[sec] }))} aria-expanded={abierta}
+                    <button type="button" onClick={() => setAbiertas((c) => ({ ...c, [sec]: !c[sec] }))} aria-expanded={abierta}
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-slate-50">
                       <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${abierta ? "" : "-rotate-90"}`} aria-hidden />
                       <span className="flex-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">{sec}</span>
@@ -383,8 +406,14 @@ export default function PropuestasPage() {
           <div className="no-imprimir mb-3 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto]">
             <div>
               <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Cliente</p>
-              <SelectorBuscable opciones={opcionesCliente} value={b.cliente_id ?? ""} ariaLabel="Cliente de la propuesta" placeholder="Elegí el cliente" buscarPlaceholder="Buscar cliente por nombre o RUC…"
-                onChange={(v) => cambiar({ cliente_id: v || null, cliente_nombre: opcionesCliente.find((o) => o.value === v)?.label ?? "" })} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <SelectorBuscable opciones={opcionesCliente} value={b.cliente_id ?? ""} ariaLabel="Elegir un cliente cargado" placeholder="Elegí un cliente" buscarPlaceholder="Buscar cliente por nombre o RUC…"
+                  onChange={(v) => cambiar({ cliente_id: v || null, cliente_nombre: opcionesCliente.find((o) => o.value === v)?.label ?? "" })} />
+                {/* Para quien todavía no es cliente: se escribe el nombre a mano (deja de estar atado a un cliente cargado). */}
+                <input value={b.cliente_nombre} onChange={(e) => cambiar({ cliente_nombre: e.target.value, cliente_id: null })} maxLength={160}
+                  placeholder="O escribí el nombre" aria-label="Nombre del cliente, escrito a mano"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/15" />
+              </div>
             </div>
             <p className="self-end text-xs text-slate-500 sm:max-w-[16rem]">Arrastrá piezas a la hoja o tocá su <span className="font-semibold text-[#3F8E91]">+</span>. En la hoja se reordenan arrastrando.</p>
           </div>
@@ -419,9 +448,9 @@ export default function PropuestasPage() {
                     draggable
                     onDragStart={(e) => { arrastre.current = { tipo: "item", i }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", p.titulo); }}
                     onDragEnd={() => { arrastre.current = null; setSobre(null); }}
-                    onDragOver={(e) => { e.preventDefault(); setSobre(i); }}
-                    onDrop={(e) => { e.preventDefault(); e.stopPropagation(); soltar(i); }}
-                    className={`group/item relative flex items-center gap-4 rounded-xl px-3 py-4 ${i % 2 === 0 ? "bg-[#f4f5f7]" : "bg-white"} ${sobre === i ? "shadow-[inset_0_3px_0_0_#5ab3b0]" : ""}`}>
+                    onDragOver={(e) => { e.preventDefault(); setSobre(lugarSobre(e, i)); }}
+                    onDrop={(e) => { e.preventDefault(); e.stopPropagation(); soltar(lugarSobre(e, i)); }}
+                    className={`group/item relative flex items-center gap-4 rounded-xl px-3 py-4 ${i % 2 === 0 ? "bg-[#f4f5f7]" : "bg-white"} ${sobre === i ? "shadow-[inset_0_3px_0_0_#5ab3b0]" : sobre === i + 1 && i === b.piezas.length - 1 ? "shadow-[inset_0_-3px_0_0_#5ab3b0]" : ""}`}>
                     <GripVertical aria-hidden className="no-imprimir absolute -left-5 top-1/2 h-4 w-4 -translate-y-1/2 cursor-grab text-slate-300 opacity-0 transition group-hover/item:opacity-100" />
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#5ab3b0] text-[13px] font-bold text-white">{i + 1}</span>
                     <span className="min-w-0 flex-1">
@@ -441,8 +470,9 @@ export default function PropuestasPage() {
               </ol>
 
               <div className="mt-auto pt-8">
-                <section className="grid grid-cols-2 rounded-2xl bg-[#27365a] px-8 py-7 text-white">
-                  <div className="pr-6">
+                {/* Un precio vacío no sale en el PDF; sin ninguno, tampoco el bloque. */}
+                <section className={`grid grid-cols-2 rounded-2xl bg-[#27365a] px-8 py-7 text-white ${b.inversion_total === null && b.cuota_mensual === null ? "no-imprimir" : ""}`}>
+                  <div className={`pr-6 ${b.inversion_total === null ? "no-imprimir" : ""}`}>
                     <p className="text-[12px] font-bold uppercase tracking-[0.06em] text-slate-300">Inversión total</p>
                     <p className="mt-3 flex items-baseline gap-2 text-[26px] font-bold">
                       <span>G.</span>
@@ -451,7 +481,7 @@ export default function PropuestasPage() {
                     </p>
                     <p className="mt-3 text-[12px] text-slate-200">Pago único por el proyecto</p>
                   </div>
-                  <div className="border-l border-white/25 pl-8">
+                  <div className={`border-l border-white/25 pl-8 ${b.cuota_mensual === null ? "no-imprimir" : ""} ${b.inversion_total === null ? "print:border-l-0 print:pl-0" : ""}`}>
                     <p className="text-[12px] font-bold uppercase tracking-[0.06em] text-slate-300">Cuota mensual</p>
                     <p className="mt-3 flex items-baseline gap-2 text-[26px] font-bold">
                       <span>G.</span>
@@ -465,8 +495,32 @@ export default function PropuestasPage() {
                 <textarea value={b.condiciones} onChange={(e) => cambiar({ condiciones: e.target.value })} rows={2} aria-label="Condiciones"
                   className={`${campo} -mx-2 mt-4 resize-none px-2 py-1 text-[11px] leading-relaxed text-slate-500`} />
 
-                {/* Clientes bandera: lugar reservado; se completa cuando estén definidos. */}
-                <div data-clientes-bandera className="hidden" />
+                {/* Clientes bandera: se eligen de los clientes cargados o se escriben. Sin ninguno, no sale en el PDF. */}
+                <section className={`mt-4 ${b.clientes_bandera.length === 0 ? "no-imprimir" : ""}`}>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">Confían en nosotros</p>
+                  {b.clientes_bandera.length > 0 ? (
+                    <ul className="m-0 mt-2 flex list-none flex-wrap gap-x-2 gap-y-1.5 p-0">
+                      {b.clientes_bandera.map((n) => (
+                        <li key={n} className="inline-flex items-center gap-1 rounded-full bg-[#f4f5f7] px-3 py-1 text-[11px] font-semibold text-[#27365a]">
+                          {n}
+                          <button type="button" onClick={() => cambiar({ clientes_bandera: b.clientes_bandera.filter((x) => x !== n) })} aria-label={`Quitar ${n}`} title="Quitar"
+                            className="no-imprimir -mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="no-imprimir mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <SelectorBuscable opciones={opcionesCliente} value="" ariaLabel="Agregar un cliente bandera de la lista" placeholder="Elegir de los clientes" buscarPlaceholder="Buscar cliente…" tam="sm"
+                      onChange={(v) => { const o = opcionesCliente.find((x) => x.value === v); if (o) sumarBandera(o.label); }} />
+                    <input value={banderaTexto} onChange={(e) => setBanderaTexto(e.target.value)} maxLength={60} placeholder="O escribí el nombre y Enter" aria-label="Escribir un cliente bandera"
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sumarBandera(banderaTexto); setBanderaTexto(""); } }}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/15" />
+                    <button type="button" onClick={() => { sumarBandera(banderaTexto); setBanderaTexto(""); }} disabled={!banderaTexto.trim()}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:opacity-40">Agregar</button>
+                  </div>
+                </section>
 
                 <footer className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 text-[11px]">
                   <span className="font-bold tracking-wide text-[#27365a]">NEURA</span>

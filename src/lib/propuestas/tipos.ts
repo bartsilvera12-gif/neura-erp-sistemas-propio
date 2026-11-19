@@ -21,6 +21,8 @@ export type Propuesta = {
   inversion_total: number | null;
   cuota_mensual: number | null;
   condiciones: string;
+  /** Clientes bandera que se muestran en el pie de la propuesta. */
+  clientes_bandera: string[];
   created_at: string;
   updated_at: string;
 };

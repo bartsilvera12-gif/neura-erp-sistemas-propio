@@ -41,14 +41,27 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
     await client.query("BEGIN");
 
     const cur = await client.query(
-      `SELECT id::text, crm_prospecto_id::text, phone_number::text, name::text
-       FROM ${ct}
-       WHERE id = $1::uuid AND empresa_id = $2::uuid
+      // `telefono_real` (teléfono real detrás de un @lid de Baileys) existe en
+      // schemas con la feature QR (p. ej. `neura`) pero puede NO existir en otros
+      // tenants. Se lee drift-safe con to_jsonb: si la columna no está, da NULL.
+      `SELECT t.id::text,
+              t.crm_prospecto_id::text,
+              t.phone_number::text,
+              t.name::text,
+              (to_jsonb(t) ->> 'telefono_real') AS telefono_real
+       FROM ${ct} t
+       WHERE t.id = $1::uuid AND t.empresa_id = $2::uuid
        FOR SHARE`,
       [input.contact_id, input.empresa_id]
     );
     const row0 = cur.rows[0] as
-      | { id: string; crm_prospecto_id: string | null; phone_number: string | null; name: string | null }
+      | {
+          id: string;
+          crm_prospecto_id: string | null;
+          phone_number: string | null;
+          name: string | null;
+          telefono_real: string | null;
+        }
       | undefined;
     if (!row0) {
       await client.query("ROLLBACK");
@@ -166,7 +179,10 @@ export async function ensureWhatsappInboundCrmLeadPg(input: {
     // Fuente de verdad del scope: el id del usuario del agente asignado (no el nombre).
     const responsableUsuarioId = (adv?.usuario_id?.trim() || null) as string | null;
 
-    const phone = String(row0.phone_number ?? "").trim();
+    // Preferir el teléfono REAL sobre el id @lid de Baileys: así el prospecto
+    // queda buscable por el número de verdad (el @lid no lo encontraría nadie).
+    const realPhone = String(row0.telefono_real ?? "").trim();
+    const phone = realPhone || String(row0.phone_number ?? "").trim();
     const displayName = String(row0.name ?? "").trim() || phone || "Contacto WhatsApp";
 
     const lastNum = await client.query(

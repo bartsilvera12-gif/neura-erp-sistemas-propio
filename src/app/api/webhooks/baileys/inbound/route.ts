@@ -410,7 +410,12 @@ export async function POST(request: NextRequest) {
       try {
         const crmSchema = await fetchDataSchemaForEmpresaId(empresaId);
         const crmPool = getChatPostgresPool();
-        if (crmPool && isLikelyUnexposedTenantChatSchema(crmSchema)) {
+        // Mismo criterio que el webhook YCloud: alcanza con tener pool PG.
+        // NO filtrar por isLikelyUnexposedTenantChatSchema: ese helper devuelve
+        // false para `neura` (es el APP_DB_SCHEMA), lo que apagaba la creación
+        // del lead en TODOS los entrantes por QR de Neura. La función valida el
+        // schema internamente (assertAllowedChatDataSchema) y es idempotente.
+        if (crmPool) {
           const crm = await ensureWhatsappInboundCrmLeadPg({
             pool: crmPool,
             data_schema: crmSchema,

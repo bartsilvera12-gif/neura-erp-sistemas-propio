@@ -132,7 +132,7 @@ export default function OmnicanalEquiposPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="mx-auto max-w-4xl space-y-8">
       <nav className="flex items-center gap-2 text-xs text-slate-500">
         <Link href="/configuracion" className="font-medium text-slate-500 transition-colors hover:text-[#4FAEB2]">
           Configuración

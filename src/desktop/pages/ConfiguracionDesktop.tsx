@@ -53,7 +53,7 @@ export default function ConfiguracionPage() {
   const editorBadge = { label: "Editor", tone: "neutral" as const };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-10 px-4 pb-10 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl space-y-10 pb-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

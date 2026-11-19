@@ -556,10 +556,10 @@ export default function FinalizedClosuresClient({ filterOptions }: { filterOptio
     r.channel_nombre?.trim() ? `${r.channel_nombre} (${r.channel_type})` : r.channel_type;
 
   return (
-    <div className="flex flex-col gap-6 pb-12 px-4 md:px-8 max-w-[1920px] mx-auto">
+    <div className="flex flex-col gap-6 pb-12 max-w-[1920px] mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-4 pt-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Conversaciones finalizadas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Conversaciones finalizadas</h1>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
             {filterOptions.ux_scope === "own"
               ? "Tus conversaciones finalizadas. Filtrá por fecha, estado o buscá un contacto. Exportá el resultado para Excel."

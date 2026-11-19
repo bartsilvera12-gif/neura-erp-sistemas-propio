@@ -73,7 +73,7 @@ export const claseInput =
 export const claseEtiqueta = "mb-1.5 block text-[12px] font-semibold text-slate-600";
 
 export function Pagina({ children, ancho = "max-w-[1400px]" }: { children: ReactNode; ancho?: string }) {
-  return <div className={`mx-auto w-full ${ancho} px-4 pb-14 pt-6 md:px-8`}>{children}</div>;
+  return <div className={`mx-auto w-full ${ancho} pb-14`}>{children}</div>;
 }
 
 export function IconoTile({ icono: Icono, tono = "turquesa", tam = "md" }: { icono: LucideIcon; tono?: Tono; tam?: "sm" | "md" | "lg" }) {
@@ -132,7 +132,7 @@ export function Encabezado({
                   va como capa visual. Entra corta (≈0,35 s) y con poco
                   recorrido: da vida sin hacer esperar a nadie para leer. */}
               <h1 className="sr-only">{titulo}</h1>
-              <div aria-hidden className="text-[24px] font-bold leading-tight tracking-tight text-slate-900">
+              <div aria-hidden className="text-2xl font-semibold leading-tight tracking-tight text-slate-900">
                 <BlurText
                   text={titulo}
                   delay={40}
@@ -145,7 +145,7 @@ export function Encabezado({
               </div>
             </>
           ) : (
-            <h1 className="text-[24px] font-bold leading-tight tracking-tight text-slate-900">{titulo}</h1>
+            <h1 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900">{titulo}</h1>
           )}
           {subtitulo ? <p className="mt-0.5 text-sm text-slate-500">{subtitulo}</p> : null}
         </div>

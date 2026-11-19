@@ -140,12 +140,12 @@ export default function PersonalListClient() {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6">
+    <div className="mx-auto max-w-7xl">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#4FAEB2]/10 text-[#2F8E92]"><Users className="h-6 w-6" aria-hidden /></span>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Gestión de Personal</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Gestión de Personal</h1>
             <p className="text-sm text-slate-500">Hoja de vida, asistencia e incidencias del equipo.</p>
           </div>
         </div>

@@ -504,7 +504,7 @@ export default function ClientesPage() {
               Base
             </p>
           </div>
-          <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-slate-900">Clientes</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Clientes</h1>
           <p className="text-xs text-slate-500">Base de clientes activos de la empresa</p>
         </div>
         <button

@@ -200,7 +200,7 @@ export default function AgendaClient() {
     <div className="mx-auto w-full max-w-[1800px] px-4 py-5">
       {/* Encabezado + métricas compactas */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-800">Agenda</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Agenda</h1>
         <div className="flex flex-wrap items-center gap-1.5">
           {stats.map((s) => (
             <div key={s.label} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 shadow-sm">

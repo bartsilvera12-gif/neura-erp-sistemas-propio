@@ -218,7 +218,7 @@ export default function GuardiasAdminClient() {
   }
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 pb-12 pt-6 md:px-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-5 pb-12">
       <header>
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-[#4FAEB2]" />
@@ -226,7 +226,7 @@ export default function GuardiasAdminClient() {
             Administración
           </p>
         </div>
-        <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
           Guardias de la semana
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-slate-500">

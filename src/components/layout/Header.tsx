@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeft, ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
+import { hrefFamilia, useMenuVisible } from "@/lib/menu/menu-visible-store";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
@@ -101,8 +102,8 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
       >
         <Menu className="h-5 w-5" />
       </button>
-      {/* Spacer en desktop para mantener el justify-end original. */}
-      <span className="hidden md:block" />
+      {/* A la izquierda: volver a la portada de la familia de esta pantalla (como el "← Comercial" de 2.0). */}
+      <VolverAPortada />
 
       <div className="flex items-center gap-2">
         {/* Asistente de ayuda (Neurita) — desactivado temporalmente. */}
@@ -170,5 +171,39 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * "← Comercial · Clientes": el menú lateral ya no lista cada pantalla, así que
+ * este link es la vuelta a la portada sin pasar por el menú. Sale del mismo
+ * menú visible que arma el Sidebar; en el Dashboard y en las portadas no se muestra.
+ */
+function VolverAPortada() {
+  const pathname = usePathname() ?? "";
+  const { familias } = useMenuVisible();
+  let mejor: { familia: string; id: string; pantalla: string; largo: number } | null = null;
+  for (const f of familias) {
+    if (f.id === "inicio" || f.pantallas.length < 2) continue;
+    for (const p of f.pantallas) {
+      const coincide = pathname === p.href || pathname.startsWith(`${p.href}/`);
+      if (coincide && (!mejor || p.href.length > mejor.largo)) {
+        mejor = { familia: f.title, id: f.id, pantalla: p.label, largo: p.href.length };
+      }
+    }
+  }
+  if (!mejor) return <span className="hidden md:block" />;
+  return (
+    <nav aria-label="Ubicación" className="hidden min-w-0 items-center gap-2 text-[13px] md:flex">
+      <Link
+        href={hrefFamilia(mejor.id)}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+        {mejor.familia}
+      </Link>
+      <span aria-hidden className="text-slate-300">/</span>
+      <span className="truncate font-semibold text-slate-800">{mejor.pantalla}</span>
+    </nav>
   );
 }

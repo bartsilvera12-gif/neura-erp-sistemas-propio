@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
 import { hrefFamilia, useMenuVisible } from "@/lib/menu/menu-visible-store";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
@@ -108,6 +108,16 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
       <div className="flex items-center gap-2">
         {/* Asistente de ayuda (Neurita) — desactivado temporalmente. */}
 
+        {/* Manual: guías paso a paso con capturas (como el de 2.0). */}
+        <Link
+          href="/manual"
+          title="Manual"
+          aria-label="Manual"
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-[#475569] transition-colors hover:bg-slate-50 hover:text-[#0EA5E9]"
+        >
+          <BookOpen className="h-5 w-5 shrink-0" />
+          <span className="hidden lg:inline">Manual</span>
+        </Link>
         {/* Ayuda en línea — acceso transversal, disponible en cualquier pantalla. */}
         <Link
           href="/ayuda"

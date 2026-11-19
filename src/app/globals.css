@@ -16,6 +16,8 @@
   --zentra-login-bg-mid: #0b2f4c;
   --zentra-login-bg-deep: #051525;
   --sidebar: var(--zentra-sidebar);
+  /* Color de marca: lo usa el Manual (portado de 2.0, donde todo sale de esta variable). */
+  --brand: #3f8e91;
   --primary: #0EA5E9;
   --primary-hover: #0284C7;
   --primary-light: #E0F2FE;

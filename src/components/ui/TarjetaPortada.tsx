@@ -7,7 +7,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 
 const VELO =
   "linear-gradient(to top, hsl(var(--tema) / 0.93), hsl(var(--tema) / 0.78) 55px, hsl(var(--tema) / 0.45) 105px, hsl(var(--tema) / 0.15) 145px, transparent 175px), linear-gradient(to top, rgb(0 0 0 / 0.24), transparent 130px)";
@@ -23,6 +23,8 @@ export function TarjetaPortada({
   posicion,
   detalle,
   prioridad = false,
+  favorito,
+  onFavorito,
 }: {
   href: string;
   titulo: string;
@@ -34,9 +36,12 @@ export function TarjetaPortada({
   /** Explicación larga: sale al pasar el cursor. */
   detalle?: string;
   prioridad?: boolean;
+  /** Con `onFavorito` la tarjeta muestra la estrella para marcarla como favorita. */
+  favorito?: boolean;
+  onFavorito?: () => void;
 }) {
   return (
-    <div className="group h-[150px]" style={{ "--tema": color } as CSSProperties}>
+    <div className="group relative h-[150px]" style={{ "--tema": color } as CSSProperties}>
       <Link
         href={href}
         title={detalle}
@@ -62,6 +67,22 @@ export function TarjetaPortada({
           </span>
         </div>
       </Link>
+      {onFavorito ? (
+        <button
+          type="button"
+          onClick={onFavorito}
+          aria-pressed={Boolean(favorito)}
+          aria-label={favorito ? `Quitar ${titulo} de favoritos` : `Agregar ${titulo} a favoritos`}
+          title={favorito ? "Quitar de favoritos" : "Agregar a favoritos"}
+          className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-md outline-none transition-all duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:ring-white ${
+            favorito
+              ? "border-amber-200/60 bg-black/35 text-amber-300"
+              : "border-white/25 bg-black/20 text-white/80 hover:bg-black/40 hover:text-amber-300"
+          }`}
+        >
+          <Star aria-hidden className={`h-4 w-4 ${favorito ? "fill-current" : ""}`} />
+        </button>
+      ) : null}
     </div>
   );
 }

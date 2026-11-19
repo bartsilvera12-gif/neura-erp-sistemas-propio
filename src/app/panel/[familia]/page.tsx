@@ -7,8 +7,9 @@
  */
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Star } from "lucide-react";
 import { GRILLA_PORTADA, TarjetaPortada } from "@/components/ui/TarjetaPortada";
+import { toggleFavorito, useFavoritos } from "@/lib/favorites";
 import { useMenuVisible } from "@/lib/menu/menu-visible-store";
 import { BAJADA_FAMILIA, portadaDe } from "@/lib/menu/portadas";
 
@@ -17,6 +18,7 @@ export default function PortadaFamiliaPage() {
   const raw = params?.familia;
   const id = typeof raw === "string" ? raw : Array.isArray(raw) ? (raw[0] ?? "") : "";
   const { cargando, familias } = useMenuVisible();
+  const favoritos = useFavoritos();
   const familia = familias.find((f) => f.id === id);
   const textos = BAJADA_FAMILIA[id];
 
@@ -53,13 +55,22 @@ export default function PortadaFamiliaPage() {
             {familia.pantallas.map((p) => {
               const foto = portadaDe(p.href);
               return (
-                <li key={p.href}>
-                  <Link href={p.href} className="flex min-h-[64px] items-center gap-3 px-4 py-2.5 active:bg-slate-50">
+                <li key={p.href} className="flex items-center">
+                  <Link href={p.href} className="flex min-h-[64px] min-w-0 flex-1 items-center gap-3 py-2.5 pl-4 pr-1 active:bg-slate-50">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={foto.imagen} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
                     <span className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-slate-900">{p.label}</span>
                     <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-slate-300" />
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorito(p.fav)}
+                    aria-pressed={favoritos.includes(p.fav)}
+                    aria-label={favoritos.includes(p.fav) ? `Quitar ${p.label} de favoritos` : `Agregar ${p.label} a favoritos`}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center ${favoritos.includes(p.fav) ? "text-amber-400" : "text-slate-300"}`}
+                  >
+                    <Star aria-hidden className={`h-[18px] w-[18px] ${favoritos.includes(p.fav) ? "fill-current" : ""}`} />
+                  </button>
                 </li>
               );
             })}
@@ -77,6 +88,8 @@ export default function PortadaFamiliaPage() {
                   color={foto.color}
                   posicion={foto.posicion}
                   prioridad={i < 3}
+                  favorito={favoritos.includes(p.fav)}
+                  onFavorito={() => toggleFavorito(p.fav)}
                 />
               );
             })}

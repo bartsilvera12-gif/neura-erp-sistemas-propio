@@ -9,7 +9,8 @@
  */
 import { useSyncExternalStore } from "react";
 
-export type PantallaMenu = { label: string; href: string };
+/** `fav`: id con el que esta pantalla se guarda en favoritos (ver `lib/favorites`). */
+export type PantallaMenu = { label: string; href: string; fav: string };
 export type FamiliaMenu = { id: string; title: string; pantallas: PantallaMenu[] };
 export type MenuVisible = { cargando: boolean; familias: FamiliaMenu[] };
 

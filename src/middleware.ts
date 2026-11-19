@@ -4,6 +4,39 @@ import { DEVICE_COOKIE_NAME, isMobileUserAgent } from "@/shared/device/detect";
 import { evaluateQaOnlyGate, isQaOnlyMode } from "@/lib/qa/qa-only-gate";
 
 /**
+ * Maintenance window para la ventana de cutover de la base QA (schema `qa_center`
+ * migrando de Coolify a AWS). Cuando `QA_CENTER_MAINTENANCE=true`, todas las
+ * mutaciones del módulo QA (`/api/qa/*` POST/PATCH/PUT/DELETE) y del Runner
+ * (`/api/qa/runner/*` cualquier método, porque sus GETs también escriben vía
+ * claim/heartbeat) responden 503 inmediatamente. Las lecturas siguen pasando
+ * para que el panel no se "muera" durante el cutover.
+ */
+function qaMaintenanceBlock(request: NextRequest): NextResponse | null {
+  if (process.env.QA_CENTER_MAINTENANCE !== "true") return null;
+  const p = request.nextUrl.pathname;
+  if (!p.startsWith("/api/qa/")) return null;
+  const isRunner = p.startsWith("/api/qa/runner/");
+  const isMutating =
+    isRunner || ["POST", "PATCH", "PUT", "DELETE"].includes(request.method);
+  if (!isMutating) return null;
+  return new NextResponse(
+    JSON.stringify({
+      error: "qa-center en mantenimiento (cutover base de datos)",
+      hint: "reintenta en pocos minutos",
+    }),
+    {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "120",
+        "Cache-Control": "no-store",
+        "X-QA-Maintenance": "1",
+      },
+    },
+  );
+}
+
+/**
  * Middleware combinado: (a) refresca la sesión Supabase en cookies antes de Route
  * Handlers / RSC; (b) setea la cookie `neura-device` a partir del User-Agent si todavía
  * no fue seteada. La cookie permite que el server-side render del DeviceRouter decida
@@ -18,6 +51,12 @@ import { evaluateQaOnlyGate, isQaOnlyMode } from "@/lib/qa/qa-only-gate";
  * Sin este skip, una pantalla con 10 links visibles disparaba 10 auth-refresh ocultos.
  */
 export async function middleware(request: NextRequest) {
+  // Cutover QA — bloqueo temporal de escrituras del módulo QA.
+  // Se evalúa antes del gate QA-only porque incluso en QA-only queremos 503 durante
+  // la ventana de migración.
+  const maint = qaMaintenanceBlock(request);
+  if (maint) return maint;
+
   // QA-only gate: SOLO si `QA_ONLY_MODE === "true"`. En prod esta rama no corre.
   // El gate bloquea páginas y APIs ajenas a QA Center antes de que llegue a su
   // handler, sin exponer información del ERP.

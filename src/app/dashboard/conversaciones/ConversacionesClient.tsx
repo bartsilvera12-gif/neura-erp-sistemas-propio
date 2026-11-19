@@ -8,6 +8,7 @@ import { agruparReacciones, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Desplegable } from "@/components/ui/Desplegable";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   readInboxList,
@@ -3366,7 +3367,7 @@ export function ConversacionesClient({
               <div className="mt-4 space-y-3">
                 <div>
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Estado</label>
-                  <select
+                  <Desplegable
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                     value={finalizeStateId}
                     onChange={(e) => setFinalizeStateId(e.target.value)}
@@ -3376,7 +3377,7 @@ export function ConversacionesClient({
                         {s.label}
                       </option>
                     ))}
-                  </select>
+                  </Desplegable>
                 </div>
                 {(() => {
                   const st = finalizeOptions.states.find((s) => s.id === finalizeStateId);
@@ -3384,7 +3385,7 @@ export function ConversacionesClient({
                   return (
                     <div>
                       <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Subestado</label>
-                      <select
+                      <Desplegable
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                         value={finalizeSubstateId}
                         onChange={(e) => setFinalizeSubstateId(e.target.value)}
@@ -3395,7 +3396,7 @@ export function ConversacionesClient({
                             {sub.label}
                           </option>
                         ))}
-                      </select>
+                      </Desplegable>
                     </div>
                   );
                 })()}
@@ -3404,7 +3405,7 @@ export function ConversacionesClient({
                     <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
                       Rubro <span className="font-normal text-slate-400">(opcional)</span>
                     </label>
-                    <select
+                    <Desplegable
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                       value={finalizeRubroId}
                       onChange={(e) => setFinalizeRubroId(e.target.value)}
@@ -3415,7 +3416,7 @@ export function ConversacionesClient({
                           {rb.label}
                         </option>
                       ))}
-                    </select>
+                    </Desplegable>
                   </div>
                 ) : null}
                 <div>
@@ -3526,7 +3527,7 @@ export function ConversacionesClient({
                   Colas
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  <select
+                  <Desplegable
                     disabled={opsBusy}
                     className="min-w-[12rem] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                     value={transferQueueTarget}
@@ -3539,7 +3540,7 @@ export function ConversacionesClient({
                         {q.nombre}
                       </option>
                     ))}
-                  </select>
+                  </Desplegable>
                   <button
                     type="button"
                     disabled={opsBusy || !transferQueueTarget}
@@ -3845,7 +3846,7 @@ export function ConversacionesClient({
           </button>
           {mode === "historial" || vista === "inbox" ? (
             <>
-              <select
+              <Desplegable
                 className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8.5rem] max-w-[min(16rem,60vw)] shrink-0"
                 style={{
                   backgroundImage:
@@ -3866,8 +3867,8 @@ export function ConversacionesClient({
                     {formatChannelOptionLabel(c)}
                   </option>
                 ))}
-              </select>
-              <select
+              </Desplegable>
+              <Desplegable
                 className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8.5rem] shrink-0"
                 style={{
                   backgroundImage:
@@ -3890,8 +3891,8 @@ export function ConversacionesClient({
                       {q.nombre}
                     </option>
                   ))}
-              </select>
-              <select
+              </Desplegable>
+              <Desplegable
                 className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8rem] shrink-0"
                 style={{
                   backgroundImage:
@@ -3927,7 +3928,7 @@ export function ConversacionesClient({
                     <option value="sin_asignar">Sin asignar</option>
                   </>
                 )}
-              </select>
+              </Desplegable>
             </>
           ) : null}
         </div>

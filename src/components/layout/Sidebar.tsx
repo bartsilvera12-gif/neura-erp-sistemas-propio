@@ -65,7 +65,7 @@ import { favDeRuta, toggleFavorito, useFavoritos } from "@/lib/favorites";
 import { canAccessSidebarSlug } from "@/lib/modulos/route-slug-map";
 import { useBoot } from "@/components/BootContext";
 import { hrefFamilia, publicarMenuVisible, type FamiliaMenu } from "@/lib/menu/menu-visible-store";
-import { puedeVerPropuestas } from "@/lib/propuestas/acceso";
+import { MODULO_QUE_HABILITA, puedeVerPropuestas } from "@/lib/propuestas/acceso";
 
 type MenuItem = {
   key: string;
@@ -214,7 +214,7 @@ const MENU_STRUCTURE: MenuItem[] = [
   { key: "planes", slug: "planes", label: "Planes", href: "/planes", icon: FileText },
   { key: "gestion-clientes", slug: "gestion-clientes", label: "Gestión Clientes", href: "/gestion-clientes", icon: Users },
   { key: "crm", slug: "crm", label: "CRM Funnel", href: "/crm", icon: Handshake },
-  // Propuestas: en prueba, visible solo para los correos de `puedeVerPropuestas` (no es un módulo de empresa).
+  // Propuestas: no es un módulo de empresa; lo ve quien tiene CRM Funnel (ver lib/propuestas/acceso).
   { key: "propuestas", slug: "propuestas", label: "Propuestas", href: "/propuestas", icon: ScrollText },
   { key: "marketing", slug: "marketing", label: "Marketing Legacy", href: "/marketing", icon: Megaphone },
   { key: "marketing_ops", slug: "marketing_ops", label: "Marketing Ops", href: "/dashboard/marketing-ops", icon: Megaphone },
@@ -409,7 +409,7 @@ function esItemVisible(
   if (item.key === "panel_control") {
     return esSuperAdmin || puedeEntrarAlPanelControl(email, rol, esTecnico);
   }
-  if (item.key === "propuestas") return puedeVerPropuestas(email);
+  if (item.key === "propuestas") return puedeVerPropuestas(email) || access(MODULO_QUE_HABILITA);
   return access(item.slug);
 }
 
@@ -745,7 +745,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     slug === "panel_control"
       ? esSuperAdmin || puedeEntrarAlPanelControl(emailSesion, rolSesion, esTecnicoSesion)
       : slug === "propuestas"
-        ? puedeVerPropuestas(emailSesion)
+        ? puedeVerPropuestas(emailSesion) || canAccessSidebarSlug(MODULO_QUE_HABILITA, modulosSlugs, esSuperAdmin)
         : canAccessSidebarSlug(slug, modulosSlugs, esSuperAdmin);
 
   const isActive = (slug: string, href: string) => {

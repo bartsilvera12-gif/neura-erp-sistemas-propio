@@ -1,14 +1,16 @@
 /**
  * Quién puede ver el módulo "Propuestas" (armador de propuestas comerciales).
  *
- * ÚNICO lugar donde se define la lista. Mientras el módulo está en prueba lo ven
- * solo estos correos. Para sumar gente: agregar el correo acá (y desplegar) o
- * definir `NEXT_PUBLIC_PROPUESTAS_EMAILS=uno@x.com,otro@y.com` en Coolify.
+ * Lo ve quien tiene habilitado el módulo CRM Funnel (`MODULO_QUE_HABILITA`): son los que
+ * venden. Además, los correos de la lista de abajo lo ven siempre, tengan o no ese módulo
+ * (se suman acá o con `NEXT_PUBLIC_PROPUESTAS_EMAILS=uno@x.com,otro@y.com` en Coolify).
  *
- * Es `NEXT_PUBLIC_` a propósito: el menú es un componente de cliente y necesita
- * la misma lista para decidir si muestra el ítem. Eso NO es el permiso: el
- * permiso lo aplica cada API en el servidor, con el correo de la sesión.
+ * Es `NEXT_PUBLIC_` a propósito: el menú es un componente de cliente y necesita la misma
+ * lista para decidir si muestra el ítem. Eso NO es el permiso: el permiso lo aplica cada
+ * API en el servidor (`requirePropuestasAcceso`), con la sesión.
  */
+export const MODULO_QUE_HABILITA = "crm";
+
 const PERMITIDOS = new Set(["ivanchtareas@gmail.com", "admin-temporal@neura.com"]);
 
 export function puedeVerPropuestas(email: string | null | undefined): boolean {

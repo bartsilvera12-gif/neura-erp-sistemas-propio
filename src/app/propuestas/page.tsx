@@ -15,7 +15,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { supabase } from "@/lib/supabase";
 import { getClientes, clienteNombre } from "@/lib/clientes/storage";
 import type { Cliente } from "@/lib/clientes/types";
-import { puedeVerPropuestas } from "@/lib/propuestas/acceso";
+import { MODULO_QUE_HABILITA, puedeVerPropuestas } from "@/lib/propuestas/acceso";
 import { CONDICIONES_POR_DEFECTO, type Pieza, type PiezaEnPropuesta, type Propuesta } from "@/lib/propuestas/tipos";
 import { SelectorBuscable } from "@/app/dashboard/soporte/_ui/SelectorBuscable";
 
@@ -74,7 +74,18 @@ export default function PropuestasPage() {
 
   // El menú ya esconde el módulo; acá se evita mostrar la pantalla a quien entra por la dirección.
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => setAcceso(puedeVerPropuestas(data.session?.user?.email)));
+    // Misma regla que el menú: correo de la lista, o el módulo CRM Funnel entre los propios.
+    void (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (puedeVerPropuestas(data.session?.user?.email)) return setAcceso(true);
+      try {
+        const res = await fetchWithSupabaseSession("/api/empresas/module-access", { cache: "no-store" });
+        const j = (await res.json()) as { superAdmin?: boolean; slugs?: string[] };
+        setAcceso(Boolean(j.superAdmin) || (j.slugs ?? []).includes(MODULO_QUE_HABILITA));
+      } catch {
+        setAcceso(false);
+      }
+    })();
   }, []);
 
   const cargar = useCallback(async () => {
@@ -264,7 +275,7 @@ export default function PropuestasPage() {
   if (!acceso) {
     return (
       <div className="mx-auto mt-10 max-w-md rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center">
-        <p className="text-sm font-semibold text-slate-800">Este módulo todavía no está habilitado para tu usuario.</p>
+        <p className="text-sm font-semibold text-slate-800">Propuestas está habilitado para quienes tienen el módulo CRM Funnel.</p>
       </div>
     );
   }

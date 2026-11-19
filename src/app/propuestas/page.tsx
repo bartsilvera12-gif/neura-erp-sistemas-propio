@@ -300,8 +300,12 @@ export default function PropuestasPage() {
              página y reserva esos lugares. */
           #propuesta-hoja { display: table !important; }
           #propuesta-hoja .pie-reserva { display: table-footer-group !important; height: 16mm; break-inside: avoid; }
-          #propuesta-hoja .pie-impreso { display: flex !important; position: fixed; left: 0; bottom: 0; width: 210mm; height: 16mm; box-sizing: border-box; padding: 0 8%; align-items: center; justify-content: space-between; font-size: 11px; background: #fff; }
-          #propuesta-hoja .pie-impreso::before { content: ""; position: absolute; left: 8%; right: 8%; top: 0; border-top: 1px solid #e2e8f0; }
+          #propuesta-hoja .pie-impreso { display: block !important; position: fixed; left: 0; bottom: 0; width: 210mm; box-sizing: border-box; padding: 0 8%; font-size: 11px; background: #fff; }
+          #propuesta-hoja .pie-impreso .pie-fila { height: 16mm; border-top: 1px solid #e2e8f0; }
+          /* Con clientes bandera el pie es más alto: arriba van ellos, en texto. */
+          #propuesta-hoja .pie-impreso .pie-clientes { height: 11mm; }
+          #propuesta-hoja.con-banderas .pie-reserva { height: 27mm; }
+          #propuesta-hoja.con-banderas > .propuesta-cuerpo { min-height: 259mm !important; }
           /* Cada pieza entera en una página; y precios, condiciones, clientes y pie viajan juntos:
              si no entran, pasan todos a la página siguiente (nunca queda el pie solo). */
           #propuesta-hoja li, #propuesta-hoja .propuesta-cierre { break-inside: avoid; }
@@ -446,7 +450,7 @@ export default function PropuestasPage() {
             <p className="self-end text-xs text-slate-500 sm:max-w-[16rem]">Arrastrá piezas a la hoja o tocá su <span className="font-semibold text-[#3F8E91]">+</span>. En la hoja se reordenan arrastrando.</p>
           </div>
 
-          <article id="propuesta-hoja" className="mx-auto w-full max-w-[820px] overflow-hidden rounded-2xl border border-slate-200 bg-white text-[#27365a] shadow-sm">
+          <article id="propuesta-hoja" className={`${b.clientes_bandera.length > 0 ? "con-banderas " : ""}mx-auto w-full max-w-[820px] overflow-hidden rounded-2xl border border-slate-200 bg-white text-[#27365a] shadow-sm`}>
             <div className="cabeza-reserva" aria-hidden />
             <div className="propuesta-franja h-2.5 bg-[#5ab3b0]" />
             <div className="propuesta-cuerpo flex min-h-[1060px] flex-col px-[8%] pb-8 pt-8">
@@ -530,20 +534,16 @@ export default function PropuestasPage() {
                 {b.condiciones ? <p className="solo-imprimir mt-4 whitespace-pre-line text-[11px] leading-relaxed text-slate-500">{b.condiciones}</p> : null}
 
                 {/* Clientes bandera: se eligen de los clientes cargados o se escriben. Sin ninguno, no sale en el PDF. */}
-                <section className={`mt-6 ${b.clientes_bandera.length === 0 ? "no-imprimir" : ""}`}>
-                  <p className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#3F8E91]">
-                    <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-transparent to-slate-200" />
-                    Confían en nosotros
-                    <span aria-hidden className="h-px flex-1 bg-gradient-to-l from-transparent to-slate-200" />
-                  </p>
+                {/* Clientes bandera: acá se cargan (de la lista o escritos). En la hoja salen como texto, en el pie. */}
+                <section className="no-imprimir mt-5 rounded-xl border border-dashed border-slate-200 px-3 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">Confían en nosotros <span className="font-medium normal-case tracking-normal text-slate-400">· salen en el pie de la hoja</span></p>
                   {b.clientes_bandera.length > 0 ? (
-                    <ul className="m-0 mt-3 flex list-none flex-wrap justify-center gap-2 p-0">
+                    <ul className="m-0 mt-2 flex list-none flex-wrap gap-x-2 gap-y-1.5 p-0">
                       {b.clientes_bandera.map((n) => (
-                        <li key={n} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-3.5 shadow-[0_1px_2px_rgb(39_54_90/0.06)]">
-                          <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#5ab3b0]/15 text-[12px] font-bold uppercase text-[#3F8E91]">{n.trim().charAt(0)}</span>
-                          <span className="text-[12px] font-semibold tracking-[0.02em] text-[#27365a]">{n}</span>
+                        <li key={n} className="inline-flex items-center gap-1 rounded-full bg-[#f4f5f7] px-3 py-1 text-[11px] font-semibold text-[#27365a]">
+                          {n}
                           <button type="button" onClick={() => cambiar({ clientes_bandera: b.clientes_bandera.filter((x) => x !== n) })} aria-label={`Quitar ${n}`} title="Quitar"
-                            className="no-imprimir -mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600">
+                            className="-mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-600">
                             <X className="h-3 w-3" />
                           </button>
                         </li>
@@ -561,17 +561,31 @@ export default function PropuestasPage() {
                   </div>
                 </section>
 
-                <footer className="no-imprimir mt-5 flex items-center justify-between border-t border-slate-200 pt-4 text-[11px]">
-                  <span className="font-bold tracking-wide text-[#27365a]">NEURA</span>
-                  <span className="text-slate-500">Consultora estratégica | Paraguay</span>
+                <footer className="no-imprimir mt-5 text-[11px]">
+                  {b.clientes_bandera.length > 0 ? (
+                  <p className="flex pb-3 items-center justify-center overflow-hidden text-center text-[10.5px] leading-[1.45] text-slate-500">
+                    <span className="line-clamp-2"><span className="font-bold uppercase tracking-[0.1em] text-[#27365a]">Confían en nosotros:</span> {b.clientes_bandera.join(" · ")}</span>
+                  </p>
+                ) : null}
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+                    <span className="font-bold tracking-wide text-[#27365a]">NEURA</span>
+                    <span className="text-slate-500">Consultora estratégica | Paraguay</span>
+                  </div>
                 </footer>
               </div>
             </div>
             {/* El pie del PDF: fijo al borde de abajo de cada página (ver estilos de impresión). */}
             <div className="pie-reserva" aria-hidden />
             <div className="pie-impreso">
-              <span className="font-bold tracking-wide text-[#27365a]">NEURA</span>
-              <span className="text-slate-500">Consultora estratégica | Paraguay</span>
+              {b.clientes_bandera.length > 0 ? (
+              <p className="pie-clientes flex items-center justify-center overflow-hidden text-center text-[10.5px] leading-[1.45] text-slate-500">
+                <span className="line-clamp-2"><span className="font-bold uppercase tracking-[0.1em] text-[#27365a]">Confían en nosotros:</span> {b.clientes_bandera.join(" · ")}</span>
+              </p>
+            ) : null}
+              <div className="pie-fila flex items-center justify-between">
+                <span className="font-bold tracking-wide text-[#27365a]">NEURA</span>
+                <span className="text-slate-500">Consultora estratégica | Paraguay</span>
+              </div>
             </div>
           </article>
         </div>

@@ -13,6 +13,7 @@ const PORTADAS: Record<string, Portada> = {
   "/clientes": { imagen: "/portadas/comercial/clientes-fichero-contactos.webp", color: T, posicion: "60% 25%" },
   "/crm": { imagen: "/portadas/comercial/crm-pizarra-notas-reunion.webp", color: A, posicion: "40% 30%" },
   "/gestion-clientes": { imagen: "/portadas/comercial/gestion-lista-llamadas-libreta.webp", color: V, posicion: "70% 40%" },
+  "/propuestas": { imagen: "/portadas/comercial/presupuestos-calculadora-notas.webp", color: M, posicion: "35% 72%" },
   "/comisiones": { imagen: "/portadas/comercial/presupuestos-calculadora-notas.webp", color: G, posicion: "60% 45%" },
   "/planes": { imagen: "/portadas/comercial/planes-calendario-mensual.webp", color: P, posicion: "50% 70%" },
   "/dashboard/agenda": { imagen: "/portadas/comercial/agenda-planificador-escribiendo.webp", color: C, posicion: "50% 40%" },

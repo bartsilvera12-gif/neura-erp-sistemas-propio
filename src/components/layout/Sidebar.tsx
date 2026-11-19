@@ -65,6 +65,7 @@ import { getFavoritos, toggleFavorito } from "@/lib/favorites";
 import { canAccessSidebarSlug } from "@/lib/modulos/route-slug-map";
 import { useBoot } from "@/components/BootContext";
 import { hrefFamilia, publicarMenuVisible, type FamiliaMenu } from "@/lib/menu/menu-visible-store";
+import { puedeVerPropuestas } from "@/lib/propuestas/acceso";
 
 type MenuItem = {
   key: string;
@@ -208,6 +209,8 @@ const MENU_STRUCTURE: MenuItem[] = [
   { key: "planes", slug: "planes", label: "Planes", href: "/planes", icon: FileText },
   { key: "gestion-clientes", slug: "gestion-clientes", label: "Gestión Clientes", href: "/gestion-clientes", icon: Users },
   { key: "crm", slug: "crm", label: "CRM Funnel", href: "/crm", icon: Handshake },
+  // Propuestas: en prueba, visible solo para los correos de `puedeVerPropuestas` (no es un módulo de empresa).
+  { key: "propuestas", slug: "propuestas", label: "Propuestas", href: "/propuestas", icon: ScrollText },
   { key: "marketing", slug: "marketing", label: "Marketing Legacy", href: "/marketing", icon: Megaphone },
   { key: "marketing_ops", slug: "marketing_ops", label: "Marketing Ops", href: "/dashboard/marketing-ops", icon: Megaphone },
   {
@@ -335,7 +338,7 @@ const MENU_FAMILIES: { id: string; title: string; icon: IconoMenu; itemKeys: str
     id: "comercial",
     title: "Comercial",
     icon: Briefcase,
-    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos", "tableros"],
+    itemKeys: ["clientes", "crm", "gestion-clientes", "propuestas", "comisiones", "planes", "agenda", "proyectos", "tableros"],
   },
   {
     id: "finanzas",
@@ -397,13 +400,14 @@ function esItemVisible(
   if (item.key === "panel_control") {
     return esSuperAdmin || puedeEntrarAlPanelControl(email, rol, esTecnico);
   }
+  if (item.key === "propuestas") return puedeVerPropuestas(email);
   return access(item.slug);
 }
 
 function modulosSyntheticFromMenu(): ModuloEmpresa[] {
   // Panel de Control queda afuera: no es un módulo de empresa y su visibilidad
   // no depende de ser super admin, sino del correo habilitado.
-  return MENU_STRUCTURE.filter((item) => item.key !== "panel_control").map((item) => ({
+  return MENU_STRUCTURE.filter((item) => item.key !== "panel_control" && item.key !== "propuestas").map((item) => ({
     id: item.slug,
     nombre: item.label,
     slug: item.slug,
@@ -734,7 +738,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const hasAccess = (slug: string) =>
     slug === "panel_control"
       ? esSuperAdmin || puedeEntrarAlPanelControl(emailSesion, rolSesion, esTecnicoSesion)
-      : canAccessSidebarSlug(slug, modulosSlugs, esSuperAdmin);
+      : slug === "propuestas"
+        ? puedeVerPropuestas(emailSesion)
+        : canAccessSidebarSlug(slug, modulosSlugs, esSuperAdmin);
 
   const isActive = (slug: string, href: string) => {
     const p = pathname ?? "";

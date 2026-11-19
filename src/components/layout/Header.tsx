@@ -3,10 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, ChevronDown, HelpCircle, LogOut, Menu } from "lucide-react";
 import { hrefFamilia, useMenuVisible } from "@/lib/menu/menu-visible-store";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
+import { TEMAS, TEMA_POR_DEFECTO, elegirTema } from "@/lib/tema-color";
+import { useTema } from "@/lib/useTema";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import ChatPestanaBadge from "@/components/layout/ChatPestanaBadge";
 import GuardiasBoton from "@/components/layout/GuardiasBoton";
@@ -50,6 +52,7 @@ type HeaderProps = {
 export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const tema = useTema();
   const [usuario, setUsuario] = useState<HeaderUsuario | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -159,12 +162,44 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
           </button>
 
           <div
-            className={`absolute right-0 top-full mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg ${
+            className={`absolute right-0 top-full mt-1 w-60 rounded-lg border border-slate-200 bg-white py-1 shadow-lg ${
               userMenuOpen ? "block" : "hidden"
             }`}
           >
             <div className="border-b border-slate-200 px-4 py-2">
               <p className="truncate text-sm font-medium text-[#0F172A]">{dropdownName}</p>
+            </div>
+            <div className="border-b border-slate-200 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">Color del sistema</p>
+              <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Color del sistema">
+                {TEMAS.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={tema === t.id}
+                    aria-label={t.nombre}
+                    title={t.nombre}
+                    onClick={() => elegirTema(t.id)}
+                    className={`flex h-6 w-6 items-center justify-center rounded-full ring-offset-2 transition-transform hover:scale-110 ${
+                      tema === t.id ? "ring-2 ring-slate-400" : ""
+                    }`}
+                    style={{ backgroundColor: t.muestra }}
+                  >
+                    {tema === t.id ? <Check aria-hidden className="h-3.5 w-3.5 text-white" /> : null}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-snug text-slate-400">Solo cambia en este navegador.</p>
+              {tema !== TEMA_POR_DEFECTO ? (
+                <button
+                  type="button"
+                  onClick={() => elegirTema(TEMA_POR_DEFECTO)}
+                  className="mt-2 text-[12px] font-semibold text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-900"
+                >
+                  Volver al color original
+                </button>
+              ) : null}
             </div>
             <button
               type="button"

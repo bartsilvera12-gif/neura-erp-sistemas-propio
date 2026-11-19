@@ -6,6 +6,7 @@ import DeviceRouter from "../shared/device/DeviceRouter";
 import SWRPersistedProvider from "../shared/swr/SWRPersistedProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import AuthGuard from "../components/AuthGuard";
+import { SCRIPT_TEMA } from "../lib/tema-color";
 import "./globals.css";
 
 /**
@@ -55,6 +56,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" translate="no" className="notranslate" suppressHydrationWarning>
+      <head>
+        {/* Color elegido por la persona: se aplica antes de pintar (ver lib/tema-color). */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA }} />
+      </head>
       <body className={`${plusJakarta.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
           <SWRPersistedProvider>

@@ -216,3 +216,80 @@ html:has(#neura-app-shell) body {
     animation-duration: 1ms;
   }
 }
+
+/**
+ * Color del ERP por persona. Las clases con el turquesa de marca salen de estas variables
+ * (las convierte postcss-tema.cjs). Por defecto valen el color de siempre; `data-tema` en <html>
+ * las cambia (lo elige cada uno en su menú de usuario; se guarda en su navegador).
+ * Cada color alternativo es el mismo juego de tonos con otro matiz.
+ */
+:root {
+  --tema-rgb: 79 174 178;
+  --tema-fuerte-rgb: 63 142 145;
+  --tema-oscuro-rgb: 47 110 113;
+  --tema-claro-rgb: 125 207 210;
+  --tema-lateral-rgb: 34 78 85;
+  --tema-lateral-alto-rgb: 40 92 98;
+  --tema-fondo-rgb: 11 58 61;
+  --tema-fondo-alto-rgb: 16 74 78;
+}
+:root[data-tema="azul"] {
+  --tema-rgb: 72 121 185;
+  --tema-fuerte-rgb: 57 98 151;
+  --tema-oscuro-rgb: 42 75 118;
+  --tema-claro-rgb: 119 161 216;
+  --tema-lateral-rgb: 30 56 89;
+  --tema-lateral-alto-rgb: 36 65 102;
+  --tema-fondo-rgb: 7 32 65;
+  --tema-fondo-alto-rgb: 11 42 83;
+}
+:root[data-tema="violeta"] {
+  --tema-rgb: 114 74 183;
+  --tema-fuerte-rgb: 92 59 149;
+  --tema-oscuro-rgb: 70 44 116;
+  --tema-claro-rgb: 155 121 214;
+  --tema-lateral-rgb: 52 31 88;
+  --tema-lateral-alto-rgb: 60 37 101;
+  --tema-fondo-rgb: 29 8 64;
+  --tema-fondo-alto-rgb: 38 13 81;
+}
+:root[data-tema="rosa"] {
+  --tema-rgb: 185 72 117;
+  --tema-fuerte-rgb: 151 57 95;
+  --tema-oscuro-rgb: 118 42 72;
+  --tema-claro-rgb: 216 119 158;
+  --tema-lateral-rgb: 89 30 54;
+  --tema-lateral-alto-rgb: 102 36 62;
+  --tema-fondo-rgb: 65 7 30;
+  --tema-fondo-alto-rgb: 83 11 40;
+}
+:root[data-tema="verde"] {
+  --tema-rgb: 79 178 132;
+  --tema-fuerte-rgb: 63 145 107;
+  --tema-oscuro-rgb: 47 113 82;
+  --tema-claro-rgb: 125 210 170;
+  --tema-lateral-rgb: 34 85 61;
+  --tema-lateral-alto-rgb: 40 98 71;
+  --tema-fondo-rgb: 11 61 38;
+  --tema-fondo-alto-rgb: 16 78 49;
+}
+:root[data-tema="naranja"] {
+  --tema-rgb: 200 114 57;
+  --tema-fuerte-rgb: 163 92 45;
+  --tema-oscuro-rgb: 128 70 32;
+  --tema-claro-rgb: 229 155 106;
+  --tema-lateral-rgb: 96 52 23;
+  --tema-lateral-alto-rgb: 111 61 27;
+  --tema-fondo-rgb: 72 29 0;
+  --tema-fondo-alto-rgb: 92 38 2;
+}
+:root[data-tema="grafito"] {
+  --tema-rgb: 118 127 139;
+  --tema-fuerte-rgb: 95 102 113;
+  --tema-oscuro-rgb: 73 79 87;
+  --tema-claro-rgb: 158 166 177;
+  --tema-lateral-rgb: 54 59 65;
+  --tema-lateral-alto-rgb: 63 68 75;
+  --tema-fondo-rgb: 31 35 41;
+  --tema-fondo-alto-rgb: 40 46 54;
+}

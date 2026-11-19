@@ -273,16 +273,34 @@ export default function PropuestasPage() {
 
   return (
     <div className="space-y-5 pb-10">
+      {/*
+        Impresión (el PDF). Dos cosas que importan:
+        · La hoja tiene que FLUIR por las páginas: nada de `position: fixed` (lo que no entra en la
+          primera página se cortaba). Se esconde todo lo que no es la hoja y a sus contenedores se
+          les saca el alto fijo y el recorte.
+        · Los campos de texto no se imprimen: se imprime su texto en elementos comunes
+          (.solo-imprimir). Un campo no parte renglones y, además, una regla global los fuerza a
+          16 px en anchos chicos, que es el ancho de una hoja: por eso el título salía chiquito.
+      */}
       <style>{`
+        .solo-imprimir, .solo-imprimir-linea { display: none; }
         @media print {
-          @page { size: A4; margin: 0; }
-          body * { visibility: hidden !important; }
-          #propuesta-hoja, #propuesta-hoja * { visibility: visible !important; }
-          #propuesta-hoja { position: fixed !important; inset: 0 !important; width: 210mm !important; max-width: none !important; min-height: 297mm !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          #propuesta-hoja > div:last-child { min-height: calc(297mm - 10px) !important; }
-          #propuesta-hoja input, #propuesta-hoja textarea { border-color: transparent !important; box-shadow: none !important; background: transparent !important; }
-          #propuesta-hoja ::placeholder { color: transparent !important; }
+          @page { size: A4; margin: 12mm 0 0 0; }
+          @page :first { margin: 0; }
+          html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+          body *:not(:has(#propuesta-hoja)):not(#propuesta-hoja):not(#propuesta-hoja *) { display: none !important; }
+          *:has(#propuesta-hoja) { display: block !important; position: static !important; overflow: visible !important; height: auto !important; max-height: none !important; min-height: 0 !important; width: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important; transform: none !important; box-shadow: none !important; background: #fff !important; }
+          #propuesta-hoja { width: 210mm !important; max-width: none !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          #propuesta-hoja > div:last-child { min-height: 290mm !important; }
+          /* Cada pieza entera en una página; y precios, condiciones, clientes y pie viajan juntos:
+             si no entran, pasan todos a la página siguiente (nunca queda el pie solo). */
+          #propuesta-hoja li, #propuesta-hoja .propuesta-cierre { break-inside: avoid; }
+          /* Un poco más apretado que en pantalla, para que una propuesta normal entre en una hoja. */
+          #propuesta-hoja ol > li { padding-top: 11px !important; padding-bottom: 11px !important; }
+          #propuesta-hoja .propuesta-cierre { padding-top: 18px !important; }
           .no-imprimir { display: none !important; }
+          .solo-imprimir { display: block !important; }
+          .solo-imprimir-linea { display: inline !important; }
         }
       `}</style>
 
@@ -432,9 +450,11 @@ export default function PropuestasPage() {
 
               <div className="mt-5">
                 <input value={b.titulo} onChange={(e) => cambiar({ titulo: e.target.value })} placeholder="Título de la propuesta" aria-label="Título de la propuesta"
-                  className={`${campo} -mx-2 px-2 py-1 text-[26px] font-bold leading-tight text-[#27365a]`} />
+                  className={`${campo} no-imprimir -mx-2 px-2 py-1 text-[26px] font-bold leading-tight text-[#27365a]`} />
+                <h1 className="solo-imprimir text-[26px] font-bold leading-tight text-[#27365a]">{b.titulo}</h1>
                 <input value={b.bajada} onChange={(e) => cambiar({ bajada: e.target.value })} placeholder="Una línea que resuma la solución" aria-label="Bajada de la propuesta"
-                  className={`${campo} -mx-2 mt-0.5 px-2 py-1 text-[13px] text-slate-500`} />
+                  className={`${campo} no-imprimir -mx-2 mt-0.5 px-2 py-1 text-[13px] text-slate-500`} />
+                {b.bajada ? <p className="solo-imprimir mt-2 text-[13px] text-slate-500">{b.bajada}</p> : null}
               </div>
 
               <div className="mt-6 flex items-center gap-3">
@@ -469,7 +489,7 @@ export default function PropuestasPage() {
                 </li>
               </ol>
 
-              <div className="mt-auto pt-8">
+              <div className="propuesta-cierre mt-auto pt-8">
                 {/* Un precio vacío no sale en el PDF; sin ninguno, tampoco el bloque. */}
                 <section className={`grid grid-cols-2 rounded-2xl bg-[#27365a] px-8 py-7 text-white ${b.inversion_total === null && b.cuota_mensual === null ? "no-imprimir" : ""}`}>
                   <div className={`pr-6 ${b.inversion_total === null ? "no-imprimir" : ""}`}>
@@ -477,7 +497,8 @@ export default function PropuestasPage() {
                     <p className="mt-3 flex items-baseline gap-2 text-[26px] font-bold">
                       <span>G.</span>
                       <input inputMode="numeric" value={miles(b.inversion_total)} onChange={(e) => { const d = soloDigitos(e.target.value); cambiar({ inversion_total: d ? Number(d) : null }); }} placeholder="0" aria-label="Inversión total en guaraníes"
-                        className="w-full min-w-0 rounded-lg border border-transparent bg-transparent px-1 font-bold outline-none placeholder:text-white/30 hover:border-white/20 focus:border-white/50" />
+                        className="no-imprimir w-full min-w-0 rounded-lg border border-transparent bg-transparent px-1 font-bold outline-none placeholder:text-white/30 hover:border-white/20 focus:border-white/50" />
+                      <span className="solo-imprimir-linea">{miles(b.inversion_total)}</span>
                     </p>
                     <p className="mt-3 text-[12px] text-slate-200">Pago único por el proyecto</p>
                   </div>
@@ -486,14 +507,16 @@ export default function PropuestasPage() {
                     <p className="mt-3 flex items-baseline gap-2 text-[26px] font-bold">
                       <span>G.</span>
                       <input inputMode="numeric" value={miles(b.cuota_mensual)} onChange={(e) => { const d = soloDigitos(e.target.value); cambiar({ cuota_mensual: d ? Number(d) : null }); }} placeholder="0" aria-label="Cuota mensual en guaraníes"
-                        className="w-full min-w-0 rounded-lg border border-transparent bg-transparent px-1 font-bold outline-none placeholder:text-white/30 hover:border-white/20 focus:border-white/50" />
+                        className="no-imprimir w-full min-w-0 rounded-lg border border-transparent bg-transparent px-1 font-bold outline-none placeholder:text-white/30 hover:border-white/20 focus:border-white/50" />
+                      <span className="solo-imprimir-linea">{miles(b.cuota_mensual)}</span>
                     </p>
                     <p className="mt-3 text-[12px] text-slate-200">Abono mensual</p>
                   </div>
                 </section>
 
                 <textarea value={b.condiciones} onChange={(e) => cambiar({ condiciones: e.target.value })} rows={2} aria-label="Condiciones"
-                  className={`${campo} -mx-2 mt-4 resize-none px-2 py-1 text-[11px] leading-relaxed text-slate-500`} />
+                  className={`${campo} no-imprimir -mx-2 mt-4 resize-none px-2 py-1 text-[11px] leading-relaxed text-slate-500`} />
+                {b.condiciones ? <p className="solo-imprimir mt-4 whitespace-pre-line text-[11px] leading-relaxed text-slate-500">{b.condiciones}</p> : null}
 
                 {/* Clientes bandera: se eligen de los clientes cargados o se escriben. Sin ninguno, no sale en el PDF. */}
                 <section className={`mt-4 ${b.clientes_bandera.length === 0 ? "no-imprimir" : ""}`}>

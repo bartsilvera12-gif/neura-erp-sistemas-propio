@@ -26,7 +26,7 @@ export type TipoDePrueba =
  * Codebase del proyecto. Lo asignamos explícitamente por slug — NO por dominio:
  * dos ERPs distintos pueden compartir TLD y no compartir código.
  */
-export type CodebaseProyecto = "sistemas-propio" | "erp-neura" | "fake-app" | "otro";
+export type CodebaseProyecto = "sistemas-propio" | "erp-neura" | "fake-app" | "acaihouse" | "otro";
 
 /**
  * Mapa de slug → codebase. Única fuente de verdad de la compatibilidad.
@@ -39,6 +39,10 @@ export const CODEBASE_POR_SLUG: Readonly<Record<string, CodebaseProyecto>> = {
   "demo-fake-app": "fake-app",
   // ERPs de cliente del codebase neura-erp:
   "erp-roldan-pendiente-entrega": "erp-neura",
+  // Açaí House: schema `acaihouse` existe en Supabase prod y init-sql clona el
+  // DDL a la DB QA efímera. El slug canónico del proyecto en qa_center es
+  // `acai-house` (con guion). Si el row usa otro slug, agregar la línea.
+  "acai-house": "acaihouse",
   // Fixture aislada para verificar runner end-to-end:
   "qa-fixture-app": "erp-neura",
 };

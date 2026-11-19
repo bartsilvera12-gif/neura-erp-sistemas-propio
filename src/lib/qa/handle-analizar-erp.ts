@@ -119,9 +119,11 @@ export async function handleInteractuarAgente(
   if (!project) {
     return { ok: false, status: 404, body: { error: "proyecto no existe", code: "not_found" } };
   }
-  if (project.estado_entrega === "entregado") {
-    return { ok: false, status: 403, body: { error: "proyecto entregado — bloqueado", code: "project_delivered" } };
-  }
+  // NOTA: no bloqueamos por `estado_entrega === "entregado"`. El sandbox corre
+  // en una copia efímera (postgres aparte + app recién clonada); un ERP
+  // entregado también debe poder probarse para regresiones y verificar fixes.
+  // Las protecciones reales (no tocar schema prod, no escribir contra real
+  // base) viven en el runner: allowlist de hosts sandbox + aislamiento DB.
   if (!project.target_base_url || project.target_base_url.length === 0) {
     return { ok: false, status: 400, body: { error: "el proyecto no tiene target_base_url — necesario para el agente interactivo", code: "target_missing" } };
   }

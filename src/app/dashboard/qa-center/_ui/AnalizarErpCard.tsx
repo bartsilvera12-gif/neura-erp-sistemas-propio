@@ -48,13 +48,14 @@ export type AnalizarErpCardProps = {
 
 export default function AnalizarErpCard(props: AnalizarErpCardProps) {
   const [cargando, setCargando] = useState(false);
+  const [cargandoInteraccion, setCargandoInteraccion] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
-  async function analizar(): Promise<void> {
-    setCargando(true); setErr(null); setOk(null);
+  async function dispararEndpoint(endpoint: string, setLoading: (b: boolean) => void): Promise<void> {
+    setLoading(true); setErr(null); setOk(null);
     try {
-      const res = await fetch(`/api/qa/analizar-erp/${props.projectId}`, {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientRequestId: `ui-${Date.now()}` }),
@@ -71,9 +72,12 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "error de red");
     } finally {
-      setCargando(false);
+      setLoading(false);
     }
   }
+
+  const analizar = () => dispararEndpoint(`/api/qa/analizar-erp/${props.projectId}`, setCargando);
+  const interactuar = () => dispararEndpoint(`/api/qa/interactuar-agente/${props.projectId}`, setCargandoInteraccion);
 
   const totalesDiscovery = props.lastDiscovery?.totales ?? null;
 
@@ -104,6 +108,28 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
       </div>
       {err && <p className="mt-2 text-xs text-rose-700">Error: {err}</p>}
       {ok && <p className="mt-2 text-xs text-emerald-700">{ok}</p>}
+
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border-2 border-amber-200 bg-amber-50/70 p-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+            Agente interactivo · sandbox efímero
+          </p>
+          <p className="mt-0.5 text-xs text-slate-700">
+            Levanta una copia temporal (postgres + app) y el agente navega la UI
+            con Playwright: altas, ventas, caja, inventario. Base ficticia; nunca
+            toca producción. Funciona para proyectos en desarrollo y entregados;
+            requiere <code>target_base_url</code> cargado.
+          </p>
+        </div>
+        <button
+          onClick={() => void interactuar()}
+          disabled={cargandoInteraccion || cargando}
+          data-testid={`btn-interactuar-${props.projectSlug}`}
+          className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
+        >
+          {cargandoInteraccion ? "Encolando…" : "Ejecutar sandbox"}
+        </button>
+      </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
         <div className="rounded border bg-white p-2">

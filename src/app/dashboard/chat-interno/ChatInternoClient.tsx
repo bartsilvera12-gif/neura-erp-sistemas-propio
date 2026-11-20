@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   FileType,
   FileVideo,
+  Pause,
   Play,
   Crown,
   UserMinus,
@@ -202,39 +203,10 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
  * que el blanco de los globos se lea como blanco. Va en un `data:` URI para no
  * sumar un pedido de red por una textura.
  */
-/**
- * Trama del fondo: una retícula de puntos muy finos.
- *
- * Antes eran iconitos de chat. Cumplían, pero un dibujo reconocible pide ser
- * mirado, y el fondo de una conversación no es para mirarlo: es para que el
- * blanco de los globos tenga contra qué apoyarse. Un punto no representa nada,
- * así que da textura sin robar atención.
- */
-const TRAMA_PUNTOS =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Ccircle cx='1.5' cy='1.5' r='1.1' fill='%232F6E71' fill-opacity='0.13'/%3E%3C/svg%3E\")";
-
-/**
- * El fondo completo: dos halos de marca muy tenues sobre un gris cálido, con
- * la trama encima.
- *
- * Los halos son lo que evita que se vea plano —le dan profundidad sin dibujar
- * nada— y van al 8 %, por debajo del umbral en que un fondo empieza a competir
- * con lo que tiene delante. Todo va en `data:` URI y gradientes: ni un pedido
- * de red por la decoración.
- *
- * El contenedor tiene scroll, así que el fondo queda quieto mientras los
- * mensajes pasan por encima: si se moviera con ellos, marearía.
- */
+/** El fondo de la conversación. */
 const ESTILO_FONDO: React.CSSProperties = {
-  backgroundColor: "#F1F5F4",
-  backgroundImage: [
-    "radial-gradient(70% 55% at 15% 10%, rgba(79,174,178,0.16), rgba(79,174,178,0) 70%)",
-    "radial-gradient(60% 50% at 88% 85%, rgba(47,110,113,0.13), rgba(47,110,113,0) 72%)",
-    TRAMA_PUNTOS,
-    "linear-gradient(160deg, #F6F9F8 0%, #EFF4F3 55%, #E9F0EF 100%)",
-  ].join(", "),
-  backgroundRepeat: "no-repeat, no-repeat, repeat, no-repeat",
-  backgroundSize: "auto, auto, 22px 22px, cover",
+  // Liso, sin degradados ni trama: lo que importa es lo que está escrito encima.
+  backgroundColor: "#F3F5F5",
 };
 
 /** Verde muy claro para lo propio, igual que en los chats de siempre. */
@@ -403,6 +375,130 @@ function Visto({
   );
 }
 
+const mmss = (seg: number) => {
+  const s = Math.max(0, Math.floor(seg));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+const VELOCIDADES = [1, 1.5, 2];
+
+/** 36 alturas (0–1) sacadas del texto: siempre las mismas para el mismo audio. */
+function alturasDeBarras(semilla: string): number[] {
+  let h = 2166136261;
+  for (let i = 0; i < semilla.length; i++) h = Math.imul(h ^ semilla.charCodeAt(i), 16777619);
+  const alturas: number[] = [];
+  for (let i = 0; i < 36; i++) {
+    h = Math.imul(h ^ (h >>> 13), 1274126177) + i;
+    const r = ((h >>> 0) % 1000) / 1000;
+    alturas.push(0.28 + 0.72 * Math.abs(Math.sin(i * 0.55 + r * 2.4)) * (0.55 + 0.45 * r));
+  }
+  return alturas;
+}
+
+/**
+ * Un audio dentro del globo: botón de reproducir, barritas que se van pintando con el avance
+ * (se puede tocar en cualquier punto para saltar ahí), el tiempo y la velocidad. Reemplaza al
+ * reproductor del navegador, que es gris, ancho y distinto en cada uno.
+ */
+function AudioMensaje({ src }: { src: string }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [sonando, setSonando] = useState(false);
+  const [t, setT] = useState(0);
+  const [dur, setDur] = useState(0);
+  const [vel, setVel] = useState(0);
+
+  // Alturas de las barritas: salen de la dirección del audio, así cada uno tiene su dibujo y
+  // es siempre el mismo (no es la onda real: no se descarga ni se analiza el archivo).
+  const barras = useMemo(() => alturasDeBarras(src), [src]);
+
+  const avance = dur > 0 ? Math.min(1, t / dur) : 0;
+
+  const alternar = () => {
+    const a = ref.current;
+    if (!a) return;
+    if (a.paused) void a.play().catch(() => setSonando(false));
+    else a.pause();
+  };
+
+  const saltar = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = ref.current;
+    if (!a || !(dur > 0)) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    a.currentTime = Math.min(dur, Math.max(0, ((e.clientX - r.left) / r.width) * dur));
+    setT(a.currentTime);
+  };
+
+  const cambiarVelocidad = () => {
+    const sig = (vel + 1) % VELOCIDADES.length;
+    setVel(sig);
+    if (ref.current) ref.current.playbackRate = VELOCIDADES[sig];
+  };
+
+  // Los audios grabados en el navegador a veces no traen su duración hasta sonar un rato.
+  const tomarDuracion = () => {
+    const d = ref.current?.duration ?? 0;
+    if (Number.isFinite(d) && d > 0) setDur(d);
+  };
+
+  return (
+    <div className="flex w-[270px] max-w-full items-center gap-2.5 py-0.5">
+      <audio
+        ref={ref}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={tomarDuracion}
+        onDurationChange={tomarDuracion}
+        onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
+        onPlay={() => setSonando(true)}
+        onPause={() => setSonando(false)}
+        onEnded={() => { setSonando(false); setT(0); }}
+        className="hidden"
+      />
+      <button
+        type="button"
+        onClick={alternar}
+        aria-label={sonando ? "Pausar audio" : "Reproducir audio"}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FAEB2] text-white shadow-sm transition hover:bg-[#3F8E91] active:scale-95"
+      >
+        {sonando ? <Pause className="h-[18px] w-[18px] fill-white" /> : <Play className="ml-0.5 h-[18px] w-[18px] fill-white" />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div
+          onClick={saltar}
+          role="slider"
+          aria-label="Avance del audio"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(dur)}
+          aria-valuenow={Math.round(t)}
+          tabIndex={-1}
+          className={`flex h-7 items-center gap-[2px] ${dur > 0 ? "cursor-pointer" : ""}`}
+        >
+          {barras.map((alto, i) => (
+            <span
+              key={i}
+              className={`w-[3px] flex-1 rounded-full transition-colors ${(i + 0.5) / barras.length <= avance ? "bg-[#3F8E91]" : "bg-slate-400/45"}`}
+              style={{ height: `${Math.round(alto * 100)}%` }}
+            />
+          ))}
+        </div>
+        <div className="mt-0.5 flex items-center justify-between text-[10.5px] tabular-nums text-slate-500">
+          <span>{sonando || t > 0 ? mmss(t) : dur > 0 ? mmss(dur) : "Audio"}</span>
+          {dur > 0 && (sonando || t > 0) ? <span>{mmss(dur)}</span> : null}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={cambiarVelocidad}
+        title="Velocidad"
+        aria-label={`Velocidad ${VELOCIDADES[vel]}x`}
+        className="shrink-0 rounded-full bg-black/[0.06] px-2 py-1 text-[10.5px] font-bold tabular-nums text-slate-600 transition hover:bg-black/10"
+      >
+        {VELOCIDADES[vel]}x
+      </button>
+    </div>
+  );
+}
+
 /**
  * Un adjunto dentro del globo.
  *
@@ -422,21 +518,23 @@ function Adjuntito({
   const tipo = tipoDe(a);
 
   if (tipo === "audio" && a.url) {
-    return <audio controls src={a.url} className="h-9 w-60 max-w-full" />;
+    return <AudioMensaje src={a.url} />;
   }
 
   if ((tipo === "imagen" || tipo === "video") && a.url) {
     return (
       // Las acciones aparecen encima al pasar el mouse, para no tapar la
       // imagen mientras se la mira.
-      <div className="group/img relative inline-block">
+      <div className="group/img relative inline-block overflow-hidden rounded-xl align-top">
         <button type="button" onClick={onVer} title="Ver más grande" className="block">
           {tipo === "imagen" ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={a.url}
               alt={a.nombre}
-              className="max-h-64 cursor-zoom-in rounded-lg border border-black/5"
+              // Fondo blanco: una imagen con transparencia (un logo, un recorte) no deja ver el
+              // color del globo por detrás.
+              className="block max-h-72 w-auto max-w-full cursor-zoom-in rounded-xl bg-white object-contain sm:max-w-[320px]"
             />
           ) : (
             <span className="relative block">
@@ -445,7 +543,7 @@ function Adjuntito({
                 // Sin `preload` el recuadro sale negro: hace falta el primer
                 // fotograma para que se entienda qué video es.
                 preload="metadata"
-                className="max-h-64 rounded-lg border border-black/5"
+                className="block max-h-72 max-w-full rounded-xl bg-black sm:max-w-[320px]"
               />
               <span className="absolute inset-0 flex items-center justify-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/55 text-white backdrop-blur-sm">
@@ -481,12 +579,12 @@ function Adjuntito({
   const { Icono, color, fondo } = pintaDeArchivo(a);
   const abrible = seVeEnGrande(a) && !!a.url;
   return (
-    <div className="flex min-w-[230px] items-center gap-2.5 rounded-lg bg-slate-50 px-2 py-2 text-[12px]">
+    <div className="flex min-w-[240px] items-center gap-2.5 rounded-xl border border-black/[0.06] bg-white px-2.5 py-2 text-[12px] shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
       <button
         type="button"
         onClick={abrible ? onVer : onDescargar}
         title={abrible ? "Ver" : "Descargar"}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
         style={{ background: fondo, color }}
       >
         <Icono className="h-[18px] w-[18px]" />
@@ -566,6 +664,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   const [texto, setTexto] = useState("");
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
+  /** Miniaturas locales de las imágenes por enviar (path → dirección del archivo en la máquina). */
+  const [previas, setPrevias] = useState<Record<string, string>>({});
   /** Mensaje que se está respondiendo, o `null`. */
   const [citando, setCitando] = useState<Mensaje | null>(null);
   /** Mensaje en edición: su id y el texto en curso. */
@@ -1177,7 +1277,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           setErr(j.error ?? `No se pudo subir "${f.name}"`);
           continue;
         }
-        setAdjuntos((prev) => [...prev, j.data as Adjunto]);
+        const subido = j.data as Adjunto;
+        // Miniatura de lo que se está por enviar: sale del archivo local, sin pedir nada a la red.
+        if (f.type.startsWith("image/")) {
+          const local = URL.createObjectURL(f);
+          setPrevias((prev) => ({ ...prev, [subido.path]: local }));
+        }
+        setAdjuntos((prev) => [...prev, subido]);
       }
     } finally {
       setSubiendo(false);
@@ -1827,7 +1933,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       >
         {/* Mi perfil. La foto se cambia acá porque acá es donde uno se ve
             como lo ven los demás. */}
-        <div className="flex items-center gap-2.5 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-3 py-2.5">
+        <div className="flex items-center gap-2.5 border-b border-[#4FAEB2]/15 bg-white px-3 py-2.5">
           <button
             type="button"
             onClick={() => fotoRef.current?.click()}
@@ -1936,7 +2042,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   onClick={() => setSalaId(s.id)}
                   className={`flex w-full items-center gap-3 border-b border-[#4FAEB2]/10 px-3.5 py-3 text-left transition-colors ${
                     activa
-                      ? "bg-gradient-to-r from-[#4FAEB2] to-[#3E9B9F] text-white"
+                      ? "bg-[#4FAEB2] text-white"
                       : "hover:bg-[#4FAEB2]/8"
                   }`}
                 >
@@ -2054,7 +2160,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           </div>
         ) : (
           <>
-            <header className="flex items-center gap-3 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-3 py-2.5 sm:px-4">
+            <header className="flex items-center gap-3 border-b border-[#4FAEB2]/15 bg-white px-3 py-2.5 sm:px-4">
               {mobile ? (
                 <button
                   type="button"
@@ -2292,7 +2398,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         ) : null}
                         <div
                           style={m.propio ? { background: BURBUJA_PROPIA } : undefined}
-                          className={`relative max-w-[78%] rounded-xl px-3.5 py-2 text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
+                          // Un mensaje que es solo una foto o un video: casi sin margen, para que la
+                          // imagen llene el globo en vez de flotar adentro de un recuadro.
+                          className={`relative max-w-[78%] rounded-xl text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
+                            !m.texto && !m.cita && !m.eliminado && m.adjuntos.length > 0 && m.adjuntos.every((x) => { const t = tipoDe(x); return (t === "imagen" || t === "video") && !!x.url; })
+                              ? "p-1.5"
+                              : "px-3.5 py-2"
+                          } ${
                             Object.keys(m.reacciones).length > 0 ? "mb-4" : ""
                           } ${m.propio ? "" : "bg-white"}`}
                         >
@@ -2374,7 +2486,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             </>
                           )}
                           {!m.texto || m.eliminado || editando?.id === m.id ? (
-                            <div className="mt-0.5 text-right text-[11px] text-slate-400">
+                            <div className="mt-1 px-1 text-right text-[11px] text-slate-400">
                               {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
                               {m.pendiente ? "" : hora(m.created_at)}
                               {" "}
@@ -2526,23 +2638,41 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 </div>
               ) : null}
               {adjuntos.length > 0 ? (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {adjuntos.map((a) => (
-                    <span
-                      key={a.path}
-                      className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600"
-                    >
-                      <Paperclip className="h-3 w-3" />
-                      <span className="max-w-[160px] truncate">{a.nombre}</span>
-                      <button
-                        type="button"
-                        onClick={() => setAdjuntos((p) => p.filter((x) => x.path !== a.path))}
-                        aria-label={`Quitar ${a.nombre}`}
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {adjuntos.map((a) => {
+                    const previa = previas[a.path] ?? (tipoDe(a) === "imagen" ? a.url : null);
+                    const { Icono, color, fondo } = pintaDeArchivo(a);
+                    return (
+                      <span
+                        key={a.path}
+                        className="relative flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-8 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
                       >
-                        <X className="h-3 w-3 text-slate-400 hover:text-slate-700" />
-                      </button>
-                    </span>
-                  ))}
+                        {previa ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={previa} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-slate-100 object-cover" />
+                        ) : (
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ background: fondo, color }}>
+                            <Icono className="h-5 w-5" />
+                          </span>
+                        )}
+                        <span className="min-w-0">
+                          <span className="block max-w-[170px] truncate text-[12px] font-semibold text-slate-700">{a.nombre}</span>
+                          <span className="block text-[10.5px] uppercase text-slate-400">
+                            {(a.nombre.split(".").pop() ?? "").slice(0, 5)} · {pesoLegible(a.size_bytes)}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAdjuntos((p) => p.filter((x) => x.path !== a.path))}
+                          aria-label={`Quitar ${a.nombre}`}
+                          title="Quitar"
+                          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
               ) : null}
               {/* Una tarjeta grande con el clip a la izquierda y las acciones
@@ -2684,7 +2814,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             mobile ? "absolute inset-0 z-20" : "ml-3 w-80 shrink-0"
           }`}
         >
-          <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-white px-3 py-3">
+          <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-white px-3 py-3">
             <button
               type="button"
               onClick={() => setPanel(null)}

@@ -601,8 +601,12 @@ function Adjuntito({
           ) : (
             <span className="relative block">
               <video
-                src={a.url}
-                // Sin `preload` el recuadro sale negro: hace falta el primer
+                // `#t=1`: la miniatura es el cuadro del primer segundo. Muchos videos
+                // arrancan en blanco o en negro y el primer cuadro no dice nada.
+                src={`${a.url}#t=1`}
+                muted
+                playsInline
+                // Sin `preload` el recuadro sale negro: hace falta un
                 // fotograma para que se entienda qué video es.
                 preload="metadata"
                 className="block max-h-72 max-w-full rounded-xl bg-black sm:max-w-[320px]"
@@ -726,6 +730,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   const [texto, setTexto] = useState("");
   const [emojisAbierto, setEmojisAbierto] = useState(false);
+  /** Hay un archivo arrastrándose sobre la conversación. El contador evita el parpadeo al pasar por los hijos. */
+  const [arrastrando, setArrastrando] = useState(false);
+  const arrastreRef = useRef(0);
   /** Fondo de la conversación elegido por esta persona (liso, color o imagen propia). */
   const { estilo: estiloFondo } = useFondoChat();
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
@@ -1566,7 +1573,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       eliminado: false,
       propio: true,
       responde_a: responde?.id ?? null,
-      cita: responde ? { autor: responde.autor, texto: responde.texto } : null,
+      cita: responde
+        ? { autor: responde.autor, texto: responde.texto ?? (responde.adjuntos.length > 0 ? "📎 Archivo" : null) }
+        : null,
       autor_avatar: perfil?.avatar_url ?? null,
       reacciones: {},
       reacciones_nombres: {},
@@ -1754,6 +1763,24 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       }
       setPerfil((p) => (p ? { ...p, avatar_url: j.data?.avatar_url ?? null } : p));
       // La foto vieja sigue pegada en los mensajes ya cargados hasta releerlos.
+      if (salaId) void cargarMensajes(salaId, undefined, true);
+      void cargarSalas();
+    } finally {
+      setSubiendoFoto(false);
+    }
+  }
+
+  /** Saca mi foto de perfil: vuelvo a verme con las iniciales. */
+  async function quitarMiFoto() {
+    setSubiendoFoto(true);
+    try {
+      const r = await fetchWithSupabaseSession("/api/chat-interno/perfil", { method: "DELETE" });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) {
+        setErr(j.error ?? "No se pudo quitar la foto");
+        return;
+      }
+      setPerfil((p) => (p ? { ...p, avatar_url: null } : p));
       if (salaId) void cargarMensajes(salaId, undefined, true);
       void cargarSalas();
     } finally {
@@ -2130,6 +2157,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             >
               {perfil?.avatar_url ? "Cambiar foto" : "Poner una foto"}
             </button>
+            {perfil?.avatar_url ? (
+              <button
+                type="button"
+                onClick={() => void quitarMiFoto()}
+                disabled={subiendoFoto}
+                className="ml-2 text-[10.5px] text-slate-400 hover:text-rose-600 disabled:opacity-40"
+              >
+                Quitar foto
+              </button>
+            ) : null}
             {perfil?.cumple_disponible ? (
               <button
                 type="button"
@@ -2387,8 +2424,37 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
       {/* --- Conversación ------------------------------------------------------ */}
       <section
-        className={`${verConversacion ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]`}
+        onDragEnter={(e) => {
+          if (!salaActual || !e.dataTransfer?.types?.includes("Files")) return;
+          e.preventDefault();
+          arrastreRef.current += 1;
+          setArrastrando(true);
+        }}
+        onDragOver={(e) => {
+          // Sin esto el navegador abre el archivo en la pestaña y se pierde el chat.
+          if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+        }}
+        onDragLeave={() => {
+          arrastreRef.current = Math.max(0, arrastreRef.current - 1);
+          if (arrastreRef.current === 0) setArrastrando(false);
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer?.types?.includes("Files")) return;
+          e.preventDefault();
+          arrastreRef.current = 0;
+          setArrastrando(false);
+          const archivos = Array.from(e.dataTransfer.files ?? []).filter((f) => f.size > 0);
+          if (salaActual && archivos.length > 0) void subirArchivos(archivos);
+        }}
+        className={`${verConversacion ? "flex" : "hidden"} relative min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]`}
       >
+        {arrastrando ? (
+          <div className="pointer-events-none absolute inset-2 z-40 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#4FAEB2] bg-white/90 text-[#2F6E71]">
+            <Paperclip className="h-9 w-9" />
+            <p className="text-[16px] font-semibold">Soltá acá para adjuntar</p>
+            <p className="text-[12.5px] text-slate-500">Fotos, videos o archivos de hasta 25 MB</p>
+          </div>
+        ) : null}
         {!salaActual ? (
           <div
             className="flex flex-1 flex-col items-center justify-center px-8 text-center"
@@ -2882,7 +2948,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                       Respondiendo a {nombreCorto(citando.autor)}
                     </span>
                     <span className="line-clamp-2 text-[11px] text-slate-500">
-                      {citando.texto ?? "Archivo adjunto"}
+                      {citando.texto ?? "📎 Archivo"}
                     </span>
                   </div>
                   <button type="button" onClick={() => setCitando(null)} aria-label="Cancelar respuesta">

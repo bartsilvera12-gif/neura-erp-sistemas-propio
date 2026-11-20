@@ -6,6 +6,7 @@ import {
   nombreVisible,
   requireChatInterno,
   respuestaAuth,
+  etiquetaDeAdjuntos,
   quienesCumplenHoy,
 } from "@/lib/chat-interno/core";
 
@@ -15,28 +16,6 @@ export const runtime = "nodejs";
  * GET  — mis salas, con el último mensaje y cuántos no leí.
  * POST — crea un grupo, o abre la conversación directa con alguien.
  */
-/** Cómo se nombra en la bandeja un mensaje que sólo trae adjuntos: "🎤 Audio", "📷 Foto"… */
-function etiquetaDeAdjuntos(adj: unknown[]): string {
-  if (adj.length === 0) return "";
-  const tipos = adj.map((x) => {
-    const a = (x ?? {}) as { mime_type?: string | null; nombre?: string | null };
-    const mime = (a.mime_type ?? "").toLowerCase();
-    const nombre = (a.nombre ?? "").toLowerCase();
-    if (mime.startsWith("audio/")) return "audio";
-    if (mime.startsWith("image/")) return "foto";
-    if (mime.startsWith("video/")) return "video";
-    if (mime === "application/pdf" || nombre.endsWith(".pdf")) return "pdf";
-    return "archivo";
-  });
-  const uno = tipos.every((t) => t === tipos[0]) ? tipos[0] : "archivo";
-  const n = adj.length;
-  if (uno === "audio") return n > 1 ? `🎤 ${n} audios` : "🎤 Audio";
-  if (uno === "foto") return n > 1 ? `📷 ${n} fotos` : "📷 Foto";
-  if (uno === "video") return n > 1 ? `🎬 ${n} videos` : "🎬 Video";
-  if (uno === "pdf") return n > 1 ? `📄 ${n} PDF` : "📄 PDF";
-  return n > 1 ? `📎 ${n} archivos` : "📎 Archivo";
-}
-
 export async function GET(request: Request) {
   const auth = await requireChatInterno(request);
   if (!auth.ok) return respuestaAuth(auth);

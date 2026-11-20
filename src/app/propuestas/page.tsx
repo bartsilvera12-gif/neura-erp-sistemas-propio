@@ -64,7 +64,7 @@ export default function PropuestasPage() {
   const [b, setB] = useState<Borrador>(VACIO);
   const [sucio, setSucio] = useState(false);
   const [guardando, setGuardando] = useState(false);
-  const [sobre, setSobre] = useState<number | "fin" | null>(null);
+  const [sobre, setSobre] = useState<number | "fin" | "lista" | null>(null);
   const [editor, setEditor] = useState<{ id: string | null; seccion: string; titulo: string; descripcion: string } | null>(null);
   const [hoy, setHoy] = useState<Date | null>(null);
   const [banderaTexto, setBanderaTexto] = useState("");
@@ -370,7 +370,21 @@ export default function PropuestasPage() {
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(340px,430px)_minmax(0,1fr)]">
         {/* ── Catálogo de piezas ── */}
-        <aside className="no-imprimir overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-0 xl:max-h-[calc(100svh-7rem)] xl:overflow-y-auto">
+        {/* Soltar acá una pieza de la hoja la devuelve a la lista (la saca de la propuesta). */}
+        <aside
+          onDragOver={(e) => { if (arrastre.current?.tipo === "item") { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setSobre("lista"); } }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSobre((x) => (x === "lista" ? null : x)); }}
+          onDrop={(e) => {
+            const a = arrastre.current;
+            if (a?.tipo !== "item") return;
+            e.preventDefault();
+            arrastre.current = null;
+            setSobre(null);
+            cambiar({ piezas: b.piezas.filter((_, k) => k !== a.i) });
+          }}
+          className={`no-imprimir overflow-hidden rounded-2xl border bg-white shadow-sm transition-shadow xl:sticky xl:top-0 xl:max-h-[calc(100svh-7rem)] xl:overflow-y-auto ${sobre === "lista" ? "border-rose-300 ring-4 ring-rose-100" : "border-slate-200"}`}
+        >
+          {sobre === "lista" ? <p className="bg-rose-50 px-4 py-2 text-center text-xs font-semibold text-rose-600">Soltá acá para sacarla de la propuesta</p> : null}
           <div className="sticky top-0 z-10 space-y-3 border-b border-slate-100 bg-white/95 p-4 backdrop-blur">
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -425,7 +439,11 @@ export default function PropuestasPage() {
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                               {ya ? (
-                                <span title="Ya está en la propuesta" className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><Check className="h-4 w-4" /></span>
+                                <button type="button" onClick={() => cambiar({ piezas: b.piezas.filter((x) => x.pieza_id !== p.id) })} aria-label={`Quitar ${p.titulo} de la propuesta`} title="Ya está en la propuesta · tocá para quitarla"
+                                  className="group/ya mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 transition hover:bg-rose-50 hover:text-rose-600">
+                                  <Check className="h-4 w-4 group-hover/ya:hidden" />
+                                  <X className="hidden h-4 w-4 group-hover/ya:block" />
+                                </button>
                               ) : (
                                 <button type="button" onClick={() => agregar(p)} aria-label={`Agregar ${p.titulo} a la propuesta`} title="Agregar a la propuesta"
                                   className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#4FAEB2] text-white shadow-sm transition hover:bg-[#3F8E91]">
@@ -504,7 +522,7 @@ export default function PropuestasPage() {
                       {p.descripcion ? <span className="mt-1 block text-[12px] leading-snug text-slate-500">{p.descripcion}</span> : null}
                     </span>
                     <button type="button" onClick={() => cambiar({ piezas: b.piezas.filter((_, k) => k !== i) })} aria-label={`Quitar ${p.titulo}`} title="Quitar de la propuesta"
-                      className="no-imprimir inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 focus:opacity-100 group-hover/item:opacity-100">
+                      className="no-imprimir inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600">
                       <X className="h-4 w-4" />
                     </button>
                   </li>

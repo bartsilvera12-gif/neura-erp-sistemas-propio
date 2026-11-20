@@ -2355,6 +2355,13 @@ export function ConversacionesClient({
           last_message_at: createdAt,
           last_message_preview: preview ?? cur.last_message_preview,
           unread_count: bumpUnread ? (cur.unread_count ?? 0) + 1 : cur.unread_count,
+          // De quién es el turno, con la misma regla que usa el servidor al cargar la lista: lo
+          // decide quién mandó el último mensaje. Sin esto el fueguito quedaba pegado cuando el
+          // que contestaba era un envío automático (el aviso de ticket creado), porque nadie
+          // volvía a pedir la lista; y al revés, el azul quedaba pegado si escribía el cliente.
+          last_message_from_me: fromMe,
+          awaiting_agent_reply_since: fromMe ? null : (cur.awaiting_agent_reply_since ?? createdAt),
+          awaiting_client_reply_since: fromMe ? createdAt : null,
         };
         next.sort((a, b) => {
           const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;

@@ -971,7 +971,7 @@ function colaCortaLista(nombre: string): string {
   const n = nombre.trim();
   if (/^atenci[oó]n\s+al\s+cliente$/i.test(n)) return "ATC";
   const cap = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
-  if (n.length <= 9) return cap(n);
+  if (n.length <= 22) return cap(n);
   return cap(n.split(/\s+/)[0]);
 }
 
@@ -4157,22 +4157,17 @@ export function ConversacionesClient({
                         ) : null}
                         {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                       </p>
-                      {/* Renglón de datos: estado | cola | quién atiende. Una sola línea, sin pastillas de más. */}
+                      {/* Renglón de datos: cola | quién atiende. El estado (abierta/pendiente) se sacó: no decía quién debía responder. */}
                       <div className="mt-1.5 flex min-w-0 items-center gap-2 text-[11px] text-slate-500">
-                        <span className={`${CHIP_LISTA} shrink-0 ${chipEstadoLista(c.status).caja}`}>
-                          <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${chipEstadoLista(c.status).punto}`} />
-                          {labelEstado(c.status)}
-                        </span>
                         {c.queue_name ? (
                           <>
-                            <span aria-hidden="true" className="h-3 w-px shrink-0 bg-slate-200" />
                             <span className="inline-flex min-w-0 shrink-0 max-w-[45%] items-center gap-1" title={`Cola: ${c.queue_name}`}>
                               <Headset className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
                               <span className="truncate">{colaCortaLista(c.queue_name)}</span>
                             </span>
+                            <span aria-hidden="true" className="h-3 w-px shrink-0 bg-slate-200" />
                           </>
                         ) : null}
-                        <span aria-hidden="true" className="h-3 w-px shrink-0 bg-slate-200" />
                         {c.assigned_agent_name ? (
                           <span className="inline-flex min-w-0 items-center gap-1" title={`Agente asignado: ${c.assigned_agent_name}`}>
                             <UserRound className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />

@@ -2392,7 +2392,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             de una misma intervención. En lo propio no va: ya se
                             sabe de quién es, y ocupa lugar. */}
                         {!m.propio ? (
-                          <span className={`self-end ${seguido ? "invisible" : ""}`}>
+                          // En un audio la foto va a media altura, al lado del botón de reproducir;
+                          // en el resto, abajo, pegada a la última línea del mensaje.
+                          <span className={`${!m.texto && !m.eliminado && m.adjuntos.length > 0 && m.adjuntos.every((x) => tipoDe(x) === "audio") ? "self-center" : "self-end"} ${seguido ? "invisible" : ""}`}>
                             <Avatar nombre={m.autor} url={m.autor_avatar} size={34} />
                           </span>
                         ) : null}
@@ -2403,7 +2405,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           className={`relative max-w-[78%] rounded-xl text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
                             !m.texto && !m.cita && !m.eliminado && m.adjuntos.length > 0 && m.adjuntos.every((x) => { const t = tipoDe(x); return (t === "imagen" || t === "video") && !!x.url; })
                               ? "p-1.5"
-                              : "px-3.5 py-2"
+                              : m.adjuntos.length > 0 && !m.eliminado && !m.cita
+                                ? "px-2 pb-2 pt-2"
+                                : "px-3.5 py-2"
                           } ${
                             Object.keys(m.reacciones).length > 0 ? "mb-4" : ""
                           } ${m.propio ? "" : "bg-white"}`}
@@ -2456,8 +2460,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             </div>
                           ) : (
                             <>
+                              {/* Primero lo adjunto y debajo el texto, como un pie de foto. */}
+                              {m.adjuntos.map((a, k) => (
+                                <div key={a.path} className={k > 0 ? "mt-1.5" : ""}>
+                                  <Adjuntito
+                                    a={a}
+                                    onVer={() => abrirVisor(a)}
+                                    onDescargar={() => void descargar(a)}
+                                  />
+                                </div>
+                              ))}
                               {m.texto ? (
-                                <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">
+                                <p className={`whitespace-pre-wrap break-words text-[14.5px] leading-relaxed ${m.adjuntos.length > 0 ? "mt-1.5 px-0.5" : ""}`}>
                                   <span className="float-right ml-2 mt-[9px] text-[11px] leading-none text-slate-400">
                                     {m.pendiente
                                       ? "enviando…"
@@ -2474,15 +2488,6 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                   {m.texto}
                                 </p>
                               ) : null}
-                              {m.adjuntos.map((a) => (
-                                <div key={a.path} className="mt-1.5">
-                                  <Adjuntito
-                                    a={a}
-                                    onVer={() => abrirVisor(a)}
-                                    onDescargar={() => void descargar(a)}
-                                  />
-                                </div>
-                              ))}
                             </>
                           )}
                           {!m.texto || m.eliminado || editando?.id === m.id ? (

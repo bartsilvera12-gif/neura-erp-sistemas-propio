@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       ? "interaction-sandbox"
       : "read-only";
   const repo_url =
-    safety_level === "static_analysis" || safety_level === "discovery"
+    safety_level === "static_analysis" || safety_level === "discovery" || safety_level === "interaction_sandbox"
       ? resolverRepoUrlProyecto(project.slug, project.repo_url ?? null)
       : null;
   const codebase = codebaseDeProyecto({ slug: project.slug });

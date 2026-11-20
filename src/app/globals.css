@@ -326,3 +326,13 @@ html:has(#neura-app-shell) body {
   [class~="bg-[#285C62]" i], [class~="bg-[#0B3A3D]" i], [class~="bg-[var(--brand)]"], [class~="bg-[color:var(--zentra-sidebar)]"],
   [class~="from-[#4FAEB2]" i], [class~="from-[#3F8E91]" i]
 ):is(.text-white, [class*="hover:text-white"]:hover) { color: rgb(var(--tema-letra-rgb)) !important; }
+
+/**
+ * Chat interno: globo de los mensajes propios. Es el color del sistema mezclado con blanco, así
+ * acompaña al color que cada uno eligió en Apariencia. Donde el navegador no sabe mezclar
+ * colores queda el verde claro de antes.
+ */
+.chat-globo-propio { background-color: #E3F3E5; }
+@supports (background-color: color-mix(in srgb, red 10%, white)) {
+  .chat-globo-propio { background-color: color-mix(in srgb, rgb(var(--tema-rgb)) 22%, #ffffff); }
+}

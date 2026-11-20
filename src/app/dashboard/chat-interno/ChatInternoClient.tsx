@@ -55,6 +55,7 @@ import {
 } from "@/components/layout/ChatPestanaBadge";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { BotonFondoChat, useFondoChat } from "./fondo-chat";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 
@@ -203,14 +204,11 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
  * que el blanco de los globos se lea como blanco. Va en un `data:` URI para no
  * sumar un pedido de red por una textura.
  */
-/** El fondo de la conversación. */
-const ESTILO_FONDO: React.CSSProperties = {
-  // Liso, sin degradados ni trama: lo que importa es lo que está escrito encima.
-  backgroundColor: "#F3F5F5",
-};
-
-/** Verde muy claro para lo propio, igual que en los chats de siempre. */
-const BURBUJA_PROPIA = "#E3F3E5";
+/**
+ * El globo de lo propio: el color del sistema que eligió cada uno, muy aclarado (ver
+ * `.chat-globo-propio` en globals.css). Sin elegir nada es un turquesa muy claro.
+ */
+const GLOBO_PROPIO = "chat-globo-propio";
 
 type UsuarioOpcion = { id: string; nombre: string; area: string; avatar_url: string | null };
 
@@ -313,6 +311,38 @@ function diaLabel(iso: string): string {
  * Incluye lo que se ve: el id, si se editó o borró, las reacciones y el visto.
  * Comparar los objetos enteros sería más caro que volver a renderizar.
  */
+type Yo = { id: string; nombre: string; foto: string | null };
+
+/**
+ * El mensaje con mi reacción `emoji` puesta (`quiero`) o sacada. Si ya está como se pide,
+ * devuelve el mismo mensaje. Lo usan el clic (para pintar al instante) y cada refresco (para
+ * que una respuesta vieja del servidor no borre lo que acabo de tocar).
+ */
+function conMiReaccion(m: Mensaje, emoji: string, yo: Yo, quiero: boolean): Mensaje {
+  const quienes = m.reacciones[emoji] ?? [];
+  const lugar = quienes.indexOf(yo.id);
+  if ((lugar !== -1) === quiero) return m;
+
+  const reacciones = { ...m.reacciones };
+  const nombres = { ...m.reacciones_nombres };
+  const caras = { ...m.reacciones_avatares };
+  if (quiero) {
+    reacciones[emoji] = [...quienes, yo.id];
+    nombres[emoji] = [...(nombres[emoji] ?? []), yo.nombre];
+    caras[emoji] = [...(caras[emoji] ?? []), yo.foto];
+  } else if (quienes.length === 1) {
+    delete reacciones[emoji];
+    delete nombres[emoji];
+    delete caras[emoji];
+  } else {
+    const sin = <T,>(lista: T[] | undefined) => (lista ?? []).filter((_, k) => k !== lugar);
+    reacciones[emoji] = sin(quienes);
+    nombres[emoji] = sin(nombres[emoji]);
+    caras[emoji] = sin(caras[emoji]);
+  }
+  return { ...m, reacciones, reacciones_nombres: nombres, reacciones_avatares: caras };
+}
+
 function firmaDeMensajes(ms: Mensaje[]): string {
   return ms
     .map(
@@ -663,6 +693,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [acceso, setAcceso] = useState<"cargando" | "ok" | "denegado">("cargando");
 
   const [texto, setTexto] = useState("");
+  /** Fondo de la conversación elegido por esta persona (liso, color o imagen propia). */
+  const { estilo: estiloFondo } = useFondoChat();
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
   /** Miniaturas locales de las imágenes por enviar (path → dirección del archivo en la máquina). */
   const [previas, setPrevias] = useState<Record<string, string>>({});
@@ -683,10 +715,21 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Contador de pedidos de mensajes, para descartar respuestas atrasadas. */
   const pedidoRef = useRef(0);
+  /**
+   * Mis reacciones recién tocadas (mensaje + emoji → puesta o sacada). Un refresco que salió
+   * ANTES de que el servidor guardara el cambio vuelve con la versión vieja; sin esto el emoji
+   * aparecía, se iba con ese refresco y volvía con el siguiente. Cada una se suelta cuando el
+   * servidor ya dice lo mismo, o a los pocos segundos de confirmada.
+   */
+  const reaccionesMiasRef = useRef(new Map<string, { msgId: string; emoji: string; quiero: boolean; hasta: number }>());
+  const yoRef = useRef<Yo | null>(null);
   /** Al abrir una conversación hay que ir al final, no quedarse en el principio. */
   const saltarAlFinalRef = useRef(true);
   /** Mi perfil: el nombre y la foto que ven los demás. */
   const [perfil, setPerfil] = useState<Perfil | null>(null);
+  useEffect(() => {
+    yoRef.current = perfil?.usuario_id ? { id: perfil.usuario_id, nombre: perfil.nombre ?? "Yo", foto: perfil.avatar_url ?? null } : null;
+  }, [perfil]);
   const fotoRef = useRef<HTMLInputElement>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   /** Filtro de la bandeja: busca en mis conversaciones Y entre las personas. */
@@ -791,7 +834,22 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         return;
       }
       setErrorMsgs(null);
-      const llegaron = j?.data?.mensajes ?? [];
+      const delServidor = j?.data?.mensajes ?? [];
+      const mias = reaccionesMiasRef.current;
+      const yo = yoRef.current;
+      const llegaron =
+        mias.size === 0 || !yo
+          ? delServidor
+          : delServidor.map((m) => {
+              let x = m;
+              for (const [clave, r] of mias) {
+                if (r.msgId !== m.id) continue;
+                const yaEsta = (m.reacciones[r.emoji] ?? []).includes(yo.id);
+                if (yaEsta === r.quiero || Date.now() > r.hasta) mias.delete(clave);
+                else x = conMiReaccion(x, r.emoji, yo, r.quiero);
+              }
+              return x;
+            });
       // El refresco trae sólo la última página: lo que se cargó con "ver
       // anteriores" se conserva, y `hayMas` lo decide esa carga, no ésta.
       const misma = !q && salaDeMensajesRef.current === id;
@@ -1298,50 +1356,36 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    * vuelve a lo que decía el servidor.
    */
   async function reaccionar(msgId: string, emoji: string) {
-    const yoId = perfil?.usuario_id ?? "";
-    const yoNombre = perfil?.nombre ?? "Yo";
-    const yoFoto = perfil?.avatar_url ?? null;
+    const yo = yoRef.current;
+    const mensaje = mensajes.find((m) => m.id === msgId);
+    if (!yo || !mensaje) return;
 
-    // Poner y sacar una reacción es la misma operación: si el servidor falla,
-    // se aplica otra vez y queda como estaba, sin pisar mensajes que hayan
-    // llegado mientras tanto (antes se restauraba una copia vieja de la lista).
-    const alternar = (prev: Mensaje[]) =>
-      prev.map((m) => {
-        if (m.id !== msgId) return m;
-        const quienes = m.reacciones[emoji] ?? [];
-        const yaEstaba = quienes.includes(yoId);
-        const nuevos = yaEstaba ? quienes.filter((u) => u !== yoId) : [...quienes, yoId];
+    // Poner y sacar es la misma operación: se mira cómo está y se pide lo contrario.
+    const quiero = !(mensaje.reacciones[emoji] ?? []).includes(yo.id);
+    const clave = `${msgId}|${emoji}`;
+    const poner = (q: boolean) =>
+      setMensajes((prev) => prev.map((m) => (m.id === msgId ? conMiReaccion(m, emoji, yo, q) : m)));
 
-        const reacciones = { ...m.reacciones };
-        const nombres = { ...m.reacciones_nombres };
-        const caras = { ...m.reacciones_avatares };
-        if (nuevos.length === 0) {
-          delete reacciones[emoji];
-          delete nombres[emoji];
-          delete caras[emoji];
-        } else {
-          reacciones[emoji] = nuevos;
-          nombres[emoji] = yaEstaba
-            ? (nombres[emoji] ?? []).filter((n) => n !== yoNombre)
-            : [...(nombres[emoji] ?? []), yoNombre];
-          caras[emoji] = yaEstaba
-            ? (caras[emoji] ?? []).slice(0, nuevos.length)
-            : [...(caras[emoji] ?? []), yoFoto];
-        }
-        return { ...m, reacciones, reacciones_nombres: nombres, reacciones_avatares: caras };
-      });
-    setMensajes(alternar);
+    // Mientras el pedido está en viaje, ningún refresco puede deshacerlo.
+    reaccionesMiasRef.current.set(clave, { msgId, emoji, quiero, hasta: Number.POSITIVE_INFINITY });
+    poner(quiero);
 
     const r = await pedir(`/api/chat-interno/mensajes/${msgId}/reaccion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ emoji }),
     });
+    const mia = reaccionesMiasRef.current.get(clave);
     if (!r.ok) {
-      setMensajes(alternar);
+      // Si falla, vuelve a como estaba (sin pisar mensajes que hayan llegado mientras tanto).
+      if (mia?.quiero === quiero) reaccionesMiasRef.current.delete(clave);
+      poner(!quiero);
       const j = (await r.json().catch(() => ({}))) as { error?: string };
       setErr(j.error ?? "No se pudo guardar la reacción");
+      return;
     }
+    // Guardada: se sostiene unos segundos más, por los refrescos que ya venían en camino.
+    if (mia?.quiero === quiero) mia.hasta = Date.now() + 8000;
   }
 
   async function borrarMensaje(msgId: string) {
@@ -2147,7 +2191,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         {!salaActual ? (
           <div
             className="flex flex-1 flex-col items-center justify-center px-8 text-center"
-            style={ESTILO_FONDO}
+            style={estiloFondo}
           >
             <MessagesSquare className="h-16 w-16 text-[#4FAEB2]/35" strokeWidth={1.2} />
             <p className="mt-3 text-[15px] text-slate-500">
@@ -2260,6 +2304,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     <Search className="h-4 w-4" />
                   </button>
                 )}
+                <BotonFondoChat />
                 <button
                   type="button"
                   onClick={() => setPanel((p) => (p ? null : "archivos"))}
@@ -2298,7 +2343,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 if (e.currentTarget.scrollTop < 60 && hayMas && !enBusqueda) void cargarAnteriores();
               }}
               className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4"
-              style={ESTILO_FONDO}
+              style={estiloFondo}
             >
               {errorMsgs ? (
                 <div className="mx-auto flex max-w-md items-center justify-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-[12.5px] text-rose-700">
@@ -2399,7 +2444,6 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           </span>
                         ) : null}
                         <div
-                          style={m.propio ? { background: BURBUJA_PROPIA } : undefined}
                           // Un mensaje que es solo una foto o un video: casi sin margen, para que la
                           // imagen llene el globo en vez de flotar adentro de un recuadro.
                           className={`relative max-w-[78%] rounded-xl text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
@@ -2410,7 +2454,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                 : "px-3.5 py-2"
                           } ${
                             Object.keys(m.reacciones).length > 0 ? "mb-4" : ""
-                          } ${m.propio ? "" : "bg-white"}`}
+                          } ${m.propio ? GLOBO_PROPIO : "bg-white"}`}
                         >
 
                           {/* El nombre va DENTRO del globo: afuera, sobre el
@@ -2683,14 +2727,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               {/* Una tarjeta grande con el clip a la izquierda y las acciones
                   abajo a la derecha: se lee como una hoja donde escribir, no
                   como una barra de controles. */}
-              <div className="rounded-2xl border border-[#4FAEB2]/25 bg-white px-3 py-2.5 shadow-[0_1px_5px_rgba(47,110,113,0.10)] transition-colors focus-within:border-[#4FAEB2] focus-within:shadow-[0_2px_10px_rgba(79,174,178,0.18)]">
-                <div className="flex items-start gap-2">
+              <div className="rounded-2xl border border-[#4FAEB2]/25 bg-white px-2 py-1.5 shadow-[0_1px_5px_rgba(47,110,113,0.10)] transition-colors focus-within:border-[#4FAEB2] focus-within:shadow-[0_2px_10px_rgba(79,174,178,0.18)]">
+                {/* Una sola fila: clip, texto, micrófono y enviar, todos a la misma altura. Al
+                    crecer el texto, los botones se quedan abajo, junto a la última línea. */}
+                <div className="flex items-end gap-1.5">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={subiendo}
                   title="Adjuntar archivo"
-                  className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-[#2F6E71] disabled:opacity-40"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#2F6E71] disabled:opacity-40"
                 >
                   {subiendo ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Paperclip className="h-[18px] w-[18px]" />}
                 </button>
@@ -2766,17 +2812,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     }
                   }}
                   placeholder="Escribí @ para mencionar a alguien"
-                  className="max-h-40 min-h-[26px] w-full resize-none bg-transparent text-[14.5px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  className="block max-h-40 min-h-[36px] w-full resize-none bg-transparent py-[6px] text-[14.5px] leading-[24px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
                 </div>
-                </div>
 
-                <div className="mt-1 flex items-center justify-end gap-1">
+                <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={alternarGrabacion}
                     title={grabando ? "Detener y enviar audio" : "Grabar audio"}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                    className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
                       grabando
                         ? "animate-pulse bg-rose-50 text-rose-600"
                         : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
@@ -2793,6 +2838,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   >
                     <Send className="h-[18px] w-[18px]" />
                   </button>
+                </div>
                 </div>
               </div>
               <input

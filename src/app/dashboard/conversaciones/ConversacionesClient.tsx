@@ -4387,16 +4387,6 @@ export function ConversacionesClient({
                                 Reabrir
                               </button>
                             ) : null}
-                            {isHumanActive ? (
-                              <button
-                                type="button"
-                                disabled={releasingBot}
-                                onClick={() => void handleReleaseToBot()}
-                                className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:opacity-50"
-                              >
-                                {releasingBot ? "…" : "Modo bot"}
-                              </button>
-                            ) : null}
                             {listColumnHidden ? (
                               <button
                                 type="button"
@@ -4436,17 +4426,15 @@ export function ConversacionesClient({
                               <span aria-hidden="true" className="h-1 w-1 rounded-full bg-violet-500" />
                               Bot
                             </span>
-                          ) : isHumanActive ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                              <span aria-hidden="true" className="h-1 w-1 rounded-full bg-emerald-500" />
-                              Humano
+                          ) : null}
+                          {/* Abierta/Pendiente y "Humano" se sacaron: no decían nada útil. "Cerrada" sí se avisa. */}
+                          {selected.status === "closed" ? (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeEstadoClass(selected.status)}`}
+                            >
+                              {labelEstado(selected.status)}
                             </span>
                           ) : null}
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeEstadoClass(selected.status)}`}
-                          >
-                            {labelEstado(selected.status)}
-                          </span>
 
                           {vista !== "bot" ? (
                             <>

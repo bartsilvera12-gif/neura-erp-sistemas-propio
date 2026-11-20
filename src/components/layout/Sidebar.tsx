@@ -53,6 +53,7 @@ import {
   Briefcase,
   Landmark,
   LifeBuoy,
+  Bot,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -337,6 +338,14 @@ type IconoMenu = React.ComponentType<{ className?: string; strokeWidth?: number 
  * abre su portada (`/panel/<id>`) con una tarjeta por pantalla. "Inicio" no tiene
  * portada: entra directo al Dashboard.
  */
+/**
+ * Pantallas de adentro con ícono propio cuando van a Favoritos. Sin esto heredan el del módulo
+ * (Neurita salía con el auricular de Soporte); Neurita lleva su robot, el mismo de su avatar.
+ */
+const ICONO_DE_RUTA: Record<string, IconoMenu> = {
+  "/dashboard/soporte/neurita": Bot,
+};
+
 const MENU_FAMILIES: { id: string; title: string; icon: IconoMenu; itemKeys: string[] }[] = [
   { id: "inicio", title: "Inicio", icon: LayoutGrid, itemKeys: ["dashboard"] },
   {
@@ -849,7 +858,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
       f.items.flatMap((it) =>
         (it.children ?? [])
           .filter((c) => !ocultosSoporteMenu.has(c.href))
-          .map((c) => ({ id: favDeRuta(c.href), label: c.label, href: c.href, exactMatch: c.exactMatch, padre: it.label, icon: it.icon }))
+          .map((c) => ({ id: favDeRuta(c.href), label: c.label, href: c.href, exactMatch: c.exactMatch, padre: it.label, icon: ICONO_DE_RUTA[c.href] ?? it.icon }))
           .filter((c) => {
             if (!favoritos.includes(c.id) || vistos.has(c.id)) return false;
             if (!menuSearchTextMatches(`${c.label} ${c.padre}`, menuSearchQuery)) return false;

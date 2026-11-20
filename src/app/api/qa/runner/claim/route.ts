@@ -39,6 +39,7 @@ export async function POST(request: Request) {
   // El runner navega la UI con Playwright y opera formularios ficticios.
   // Solo se ejecuta contra hosts en la allowlist del runner (fixture-app).
   const esSuiteInteraction = suite.slug.startsWith(AI_INTERACTION_SUITE_PREFIX);
+  const esProduccionLectura = suite.slug === "ai-production-readonly-acai-house";
 
   // Nivel de seguridad agregado desde el catálogo. Si devuelve null o un
   // nivel no corrible ("mixed_analysis", "write_required"), en teoría el
@@ -50,7 +51,10 @@ export async function POST(request: Request) {
     | "anonymous_read_only"
     | "authenticated_read_only"
     | "interaction_sandbox"
-    | "standard" = esSuiteInteraction
+    | "production_read_only"
+    | "standard" = esProduccionLectura
+    ? "production_read_only"
+    : esSuiteInteraction
     ? "interaction_sandbox"
     : esSuiteIaDiscovery
     ? "discovery"
@@ -60,7 +64,9 @@ export async function POST(request: Request) {
       ? nivelCat
       : "standard";
   const mode: "read-only" | "write" | "static-analysis" | "discovery" | "interaction-sandbox" =
-    safety_level === "discovery"
+    safety_level === "production_read_only"
+      ? "read-only"
+      : safety_level === "discovery"
       ? "discovery"
       : safety_level === "static_analysis"
       ? "static-analysis"

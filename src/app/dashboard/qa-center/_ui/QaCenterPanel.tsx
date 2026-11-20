@@ -17,6 +17,7 @@ import NuevoProyectoDialog from "./NuevoProyectoDialog";
 import EditarProyectoDialog from "./EditarProyectoDialog";
 import SuitesSection from "./SuitesSection";
 import AnalizarErpCard from "./AnalizarErpCard";
+import CredencialesProyecto from "./CredencialesProyecto";
 import SeccionAvanzado from "./SeccionAvanzado";
 import FindingsSection from "./FindingsSection";
 import PermiteLecturaToggle from "./PermiteLecturaToggle";
@@ -185,6 +186,25 @@ export default function QaCenterPanel({
                   anthropicConfigured={anthropicConfigured}
                   credencialesRoRunnerConfigured={credencialesRoRunnerConfigured}
                 />
+
+                {/* Gestor de credenciales QA INLINE en la card para no
+                    obligar a navegar a la página de detalle del proyecto.
+                    El rol "lectura_autenticada" es el que consume el runner
+                    en el modo producción (acaihouse.neura.com.py). */}
+                <details className="mt-3 rounded-lg border-2 border-indigo-200 bg-indigo-50/40">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-100/60">
+                    Credenciales QA · usuario que el agente usa para login
+                  </summary>
+                  <div className="p-3">
+                    <p className="mb-2 text-xs text-slate-600">
+                      Cargá aquí un usuario de solo-lectura. El agente IA lo usa
+                      cuando apretás &quot;Ejecutar sandbox&quot;. El password se
+                      cifra server-side y nunca vuelve a mostrarse.
+                    </p>
+                    <CredencialesProyecto projectId={p.id} />
+                  </div>
+                </details>
+
                 <SeccionAvanzado>
                   <SuitesSection
                     projectId={p.id}

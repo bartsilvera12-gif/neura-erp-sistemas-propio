@@ -42,6 +42,7 @@ import {
   Reply,
   Search,
   Send,
+  Smile,
   Square,
   Trash2,
   Users,
@@ -195,6 +196,25 @@ type Mensaje = {
 
 /** Lista corta a propósito: se lee de un vistazo, un selector completo no. */
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
+
+/** Tope de alto del cuadro de escribir: unas ocho líneas. */
+const ALTO_MAX_CUADRO = 204;
+
+/** Los emojis del cuadro de escribir, por grupo. */
+const EMOJIS_CUADRO: { titulo: string; lista: string[] }[] = [
+  {
+    titulo: "Caras",
+    lista: "😀 😃 😄 😁 😆 😅 😂 🤣 🙂 😉 😊 😇 🥰 😍 😘 😋 😜 🤪 🤗 🤭 🤔 🤨 😐 😶 🙄 😏 😬 😴 🤤 😷 🤒 🤯 🥳 😎 🤓 😕 😟 😮 😳 🥺 😢 😭 😱 😤 😡 🤬 💀 🤡".split(" "),
+  },
+  {
+    titulo: "Gestos",
+    lista: "👍 👎 👌 ✌️ 🤞 🤟 🤙 👊 ✊ 👏 🙌 🤝 🙏 💪 👋 🫶 👀 🫡 🤷 🤦 🙋 💁".split(" "),
+  },
+  {
+    titulo: "Cosas",
+    lista: "❤️ 🧡 💛 💚 💙 💜 🖤 💔 🔥 ✨ ⭐ 🎉 🎁 🎂 🏆 💯 ✅ ❌ ⚠️ ❓ ❗ 💡 📌 📎 📅 ⏰ 💰 💸 📈 📉 🚀 ☕ 🍕 🍺 🧉".split(" "),
+  },
+];
 
 /**
  * Fondo de la conversación.
@@ -693,6 +713,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [acceso, setAcceso] = useState<"cargando" | "ok" | "denegado">("cargando");
 
   const [texto, setTexto] = useState("");
+  const [emojisAbierto, setEmojisAbierto] = useState(false);
   /** Fondo de la conversación elegido por esta persona (liso, color o imagen propia). */
   const { estilo: estiloFondo } = useFondoChat();
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
@@ -880,8 +901,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         // mueve el scroll cada tres segundos.
         return firmaDeMensajes(prev) === firmaDeMensajes(nuevos) ? prev : nuevos;
       });
-      // Buscar no es leer la conversación: no marca nada como visto.
-      if (!q) {
+      // Buscar no es leer la conversación: no marca nada como visto. Tampoco
+      // cuenta una pestaña de fondo o una ventana tapada por otra: ahí el
+      // mensaje llegó, pero nadie lo vio. Se marca al volver (ver `alVolver`).
+      if (!q && document.visibilityState === "visible" && document.hasFocus()) {
         void fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, {
           method: "POST",
         }).then(() => {
@@ -1233,9 +1256,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       }
     };
     document.addEventListener("visibilitychange", alVolver);
+    // Volver a la ventana sin cambiar de pestaña no dispara `visibilitychange`.
+    window.addEventListener("focus", alVolver);
     return () => {
       clearInterval(t);
       document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener("focus", alVolver);
     };
   }, [salaId, enBusqueda, cargarMensajes, cargarSalas]);
 
@@ -1445,6 +1471,30 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               : true
           )
           .slice(0, 6);
+
+  /** El cuadro crece con lo que se escribe, hasta un tope; después, barra de scroll. */
+  useLayoutEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    area.style.height = "auto";
+    const alto = Math.min(area.scrollHeight, ALTO_MAX_CUADRO);
+    area.style.height = `${alto}px`;
+    area.style.overflowY = area.scrollHeight > ALTO_MAX_CUADRO ? "auto" : "hidden";
+  }, [texto, salaId]);
+
+  /** Mete un emoji donde está el cursor y deja el cursor justo después. */
+  function ponerEmoji(emoji: string) {
+    const area = areaRef.current;
+    const desde = area?.selectionStart ?? texto.length;
+    const hasta = area?.selectionEnd ?? texto.length;
+    setTexto(texto.slice(0, desde) + emoji + texto.slice(hasta));
+    requestAnimationFrame(() => {
+      if (!area) return;
+      area.focus();
+      const pos = desde + emoji.length;
+      area.setSelectionRange(pos, pos);
+    });
+  }
 
   function elegirMencion(m: { usuario_id: string; nombre: string }) {
     const area = areaRef.current;
@@ -2812,11 +2862,56 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     }
                   }}
                   placeholder="Escribí @ para mencionar a alguien"
-                  className="block max-h-40 min-h-[36px] w-full resize-none bg-transparent py-[6px] text-[14.5px] leading-[24px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  className="block min-h-[36px] w-full resize-none bg-transparent py-[6px] text-[14.5px] leading-[24px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="relative flex shrink-0 items-center gap-1">
+                  {emojisAbierto ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Cerrar emojis"
+                        className="fixed inset-0 z-30 cursor-default"
+                        onClick={() => setEmojisAbierto(false)}
+                      />
+                      <div className="absolute bottom-full right-0 z-40 mb-2 max-h-72 w-[296px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                        {EMOJIS_CUADRO.map((g) => (
+                          <div key={g.titulo}>
+                            <p className="px-1 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                              {g.titulo}
+                            </p>
+                            <div className="grid grid-cols-8">
+                              {g.lista.map((e) => (
+                                <button
+                                  key={e}
+                                  type="button"
+                                  // `onMouseDown`: que el cuadro no pierda el cursor.
+                                  onMouseDown={(ev) => {
+                                    ev.preventDefault();
+                                    ponerEmoji(e);
+                                  }}
+                                  className="flex h-[35px] items-center justify-center rounded-lg text-[20px] leading-none transition-colors hover:bg-slate-100"
+                                >
+                                  {e}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setEmojisAbierto((v) => !v)}
+                    title="Emojis"
+                    className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                      emojisAbierto ? "bg-slate-100 text-[#2F6E71]" : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
+                    }`}
+                  >
+                    <Smile className="h-[18px] w-[18px]" />
+                  </button>
                   <button
                     type="button"
                     onClick={alternarGrabacion}

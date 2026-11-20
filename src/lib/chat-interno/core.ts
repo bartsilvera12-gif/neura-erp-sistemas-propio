@@ -257,3 +257,42 @@ export function nombreVisible(u: {
 }): string {
   return (u.nombre_chat ?? "").trim() || (u.nombre ?? "").trim() || "—";
 }
+
+/** Hoy en Paraguay, como mes y día: un cumpleaños no puede correrse por la hora del servidor. */
+export function hoyEnParaguay(): { mes: number; dia: number } {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Asuncion",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(new Date());
+  const de = (t: string) => Number(partes.find((x) => x.type === t)?.value ?? 0);
+  return { mes: de("month"), dia: de("day") };
+}
+
+/**
+ * Quiénes de la empresa cumplen años hoy.
+ *
+ * Va en una consulta aparte y tolera el error: si las columnas del cumpleaños
+ * todavía no existen en la base, el chat sigue andando igual y nadie cumple.
+ */
+export async function quienesCumplenHoy(
+  catalog: { from: (t: string) => any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  empresaId: string
+): Promise<{ id: string; nombre: string }[]> {
+  try {
+    const { mes, dia } = hoyEnParaguay();
+    const { data, error } = await catalog
+      .from("usuarios")
+      .select("id, nombre, nombre_chat")
+      .eq("empresa_id", empresaId)
+      .eq("estado", "activo")
+      .eq("cumple_mes", mes)
+      .eq("cumple_dia", dia);
+    if (error) return [];
+    return ((data ?? []) as { id: string; nombre: string | null; nombre_chat: string | null }[]).map(
+      (u) => ({ id: u.id, nombre: nombreVisible(u) })
+    );
+  } catch {
+    return [];
+  }
+}

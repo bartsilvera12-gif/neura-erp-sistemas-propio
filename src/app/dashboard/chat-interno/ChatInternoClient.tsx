@@ -77,6 +77,8 @@ type Sala = {
   subtitulo: string;
   /** Mi rol EN ESTA sala: sólo un `admin` edita el grupo. */
   mi_rol: string;
+  /** En un directo: la otra persona cumple años hoy. */
+  cumple_hoy?: boolean;
 };
 
 type Adjunto = {
@@ -237,7 +239,17 @@ type Perfil = {
   nombre: string;
   nombre_catalogo: string;
   avatar_url: string | null;
+  /** Mi cumpleaños: día y mes, sin año. */
+  cumple_mes?: number | null;
+  cumple_dia?: number | null;
+  /** Falso mientras la base no tenga dónde guardarlo. */
+  cumple_disponible?: boolean;
+  /** Quiénes de la empresa cumplen hoy (puedo ser yo). */
+  cumplen_hoy?: { id: string; nombre: string }[];
 };
+
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const DIAS_DEL_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 type MiembroSala = {
   usuario_id: string;
@@ -769,6 +781,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [tocandoMiembros, setTocandoMiembros] = useState(false);
   /** Edición de mi nombre en el chat: `null` mientras no se edita. */
   const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
+  /** El cumpleaños mientras se edita; `null` = cerrado. */
+  const [editandoCumple, setEditandoCumple] = useState<{ mes: number; dia: number } | null>(null);
   /** Índice dentro de la galería de la conversación. `null` = visor cerrado. */
   const [viendoIdx, setViendoIdx] = useState<number | null>(null);
   /** Quién está escribiendo ahora mismo: nombre por usuario. */
@@ -1849,6 +1863,26 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
   }
 
+  /** Guarda mi cumpleaños (o lo borra con `null`). */
+  async function guardarMiCumple(cumple: { mes: number; dia: number } | null) {
+    const r = await pedir("/api/chat-interno/perfil", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cumple }),
+    });
+    const j = (await r.json().catch(() => ({}))) as {
+      success?: boolean;
+      error?: string;
+      data?: { cumple_mes: number | null; cumple_dia: number | null };
+    };
+    if (!r.ok || !j.success) {
+      setErr(j.error ?? "No se pudo guardar el cumpleaños");
+      return;
+    }
+    setPerfil((p) => (p ? { ...p, cumple_mes: j.data?.cumple_mes ?? null, cumple_dia: j.data?.cumple_dia ?? null } : p));
+    setEditandoCumple(null);
+  }
+
   async function quitarFotoGrupo() {
     if (!salaId) return;
     setSubiendoFotoGrupo(true);
@@ -2079,6 +2113,22 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             >
               {perfil?.avatar_url ? "Cambiar foto" : "Poner una foto"}
             </button>
+            {perfil?.cumple_disponible ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setEditandoCumple(
+                    editandoCumple ? null : { mes: perfil.cumple_mes ?? 1, dia: perfil.cumple_dia ?? 1 }
+                  )
+                }
+                title="Mi cumpleaños"
+                className="block text-[10.5px] text-slate-400 hover:text-[#2F6E71]"
+              >
+                {perfil.cumple_mes && perfil.cumple_dia
+                  ? `🎂 ${perfil.cumple_dia} de ${MESES[perfil.cumple_mes - 1]}`
+                  : "🎂 Poner mi cumpleaños"}
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
@@ -2100,6 +2150,89 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             }}
           />
         </div>
+
+        {editandoCumple ? (
+          <div className="border-b border-[#4FAEB2]/12 px-3 py-2.5">
+            <p className="mb-1.5 text-[11.5px] font-semibold text-slate-600">Mi cumpleaños</p>
+            <div className="flex items-center gap-1.5">
+              <select
+                aria-label="Día"
+                value={editandoCumple.dia}
+                onChange={(e) => setEditandoCumple({ ...editandoCumple, dia: Number(e.target.value) })}
+                className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[12px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
+              >
+                {Array.from({ length: DIAS_DEL_MES[editandoCumple.mes - 1] }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <span className="text-[12px] text-slate-400">de</span>
+              <select
+                aria-label="Mes"
+                value={editandoCumple.mes}
+                onChange={(e) => {
+                  const mes = Number(e.target.value);
+                  setEditandoCumple({ mes, dia: Math.min(editandoCumple.dia, DIAS_DEL_MES[mes - 1]) });
+                }}
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[12px] capitalize text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
+              >
+                {MESES.map((m, i) => (
+                  <option key={m} value={i + 1}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void guardarMiCumple(editandoCumple)}
+                className="rounded-lg bg-[#4FAEB2] px-2.5 py-1 text-[11.5px] font-semibold text-white hover:opacity-90"
+              >
+                Guardar
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditandoCumple(null)}
+                className="text-[11.5px] text-slate-500 hover:text-slate-800"
+              >
+                Cancelar
+              </button>
+              {perfil?.cumple_mes ? (
+                <button
+                  type="button"
+                  onClick={() => void guardarMiCumple(null)}
+                  className="ml-auto text-[11.5px] text-rose-500 hover:text-rose-700"
+                >
+                  Quitar
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-1.5 text-[10.5px] leading-snug text-slate-400">
+              Sólo día y mes. Ese día el equipo ve un regalito al lado de tu nombre.
+            </p>
+          </div>
+        ) : null}
+        {(perfil?.cumplen_hoy ?? []).length > 0 ? (
+          <div className="flex items-center gap-2 border-b border-amber-200/70 bg-amber-50 px-3.5 py-2 text-[12px] leading-snug text-amber-900">
+            <span className="text-[18px] leading-none">🎁</span>
+            <span className="min-w-0">
+              {(() => {
+                const otros = (perfil?.cumplen_hoy ?? []).filter((u) => u.id !== perfil?.usuario_id);
+                const yo = (perfil?.cumplen_hoy ?? []).some((u) => u.id === perfil?.usuario_id);
+                const nombres = otros.map((u) => nombreCapitular(nombreCorto(u.nombre)));
+                const lista =
+                  nombres.length > 1
+                    ? `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`
+                    : nombres[0];
+                if (yo && otros.length === 0) return <b>¡Feliz cumpleaños! 🎉</b>;
+                return (
+                  <>
+                    {yo ? <b>¡Feliz cumpleaños! 🎉 </b> : null}
+                    Hoy {otros.length > 1 ? "cumplen" : "cumple"} años <b>{lista}</b>
+                  </>
+                );
+              })()}
+            </span>
+          </div>
+        ) : null}
 
         {/* Un solo campo para las dos cosas: encontrar una conversación que ya
             existe, o a la persona con la que todavía no hablé. */}
@@ -2154,6 +2287,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         }`}
                       >
                         {nombreCapitular(s.nombre)}
+                        {s.cumple_hoy ? <span title="Hoy cumple años"> 🎁</span> : null}
                       </span>
                       <span
                         className={`shrink-0 text-[11px] ${
@@ -2284,6 +2418,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   <span className="truncate text-[16px] font-semibold text-slate-800">
                     {nombreCapitular(salaActual.nombre)}
                   </span>
+                  {salaActual.cumple_hoy ? (
+                    <span className="shrink-0 text-[14px]" title="Hoy cumple años">🎁</span>
+                  ) : null}
                   {salaActual.tipo !== "grupo" ? (
                     <span className="shrink-0 text-[12.5px] italic text-slate-400">En línea</span>
                   ) : null}

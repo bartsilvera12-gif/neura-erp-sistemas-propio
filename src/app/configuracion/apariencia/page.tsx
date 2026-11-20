@@ -141,7 +141,7 @@ export default function ConfiguracionAparienciaPage() {
               );
             })}
           </div>
-          <ConfigHelpText>Son las letras que van sobre el color del sistema: las del menú lateral y las de los botones.</ConfigHelpText>
+          <ConfigHelpText>Son las letras que van sobre el color del sistema: las del menú lateral y las de los botones.{letras === LETRA_POR_DEFECTO ? " Sin elegir ninguna quedan las de siempre." : ""}</ConfigHelpText>
 
           <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">Así se ve</p>

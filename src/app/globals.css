@@ -295,9 +295,9 @@ html:has(#neura-app-shell) body {
 }
 
 /**
- * Color de las letras sobre el color del sistema (menú lateral y botones): blanco por defecto,
- * o negro / gris para quien eligió un color claro (Configuración → Apariencia). Las reglas solo
- * existen con `data-letras` en <html>: sin elegir nada, no cambia nada.
+ * Color de las letras sobre el color del sistema (menú lateral y botones), para quien lo elige en
+ * Configuración → Apariencia: blanco pleno, gris o negro. Las reglas solo existen con
+ * `data-letras` en <html>: sin elegir nada quedan las letras de siempre (blancas con grises suaves).
  */
 :root { --tema-letra-rgb: 255 255 255; }
 :root[data-letras="negro"] { --tema-letra-rgb: 17 17 17; }
@@ -306,9 +306,12 @@ html:has(#neura-app-shell) body {
 /* Menú lateral: textos, íconos, resaltados y líneas pasan a salir del color de letra. */
 :root[data-letras] #neura-sidebar :is(.text-white, .text-slate-200, .text-slate-300, [class*="hover:text-white"]:hover, [class*="hover:text-slate-200"]:hover) { color: rgb(var(--tema-letra-rgb)) !important; }
 :root[data-letras] #neura-sidebar :is(.text-slate-400, .text-slate-500) { color: rgb(var(--tema-letra-rgb) / 0.68) !important; }
+/* Blanco elegido a mano = blanco pleno en todo el menú, sin apagar los textos secundarios. */
+:root[data-letras="blanco"] #neura-sidebar :is(.text-slate-400, .text-slate-500) { color: rgb(255 255 255) !important; }
 :root[data-letras] #neura-sidebar :is([class*="text-[#7DCFD2]"], [class*="text-amber-300"]) { color: rgb(var(--tema-letra-rgb)) !important; }
 :root[data-letras] #neura-sidebar input { color: rgb(var(--tema-letra-rgb)) !important; }
 :root[data-letras] #neura-sidebar input::placeholder { color: rgb(var(--tema-letra-rgb) / 0.55) !important; }
+:root[data-letras="blanco"] #neura-sidebar input::placeholder { color: rgb(255 255 255 / 0.85) !important; }
 :root[data-letras] #neura-sidebar :is([class~="bg-white/[0.10]"], [class~="bg-white/10"]) { background-color: rgb(var(--tema-letra-rgb) / 0.14) !important; }
 :root[data-letras] #neura-sidebar :is([class*="hover:bg-white/"]:hover, [class~="bg-white/[0.04]"], [class~="bg-white/[0.05]"], [class~="bg-white/[0.06]"], [class~="bg-black/20"], [class~="bg-black/30"]) { background-color: rgb(var(--tema-letra-rgb) / 0.08) !important; }
 :root[data-letras] #neura-sidebar :is([class*="border-white/"], [class*="zentra-sidebar-border"]) { border-color: rgb(var(--tema-letra-rgb) / 0.16) !important; }

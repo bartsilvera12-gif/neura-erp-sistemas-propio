@@ -99,13 +99,14 @@ export const LETRAS = [
   { id: "gris", nombre: "Gris", muestra: "#646973" },
   { id: "negro", nombre: "Negro", muestra: "#111111" },
 ] as const;
-export type LetraId = (typeof LETRAS)[number]["id"];
-export const LETRA_POR_DEFECTO: LetraId = "blanco";
+/** "original" = sin elegir: las letras de siempre (blancas con sus grises suaves). */
+export type LetraId = (typeof LETRAS)[number]["id"] | "original";
+export const LETRA_POR_DEFECTO: LetraId = "original";
 
 export function leerLetras(): LetraId {
   try {
     const v = localStorage.getItem(CLAVE_LETRAS);
-    return v === "negro" || v === "gris" ? v : LETRA_POR_DEFECTO;
+    return v === "negro" || v === "gris" || v === "blanco" ? v : LETRA_POR_DEFECTO;
   } catch {
     return LETRA_POR_DEFECTO;
   }
@@ -170,4 +171,4 @@ export const SCRIPT_TEMA = `try{var d=document.documentElement,t=localStorage.ge
   TEMAS.filter((t) => t.id !== TEMA_POR_DEFECTO).map((t) => t.id)
 )}.indexOf(t)>-1)d.setAttribute("data-tema",t);else if(t.charAt(0)=="#"){var c=localStorage.getItem(${JSON.stringify(
   CLAVE_TEMA_CSS
-)})||"";if(/^(--tema[a-z-]*rgb:\\d{1,3} \\d{1,3} \\d{1,3};){1,12}$/.test(c))d.style.cssText=c}var l=localStorage.getItem(${JSON.stringify(CLAVE_LETRAS)});if(l=="negro"||l=="gris")d.setAttribute("data-letras",l)}catch(e){}`;
+)})||"";if(/^(--tema[a-z-]*rgb:\\d{1,3} \\d{1,3} \\d{1,3};){1,12}$/.test(c))d.style.cssText=c}var l=localStorage.getItem(${JSON.stringify(CLAVE_LETRAS)});if(l=="negro"||l=="gris"||l=="blanco")d.setAttribute("data-letras",l)}catch(e){}`;

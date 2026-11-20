@@ -62,7 +62,7 @@ import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recordin
 import { listActiveQuickRepliesForQueue } from "@/lib/chat/quick-replies-actions";
 import {
   X,
-  CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, Smile, Square, Trash2, UserRound, UserPlus, Zap, MessagesSquare } from "lucide-react";
+  CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, Smile, Square, Trash2, UserRound, UserPlus, Zap, MessagesSquare, ChevronRight } from "lucide-react";
 
 /** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -952,6 +952,63 @@ function InboxReplyTurnBadges({ c, dense }: { c: InboxConversation; dense?: bool
         </span>
       ) : null}
     </>
+  );
+}
+
+/** "MILAGROS LUJAN GOMEZ FLORES" → "Milagros L.": en la lista alcanza para saber quién atiende. */
+function agenteCortoLista(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "—";
+  const cap = (p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+  return partes.length > 1 ? `${cap(partes[0])} ${partes[1].charAt(0).toUpperCase()}.` : cap(partes[0]);
+}
+
+/**
+ * La cola en corto, para que entre en una línea junto al estado y al agente: "Atención al
+ * cliente" → "ATC", "Ventas neura" → "Ventas". El nombre entero queda en el título al pasar el mouse.
+ */
+function colaCortaLista(nombre: string): string {
+  const n = nombre.trim();
+  if (/^atenci[oó]n\s+al\s+cliente$/i.test(n)) return "ATC";
+  const cap = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
+  if (n.length <= 9) return cap(n);
+  return cap(n.split(/\s+/)[0]);
+}
+
+/**
+ * Hace cuánto, arriba a la derecha de cada chat de la lista.
+ *
+ * Es el mismo reloj de antes, sin pastilla: naranja con la llama si el cliente escribió y falta
+ * responderle; gris si el último mensaje fue nuestro. A la izquierda, cuántos hay sin leer.
+ */
+function HaceCuantoLista({ c, bot }: { c: InboxConversation; bot: boolean }) {
+  const agentSince = bot ? null : c.awaiting_agent_reply_since;
+  const clientSince = bot ? null : inboxClientWaitingSince(c);
+  const desde = agentSince ?? clientSince ?? c.last_message_at ?? null;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-[11px]">
+      {c.unread_count > 0 ? (
+        <span className="inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#4FAEB2] px-1 text-[10px] font-bold leading-none text-white">
+          {c.unread_count}
+        </span>
+      ) : null}
+      {bot ? <span className="font-medium text-violet-700">Bot</span> : null}
+      {desde ? (
+        <span
+          className={`inline-flex items-center gap-0.5 ${agentSince ? "text-orange-600" : "text-slate-400"}`}
+          title={
+            agentSince
+              ? "El cliente escribió; falta la respuesta del asesor"
+              : clientSince
+                ? "Tiempo desde nuestro último mensaje"
+                : "Último mensaje"
+          }
+        >
+          {agentSince ? <Flame className="h-3 w-3 shrink-0" aria-hidden /> : null}
+          <LiveElapsedLabel sinceIso={desde} />
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -4052,52 +4109,33 @@ export function ConversacionesClient({
                   onMouseEnter={() => onHoverConversation(c.id)}
                   onMouseLeave={onLeaveConversation}
                   onFocus={() => prefetchConversation(c.id)}
-                  className={`w-full text-left px-3 py-2.5 border-b border-slate-100 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_84px] ${
+                  className={`w-full text-left px-3 py-2.5 border-b border-slate-100 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_96px] ${
                     isSelected ? "bg-white border-l-[3px] border-l-[#4FAEB2]" : "hover:bg-white"
                   }`}
                 >
-                  <div className="flex items-start gap-2.5">
+                  <div className="flex items-center gap-2.5">
                     <span
                       aria-hidden="true"
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${
+                      className={`flex h-10 w-10 shrink-0 self-start items-center justify-center rounded-full text-[13px] font-semibold ${
                         hasNameInCard
-                          ? "bg-[#4FAEB2]/12 text-[#3F8E91] border border-[#4FAEB2]/30"
-                          : "bg-slate-100 text-slate-500 border border-slate-200"
+                          ? "bg-[#4FAEB2]/12 text-[#3F8E91]"
+                          : "bg-slate-100 text-slate-500"
                       }`}
                     >
                       {cardInitial}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900 truncate">
-                            {cardName}
-                          </div>
-                          <div className="text-[11px] text-slate-500 font-mono truncate tabular-nums">
-                            {telefonoMostrableContacto(c.contact)}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          {esAsesor && vista !== "bot" ? <InboxReplyTurnBadges c={c} dense /> : null}
-                          {vista === "bot" ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-violet-700">
-                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-                              Bot
-                            </span>
-                          ) : c.human_taken_over || c.flow_status === "human" ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
-                              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                              Humano
-                            </span>
-                          ) : null}
-                          {c.unread_count > 0 && (
-                            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-[#4FAEB2] px-1.5 py-0.5 text-[11px] font-bold text-white">
-                              {c.unread_count}
-                            </span>
-                          )}
-                        </div>
+                      {/* Renglón 1: quién es, y a la derecha hace cuánto (con el punto si hay sin leer). */}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className={`min-w-0 truncate text-[14px] text-slate-900 ${c.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
+                          {cardName}
+                        </span>
+                        <HaceCuantoLista c={c} bot={vista === "bot"} />
                       </div>
-                      <p className="mt-1 text-[12px] text-slate-500 truncate leading-snug">
+                      <div className="text-[11px] text-slate-500 truncate tabular-nums">
+                        {telefonoMostrableContacto(c.contact)}
+                      </div>
+                      <p className={`mt-0.5 text-[12px] truncate leading-snug ${c.unread_count > 0 ? "text-slate-700" : "text-slate-500"}`}>
                         {c.last_message_from_me ? (
                           <MessageDeliveryTicks
                             status={c.last_message_status}
@@ -4108,40 +4146,44 @@ export function ConversacionesClient({
                         ) : null}
                         {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                       </p>
-                    </div>
-                  </div>
-                  {!esAsesor ? (
-                  /* Alineada con el nombre (pasando el avatar), no con el borde de la fila. */
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-[46px]">
-                    <span className={`${CHIP_LISTA} ${chipEstadoLista(c.status).caja}`}>
-                      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${chipEstadoLista(c.status).punto}`} />
-                      {labelEstado(c.status)}
-                    </span>
-                    {vista !== "bot" ? <InboxReplyTurnBadges c={c} dense /> : null}
-                    {c.queue_name ? (
-                      <span className={`${CHIP_LISTA} bg-slate-100 text-slate-600`} title={`Cola: ${c.queue_name}`}>
-                        <span className="truncate">Cola · {c.queue_name}</span>
-                      </span>
-                    ) : null}
-                    {c.assigned_agent_name ? (
-                      <span
-                        className={`${CHIP_LISTA} bg-emerald-50 text-emerald-700`}
-                        title={`Agente asignado: ${c.assigned_agent_name}`}
-                      >
-                        <span className="truncate">Agente · {c.assigned_agent_name}</span>
-                      </span>
-                    ) : (
-                      (() => {
-                        const w = assignmentWaitBadge(c.assignment_wait_code, Boolean(c.queue_id));
-                        return (
-                          <span className={`${CHIP_LISTA} ${chipEsperaLista(w.tone)}`} title="Sin agente asignado">
-                            <span className="truncate">{w.label}</span>
+                      {/* Renglón de datos: estado | cola | quién atiende. Una sola línea, sin pastillas de más. */}
+                      <div className="mt-1.5 flex min-w-0 items-center gap-2 text-[11px] text-slate-500">
+                        <span className={`${CHIP_LISTA} shrink-0 ${chipEstadoLista(c.status).caja}`}>
+                          <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${chipEstadoLista(c.status).punto}`} />
+                          {labelEstado(c.status)}
+                        </span>
+                        {c.queue_name ? (
+                          <>
+                            <span aria-hidden="true" className="h-3 w-px shrink-0 bg-slate-200" />
+                            <span className="inline-flex min-w-0 shrink-0 max-w-[45%] items-center gap-1" title={`Cola: ${c.queue_name}`}>
+                              <Headset className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+                              <span className="truncate">{colaCortaLista(c.queue_name)}</span>
+                            </span>
+                          </>
+                        ) : null}
+                        <span aria-hidden="true" className="h-3 w-px shrink-0 bg-slate-200" />
+                        {c.assigned_agent_name ? (
+                          <span className="inline-flex min-w-0 items-center gap-1" title={`Agente asignado: ${c.assigned_agent_name}`}>
+                            <UserRound className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+                            <span className="truncate">{agenteCortoLista(c.assigned_agent_name)}</span>
                           </span>
-                        );
-                      })()
-                    )}
+                        ) : (
+                          (() => {
+                            const w = assignmentWaitBadge(c.assignment_wait_code, Boolean(c.queue_id));
+                            return (
+                              <span
+                                className={`min-w-0 truncate font-medium ${w.tone === "amber" ? "text-amber-700" : w.tone === "indigo" ? "text-indigo-700" : "text-slate-500"}`}
+                                title="Sin agente asignado"
+                              >
+                                {w.label}
+                              </span>
+                            );
+                          })()
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />
                   </div>
-                  ) : null}
                 </button>
                 );
               })

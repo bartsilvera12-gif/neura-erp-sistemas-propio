@@ -30,7 +30,9 @@ type ItemBuscable = Relacionado & { resumen: string | null; texto?: string };
  * porque la duda suele mutar mientras se lee.
  */
 
-const TEAL_OSCURO = "#0B3A3D";
+/** El degradado de la portada, con los colores del tema que eligió el usuario. */
+const FONDO_PORTADA =
+  "linear-gradient(160deg, rgb(var(--tema-fondo-rgb)) 0%, rgb(var(--tema-fondo-alto-rgb)) 60%, rgb(var(--tema-oscuro-rgb)) 100%)";
 
 /** MP4/WebM se reproducen en el navegador; el resto de los adjuntos se descarga. */
 function esVideo(adj: AyudaAdjunto): boolean {
@@ -285,7 +287,8 @@ export default function ArticuloClient({ slug }: { slug: string }) {
       {/* Banda superior con el buscador */}
       <div
         className="px-4 py-4 md:px-6"
-        style={{ background: `linear-gradient(160deg, ${TEAL_OSCURO} 0%, #17575A 60%, #2F6E71 100%)` }}
+        // Con las variables del tema: un `style` escrito a mano no pasa por el cambio de color.
+        style={{ background: FONDO_PORTADA }}
       >
         {buscador}
       </div>

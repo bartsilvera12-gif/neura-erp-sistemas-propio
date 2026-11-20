@@ -26,7 +26,9 @@ type CategoriaConteo = AyudaCategoria & { articulos: number };
  *    del artículo, que es lo único que no está cargado en el cliente.
  */
 
-const TEAL_OSCURO = "#0B3A3D";
+/** El degradado de la portada, con los colores del tema que eligió el usuario. */
+const FONDO_PORTADA =
+  "linear-gradient(160deg, rgb(var(--tema-fondo-rgb)) 0%, rgb(var(--tema-fondo-alto-rgb)) 55%, rgb(var(--tema-oscuro-rgb)) 100%)";
 
 export default function AyudaClient() {
   /**
@@ -233,7 +235,8 @@ export default function AyudaClient() {
       {/* ── Portada: título y buscador ── */}
       <section
         className="relative overflow-hidden px-4 pb-24 pt-12 md:px-6 md:pb-28 md:pt-16"
-        style={{ background: `linear-gradient(160deg, ${TEAL_OSCURO} 0%, #17575A 55%, #2F6E71 100%)` }}
+        // Con las variables del tema: un `style` escrito a mano no pasa por el cambio de color.
+        style={{ background: FONDO_PORTADA }}
       >
         <span
           aria-hidden="true"
@@ -303,7 +306,7 @@ export default function AyudaClient() {
               <button
                 type="button"
                 onClick={irAResultados}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2F6E71] px-6 py-3 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-[#255A5C]"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2F6E71] px-6 py-3 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-[#3F8E91]"
               >
                 <Search className="h-4 w-4" />
                 Buscar

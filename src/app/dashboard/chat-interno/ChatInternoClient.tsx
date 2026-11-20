@@ -820,6 +820,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [grabando, setGrabando] = useState(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  /** Segundos que lleva la grabación, para el cartel. */
+  const [segGrabando, setSegGrabando] = useState(0);
+  /** Si la grabación se descartó: al parar no se sube nada. */
+  const descartarAudioRef = useRef(false);
+  /** Copia local de lo recién subido (por path): se ve y se escucha sin esperar al servidor. */
+  const localesRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!grabando) return;
+    setSegGrabando(0);
+    const t = setInterval(() => setSegGrabando((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [grabando]);
 
   const salaActual = useMemo(() => salas.find((s) => s.id === salaId) ?? null, [salas, salaId]);
 
@@ -1376,6 +1388,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           continue;
         }
         const subido = j.data as Adjunto;
+        if (/^(image|audio|video)\//.test(f.type)) localesRef.current[subido.path] = URL.createObjectURL(f);
         // Miniatura de lo que se está por enviar: sale del archivo local, sin pedir nada a la red.
         if (f.type.startsWith("image/")) {
           const local = URL.createObjectURL(f);
@@ -1545,7 +1558,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       usuario_id: perfil?.usuario_id ?? null,
       autor: perfil?.nombre ?? "Yo",
       texto: cuerpo.trim() || null,
-      adjuntos: files,
+      // Con la copia local: un audio recién grabado se ve como audio desde el primer momento,
+      // y no como un archivo .webm hasta que el servidor devuelva su enlace.
+      adjuntos: files.map((a) => (a.url ? a : { ...a, url: localesRef.current[a.path] ?? null })),
       created_at: new Date().toISOString(),
       editado_at: null,
       eliminado: false,
@@ -1637,12 +1652,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
+      descartarAudioRef.current = false;
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         setGrabando(false);
+        if (descartarAudioRef.current) return;
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         if (blob.size === 0) return;
         const ext = (rec.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
@@ -2927,7 +2944,27 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 >
                   {subiendo ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Paperclip className="h-[18px] w-[18px]" />}
                 </button>
-                <div className="relative flex-1">
+                {grabando ? (
+                  <div className="flex min-h-[36px] flex-1 items-center gap-2.5 rounded-xl bg-rose-50 px-3 text-rose-700">
+                    <span className="relative flex h-3 w-3 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-70" />
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-600" />
+                    </span>
+                    <span className="text-[14px] font-semibold">Grabando audio</span>
+                    <span className="text-[14px] tabular-nums">{mmss(segGrabando)}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        descartarAudioRef.current = true;
+                        recRef.current?.stop();
+                      }}
+                      className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Descartar
+                    </button>
+                  </div>
+                ) : null}
+                <div className={`relative flex-1 ${grabando ? "hidden" : ""}`}>
                 {sugeridosMencion.length > 0 ? (
                   <ul className="absolute bottom-full left-0 z-30 mb-1 w-60 overflow-hidden rounded-xl border border-[#4FAEB2]/25 bg-white p-1 shadow-xl">
                     {sugeridosMencion.map((m) => (
@@ -3055,7 +3092,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     title={grabando ? "Detener y enviar audio" : "Grabar audio"}
                     className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
                       grabando
-                        ? "animate-pulse bg-rose-50 text-rose-600"
+                        ? "bg-rose-600 text-white hover:bg-rose-700"
                         : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
                     }`}
                   >

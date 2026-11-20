@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   Tags,
   UsersRound,
+  Palette,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
@@ -128,6 +129,16 @@ export default function ConfiguracionPage() {
               icon={SlidersHorizontal}
               badge={editorBadge}
               href="/configuracion/preferencias"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
+              title="Apariencia"
+              subtitle="PERSONAL · COLOR"
+              description="El color del sistema para vos: elegí uno de la lista o cargá el tuyo. Los demás no lo ven."
+              icon={Palette}
+              badge={editorBadge}
+              href="/configuracion/apariencia"
             />
           </li>
           <li>

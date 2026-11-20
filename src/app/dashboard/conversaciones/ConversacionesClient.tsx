@@ -979,7 +979,7 @@ function colaCortaLista(nombre: string): string {
  * Hace cuánto, arriba a la derecha de cada chat de la lista.
  *
  * Es el mismo reloj de antes, sin pastilla: naranja con la llama si el cliente escribió y falta
- * responderle; gris si el último mensaje fue nuestro. A la izquierda, cuántos hay sin leer.
+ * responderle; azul con la persona si ya respondimos nosotros. A la izquierda, cuántos hay sin leer.
  */
 function HaceCuantoLista({ c, bot }: { c: InboxConversation; bot: boolean }) {
   const agentSince = bot ? null : c.awaiting_agent_reply_since;
@@ -995,7 +995,7 @@ function HaceCuantoLista({ c, bot }: { c: InboxConversation; bot: boolean }) {
       {bot ? <span className="font-medium text-violet-700">Bot</span> : null}
       {desde ? (
         <span
-          className={`inline-flex items-center gap-0.5 ${agentSince ? "text-orange-600" : "text-slate-400"}`}
+          className={`inline-flex items-center gap-0.5 ${agentSince ? "text-orange-600" : clientSince ? "text-sky-600" : "text-slate-400"}`}
           title={
             agentSince
               ? "El cliente escribió; falta la respuesta del asesor"
@@ -1004,7 +1004,11 @@ function HaceCuantoLista({ c, bot }: { c: InboxConversation; bot: boolean }) {
                 : "Último mensaje"
           }
         >
-          {agentSince ? <Flame className="h-3 w-3 shrink-0" aria-hidden /> : null}
+          {agentSince ? (
+            <Flame className="h-3 w-3 shrink-0" aria-hidden />
+          ) : clientSince ? (
+            <UserRound className="h-3 w-3 shrink-0" aria-hidden />
+          ) : null}
           <LiveElapsedLabel sinceIso={desde} />
         </span>
       ) : null}

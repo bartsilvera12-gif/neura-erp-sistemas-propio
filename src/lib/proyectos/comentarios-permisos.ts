@@ -46,6 +46,27 @@ export type PermisoComentarios = {
 
 const AMBOS: CanalComentario[] = ["comercial", "desarrollo"];
 
+/**
+ * Personas que ven y escriben los DOS canales en todos los proyectos sin ser PM, QA ni admin.
+ *
+ * Es un permiso puntual: darle a alguien el flag de PM o de QA para esto le sumaría además los
+ * avisos y las atribuciones de ese rol. Se agregan acá (y se despliega) o con
+ * `PROYECTOS_COMENTARIOS_AMBOS_EMAILS=uno@x.com,otro@y.com` en Coolify. Solo se lee en el
+ * servidor, con el correo del usuario del ERP.
+ */
+const VEN_AMBOS_CANALES = new Set(["ivanchtareas@gmail.com"]);
+
+function veAmbosCanalesPorCorreo(email: string | null | undefined): boolean {
+  const e = email?.trim().toLowerCase();
+  if (!e) return false;
+  if (VEN_AMBOS_CANALES.has(e)) return true;
+  return (process.env.PROYECTOS_COMENTARIOS_AMBOS_EMAILS ?? "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(e);
+}
+
 type UsuarioFlags = {
   rol: string | null;
   es_qa: boolean | null;
@@ -124,12 +145,17 @@ export async function permisoComentariosDe(
   const catalog = createServiceRoleClient();
   const { data: u } = await catalog
     .from("usuarios")
-    .select("rol, es_qa, es_project_manager")
+    .select("rol, es_qa, es_project_manager, email")
     .eq("empresa_id", empresaId)
     .eq("id", usuarioId)
     .maybeSingle();
 
   const flags = (u ?? { rol: null, es_qa: null, es_project_manager: null }) as UsuarioFlags;
+
+  // Permiso puntual por correo: ambos canales, en cualquier proyecto.
+  if (veAmbosCanalesPorCorreo((u as { email?: string | null } | null)?.email)) {
+    return { canales: [...AMBOS], motivo: "correo_habilitado" };
+  }
 
   // Los tres roles globales no dependen del proyecto: se evita esa consulta.
   if (flags.es_qa === true || flags.es_project_manager === true || esRolAdminEmpresaOGlobal(flags.rol)) {

@@ -3,8 +3,9 @@
  * demás). Se elige en Configuración → Apariencia.
  *
  * Lo guardado (`neura_color`) es el nombre de un color de la lista o un color propio en hex
- * ("#3366cc"). Los de la lista están en globals.css (`:root[data-tema="…"]`); para uno propio
- * se calculan acá los mismos tonos (lateral, fuerte, claro…) con el matiz del color elegido.
+ * ("#3366cc"). Los de la lista están en globals.css (`:root[data-tema="…"]`); uno propio se
+ * aplica tal cual, sin límites (ver `variablesDeColor`). Aparte se elige el color de las letras
+ * que van sobre ese color (`neura_letras`).
  */
 export const CLAVE_TEMA = "neura_color";
 /** Las variables ya calculadas de un color propio, para aplicarlas antes de pintar. */
@@ -44,46 +45,83 @@ export function hexARgb(hex: string): [number, number, number] {
   return [n >> 16, (n >> 8) & 255, n & 255];
 }
 
-function aHsl([r, g, b]: [number, number, number]): [number, number, number] {
-  const R = r / 255, G = g / 255, B = b / 255;
-  const mx = Math.max(R, G, B), mn = Math.min(R, G, B), d = mx - mn, l = (mx + mn) / 2;
-  if (!d) return [0, 0, l];
-  const s = d / (1 - Math.abs(2 * l - 1));
-  let h = mx === R ? ((G - B) / d) % 6 : mx === G ? (B - R) / d + 2 : (R - G) / d + 4;
-  h *= 60;
-  return [h < 0 ? h + 360 : h, s, l];
-}
+/** Las variables del tema (ver globals.css). */
+const TONOS = [
+  "--tema-rgb",
+  "--tema-fuerte-rgb",
+  "--tema-oscuro-rgb",
+  "--tema-claro-rgb",
+  "--tema-lateral-rgb",
+  "--tema-lateral-alto-rgb",
+  "--tema-fondo-rgb",
+  "--tema-fondo-alto-rgb",
+] as const;
 
-function aRgb(h: number, s: number, l: number): string {
-  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
-  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
-  return [r, g, b].map((v) => Math.round((v + m) * 255)).join(" ");
-}
-
-/** Los tonos del turquesa original: de cada uno se conserva lo claro/oscuro y se le cambia el matiz. */
-const TONOS: [string, string][] = [
-  ["--tema-rgb", "#4faeb2"],
-  ["--tema-fuerte-rgb", "#3f8e91"],
-  ["--tema-oscuro-rgb", "#2f6e71"],
-  ["--tema-claro-rgb", "#7dcfd2"],
-  ["--tema-lateral-rgb", "#224e55"],
-  ["--tema-lateral-alto-rgb", "#285c62"],
-  ["--tema-fondo-rgb", "#0b3a3d"],
-  ["--tema-fondo-alto-rgb", "#104a4e"],
-];
+const mezclar = (c: [number, number, number], con: number, parte: number): string =>
+  c.map((v) => Math.round(v + (con - v) * parte)).join(" ");
 
 /**
- * Variables de un color propio. Del color elegido se toma el matiz y qué tan vivo es; lo claro
- * u oscuro de cada tono queda como en el diseño, para que los textos se sigan leyendo.
+ * Variables de un color propio, sin límites: el menú lateral y los botones toman EXACTAMENTE el
+ * color elegido (también negro, blanco o uno muy claro). Los demás tonos son ese mismo color un
+ * poco más oscuro o más claro. Para que las letras se lean sobre un color claro está el "color
+ * de las letras".
  */
 export function variablesDeColor(hex: string): [string, string][] {
-  const [h, s] = aHsl(hexARgb(hex));
-  // Tope de viveza: un color muy chillón dejaría el menú lateral demasiado intenso.
-  const viveza = Math.min(1.5, s / aHsl(hexARgb(TONOS[0][1]))[1]);
-  return TONOS.map(([nombre, base]) => {
-    const [, s0, l0] = aHsl(hexARgb(base));
-    return [nombre, aRgb(h, Math.min(1, s0 * viveza), l0)];
+  const c = hexARgb(hex);
+  const exacto = c.join(" ");
+  const claroDeBase = luminancia(hex) > 0.5;
+  return [
+    ["--tema-rgb", exacto],
+    ["--tema-fuerte-rgb", mezclar(c, 0, 0.18)],
+    ["--tema-oscuro-rgb", mezclar(c, 0, 0.36)],
+    ["--tema-claro-rgb", mezclar(c, 255, 0.4)],
+    ["--tema-lateral-rgb", exacto],
+    // La franja del logo, apenas distinta del resto del menú.
+    ["--tema-lateral-alto-rgb", claroDeBase ? mezclar(c, 0, 0.05) : mezclar(c, 255, 0.07)],
+    ["--tema-fondo-rgb", mezclar(c, 0, 0.3)],
+    ["--tema-fondo-alto-rgb", mezclar(c, 0, 0.2)],
+  ];
+}
+
+/** Qué tan claro se ve un color (0 negro … 1 blanco). */
+export function luminancia(hex: string): number {
+  const [r, g, b] = hexARgb(hex).map((v) => {
+    const x = v / 255;
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
   });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// ── Color de las letras sobre el color del sistema ────────────────────────────
+export const CLAVE_LETRAS = "neura_letras";
+export const LETRAS = [
+  { id: "blanco", nombre: "Blanco", muestra: "#ffffff" },
+  { id: "gris", nombre: "Gris", muestra: "#646973" },
+  { id: "negro", nombre: "Negro", muestra: "#111111" },
+] as const;
+export type LetraId = (typeof LETRAS)[number]["id"];
+export const LETRA_POR_DEFECTO: LetraId = "blanco";
+
+export function leerLetras(): LetraId {
+  try {
+    const v = localStorage.getItem(CLAVE_LETRAS);
+    return v === "negro" || v === "gris" ? v : LETRA_POR_DEFECTO;
+  } catch {
+    return LETRA_POR_DEFECTO;
+  }
+}
+
+export function elegirLetras(id: LetraId): void {
+  const raiz = document.documentElement;
+  if (id === LETRA_POR_DEFECTO) raiz.removeAttribute("data-letras");
+  else raiz.setAttribute("data-letras", id);
+  try {
+    if (id === LETRA_POR_DEFECTO) localStorage.removeItem(CLAVE_LETRAS);
+    else localStorage.setItem(CLAVE_LETRAS, id);
+  } catch {
+    // sin almacenamiento: vale hasta recargar
+  }
+  window.dispatchEvent(new Event(EVENTO_TEMA));
 }
 
 /** Lo elegido en este navegador: nombre de la lista o "#rrggbb". */
@@ -103,7 +141,7 @@ export function elegirTema(valor: string): void {
   const id = propio ? null : TEMAS.some((t) => t.id === valor) ? valor : TEMA_POR_DEFECTO;
   const vars = propio ? variablesDeColor(propio) : [];
 
-  TONOS.forEach(([nombre]) => raiz.style.removeProperty(nombre));
+  TONOS.forEach((nombre) => raiz.style.removeProperty(nombre));
   vars.forEach(([nombre, v]) => raiz.style.setProperty(nombre, v));
   if (id && id !== TEMA_POR_DEFECTO) raiz.setAttribute("data-tema", id);
   else raiz.removeAttribute("data-tema");
@@ -132,4 +170,4 @@ export const SCRIPT_TEMA = `try{var d=document.documentElement,t=localStorage.ge
   TEMAS.filter((t) => t.id !== TEMA_POR_DEFECTO).map((t) => t.id)
 )}.indexOf(t)>-1)d.setAttribute("data-tema",t);else if(t.charAt(0)=="#"){var c=localStorage.getItem(${JSON.stringify(
   CLAVE_TEMA_CSS
-)})||"";if(/^(--tema[a-z-]*rgb:\\d{1,3} \\d{1,3} \\d{1,3};){1,12}$/.test(c))d.style.cssText=c}}catch(e){}`;
+)})||"";if(/^(--tema[a-z-]*rgb:\\d{1,3} \\d{1,3} \\d{1,3};){1,12}$/.test(c))d.style.cssText=c}var l=localStorage.getItem(${JSON.stringify(CLAVE_LETRAS)});if(l=="negro"||l=="gris")d.setAttribute("data-letras",l)}catch(e){}`;

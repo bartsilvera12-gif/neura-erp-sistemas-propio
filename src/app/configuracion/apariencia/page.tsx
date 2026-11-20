@@ -8,11 +8,12 @@ import { useEffect, useState } from "react";
 import { Check, RotateCcw } from "lucide-react";
 import { ConfigFormCard, ConfigHelpText, ConfigSectionTitle, F_INPUT, F_LABEL } from "@/components/config/global-config-primitives";
 import { GlobalConfigSubpageShell } from "@/components/config/GlobalConfigSubpageShell";
-import { TEMAS, TEMA_POR_DEFECTO, elegirTema, hexARgb, normalizarColor } from "@/lib/tema-color";
-import { useTema } from "@/lib/useTema";
+import { LETRAS, LETRA_POR_DEFECTO, TEMAS, TEMA_POR_DEFECTO, elegirLetras, elegirTema, hexARgb, luminancia, normalizarColor } from "@/lib/tema-color";
+import { useLetras, useTema } from "@/lib/useTema";
 
 export default function ConfiguracionAparienciaPage() {
   const tema = useTema();
+  const letras = useLetras();
   const esPropio = tema.startsWith("#");
   const actual = esPropio ? tema : (TEMAS.find((t) => t.id === tema)?.muestra ?? TEMAS[0].muestra).toLowerCase();
   const [hex, setHex] = useState(actual);
@@ -24,11 +25,17 @@ export default function ConfiguracionAparienciaPage() {
     setRgb(hexARgb(actual).join(", "));
   }, [actual]);
 
+  /** Color propio: se aplica tal cual. De paso se propone la letra que se lee (se puede cambiar abajo). */
+  const aplicarPropio = (c: string) => {
+    elegirTema(c);
+    elegirLetras(luminancia(c) > 0.45 ? "negro" : "blanco");
+  };
   const aplicarTexto = (texto: string) => {
     const c = normalizarColor(texto);
-    if (c) elegirTema(c);
+    if (c) aplicarPropio(c);
     return Boolean(c);
   };
+  const original = tema === TEMA_POR_DEFECTO && letras === LETRA_POR_DEFECTO;
   const hexValido = normalizarColor(hex) !== null;
   const rgbValido = normalizarColor(rgb) !== null;
 
@@ -46,7 +53,7 @@ export default function ConfiguracionAparienciaPage() {
                   type="button"
                   role="radio"
                   aria-checked={elegido}
-                  onClick={() => elegirTema(t.id)}
+                  onClick={() => { elegirTema(t.id); elegirLetras(LETRA_POR_DEFECTO); }}
                   className={`flex flex-col items-center gap-2 rounded-xl border px-3 py-3 text-xs font-semibold transition-all hover:-translate-y-0.5 hover:shadow-sm ${
                     elegido ? "border-slate-400 bg-slate-50 text-slate-900" : "border-slate-200 bg-white text-slate-600"
                   }`}
@@ -71,7 +78,7 @@ export default function ConfiguracionAparienciaPage() {
                 id="color-paleta"
                 type="color"
                 value={actual}
-                onChange={(e) => elegirTema(e.target.value)}
+                onChange={(e) => aplicarPropio(e.target.value)}
                 className="h-[38px] w-24 cursor-pointer rounded-lg border border-slate-200 bg-white p-1"
               />
             </div>
@@ -105,8 +112,36 @@ export default function ConfiguracionAparienciaPage() {
             </div>
           </div>
           <ConfigHelpText>
-            Del color que elijas se toma el tono; el sistema arma solo las versiones claras y oscuras (menú, botones, bordes) para que todo se siga leyendo bien.
+            Se usa exactamente el color que elijas, sin límites: el menú lateral y los botones quedan de ese color. Si es un color claro, cambiá abajo el color de las letras para que se lean.
           </ConfigHelpText>
+
+        </ConfigFormCard>
+
+        <ConfigFormCard>
+          <ConfigSectionTitle>Color de las letras</ConfigSectionTitle>
+          <div className="flex flex-wrap gap-3" role="radiogroup" aria-label="Color de las letras">
+            {LETRAS.map((l) => {
+              const elegida = letras === l.id;
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={elegida}
+                  onClick={() => elegirLetras(l.id)}
+                  className={`flex min-w-[120px] items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-sm ${
+                    elegida ? "border-slate-400 bg-slate-50 text-slate-900" : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-300" style={{ backgroundColor: l.muestra }}>
+                    {elegida ? <Check aria-hidden className={`h-3.5 w-3.5 ${l.id === "blanco" ? "text-slate-700" : "text-white"}`} /> : null}
+                  </span>
+                  {l.nombre}
+                </button>
+              );
+            })}
+          </div>
+          <ConfigHelpText>Son las letras que van sobre el color del sistema: las del menú lateral y las de los botones.</ConfigHelpText>
 
           <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">Así se ve</p>
@@ -122,14 +157,14 @@ export default function ConfiguracionAparienciaPage() {
         <div>
           <button
             type="button"
-            onClick={() => elegirTema(TEMA_POR_DEFECTO)}
-            disabled={tema === TEMA_POR_DEFECTO}
+            onClick={() => { elegirTema(TEMA_POR_DEFECTO); elegirLetras(LETRA_POR_DEFECTO); }}
+            disabled={original}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-default disabled:opacity-50"
           >
             <RotateCcw aria-hidden className="h-4 w-4" />
             Volver al color original
           </button>
-          {tema === TEMA_POR_DEFECTO ? <p className="mt-2 text-xs text-slate-400">Ya estás usando el color original.</p> : null}
+          {original ? <p className="mt-2 text-xs text-slate-400">Ya estás usando el color original.</p> : null}
         </div>
       </div>
     </GlobalConfigSubpageShell>

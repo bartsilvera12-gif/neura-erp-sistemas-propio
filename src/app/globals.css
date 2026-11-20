@@ -293,3 +293,33 @@ html:has(#neura-app-shell) body {
   --tema-fondo-rgb: 31 35 41;
   --tema-fondo-alto-rgb: 40 46 54;
 }
+
+/**
+ * Color de las letras sobre el color del sistema (menú lateral y botones): blanco por defecto,
+ * o negro / gris para quien eligió un color claro (Configuración → Apariencia). Las reglas solo
+ * existen con `data-letras` en <html>: sin elegir nada, no cambia nada.
+ */
+:root { --tema-letra-rgb: 255 255 255; }
+:root[data-letras="negro"] { --tema-letra-rgb: 17 17 17; }
+:root[data-letras="gris"] { --tema-letra-rgb: 100 105 115; }
+
+/* Menú lateral: textos, íconos, resaltados y líneas pasan a salir del color de letra. */
+:root[data-letras] #neura-sidebar :is(.text-white, .text-slate-200, .text-slate-300, [class*="hover:text-white"]:hover, [class*="hover:text-slate-200"]:hover) { color: rgb(var(--tema-letra-rgb)) !important; }
+:root[data-letras] #neura-sidebar :is(.text-slate-400, .text-slate-500) { color: rgb(var(--tema-letra-rgb) / 0.68) !important; }
+:root[data-letras] #neura-sidebar :is([class*="text-[#7DCFD2]"], [class*="text-amber-300"]) { color: rgb(var(--tema-letra-rgb)) !important; }
+:root[data-letras] #neura-sidebar input { color: rgb(var(--tema-letra-rgb)) !important; }
+:root[data-letras] #neura-sidebar input::placeholder { color: rgb(var(--tema-letra-rgb) / 0.55) !important; }
+:root[data-letras] #neura-sidebar :is([class~="bg-white/[0.10]"], [class~="bg-white/10"]) { background-color: rgb(var(--tema-letra-rgb) / 0.14) !important; }
+:root[data-letras] #neura-sidebar :is([class*="hover:bg-white/"]:hover, [class~="bg-white/[0.04]"], [class~="bg-white/[0.05]"], [class~="bg-white/[0.06]"], [class~="bg-black/20"], [class~="bg-black/30"]) { background-color: rgb(var(--tema-letra-rgb) / 0.08) !important; }
+:root[data-letras] #neura-sidebar :is([class*="border-white/"], [class*="zentra-sidebar-border"]) { border-color: rgb(var(--tema-letra-rgb) / 0.16) !important; }
+:root[data-letras] #neura-sidebar { border-color: rgb(var(--tema-letra-rgb) / 0.16) !important; }
+/* El logo es blanco: se lo lleva al color de letra. */
+:root[data-letras="negro"] #neura-sidebar img { filter: brightness(0); }
+:root[data-letras="gris"] #neura-sidebar img { filter: brightness(0); opacity: 0.6; }
+
+/* Botones y pastillas pintados con el color del sistema: su letra blanca pasa al color de letra. */
+:root[data-letras] :is(
+  [class~="bg-[#4FAEB2]" i], [class~="bg-[#3F8E91]" i], [class~="bg-[#2F6E71]" i], [class~="bg-[#224E55]" i],
+  [class~="bg-[#285C62]" i], [class~="bg-[#0B3A3D]" i], [class~="bg-[var(--brand)]"], [class~="bg-[color:var(--zentra-sidebar)]"],
+  [class~="from-[#4FAEB2]" i], [class~="from-[#3F8E91]" i]
+):is(.text-white, [class*="hover:text-white"]:hover) { color: rgb(var(--tema-letra-rgb)) !important; }

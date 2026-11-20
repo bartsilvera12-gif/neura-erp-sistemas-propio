@@ -50,6 +50,7 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
   const [cargando, setCargando] = useState(false);
   const [cargandoInteraccion, setCargandoInteraccion] = useState(false);
   const [cargandoProduccion, setCargandoProduccion] = useState(false);
+  const [cargandoPlaywrightProduccion, setCargandoPlaywrightProduccion] = useState(false);
   const [resultadoProduccion, setResultadoProduccion] = useState<{ passed: number; total: number; results: Array<{ route: string; passed: boolean; status: number | null; detail: string }> } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -80,6 +81,7 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
 
   const analizar = () => dispararEndpoint(`/api/qa/analizar-erp/${props.projectId}`, setCargando);
   const interactuar = () => dispararEndpoint(`/api/qa/interactuar-agente/${props.projectId}`, setCargandoInteraccion);
+  const probarErpPublicado = () => dispararEndpoint(`/api/qa/comprobar-produccion-agente/${props.projectId}`, setCargandoPlaywrightProduccion);
 
   async function comprobarProduccion(): Promise<void> {
     setCargandoProduccion(true);
@@ -162,6 +164,28 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
           {cargandoInteraccion ? "Encolando…" : "Ejecutar sandbox"}
         </button>
       </div>
+
+      {(props.projectName.toLowerCase().includes("acai-house") || props.projectSlug === "acai-house") && (
+        <div className="mt-3 rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3" data-testid="qa-produccion-playwright">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-emerald-950">QA del ERP publicado · Playwright</p>
+              <p className="mt-1 text-xs text-emerald-900">
+                Ejecuta navegación real sobre acaihouse.neura.com.py y guarda
+                los resultados por corrida. Solo lectura, sin ventas ni cambios de stock.
+              </p>
+            </div>
+            <button
+              onClick={() => void probarErpPublicado()}
+              disabled={cargandoPlaywrightProduccion || cargando || cargandoInteraccion}
+              data-testid="btn-qa-publicado-playwright"
+              className="shrink-0 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+            >
+              {cargandoPlaywrightProduccion ? "Encolando…" : "Probar ERP publicado con Playwright"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {props.projectSlug === "acai-house" && (
         <div className="mt-3 rounded-lg border border-slate-300 bg-white p-3" data-testid="produccion-http-qa">

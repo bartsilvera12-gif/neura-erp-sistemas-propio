@@ -1378,8 +1378,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     setEditandoGrupo(null);
   }, [salaId]);
 
-  async function subirArchivos(files: File[]) {
-    if (!salaId || files.length === 0) return;
+  /**
+   * Sube archivos y los deja adjuntos para el próximo mensaje. Con `sinAdjuntar` sólo los sube
+   * y los devuelve: lo usa el audio, que se manda solo sin pasar por el cuadro.
+   */
+  async function subirArchivos(files: File[], sinAdjuntar = false): Promise<Adjunto[]> {
+    const subidos: Adjunto[] = [];
+    if (!salaId || files.length === 0) return subidos;
     setSubiendo(true);
     try {
       for (const f of files) {
@@ -1401,11 +1406,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           const local = URL.createObjectURL(f);
           setPrevias((prev) => ({ ...prev, [subido.path]: local }));
         }
-        setAdjuntos((prev) => [...prev, subido]);
+        subidos.push(subido);
+        if (!sinAdjuntar) setAdjuntos((prev) => [...prev, subido]);
       }
     } finally {
       setSubiendo(false);
     }
+    return subidos;
   }
 
   /**
@@ -1547,11 +1554,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    * — el POST y el refresco corren atras, y si falla se retira el mensaje y se
    * devuelve el texto tal como estaba.
    */
-  async function enviar() {
+  async function enviar(audio?: Adjunto) {
     if (!salaId) return;
-    const cuerpo = texto;
-    const files = adjuntos;
-    const responde = citando;
+    // Un audio recién grabado sale solo, como mensaje aparte: lo que esté escrito o adjunto en
+    // el cuadro se queda donde está.
+    const cuerpo = audio ? "" : texto;
+    const files = audio ? [audio] : adjuntos;
+    const responde = audio ? null : citando;
     if (!cuerpo.trim() && files.length === 0) return;
 
     const menciones = mencionados
@@ -1588,11 +1597,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     };
 
     setMensajes((prev) => [...prev, optimista]);
-    setTexto("");
-    setAdjuntos([]);
-    setCitando(null);
-    setMencionados([]);
-    setConsultaMencion(null);
+    if (!audio) {
+      setTexto("");
+      setAdjuntos([]);
+      setCitando(null);
+      setMencionados([]);
+      setConsultaMencion(null);
+    }
     setEnviando(true);
 
     try {
@@ -1613,9 +1624,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       };
       if (!r.ok || !j.success) {
         setMensajes((prev) => prev.filter((m) => m.id !== tempId));
-        setTexto(cuerpo);
-        setAdjuntos(files);
-        setCitando(responde);
+        if (audio) {
+          // El audio ya está subido: queda adjunto para reintentar con el botón de enviar.
+          setAdjuntos((prev) => [...prev, audio]);
+        } else {
+          setTexto(cuerpo);
+          setAdjuntos(files);
+          setCitando(responde);
+        }
         setErr(j.error ?? "No se pudo enviar");
         return;
       }
@@ -1639,9 +1655,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       void cargarSalas();
     } catch {
       setMensajes((prev) => prev.filter((m) => m.id !== tempId));
-      setTexto(cuerpo);
-      setAdjuntos(files);
-      setCitando(responde);
+      if (audio) {
+        setAdjuntos((prev) => [...prev, audio]);
+      } else {
+        setTexto(cuerpo);
+        setAdjuntos(files);
+        setCitando(responde);
+      }
       setErr("No se pudo enviar");
     } finally {
       setEnviando(false);
@@ -1672,7 +1692,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         if (blob.size === 0) return;
         const ext = (rec.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
-        await subirArchivos([new File([blob], `audio-${Date.now()}.${ext}`, { type: blob.type })]);
+        // Parar es enviar: el audio sale solo, sin tener que apretar otro botón.
+        const [audio] = await subirArchivos(
+          [new File([blob], `audio-${Date.now()}.${ext}`, { type: blob.type })],
+          true
+        );
+        if (audio) await enviar(audio);
       };
       rec.start();
       recRef.current = rec;
@@ -3017,6 +3042,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                       <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-600" />
                     </span>
                     <span className="text-[14px] font-semibold">Grabando audio</span>
+                    <span className="hidden text-[12px] text-rose-500 sm:inline">· al parar se envía</span>
                     <span className="text-[14px] tabular-nums">{mmss(segGrabando)}</span>
                     <button
                       type="button"

@@ -49,6 +49,8 @@ export type AnalizarErpCardProps = {
 export default function AnalizarErpCard(props: AnalizarErpCardProps) {
   const [cargando, setCargando] = useState(false);
   const [cargandoInteraccion, setCargandoInteraccion] = useState(false);
+  const [cargandoProduccion, setCargandoProduccion] = useState(false);
+  const [resultadoProduccion, setResultadoProduccion] = useState<{ passed: number; total: number; results: Array<{ route: string; passed: boolean; status: number | null; detail: string }> } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -78,6 +80,36 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
 
   const analizar = () => dispararEndpoint(`/api/qa/analizar-erp/${props.projectId}`, setCargando);
   const interactuar = () => dispararEndpoint(`/api/qa/interactuar-agente/${props.projectId}`, setCargandoInteraccion);
+
+  async function comprobarProduccion(): Promise<void> {
+    setCargandoProduccion(true);
+    setErr(null);
+    setResultadoProduccion(null);
+    try {
+      const res = await fetch(`/api/qa/comprobar-erp-publicado/${props.projectId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = await res.json() as {
+        error?: string;
+        passed?: number;
+        total?: number;
+        results?: Array<{ route: string; passed: boolean; status: number | null; detail: string }>;
+      };
+      if (!res.ok) {
+        setErr(body.error ?? `HTTP ${res.status}`);
+      } else if (body.results && body.passed !== undefined && body.total !== undefined) {
+        setResultadoProduccion({ passed: body.passed, total: body.total, results: body.results });
+      } else {
+        setErr("La respuesta del diagnóstico no es válida.");
+      }
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Error de red");
+    } finally {
+      setCargandoProduccion(false);
+    }
+  }
 
   const totalesDiscovery = props.lastDiscovery?.totales ?? null;
 
@@ -130,6 +162,38 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
           {cargandoInteraccion ? "Encolando…" : "Ejecutar sandbox"}
         </button>
       </div>
+
+      {props.projectSlug === "acai-house" && (
+        <div className="mt-3 rounded-lg border border-slate-300 bg-white p-3" data-testid="produccion-http-qa">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-900">Açaí House · ERP publicado</p>
+              <p className="text-xs text-slate-600">Prueba real de disponibilidad HTTP en producción, solo lectura. Sin crear ventas ni modificar datos.</p>
+            </div>
+            <button
+              onClick={() => void comprobarProduccion()}
+              disabled={cargandoProduccion}
+              data-testid="btn-comprobar-produccion"
+              className="rounded bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {cargandoProduccion ? "Comprobando…" : "Comprobar ERP publicado"}
+            </button>
+          </div>
+          {resultadoProduccion && (
+            <div className="mt-2 text-xs" data-testid="resultado-produccion">
+              <p className="font-semibold">{resultadoProduccion.passed}/{resultadoProduccion.total} verificaciones HTTP aprobadas</p>
+              <ul className="mt-1 space-y-1">
+                {resultadoProduccion.results.map((r) => (
+                  <li key={r.route} className={r.passed ? "text-emerald-700" : "text-red-700"}>
+                    {r.passed ? "✓" : "✕"} {r.route} · HTTP {r.status ?? "sin respuesta"} · {r.detail}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-slate-500">Este diagnóstico aún no valida operaciones de negocio ni inicio de sesión.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
         <div className="rounded border bg-white p-2">

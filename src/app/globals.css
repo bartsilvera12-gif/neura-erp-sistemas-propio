@@ -336,3 +336,33 @@ html:has(#neura-app-shell) body {
 @supports (background-color: color-mix(in srgb, red 10%, white)) {
   .chat-globo-propio { background-color: color-mix(in srgb, rgb(var(--tema-rgb)) 22%, #ffffff); }
 }
+
+/*
+ * Chat interno: barra de desplazamiento fina y discreta. En Windows la barra por defecto es
+ * ancha, gris y con flechas, y rompe el fondo de la conversación.
+ */
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(100 116 139 / 0.35) transparent;
+}
+.chat-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-button {
+  display: none;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgb(100 116 139 / 0.3);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.chat-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(100 116 139 / 0.5);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}

@@ -2233,31 +2233,59 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         {editandoCumple ? (
           <div className="border-b border-[#4FAEB2]/12 px-3 py-2.5">
             <p className="mb-1.5 text-[11.5px] font-semibold text-slate-600">Mi cumpleaños</p>
-            <div className="flex items-center gap-1.5">
-              <select
-                aria-label="Día"
-                value={editandoCumple.dia}
-                onChange={(e) => setEditandoCumple({ ...editandoCumple, dia: Number(e.target.value) })}
-                className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[12px] text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
-              >
-                {Array.from({ length: DIAS_DEL_MES[editandoCumple.mes - 1] }, (_, i) => i + 1).map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-              <span className="text-[12px] text-slate-400">de</span>
-              <select
-                aria-label="Mes"
-                value={editandoCumple.mes}
-                onChange={(e) => {
-                  const mes = Number(e.target.value);
-                  setEditandoCumple({ mes, dia: Math.min(editandoCumple.dia, DIAS_DEL_MES[mes - 1]) });
-                }}
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[12px] capitalize text-slate-700 focus:border-[#4FAEB2] focus:outline-none"
-              >
-                {MESES.map((m, i) => (
-                  <option key={m} value={i + 1}>{m}</option>
-                ))}
-              </select>
+            {/* Un calendario del mes, sin año: se elige el día tocándolo. */}
+            <div className="rounded-xl border border-slate-200 bg-white p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <button
+                  type="button"
+                  aria-label="Mes anterior"
+                  onClick={() => {
+                    const mes = editandoCumple.mes === 1 ? 12 : editandoCumple.mes - 1;
+                    setEditandoCumple({ mes, dia: Math.min(editandoCumple.dia, DIAS_DEL_MES[mes - 1]) });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-[12.5px] font-semibold capitalize text-slate-700">
+                  {MESES[editandoCumple.mes - 1]}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Mes siguiente"
+                  onClick={() => {
+                    const mes = editandoCumple.mes === 12 ? 1 : editandoCumple.mes + 1;
+                    setEditandoCumple({ mes, dia: Math.min(editandoCumple.dia, DIAS_DEL_MES[mes - 1]) });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-7 gap-0.5">
+                {Array.from({ length: DIAS_DEL_MES[editandoCumple.mes - 1] }, (_, i) => i + 1).map((d) => {
+                  const elegido = d === editandoCumple.dia;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      aria-label={`${d} de ${MESES[editandoCumple.mes - 1]}`}
+                      aria-pressed={elegido}
+                      onClick={() => setEditandoCumple({ ...editandoCumple, dia: d })}
+                      className={`flex h-8 items-center justify-center rounded-lg text-[12px] tabular-nums transition-colors ${
+                        elegido
+                          ? "bg-[#4FAEB2] font-bold text-white"
+                          : "text-slate-600 hover:bg-[#4FAEB2]/12"
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-center text-[11.5px] font-semibold text-[#2F6E71]">
+                🎂 {editandoCumple.dia} de {MESES[editandoCumple.mes - 1]}
+              </p>
             </div>
             <div className="mt-2 flex items-center gap-2">
               <button
@@ -2331,7 +2359,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             ) : null}
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 chat-scroll overflow-y-auto">
           {cargandoSalas ? (
             <p className="px-3.5 py-3 text-[12px] text-slate-400">Cargando…</p>
           ) : salas.length === 0 && !filtroBandeja ? (
@@ -2637,7 +2665,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 // Llegar arriba de todo trae lo anterior, como en cualquier chat.
                 if (e.currentTarget.scrollTop < 60 && hayMas && !enBusqueda) void cargarAnteriores();
               }}
-              className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4"
+              className="min-h-0 flex-1 space-y-2 chat-scroll overflow-y-auto px-4 py-4"
               style={estiloFondo}
             >
               {errorMsgs ? (
@@ -3141,7 +3169,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         className="fixed inset-0 z-30 cursor-default"
                         onClick={() => setEmojisAbierto(false)}
                       />
-                      <div className="absolute bottom-full right-0 z-40 mb-2 max-h-72 w-[296px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                      <div className="absolute bottom-full right-0 z-40 mb-2 max-h-72 w-[296px] chat-scroll overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
                         {EMOJIS_CUADRO.map((g) => (
                           <div key={g.titulo}>
                             <p className="px-1 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
@@ -3238,7 +3266,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             <h3 className="text-[14px] font-semibold text-slate-800">Acerca del chat</h3>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          <div className="min-h-0 flex-1 space-y-3 chat-scroll overflow-y-auto p-3">
             {/* Identidad. En un grupo, un administrador la edita acá mismo:
                 el nombre, la descripción y la foto son del grupo y cambian
                 cuando el grupo cambia. */}
@@ -3417,7 +3445,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         className="min-w-0 flex-1 bg-transparent text-[12px] focus:outline-none"
                       />
                     </div>
-                    <ul className="max-h-44 overflow-y-auto">
+                    <ul className="max-h-44 chat-scroll overflow-y-auto">
                       {candidatosASumar.length === 0 ? (
                         <li className="px-1 py-1.5 text-[11.5px] text-slate-400">
                           {sumando.trim()
@@ -3851,7 +3879,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     className="w-full bg-transparent text-[12.5px] focus:outline-none"
                   />
                 </div>
-                <ul className="mt-1.5 max-h-56 overflow-y-auto rounded-xl border border-slate-100 p-1">
+                <ul className="mt-1.5 max-h-56 chat-scroll overflow-y-auto rounded-xl border border-slate-100 p-1">
                   {usuariosFiltrados.map((u) => {
                     const sel = elegidos.includes(u.id);
                     return (

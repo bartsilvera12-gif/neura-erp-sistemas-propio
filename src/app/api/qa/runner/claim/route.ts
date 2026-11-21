@@ -104,6 +104,7 @@ export async function POST(request: Request) {
     job_id: job.id,
     run_id: run.id,
     project_id: run.project_id,
+    project_slug: project.slug,
     suite_slug: suite.slug,
     target_base_url: target_base_url_final,
     target_env: run.target_env,

@@ -86,18 +86,11 @@ export async function PUT(
   } catch {
     return NextResponse.json({ error: "body no es JSON", code: "validation" }, { status: 400 });
   }
-  const label = typeof body.label === "string" ? body.label.trim().toLowerCase() : "";
   const rol = typeof body.rol === "string" ? (body.rol as CredencialRol) : null;
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";
   const notas = typeof body.notas === "string" ? body.notas.trim() : "";
 
-  if (!LABEL_RE.test(label)) {
-    return NextResponse.json(
-      { error: "label debe ser slug a-z0-9_ (max 41)", code: "validation", field: "label" },
-      { status: 400 }
-    );
-  }
   if (!rol || !ROLES_PERMITIDOS.has(rol)) {
     return NextResponse.json(
       { error: "rol inválido", code: "validation", field: "rol", permitidos: [...ROLES_PERMITIDOS] },
@@ -116,6 +109,13 @@ export async function PUT(
       { status: 400 }
     );
   }
+
+  // Auto-generar label: `${rol}_${local-part del email}` sanitizado.
+  // El label es un slug interno estable para UNIQUE(project_id, label) —
+  // no se muestra al usuario; se deriva del rol + email.
+  const emailLocal = email.split("@")[0]?.toLowerCase().replace(/[^a-z0-9_]/g, "_") ?? "u";
+  const baseLabel = `${rol}_${emailLocal}`.slice(0, 41);
+  const label = LABEL_RE.test(baseLabel) ? baseLabel : `${rol}_u`.slice(0, 41);
 
   try {
     const mascara = await withQaClient((c) =>

@@ -7,11 +7,7 @@ export type AccionCliente =
   | "reactivate"
   | "duplicate_blocked"
   /** Ticket de Soporte creado desde la tipificación del cliente (tipo "soporte"). */
-  | "ticket_created"
-  /** Acceso al ERP del cliente suspendido por falta de pago (Fase 4 bloqueo). */
-  | "erp_acceso_bloqueado"
-  /** Acceso al ERP del cliente rehabilitado (pago regularizado). */
-  | "erp_acceso_habilitado";
+  | "ticket_created";
 
 /**
  * Registra una entrada de auditoría en `cliente_historial` (tabla existente, RLS por empresa).

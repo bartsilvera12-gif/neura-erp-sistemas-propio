@@ -18,7 +18,7 @@ import { ModalHistorialClienteGestion } from "@/components/gestion-clientes/Moda
 import { ModalContactosCliente } from "@/components/gestion-clientes/ModalContactosCliente";
 import ClienteContactosResumen from "@/components/clientes/ClienteContactosResumen";
 import { ProyectosClienteGestion } from "@/components/gestion-clientes/ProyectosClienteGestion";
-import ClienteAccesoErpBoton from "@/app/clientes/components/ClienteAccesoErpBoton";
+import AccesoSistemaCliente from "@/components/gestion-clientes/AccesoSistemaCliente";
 import { RegistrarPagoModal } from "@/components/pagos/RegistrarPagoModal";
 import FacturarVentaModal from "@/components/facturacion/FacturarVentaModal";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
@@ -1174,8 +1174,8 @@ function GestionClientesPageInner() {
                     activo
                     onClick={() => setModalProyectos(true)}
                   />
-                  <ClienteAccesoErpBoton clienteId={selected.id} />
                 </div>
+                <AccesoSistemaCliente clienteId={selected.id} />
               </section>
 
               <section>

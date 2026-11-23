@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ClienteAccesoErpBoton from "./ClienteAccesoErpBoton";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   addNotaCliente,
@@ -1199,6 +1200,7 @@ export default function ClienteDetalleClient({
             </div>
             {/* Acciones del header */}
             <div className="flex shrink-0 items-center gap-2">
+              <ClienteAccesoErpBoton clienteId={id} />
               {cliente.estado === "activo" ? (
                 esAdmin ? (
                   <button

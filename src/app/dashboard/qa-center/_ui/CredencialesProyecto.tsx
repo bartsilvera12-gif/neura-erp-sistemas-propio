@@ -50,7 +50,6 @@ export default function CredencialesProyecto({ projectId }: Props) {
   const [cargando, setCargando] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [label, setLabel] = useState("");
   const [rol, setRol] = useState<CredencialMascara["rol"]>("lectura_autenticada");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -83,7 +82,6 @@ export default function CredencialesProyecto({ projectId }: Props) {
   }, [cargar]);
 
   const resetForm = (): void => {
-    setLabel("");
     setEmail("");
     setPassword("");
     setNotas("");
@@ -93,17 +91,13 @@ export default function CredencialesProyecto({ projectId }: Props) {
 
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    if (!label.match(/^[a-z][a-z0-9_]{0,40}$/)) {
-      setErr("label debe empezar con letra, solo a-z0-9_");
-      return;
-    }
     setGuardando(true);
     setErr(null);
     try {
       const res = await fetch(`/api/qa/projects/${projectId}/credenciales`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, rol, email, password, notas: notas.trim() || undefined }),
+        body: JSON.stringify({ rol, email, password, notas: notas.trim() || undefined }),
       });
       const json = (await res.json()) as {
         data?: CredencialMascara;
@@ -151,20 +145,7 @@ export default function CredencialesProyecto({ projectId }: Props) {
         </div>
       )}
 
-      <form onSubmit={submit} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-5">
-        <label className="md:col-span-1">
-          <span className="mb-1 block text-xs font-medium text-slate-700">Label</span>
-          <input
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value.toLowerCase())}
-            placeholder="qa_lectura"
-            className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm"
-            required
-            pattern="^[a-z][a-z0-9_]{0,40}$"
-            title="Solo a-z 0-9 _ (empezar con letra)"
-          />
-        </label>
+      <form onSubmit={submit} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-4">
         <label className="md:col-span-2">
           <span className="mb-1 block text-xs font-medium text-slate-700">Rol</span>
           <select
@@ -226,11 +207,11 @@ export default function CredencialesProyecto({ projectId }: Props) {
             className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm"
           />
         </label>
-        <div className="md:col-span-1 flex items-end">
+        <div className="md:col-span-4 flex justify-end">
           <button
             type="submit"
             disabled={guardando}
-            className="w-full rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+            className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
           >
             {guardando ? "Guardando…" : "Guardar"}
           </button>
@@ -247,8 +228,7 @@ export default function CredencialesProyecto({ projectId }: Props) {
         <ul className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
           {creds.map((c) => (
             <li key={c.id} className={`grid grid-cols-6 gap-2 px-3 py-2 text-xs ${c.active ? "" : "opacity-50"}`}>
-              <div className="col-span-1 font-mono text-slate-700">{c.label}</div>
-              <div className="col-span-1 text-slate-600">{ROLES.find((r) => r.value === c.rol)?.label ?? c.rol}</div>
+              <div className="col-span-2 text-slate-600">{ROLES.find((r) => r.value === c.rol)?.label ?? c.rol}</div>
               <div className="col-span-2 font-mono text-slate-700">{c.email_mascara}</div>
               <div className="col-span-1 font-mono tracking-widest text-slate-500">{c.password_mascara}</div>
               <div className="col-span-1 flex items-center justify-end gap-2">

@@ -93,6 +93,18 @@ CREATE POLICY qa_center_api_crud
   FOR ALL TO qa_center_api
   USING (true) WITH CHECK (true);
 
+-- GRANT explícito al rol qa_center_api — las policies RLS solo filtran filas,
+-- no otorgan el permiso base. Sin este GRANT, el rol recibe
+-- "permission denied for table project_credentials" antes de que RLS actúe.
+-- Patrón idéntico al de las otras tablas de qa_center (ver migraciones
+-- 20261113200000, 20261116120000, 20261116130000).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'qa_center_api') THEN
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON qa_center.project_credentials TO qa_center_api';
+  END IF;
+END$$;
+
 -- El nuevo rol `qa_runner` (del trabajo anterior) NUNCA debe tener acceso
 -- directo a esta tabla — solo lee credenciales via HMAC en el endpoint
 -- `/api/qa/runner/credenciales/[slug]` del QA Center. Lo dejamos explícito:

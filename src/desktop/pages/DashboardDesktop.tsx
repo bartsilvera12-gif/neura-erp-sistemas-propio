@@ -703,6 +703,42 @@ function KpiCard({
   );
 }
 
+// ── Saludo del encabezado (como el inicio de 2.0) ─────────────────
+/**
+ * La hora y la fecha se calculan en el navegador, después de montar: en el
+ * servidor la hora puede ser otra y el HTML no coincidiría al hidratar.
+ * Siempre en hora de Paraguay, viaje quien viaje.
+ */
+function useAhoraParaguay(): Date | null {
+  const [ahora, setAhora] = useState<Date | null>(null);
+  useEffect(() => {
+    setAhora(new Date());
+  }, []);
+  return ahora;
+}
+
+function SaludoDelDia() {
+  const ahora = useAhoraParaguay();
+  if (!ahora) return <>Buen día</>;
+  const hora = Number(
+    new Intl.DateTimeFormat("es-PY", { hour: "numeric", hour12: false, timeZone: "America/Asuncion" }).format(ahora)
+  );
+  return <>{hora < 12 ? "Buen día" : hora < 19 ? "Buenas tardes" : "Buenas noches"}</>;
+}
+
+function FechaDeHoy() {
+  const ahora = useAhoraParaguay();
+  if (!ahora) return null;
+  const texto = new Intl.DateTimeFormat("es-PY", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "America/Asuncion",
+  }).format(ahora);
+  return <>{texto.charAt(0).toUpperCase() + texto.slice(1)} · </>;
+}
+
 // ── Dashboard Comercial ───────────────────────────────────────────────────────
 
 /**
@@ -2689,7 +2725,7 @@ export default function DashboardPage() {
 
   if (dashScope.kind === "empty") {
     return (
-      <div className="space-y-8 px-4 py-6 sm:px-6 md:px-8">
+      <div className="space-y-8">
         <header className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4">
             <ZentraMark />
@@ -2703,7 +2739,7 @@ export default function DashboardPage() {
                   Zentra
                 </p>
               </div>
-              <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+              <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
                 Dashboard
               </h1>
               <p className="mt-1.5 max-w-md text-sm leading-relaxed text-slate-500">
@@ -2725,7 +2761,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8 px-4 py-6 sm:px-6 md:px-8" style={{ color: Z.muted }}>
+    <div className="space-y-8" style={{ color: Z.muted }}>
       <header className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-4">
           <ZentraMark />
@@ -2739,11 +2775,11 @@ export default function DashboardPage() {
                 Zentra
               </p>
             </div>
-            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-              Dashboard
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-900">
+              <SaludoDelDia />
             </h1>
             <p className="mt-1.5 max-w-md text-sm leading-relaxed text-slate-500">
-              Neura ERP · Vista {nivel === "supervisor" ? "de tu área" : "global"} · período alineado al filtro
+              <FechaDeHoy />Vista {nivel === "supervisor" ? "de tu área" : "global"}
             </p>
           </div>
         </div>

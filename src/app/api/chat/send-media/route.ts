@@ -406,6 +406,9 @@ export async function POST(request: NextRequest) {
     let buf: Buffer = Buffer.from(await file.arrayBuffer());
     let origName = safeFileName(file.name || "archivo");
     let uploadMime = file.type || "application/octet-stream";
+    // CSV: el navegador lo manda como "application/vnd.ms-excel" (Windows) o sin tipo. Se
+    // fija text/csv para que viaje como documento CSV y el cliente lo abra con lo que tenga.
+    if (/\.csv$/i.test(origName)) uploadMime = "text/csv";
 
     // El audio grabado (webm/opus del MediaRecorder, desktop y APK) se transcodea a MP3 y se
     // envía como AUDIO NORMAL (no nota de voz). Las notas de voz por API (voice:true) llegan pero

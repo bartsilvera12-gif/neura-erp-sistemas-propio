@@ -8,6 +8,7 @@ import {
   ensureAvatarBucket,
   firmarAvatares,
   nombreVisible,
+  quienesCumplenHoy,
   requireChatInterno,
   respuestaAuth,
 } from "@/lib/chat-interno/core";
@@ -42,8 +43,25 @@ export async function GET(request: Request) {
     if (!u) return NextResponse.json(errorResponse("Usuario no encontrado"), { status: 404 });
 
     const urls = await firmarAvatares(sb, [u]);
+    // Aparte y sin romper: si las columnas todavía no existen, no hay cumpleaños.
+    const { data: c, error: eC } = await catalog
+      .from("usuarios")
+      .select("cumple_mes, cumple_dia, empresa_id")
+      .eq("id", usuarioId)
+      .maybeSingle();
+    const cumple = (eC ? null : c) as {
+      cumple_mes: number | null;
+      cumple_dia: number | null;
+      empresa_id: string | null;
+    } | null;
+    const cumplen = await quienesCumplenHoy(catalog, auth.empresaId);
     return NextResponse.json(
       successResponse({
+        cumple_mes: cumple?.cumple_mes ?? null,
+        cumple_dia: cumple?.cumple_dia ?? null,
+        // Falso mientras no se haya corrido el SQL: la pantalla no ofrece cargarlo.
+        cumple_disponible: !eC,
+        cumplen_hoy: cumplen,
         usuario_id: u.id,
         nombre: nombreVisible(u),
         // El del catálogo, para poder ofrecer "volver a mi nombre real".
@@ -72,7 +90,28 @@ export async function PATCH(request: Request) {
   const { usuarioId } = auth;
 
   try {
-    const body = (await request.json().catch(() => ({}))) as { nombre?: string };
+    const body = (await request.json().catch(() => ({}))) as {
+      nombre?: string;
+      cumple?: { mes?: number; dia?: number } | null;
+    };
+    // El cumpleaños: día y mes, sin año. `null` lo borra.
+    if ("cumple" in body) {
+      const mes = Number(body.cumple?.mes);
+      const dia = Number(body.cumple?.dia);
+      const borrar = body.cumple === null;
+      const tope = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      if (!borrar && !(Number.isInteger(mes) && mes >= 1 && mes <= 12 && Number.isInteger(dia) && dia >= 1 && dia <= tope[mes - 1])) {
+        return NextResponse.json(errorResponse("Esa fecha no existe"), { status: 400 });
+      }
+      const { error } = await createServiceRoleClient()
+        .from("usuarios")
+        .update({ cumple_mes: borrar ? null : mes, cumple_dia: borrar ? null : dia })
+        .eq("id", usuarioId);
+      if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+      return NextResponse.json(
+        successResponse({ cumple_mes: borrar ? null : mes, cumple_dia: borrar ? null : dia })
+      );
+    }
     if (typeof body.nombre !== "string") {
       return NextResponse.json(errorResponse("Falta el nombre"), { status: 400 });
     }

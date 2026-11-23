@@ -56,6 +56,8 @@ export interface RecibeLoteRespuestaParsed {
   /** true si no fue encolado (código oficial 0301). */
   loteNoEncolado: boolean;
   httpStatus: number;
+  /** `Location` cuando SET respondió una redirección (3xx); null en respuestas normales. */
+  redirectLocation: string | null;
   cuerpoSoapCrudo: string;
   /** Traza de la petición HTTPS enviada (mismo contrato que usa el endpoint async recibe-lote). */
   solicitudHttps?: {
@@ -196,7 +198,7 @@ function extraerTextoElemento(xml: string, local: string): string | null {
 
 function parsearRespuestaRecibeLote(xml: string): Omit<
   RecibeLoteRespuestaParsed,
-  "httpStatus" | "loteRecibido" | "loteNoEncolado"
+  "httpStatus" | "loteRecibido" | "loteNoEncolado" | "redirectLocation"
 > {
   if (/<parsererror\b/i.test(xml) || /<faultstring>/i.test(xml)) {
     const fault = extraerTextoElemento(xml, "faultstring");
@@ -234,7 +236,7 @@ function postHttpsMtls(
   certPem: string,
   keyPem: string,
   contentType: string
-): Promise<{ status: number; body: string }> {
+): Promise<{ status: number; body: string; location: string | null }> {
   const url = new URL(urlStr);
   const port = url.port ? Number(url.port) : 443;
 
@@ -248,6 +250,14 @@ function postHttpsMtls(
         cert: certPem,
         key: keyPem,
         rejectUnauthorized: true,
+        /**
+         * NO fijar maxVersion: el SET de producción venía operando en TLS 1.3 con
+         * autenticación mutua. Forzar TLS 1.2 fue una hipótesis descartada (el 302
+         * del 12/11 era un incidente del gateway del SET, no de la versión TLS).
+         * Se deja min=TLSv1.2 (piso de seguridad, ya es el default de Node) y se
+         * permite negociar 1.3 como venía funcionando.
+         */
+        minVersion: "TLSv1.2",
         headers: {
           "Content-Type": contentType,
           "Content-Length": Buffer.byteLength(body, "utf8"),
@@ -255,11 +265,13 @@ function postHttpsMtls(
       },
       (res) => {
         const chunks: Buffer[] = [];
+        const loc = res.headers.location;
         res.on("data", (ch) => chunks.push(ch as Buffer));
         res.on("end", () => {
           resolve({
             status: res.statusCode ?? 0,
             body: Buffer.concat(chunks).toString("utf8"),
+            location: typeof loc === "string" ? loc : null,
           });
         });
       }
@@ -311,6 +323,7 @@ export async function enviarLoteSifen(
 
   let httpStatus: number;
   let cuerpo: string;
+  let redirectLocation: string | null = null;
   try {
     const res = await postHttpsMtls(
       serviceUrl,
@@ -321,6 +334,7 @@ export async function enviarLoteSifen(
     );
     httpStatus = res.status;
     cuerpo = res.body;
+    redirectLocation = res.location;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const label = ambiente === "produccion" ? "SIFEN producción" : "SIFEN TEST";
@@ -333,6 +347,7 @@ export async function enviarLoteSifen(
   return {
     ...parsed,
     httpStatus,
+    redirectLocation,
     loteRecibido: code === "0300",
     loteNoEncolado: code === "0301",
     cuerpoSoapCrudo: cuerpo,

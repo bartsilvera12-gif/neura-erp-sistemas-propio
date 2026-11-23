@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   Tags,
   UsersRound,
+  Palette,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
@@ -53,7 +54,7 @@ export default function ConfiguracionPage() {
   const editorBadge = { label: "Editor", tone: "neutral" as const };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-10 px-4 pb-10 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl space-y-10 pb-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -128,6 +129,16 @@ export default function ConfiguracionPage() {
               icon={SlidersHorizontal}
               badge={editorBadge}
               href="/configuracion/preferencias"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
+              title="Apariencia"
+              subtitle="PERSONAL · COLOR"
+              description="El color del sistema para vos: elegí uno de la lista o cargá el tuyo. Los demás no lo ven."
+              icon={Palette}
+              badge={editorBadge}
+              href="/configuracion/apariencia"
             />
           </li>
           <li>

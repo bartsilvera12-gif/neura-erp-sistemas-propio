@@ -118,6 +118,14 @@ export async function PATCH(
     const datos = raw as ActualizarClienteInput;
     const patch = construirPatchActualizacionCliente(datos);
 
+    // El estado (activo/inactivo) SOLO se cambia por acciones explícitas (botón
+    // Dar de baja / Desactivar / Reactivar, que envían `cambiar_estado: true`),
+    // NUNCA por un guardado de ficha. Sin esto, el formulario arrastra el estado
+    // viejo y guardar la ficha revierte una baja ya hecha.
+    if (raw.cambiar_estado !== true) {
+      delete (patch as Record<string, unknown>).estado;
+    }
+
     const { data: existing, error: errExist } = await supabase
       .from("clientes")
       .select(["id", "deleted_at", ...CAMPOS_AUDITABLES].join(", "))

@@ -34,8 +34,14 @@ function respuestaRecibeLoteJson(r: RecibeLoteRespuestaParsed): Record<string, u
     loteRecibido: r.loteRecibido,
     loteNoEncolado: r.loteNoEncolado,
     httpStatus: r.httpStatus,
+    redirectLocation: r.redirectLocation,
     cuerpoSoapCrudo: r.cuerpoSoapCrudo,
   };
+}
+
+/** HTTP 3xx: SET no procesó el SOAP y redirigió (típicamente cert mTLS no aceptado o TLS). */
+function esRedireccionHttp(status: number): boolean {
+  return status >= 300 && status < 400;
 }
 
 export type HandleSifenEnviarPostOptions = {
@@ -83,10 +89,17 @@ export async function handleSifenEnviarPost(
     });
   }
 
-  if (String(feRow.estado_sifen) !== "firmado") {
+  const estadoActual = String(feRow.estado_sifen);
+  /**
+   * Se permite enviar con estado "firmado" o reintentar desde "error_envio"
+   * (reusando el XML ya firmado). Un "error_envio" por fallo de transporte
+   * —p. ej. HTTP 302 en el POST a SET, cuando el lote nunca llegó a encolarse—
+   * no debe dejar la factura bloqueada. Mismo criterio que el handler de NC.
+   */
+  if (estadoActual !== "firmado" && estadoActual !== "error_envio") {
     return NextResponse.json(
       errorResponse(
-        `Solo se puede enviar a SET con estado "firmado". Estado actual: "${feRow.estado_sifen}".`
+        `Solo se puede enviar a SET con XML firmado (estado "firmado" o reintento desde "error_envio"). Estado actual: "${estadoActual}".`
       ),
       { status: 409 }
     );
@@ -257,6 +270,22 @@ export async function handleSifenEnviarPost(
     const sufProt =
       nuevoProt != null ? `${consultaLoteHint} ${nuevoProt} para más detalle si aplica.` : "";
     nuevoError = `${baseErr}${detalleRecibeSync ? `.${detalleRecibeSync}` : ""}${sufProt}`;
+  } else if (esRedireccionHttp(resp.httpStatus)) {
+    /**
+     * SET respondió una redirección (3xx) en vez de procesar el SOAP: el lote
+     * NO fue encolado. Causa típica en producción: el certificado cliente (mTLS)
+     * no fue presentado/aceptado, o TLS mal negociado. Mensaje accionable y se
+     * conserva el `Location` en sifen_ultima_respuesta_recibe_lote.
+     */
+    nuevoEstado = "error_envio";
+    const loc = resp.redirectLocation?.trim();
+    nuevoError =
+      `El SET respondió una redirección HTTP ${resp.httpStatus} y no procesó el envío (el lote no se encoló). ` +
+      `Suele indicar que el certificado cliente (mTLS) de ${ambienteSoap === "produccion" ? "producción" : "TEST"} ` +
+      `no fue presentado o aceptado, o un problema de TLS/endpoint. ` +
+      `Verificá que el certificado .p12 configurado sea el de ${ambienteSoap === "produccion" ? "producción, vigente y habilitado para el RUC emisor" : "TEST"}.` +
+      (loc ? ` (Location: ${loc})` : "");
+    nuevoProt = null;
   } else {
     nuevoEstado = "error_envio";
     const code = resp.dCodRes?.trim() ?? "";

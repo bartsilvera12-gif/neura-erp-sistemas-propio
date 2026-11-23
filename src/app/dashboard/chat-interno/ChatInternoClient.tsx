@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   FileType,
   FileVideo,
+  Pause,
   Play,
   Crown,
   UserMinus,
@@ -41,6 +42,7 @@ import {
   Reply,
   Search,
   Send,
+  Smile,
   Square,
   Trash2,
   Users,
@@ -54,6 +56,7 @@ import {
 } from "@/components/layout/ChatPestanaBadge";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { BotonFondoChat, useFondoChat } from "./fondo-chat";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 
@@ -74,6 +77,8 @@ type Sala = {
   subtitulo: string;
   /** Mi rol EN ESTA sala: sólo un `admin` edita el grupo. */
   mi_rol: string;
+  /** En un directo: la otra persona cumple años hoy. */
+  cumple_hoy?: boolean;
 };
 
 type Adjunto = {
@@ -194,6 +199,25 @@ type Mensaje = {
 /** Lista corta a propósito: se lee de un vistazo, un selector completo no. */
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
 
+/** Tope de alto del cuadro de escribir: unas ocho líneas. */
+const ALTO_MAX_CUADRO = 204;
+
+/** Los emojis del cuadro de escribir, por grupo. */
+const EMOJIS_CUADRO: { titulo: string; lista: string[] }[] = [
+  {
+    titulo: "Caras",
+    lista: "😀 😃 😄 😁 😆 😅 😂 🤣 🙂 😉 😊 😇 🥰 😍 😘 😋 😜 🤪 🤗 🤭 🤔 🤨 😐 😶 🙄 😏 😬 😴 🤤 😷 🤒 🤯 🥳 😎 🤓 😕 😟 😮 😳 🥺 😢 😭 😱 😤 😡 🤬 💀 🤡".split(" "),
+  },
+  {
+    titulo: "Gestos",
+    lista: "👍 👎 👌 ✌️ 🤞 🤟 🤙 👊 ✊ 👏 🙌 🤝 🙏 💪 👋 🫶 👀 🫡 🤷 🤦 🙋 💁".split(" "),
+  },
+  {
+    titulo: "Cosas",
+    lista: "❤️ 🧡 💛 💚 💙 💜 🖤 💔 🔥 ✨ ⭐ 🎉 🎁 🎂 🏆 💯 ✅ ❌ ⚠️ ❓ ❗ 💡 📌 📎 📅 ⏰ 💰 💸 📈 📉 🚀 ☕ 🍕 🍺 🧉".split(" "),
+  },
+];
+
 /**
  * Fondo de la conversación.
  *
@@ -203,42 +227,10 @@ const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
  * sumar un pedido de red por una textura.
  */
 /**
- * Trama del fondo: una retícula de puntos muy finos.
- *
- * Antes eran iconitos de chat. Cumplían, pero un dibujo reconocible pide ser
- * mirado, y el fondo de una conversación no es para mirarlo: es para que el
- * blanco de los globos tenga contra qué apoyarse. Un punto no representa nada,
- * así que da textura sin robar atención.
+ * El globo de lo propio: el color del sistema que eligió cada uno, muy aclarado (ver
+ * `.chat-globo-propio` en globals.css). Sin elegir nada es un turquesa muy claro.
  */
-const TRAMA_PUNTOS =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'%3E%3Ccircle cx='1.5' cy='1.5' r='1.1' fill='%232F6E71' fill-opacity='0.13'/%3E%3C/svg%3E\")";
-
-/**
- * El fondo completo: dos halos de marca muy tenues sobre un gris cálido, con
- * la trama encima.
- *
- * Los halos son lo que evita que se vea plano —le dan profundidad sin dibujar
- * nada— y van al 8 %, por debajo del umbral en que un fondo empieza a competir
- * con lo que tiene delante. Todo va en `data:` URI y gradientes: ni un pedido
- * de red por la decoración.
- *
- * El contenedor tiene scroll, así que el fondo queda quieto mientras los
- * mensajes pasan por encima: si se moviera con ellos, marearía.
- */
-const ESTILO_FONDO: React.CSSProperties = {
-  backgroundColor: "#F1F5F4",
-  backgroundImage: [
-    "radial-gradient(70% 55% at 15% 10%, rgba(79,174,178,0.16), rgba(79,174,178,0) 70%)",
-    "radial-gradient(60% 50% at 88% 85%, rgba(47,110,113,0.13), rgba(47,110,113,0) 72%)",
-    TRAMA_PUNTOS,
-    "linear-gradient(160deg, #F6F9F8 0%, #EFF4F3 55%, #E9F0EF 100%)",
-  ].join(", "),
-  backgroundRepeat: "no-repeat, no-repeat, repeat, no-repeat",
-  backgroundSize: "auto, auto, 22px 22px, cover",
-};
-
-/** Verde muy claro para lo propio, igual que en los chats de siempre. */
-const BURBUJA_PROPIA = "#E3F3E5";
+const GLOBO_PROPIO = "chat-globo-propio";
 
 type UsuarioOpcion = { id: string; nombre: string; area: string; avatar_url: string | null };
 
@@ -247,7 +239,17 @@ type Perfil = {
   nombre: string;
   nombre_catalogo: string;
   avatar_url: string | null;
+  /** Mi cumpleaños: día y mes, sin año. */
+  cumple_mes?: number | null;
+  cumple_dia?: number | null;
+  /** Falso mientras la base no tenga dónde guardarlo. */
+  cumple_disponible?: boolean;
+  /** Quiénes de la empresa cumplen hoy (puedo ser yo). */
+  cumplen_hoy?: { id: string; nombre: string }[];
 };
+
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const DIAS_DEL_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 type MiembroSala = {
   usuario_id: string;
@@ -341,6 +343,38 @@ function diaLabel(iso: string): string {
  * Incluye lo que se ve: el id, si se editó o borró, las reacciones y el visto.
  * Comparar los objetos enteros sería más caro que volver a renderizar.
  */
+type Yo = { id: string; nombre: string; foto: string | null };
+
+/**
+ * El mensaje con mi reacción `emoji` puesta (`quiero`) o sacada. Si ya está como se pide,
+ * devuelve el mismo mensaje. Lo usan el clic (para pintar al instante) y cada refresco (para
+ * que una respuesta vieja del servidor no borre lo que acabo de tocar).
+ */
+function conMiReaccion(m: Mensaje, emoji: string, yo: Yo, quiero: boolean): Mensaje {
+  const quienes = m.reacciones[emoji] ?? [];
+  const lugar = quienes.indexOf(yo.id);
+  if ((lugar !== -1) === quiero) return m;
+
+  const reacciones = { ...m.reacciones };
+  const nombres = { ...m.reacciones_nombres };
+  const caras = { ...m.reacciones_avatares };
+  if (quiero) {
+    reacciones[emoji] = [...quienes, yo.id];
+    nombres[emoji] = [...(nombres[emoji] ?? []), yo.nombre];
+    caras[emoji] = [...(caras[emoji] ?? []), yo.foto];
+  } else if (quienes.length === 1) {
+    delete reacciones[emoji];
+    delete nombres[emoji];
+    delete caras[emoji];
+  } else {
+    const sin = <T,>(lista: T[] | undefined) => (lista ?? []).filter((_, k) => k !== lugar);
+    reacciones[emoji] = sin(quienes);
+    nombres[emoji] = sin(nombres[emoji]);
+    caras[emoji] = sin(caras[emoji]);
+  }
+  return { ...m, reacciones, reacciones_nombres: nombres, reacciones_avatares: caras };
+}
+
 function firmaDeMensajes(ms: Mensaje[]): string {
   return ms
     .map(
@@ -403,6 +437,130 @@ function Visto({
   );
 }
 
+const mmss = (seg: number) => {
+  const s = Math.max(0, Math.floor(seg));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+const VELOCIDADES = [1, 1.5, 2];
+
+/** 36 alturas (0–1) sacadas del texto: siempre las mismas para el mismo audio. */
+function alturasDeBarras(semilla: string): number[] {
+  let h = 2166136261;
+  for (let i = 0; i < semilla.length; i++) h = Math.imul(h ^ semilla.charCodeAt(i), 16777619);
+  const alturas: number[] = [];
+  for (let i = 0; i < 36; i++) {
+    h = Math.imul(h ^ (h >>> 13), 1274126177) + i;
+    const r = ((h >>> 0) % 1000) / 1000;
+    alturas.push(0.28 + 0.72 * Math.abs(Math.sin(i * 0.55 + r * 2.4)) * (0.55 + 0.45 * r));
+  }
+  return alturas;
+}
+
+/**
+ * Un audio dentro del globo: botón de reproducir, barritas que se van pintando con el avance
+ * (se puede tocar en cualquier punto para saltar ahí), el tiempo y la velocidad. Reemplaza al
+ * reproductor del navegador, que es gris, ancho y distinto en cada uno.
+ */
+function AudioMensaje({ src }: { src: string }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [sonando, setSonando] = useState(false);
+  const [t, setT] = useState(0);
+  const [dur, setDur] = useState(0);
+  const [vel, setVel] = useState(0);
+
+  // Alturas de las barritas: salen de la dirección del audio, así cada uno tiene su dibujo y
+  // es siempre el mismo (no es la onda real: no se descarga ni se analiza el archivo).
+  const barras = useMemo(() => alturasDeBarras(src), [src]);
+
+  const avance = dur > 0 ? Math.min(1, t / dur) : 0;
+
+  const alternar = () => {
+    const a = ref.current;
+    if (!a) return;
+    if (a.paused) void a.play().catch(() => setSonando(false));
+    else a.pause();
+  };
+
+  const saltar = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = ref.current;
+    if (!a || !(dur > 0)) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    a.currentTime = Math.min(dur, Math.max(0, ((e.clientX - r.left) / r.width) * dur));
+    setT(a.currentTime);
+  };
+
+  const cambiarVelocidad = () => {
+    const sig = (vel + 1) % VELOCIDADES.length;
+    setVel(sig);
+    if (ref.current) ref.current.playbackRate = VELOCIDADES[sig];
+  };
+
+  // Los audios grabados en el navegador a veces no traen su duración hasta sonar un rato.
+  const tomarDuracion = () => {
+    const d = ref.current?.duration ?? 0;
+    if (Number.isFinite(d) && d > 0) setDur(d);
+  };
+
+  return (
+    <div className="flex w-[270px] max-w-full items-center gap-2.5 py-0.5">
+      <audio
+        ref={ref}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={tomarDuracion}
+        onDurationChange={tomarDuracion}
+        onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
+        onPlay={() => setSonando(true)}
+        onPause={() => setSonando(false)}
+        onEnded={() => { setSonando(false); setT(0); }}
+        className="hidden"
+      />
+      <button
+        type="button"
+        onClick={alternar}
+        aria-label={sonando ? "Pausar audio" : "Reproducir audio"}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FAEB2] text-white shadow-sm transition hover:bg-[#3F8E91] active:scale-95"
+      >
+        {sonando ? <Pause className="h-[18px] w-[18px] fill-white" /> : <Play className="ml-0.5 h-[18px] w-[18px] fill-white" />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div
+          onClick={saltar}
+          role="slider"
+          aria-label="Avance del audio"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(dur)}
+          aria-valuenow={Math.round(t)}
+          tabIndex={-1}
+          className={`flex h-7 items-center gap-[2px] ${dur > 0 ? "cursor-pointer" : ""}`}
+        >
+          {barras.map((alto, i) => (
+            <span
+              key={i}
+              className={`w-[3px] flex-1 rounded-full transition-colors ${(i + 0.5) / barras.length <= avance ? "bg-[#3F8E91]" : "bg-slate-400/45"}`}
+              style={{ height: `${Math.round(alto * 100)}%` }}
+            />
+          ))}
+        </div>
+        <div className="mt-0.5 flex items-center justify-between text-[10.5px] tabular-nums text-slate-500">
+          <span>{sonando || t > 0 ? mmss(t) : dur > 0 ? mmss(dur) : "Audio"}</span>
+          {dur > 0 && (sonando || t > 0) ? <span>{mmss(dur)}</span> : null}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={cambiarVelocidad}
+        title="Velocidad"
+        aria-label={`Velocidad ${VELOCIDADES[vel]}x`}
+        className="shrink-0 rounded-full bg-black/[0.06] px-2 py-1 text-[10.5px] font-bold tabular-nums text-slate-600 transition hover:bg-black/10"
+      >
+        {VELOCIDADES[vel]}x
+      </button>
+    </div>
+  );
+}
+
 /**
  * Un adjunto dentro del globo.
  *
@@ -422,30 +580,36 @@ function Adjuntito({
   const tipo = tipoDe(a);
 
   if (tipo === "audio" && a.url) {
-    return <audio controls src={a.url} className="h-9 w-60 max-w-full" />;
+    return <AudioMensaje src={a.url} />;
   }
 
   if ((tipo === "imagen" || tipo === "video") && a.url) {
     return (
       // Las acciones aparecen encima al pasar el mouse, para no tapar la
       // imagen mientras se la mira.
-      <div className="group/img relative inline-block">
+      <div className="group/img relative inline-block overflow-hidden rounded-xl align-top">
         <button type="button" onClick={onVer} title="Ver más grande" className="block">
           {tipo === "imagen" ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={a.url}
               alt={a.nombre}
-              className="max-h-64 cursor-zoom-in rounded-lg border border-black/5"
+              // Fondo blanco: una imagen con transparencia (un logo, un recorte) no deja ver el
+              // color del globo por detrás.
+              className="block max-h-72 w-auto max-w-full cursor-zoom-in rounded-xl bg-white object-contain sm:max-w-[320px]"
             />
           ) : (
             <span className="relative block">
               <video
-                src={a.url}
-                // Sin `preload` el recuadro sale negro: hace falta el primer
+                // `#t=1`: la miniatura es el cuadro del primer segundo. Muchos videos
+                // arrancan en blanco o en negro y el primer cuadro no dice nada.
+                src={`${a.url}#t=1`}
+                muted
+                playsInline
+                // Sin `preload` el recuadro sale negro: hace falta un
                 // fotograma para que se entienda qué video es.
                 preload="metadata"
-                className="max-h-64 rounded-lg border border-black/5"
+                className="block max-h-72 max-w-full rounded-xl bg-black sm:max-w-[320px]"
               />
               <span className="absolute inset-0 flex items-center justify-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/55 text-white backdrop-blur-sm">
@@ -481,12 +645,12 @@ function Adjuntito({
   const { Icono, color, fondo } = pintaDeArchivo(a);
   const abrible = seVeEnGrande(a) && !!a.url;
   return (
-    <div className="flex min-w-[230px] items-center gap-2.5 rounded-lg bg-slate-50 px-2 py-2 text-[12px]">
+    <div className="flex min-w-[240px] items-center gap-2.5 rounded-xl border border-black/[0.06] bg-white px-2.5 py-2 text-[12px] shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
       <button
         type="button"
         onClick={abrible ? onVer : onDescargar}
         title={abrible ? "Ver" : "Descargar"}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
         style={{ background: fondo, color }}
       >
         <Icono className="h-[18px] w-[18px]" />
@@ -565,7 +729,15 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [acceso, setAcceso] = useState<"cargando" | "ok" | "denegado">("cargando");
 
   const [texto, setTexto] = useState("");
+  const [emojisAbierto, setEmojisAbierto] = useState(false);
+  /** Hay un archivo arrastrándose sobre la conversación. El contador evita el parpadeo al pasar por los hijos. */
+  const [arrastrando, setArrastrando] = useState(false);
+  const arrastreRef = useRef(0);
+  /** Fondo de la conversación elegido por esta persona (liso, color o imagen propia). */
+  const { estilo: estiloFondo } = useFondoChat();
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
+  /** Miniaturas locales de las imágenes por enviar (path → dirección del archivo en la máquina). */
+  const [previas, setPrevias] = useState<Record<string, string>>({});
   /** Mensaje que se está respondiendo, o `null`. */
   const [citando, setCitando] = useState<Mensaje | null>(null);
   /** Mensaje en edición: su id y el texto en curso. */
@@ -583,10 +755,21 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Contador de pedidos de mensajes, para descartar respuestas atrasadas. */
   const pedidoRef = useRef(0);
+  /**
+   * Mis reacciones recién tocadas (mensaje + emoji → puesta o sacada). Un refresco que salió
+   * ANTES de que el servidor guardara el cambio vuelve con la versión vieja; sin esto el emoji
+   * aparecía, se iba con ese refresco y volvía con el siguiente. Cada una se suelta cuando el
+   * servidor ya dice lo mismo, o a los pocos segundos de confirmada.
+   */
+  const reaccionesMiasRef = useRef(new Map<string, { msgId: string; emoji: string; quiero: boolean; hasta: number }>());
+  const yoRef = useRef<Yo | null>(null);
   /** Al abrir una conversación hay que ir al final, no quedarse en el principio. */
   const saltarAlFinalRef = useRef(true);
   /** Mi perfil: el nombre y la foto que ven los demás. */
   const [perfil, setPerfil] = useState<Perfil | null>(null);
+  useEffect(() => {
+    yoRef.current = perfil?.usuario_id ? { id: perfil.usuario_id, nombre: perfil.nombre ?? "Yo", foto: perfil.avatar_url ?? null } : null;
+  }, [perfil]);
   const fotoRef = useRef<HTMLInputElement>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   /** Filtro de la bandeja: busca en mis conversaciones Y entre las personas. */
@@ -605,6 +788,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [tocandoMiembros, setTocandoMiembros] = useState(false);
   /** Edición de mi nombre en el chat: `null` mientras no se edita. */
   const [editandoNombre, setEditandoNombre] = useState<string | null>(null);
+  /** El cumpleaños mientras se edita; `null` = cerrado. */
+  const [editandoCumple, setEditandoCumple] = useState<{ mes: number; dia: number } | null>(null);
   /** Índice dentro de la galería de la conversación. `null` = visor cerrado. */
   const [viendoIdx, setViendoIdx] = useState<number | null>(null);
   /** Quién está escribiendo ahora mismo: nombre por usuario. */
@@ -642,6 +827,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [grabando, setGrabando] = useState(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  /** Segundos que lleva la grabación, para el cartel. */
+  const [segGrabando, setSegGrabando] = useState(0);
+  /** Si la grabación se descartó: al parar no se sube nada. */
+  const descartarAudioRef = useRef(false);
+  /** Copia local de lo recién subido (por path): se ve y se escucha sin esperar al servidor. */
+  const localesRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!grabando) return;
+    setSegGrabando(0);
+    const t = setInterval(() => setSegGrabando((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [grabando]);
 
   const salaActual = useMemo(() => salas.find((s) => s.id === salaId) ?? null, [salas, salaId]);
 
@@ -691,7 +888,22 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         return;
       }
       setErrorMsgs(null);
-      const llegaron = j?.data?.mensajes ?? [];
+      const delServidor = j?.data?.mensajes ?? [];
+      const mias = reaccionesMiasRef.current;
+      const yo = yoRef.current;
+      const llegaron =
+        mias.size === 0 || !yo
+          ? delServidor
+          : delServidor.map((m) => {
+              let x = m;
+              for (const [clave, r] of mias) {
+                if (r.msgId !== m.id) continue;
+                const yaEsta = (m.reacciones[r.emoji] ?? []).includes(yo.id);
+                if (yaEsta === r.quiero || Date.now() > r.hasta) mias.delete(clave);
+                else x = conMiReaccion(x, r.emoji, yo, r.quiero);
+              }
+              return x;
+            });
       // El refresco trae sólo la última página: lo que se cargó con "ver
       // anteriores" se conserva, y `hayMas` lo decide esa carga, no ésta.
       const misma = !q && salaDeMensajesRef.current === id;
@@ -722,8 +934,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
         // mueve el scroll cada tres segundos.
         return firmaDeMensajes(prev) === firmaDeMensajes(nuevos) ? prev : nuevos;
       });
-      // Buscar no es leer la conversación: no marca nada como visto.
-      if (!q) {
+      // Buscar no es leer la conversación: no marca nada como visto. Tampoco
+      // cuenta una pestaña de fondo o una ventana tapada por otra: ahí el
+      // mensaje llegó, pero nadie lo vio. Se marca al volver (ver `alVolver`).
+      if (!q && document.visibilityState === "visible" && document.hasFocus()) {
         void fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/leido`, {
           method: "POST",
         }).then(() => {
@@ -1075,9 +1289,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       }
     };
     document.addEventListener("visibilitychange", alVolver);
+    // Volver a la ventana sin cambiar de pestaña no dispara `visibilitychange`.
+    window.addEventListener("focus", alVolver);
     return () => {
       clearInterval(t);
       document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener("focus", alVolver);
     };
   }, [salaId, enBusqueda, cargarMensajes, cargarSalas]);
 
@@ -1161,8 +1378,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     setEditandoGrupo(null);
   }, [salaId]);
 
-  async function subirArchivos(files: File[]) {
-    if (!salaId || files.length === 0) return;
+  /**
+   * Sube archivos y los deja adjuntos para el próximo mensaje. Con `sinAdjuntar` sólo los sube
+   * y los devuelve: lo usa el audio, que se manda solo sin pasar por el cuadro.
+   */
+  async function subirArchivos(files: File[], sinAdjuntar = false): Promise<Adjunto[]> {
+    const subidos: Adjunto[] = [];
+    if (!salaId || files.length === 0) return subidos;
     setSubiendo(true);
     try {
       for (const f of files) {
@@ -1177,11 +1399,20 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           setErr(j.error ?? `No se pudo subir "${f.name}"`);
           continue;
         }
-        setAdjuntos((prev) => [...prev, j.data as Adjunto]);
+        const subido = j.data as Adjunto;
+        if (/^(image|audio|video)\//.test(f.type)) localesRef.current[subido.path] = URL.createObjectURL(f);
+        // Miniatura de lo que se está por enviar: sale del archivo local, sin pedir nada a la red.
+        if (f.type.startsWith("image/")) {
+          const local = URL.createObjectURL(f);
+          setPrevias((prev) => ({ ...prev, [subido.path]: local }));
+        }
+        subidos.push(subido);
+        if (!sinAdjuntar) setAdjuntos((prev) => [...prev, subido]);
       }
     } finally {
       setSubiendo(false);
     }
+    return subidos;
   }
 
   /**
@@ -1192,50 +1423,36 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    * vuelve a lo que decía el servidor.
    */
   async function reaccionar(msgId: string, emoji: string) {
-    const yoId = perfil?.usuario_id ?? "";
-    const yoNombre = perfil?.nombre ?? "Yo";
-    const yoFoto = perfil?.avatar_url ?? null;
+    const yo = yoRef.current;
+    const mensaje = mensajes.find((m) => m.id === msgId);
+    if (!yo || !mensaje) return;
 
-    // Poner y sacar una reacción es la misma operación: si el servidor falla,
-    // se aplica otra vez y queda como estaba, sin pisar mensajes que hayan
-    // llegado mientras tanto (antes se restauraba una copia vieja de la lista).
-    const alternar = (prev: Mensaje[]) =>
-      prev.map((m) => {
-        if (m.id !== msgId) return m;
-        const quienes = m.reacciones[emoji] ?? [];
-        const yaEstaba = quienes.includes(yoId);
-        const nuevos = yaEstaba ? quienes.filter((u) => u !== yoId) : [...quienes, yoId];
+    // Poner y sacar es la misma operación: se mira cómo está y se pide lo contrario.
+    const quiero = !(mensaje.reacciones[emoji] ?? []).includes(yo.id);
+    const clave = `${msgId}|${emoji}`;
+    const poner = (q: boolean) =>
+      setMensajes((prev) => prev.map((m) => (m.id === msgId ? conMiReaccion(m, emoji, yo, q) : m)));
 
-        const reacciones = { ...m.reacciones };
-        const nombres = { ...m.reacciones_nombres };
-        const caras = { ...m.reacciones_avatares };
-        if (nuevos.length === 0) {
-          delete reacciones[emoji];
-          delete nombres[emoji];
-          delete caras[emoji];
-        } else {
-          reacciones[emoji] = nuevos;
-          nombres[emoji] = yaEstaba
-            ? (nombres[emoji] ?? []).filter((n) => n !== yoNombre)
-            : [...(nombres[emoji] ?? []), yoNombre];
-          caras[emoji] = yaEstaba
-            ? (caras[emoji] ?? []).slice(0, nuevos.length)
-            : [...(caras[emoji] ?? []), yoFoto];
-        }
-        return { ...m, reacciones, reacciones_nombres: nombres, reacciones_avatares: caras };
-      });
-    setMensajes(alternar);
+    // Mientras el pedido está en viaje, ningún refresco puede deshacerlo.
+    reaccionesMiasRef.current.set(clave, { msgId, emoji, quiero, hasta: Number.POSITIVE_INFINITY });
+    poner(quiero);
 
     const r = await pedir(`/api/chat-interno/mensajes/${msgId}/reaccion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ emoji }),
     });
+    const mia = reaccionesMiasRef.current.get(clave);
     if (!r.ok) {
-      setMensajes(alternar);
+      // Si falla, vuelve a como estaba (sin pisar mensajes que hayan llegado mientras tanto).
+      if (mia?.quiero === quiero) reaccionesMiasRef.current.delete(clave);
+      poner(!quiero);
       const j = (await r.json().catch(() => ({}))) as { error?: string };
       setErr(j.error ?? "No se pudo guardar la reacción");
+      return;
     }
+    // Guardada: se sostiene unos segundos más, por los refrescos que ya venían en camino.
+    if (mia?.quiero === quiero) mia.hasta = Date.now() + 8000;
   }
 
   async function borrarMensaje(msgId: string) {
@@ -1296,6 +1513,30 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           )
           .slice(0, 6);
 
+  /** El cuadro crece con lo que se escribe, hasta un tope; después, barra de scroll. */
+  useLayoutEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    area.style.height = "auto";
+    const alto = Math.min(area.scrollHeight, ALTO_MAX_CUADRO);
+    area.style.height = `${alto}px`;
+    area.style.overflowY = area.scrollHeight > ALTO_MAX_CUADRO ? "auto" : "hidden";
+  }, [texto, salaId]);
+
+  /** Mete un emoji donde está el cursor y deja el cursor justo después. */
+  function ponerEmoji(emoji: string) {
+    const area = areaRef.current;
+    const desde = area?.selectionStart ?? texto.length;
+    const hasta = area?.selectionEnd ?? texto.length;
+    setTexto(texto.slice(0, desde) + emoji + texto.slice(hasta));
+    requestAnimationFrame(() => {
+      if (!area) return;
+      area.focus();
+      const pos = desde + emoji.length;
+      area.setSelectionRange(pos, pos);
+    });
+  }
+
   function elegirMencion(m: { usuario_id: string; nombre: string }) {
     const area = areaRef.current;
     const cursor = area?.selectionStart ?? texto.length;
@@ -1313,11 +1554,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    * — el POST y el refresco corren atras, y si falla se retira el mensaje y se
    * devuelve el texto tal como estaba.
    */
-  async function enviar() {
+  async function enviar(audio?: Adjunto) {
     if (!salaId) return;
-    const cuerpo = texto;
-    const files = adjuntos;
-    const responde = citando;
+    // Un audio recién grabado sale solo, como mensaje aparte: lo que esté escrito o adjunto en
+    // el cuadro se queda donde está.
+    const cuerpo = audio ? "" : texto;
+    const files = audio ? [audio] : adjuntos;
+    const responde = audio ? null : citando;
     if (!cuerpo.trim() && files.length === 0) return;
 
     const menciones = mencionados
@@ -1331,13 +1574,17 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       usuario_id: perfil?.usuario_id ?? null,
       autor: perfil?.nombre ?? "Yo",
       texto: cuerpo.trim() || null,
-      adjuntos: files,
+      // Con la copia local: un audio recién grabado se ve como audio desde el primer momento,
+      // y no como un archivo .webm hasta que el servidor devuelva su enlace.
+      adjuntos: files.map((a) => (a.url ? a : { ...a, url: localesRef.current[a.path] ?? null })),
       created_at: new Date().toISOString(),
       editado_at: null,
       eliminado: false,
       propio: true,
       responde_a: responde?.id ?? null,
-      cita: responde ? { autor: responde.autor, texto: responde.texto } : null,
+      cita: responde
+        ? { autor: responde.autor, texto: responde.texto ?? (responde.adjuntos.length > 0 ? "📎 Archivo" : null) }
+        : null,
       autor_avatar: perfil?.avatar_url ?? null,
       reacciones: {},
       reacciones_nombres: {},
@@ -1350,11 +1597,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     };
 
     setMensajes((prev) => [...prev, optimista]);
-    setTexto("");
-    setAdjuntos([]);
-    setCitando(null);
-    setMencionados([]);
-    setConsultaMencion(null);
+    if (!audio) {
+      setTexto("");
+      setAdjuntos([]);
+      setCitando(null);
+      setMencionados([]);
+      setConsultaMencion(null);
+    }
     setEnviando(true);
 
     try {
@@ -1375,9 +1624,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       };
       if (!r.ok || !j.success) {
         setMensajes((prev) => prev.filter((m) => m.id !== tempId));
-        setTexto(cuerpo);
-        setAdjuntos(files);
-        setCitando(responde);
+        if (audio) {
+          // El audio ya está subido: queda adjunto para reintentar con el botón de enviar.
+          setAdjuntos((prev) => [...prev, audio]);
+        } else {
+          setTexto(cuerpo);
+          setAdjuntos(files);
+          setCitando(responde);
+        }
         setErr(j.error ?? "No se pudo enviar");
         return;
       }
@@ -1401,9 +1655,13 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       void cargarSalas();
     } catch {
       setMensajes((prev) => prev.filter((m) => m.id !== tempId));
-      setTexto(cuerpo);
-      setAdjuntos(files);
-      setCitando(responde);
+      if (audio) {
+        setAdjuntos((prev) => [...prev, audio]);
+      } else {
+        setTexto(cuerpo);
+        setAdjuntos(files);
+        setCitando(responde);
+      }
       setErr("No se pudo enviar");
     } finally {
       setEnviando(false);
@@ -1423,16 +1681,23 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
+      descartarAudioRef.current = false;
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         setGrabando(false);
+        if (descartarAudioRef.current) return;
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         if (blob.size === 0) return;
         const ext = (rec.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
-        await subirArchivos([new File([blob], `audio-${Date.now()}.${ext}`, { type: blob.type })]);
+        // Parar es enviar: el audio sale solo, sin tener que apretar otro botón.
+        const [audio] = await subirArchivos(
+          [new File([blob], `audio-${Date.now()}.${ext}`, { type: blob.type })],
+          true
+        );
+        if (audio) await enviar(audio);
       };
       rec.start();
       recRef.current = rec;
@@ -1523,6 +1788,24 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       }
       setPerfil((p) => (p ? { ...p, avatar_url: j.data?.avatar_url ?? null } : p));
       // La foto vieja sigue pegada en los mensajes ya cargados hasta releerlos.
+      if (salaId) void cargarMensajes(salaId, undefined, true);
+      void cargarSalas();
+    } finally {
+      setSubiendoFoto(false);
+    }
+  }
+
+  /** Saca mi foto de perfil: vuelvo a verme con las iniciales. */
+  async function quitarMiFoto() {
+    setSubiendoFoto(true);
+    try {
+      const r = await fetchWithSupabaseSession("/api/chat-interno/perfil", { method: "DELETE" });
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!r.ok || !j.success) {
+        setErr(j.error ?? "No se pudo quitar la foto");
+        return;
+      }
+      setPerfil((p) => (p ? { ...p, avatar_url: null } : p));
       if (salaId) void cargarMensajes(salaId, undefined, true);
       void cargarSalas();
     } finally {
@@ -1647,6 +1930,26 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     } finally {
       setSubiendoFotoGrupo(false);
     }
+  }
+
+  /** Guarda mi cumpleaños (o lo borra con `null`). */
+  async function guardarMiCumple(cumple: { mes: number; dia: number } | null) {
+    const r = await pedir("/api/chat-interno/perfil", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cumple }),
+    });
+    const j = (await r.json().catch(() => ({}))) as {
+      success?: boolean;
+      error?: string;
+      data?: { cumple_mes: number | null; cumple_dia: number | null };
+    };
+    if (!r.ok || !j.success) {
+      setErr(j.error ?? "No se pudo guardar el cumpleaños");
+      return;
+    }
+    setPerfil((p) => (p ? { ...p, cumple_mes: j.data?.cumple_mes ?? null, cumple_dia: j.data?.cumple_dia ?? null } : p));
+    setEditandoCumple(null);
   }
 
   async function quitarFotoGrupo() {
@@ -1827,7 +2130,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       >
         {/* Mi perfil. La foto se cambia acá porque acá es donde uno se ve
             como lo ven los demás. */}
-        <div className="flex items-center gap-2.5 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-3 py-2.5">
+        <div className="flex items-center gap-2.5 border-b border-[#4FAEB2]/15 bg-white px-3 py-2.5">
           <button
             type="button"
             onClick={() => fotoRef.current?.click()}
@@ -1879,6 +2182,32 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             >
               {perfil?.avatar_url ? "Cambiar foto" : "Poner una foto"}
             </button>
+            {perfil?.avatar_url ? (
+              <button
+                type="button"
+                onClick={() => void quitarMiFoto()}
+                disabled={subiendoFoto}
+                className="ml-2 text-[10.5px] text-slate-400 hover:text-rose-600 disabled:opacity-40"
+              >
+                Quitar foto
+              </button>
+            ) : null}
+            {perfil?.cumple_disponible ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setEditandoCumple(
+                    editandoCumple ? null : { mes: perfil.cumple_mes ?? 1, dia: perfil.cumple_dia ?? 1 }
+                  )
+                }
+                title="Mi cumpleaños"
+                className="block text-[10.5px] text-slate-400 hover:text-[#2F6E71]"
+              >
+                {perfil.cumple_mes && perfil.cumple_dia
+                  ? `🎂 ${perfil.cumple_dia} de ${MESES[perfil.cumple_mes - 1]}`
+                  : "🎂 Poner mi cumpleaños"}
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
@@ -1901,6 +2230,117 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           />
         </div>
 
+        {editandoCumple ? (
+          <div className="border-b border-[#4FAEB2]/12 px-3 py-2.5">
+            <p className="mb-1.5 text-[11.5px] font-semibold text-slate-600">Mi cumpleaños</p>
+            {/* Un calendario del mes, sin año: se elige el día tocándolo. */}
+            <div className="rounded-xl border border-slate-200 bg-white p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <button
+                  type="button"
+                  aria-label="Mes anterior"
+                  onClick={() => {
+                    const mes = editandoCumple.mes === 1 ? 12 : editandoCumple.mes - 1;
+                    setEditandoCumple({ mes, dia: Math.min(editandoCumple.dia, DIAS_DEL_MES[mes - 1]) });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-[12.5px] font-semibold capitalize text-slate-700">
+                  {MESES[editandoCumple.mes - 1]}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Mes siguiente"
+                  onClick={() => {
+                    const mes = editandoCumple.mes === 12 ? 1 : editandoCumple.mes + 1;
+                    setEditandoCumple({ mes, dia: Math.min(editandoCumple.dia, DIAS_DEL_MES[mes - 1]) });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-7 gap-0.5">
+                {Array.from({ length: DIAS_DEL_MES[editandoCumple.mes - 1] }, (_, i) => i + 1).map((d) => {
+                  const elegido = d === editandoCumple.dia;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      aria-label={`${d} de ${MESES[editandoCumple.mes - 1]}`}
+                      aria-pressed={elegido}
+                      onClick={() => setEditandoCumple({ ...editandoCumple, dia: d })}
+                      className={`flex h-8 items-center justify-center rounded-lg text-[12px] tabular-nums transition-colors ${
+                        elegido
+                          ? "bg-[#4FAEB2] font-bold text-white"
+                          : "text-slate-600 hover:bg-[#4FAEB2]/12"
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-center text-[11.5px] font-semibold text-[#2F6E71]">
+                🎂 {editandoCumple.dia} de {MESES[editandoCumple.mes - 1]}
+              </p>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void guardarMiCumple(editandoCumple)}
+                className="rounded-lg bg-[#4FAEB2] px-2.5 py-1 text-[11.5px] font-semibold text-white hover:opacity-90"
+              >
+                Guardar
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditandoCumple(null)}
+                className="text-[11.5px] text-slate-500 hover:text-slate-800"
+              >
+                Cancelar
+              </button>
+              {perfil?.cumple_mes ? (
+                <button
+                  type="button"
+                  onClick={() => void guardarMiCumple(null)}
+                  className="ml-auto text-[11.5px] text-rose-500 hover:text-rose-700"
+                >
+                  Quitar
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-1.5 text-[10.5px] leading-snug text-slate-400">
+              Sólo día y mes. Ese día el equipo ve un regalito al lado de tu nombre.
+            </p>
+          </div>
+        ) : null}
+        {(perfil?.cumplen_hoy ?? []).length > 0 ? (
+          <div className="flex items-center gap-2 border-b border-amber-200/70 bg-amber-50 px-3.5 py-2 text-[12px] leading-snug text-amber-900">
+            <span className="text-[18px] leading-none">🎁</span>
+            <span className="min-w-0">
+              {(() => {
+                const otros = (perfil?.cumplen_hoy ?? []).filter((u) => u.id !== perfil?.usuario_id);
+                const yo = (perfil?.cumplen_hoy ?? []).some((u) => u.id === perfil?.usuario_id);
+                const nombres = otros.map((u) => nombreCapitular(nombreCorto(u.nombre)));
+                const lista =
+                  nombres.length > 1
+                    ? `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`
+                    : nombres[0];
+                if (yo && otros.length === 0) return <b>¡Feliz cumpleaños! 🎉</b>;
+                return (
+                  <>
+                    {yo ? <b>¡Feliz cumpleaños! 🎉 </b> : null}
+                    Hoy {otros.length > 1 ? "cumplen" : "cumple"} años <b>{lista}</b>
+                  </>
+                );
+              })()}
+            </span>
+          </div>
+        ) : null}
+
         {/* Un solo campo para las dos cosas: encontrar una conversación que ya
             existe, o a la persona con la que todavía no hablé. */}
         <div className="border-b border-[#4FAEB2]/12 px-3 py-2">
@@ -1919,7 +2359,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             ) : null}
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 chat-scroll overflow-y-auto">
           {cargandoSalas ? (
             <p className="px-3.5 py-3 text-[12px] text-slate-400">Cargando…</p>
           ) : salas.length === 0 && !filtroBandeja ? (
@@ -1936,7 +2376,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   onClick={() => setSalaId(s.id)}
                   className={`flex w-full items-center gap-3 border-b border-[#4FAEB2]/10 px-3.5 py-3 text-left transition-colors ${
                     activa
-                      ? "bg-gradient-to-r from-[#4FAEB2] to-[#3E9B9F] text-white"
+                      ? "bg-[#4FAEB2] text-white"
                       : "hover:bg-[#4FAEB2]/8"
                   }`}
                 >
@@ -1954,6 +2394,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         }`}
                       >
                         {nombreCapitular(s.nombre)}
+                        {s.cumple_hoy ? <span title="Hoy cumple años"> 🎁</span> : null}
                       </span>
                       <span
                         className={`shrink-0 text-[11px] ${
@@ -2036,12 +2477,41 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
       {/* --- Conversación ------------------------------------------------------ */}
       <section
-        className={`${verConversacion ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]`}
+        onDragEnter={(e) => {
+          if (!salaActual || !e.dataTransfer?.types?.includes("Files")) return;
+          e.preventDefault();
+          arrastreRef.current += 1;
+          setArrastrando(true);
+        }}
+        onDragOver={(e) => {
+          // Sin esto el navegador abre el archivo en la pestaña y se pierde el chat.
+          if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+        }}
+        onDragLeave={() => {
+          arrastreRef.current = Math.max(0, arrastreRef.current - 1);
+          if (arrastreRef.current === 0) setArrastrando(false);
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer?.types?.includes("Files")) return;
+          e.preventDefault();
+          arrastreRef.current = 0;
+          setArrastrando(false);
+          const archivos = Array.from(e.dataTransfer.files ?? []).filter((f) => f.size > 0);
+          if (salaActual && archivos.length > 0) void subirArchivos(archivos);
+        }}
+        className={`${verConversacion ? "flex" : "hidden"} relative min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]`}
       >
+        {arrastrando ? (
+          <div className="pointer-events-none absolute inset-2 z-40 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#4FAEB2] bg-white/90 text-[#2F6E71]">
+            <Paperclip className="h-9 w-9" />
+            <p className="text-[16px] font-semibold">Soltá acá para adjuntar</p>
+            <p className="text-[12.5px] text-slate-500">Fotos, videos o archivos de hasta 25 MB</p>
+          </div>
+        ) : null}
         {!salaActual ? (
           <div
             className="flex flex-1 flex-col items-center justify-center px-8 text-center"
-            style={ESTILO_FONDO}
+            style={estiloFondo}
           >
             <MessagesSquare className="h-16 w-16 text-[#4FAEB2]/35" strokeWidth={1.2} />
             <p className="mt-3 text-[15px] text-slate-500">
@@ -2054,7 +2524,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           </div>
         ) : (
           <>
-            <header className="flex items-center gap-3 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-transparent px-3 py-2.5 sm:px-4">
+            <header className="flex items-center gap-3 border-b border-[#4FAEB2]/15 bg-white px-3 py-2.5 sm:px-4">
               {mobile ? (
                 <button
                   type="button"
@@ -2084,6 +2554,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   <span className="truncate text-[16px] font-semibold text-slate-800">
                     {nombreCapitular(salaActual.nombre)}
                   </span>
+                  {salaActual.cumple_hoy ? (
+                    <span className="shrink-0 text-[14px]" title="Hoy cumple años">🎁</span>
+                  ) : null}
                   {salaActual.tipo !== "grupo" ? (
                     <span className="shrink-0 text-[12.5px] italic text-slate-400">En línea</span>
                   ) : null}
@@ -2154,6 +2627,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     <Search className="h-4 w-4" />
                   </button>
                 )}
+                <BotonFondoChat />
                 <button
                   type="button"
                   onClick={() => setPanel((p) => (p ? null : "archivos"))}
@@ -2191,8 +2665,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 // Llegar arriba de todo trae lo anterior, como en cualquier chat.
                 if (e.currentTarget.scrollTop < 60 && hayMas && !enBusqueda) void cargarAnteriores();
               }}
-              className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4"
-              style={ESTILO_FONDO}
+              className="min-h-0 flex-1 space-y-2 chat-scroll overflow-y-auto px-4 py-4"
+              style={estiloFondo}
             >
               {errorMsgs ? (
                 <div className="mx-auto flex max-w-md items-center justify-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-[12.5px] text-rose-700">
@@ -2286,15 +2760,24 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             de una misma intervención. En lo propio no va: ya se
                             sabe de quién es, y ocupa lugar. */}
                         {!m.propio ? (
-                          <span className={`self-end ${seguido ? "invisible" : ""}`}>
+                          // En un audio la foto va a media altura, al lado del botón de reproducir;
+                          // en el resto, abajo, pegada a la última línea del mensaje.
+                          <span className={`${!m.texto && !m.eliminado && m.adjuntos.length > 0 && m.adjuntos.every((x) => tipoDe(x) === "audio") ? "self-center" : "self-end"} ${seguido ? "invisible" : ""}`}>
                             <Avatar nombre={m.autor} url={m.autor_avatar} size={34} />
                           </span>
                         ) : null}
                         <div
-                          style={m.propio ? { background: BURBUJA_PROPIA } : undefined}
-                          className={`relative max-w-[78%] rounded-xl px-3.5 py-2 text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
+                          // Un mensaje que es solo una foto o un video: casi sin margen, para que la
+                          // imagen llene el globo en vez de flotar adentro de un recuadro.
+                          className={`relative max-w-[78%] rounded-xl text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
+                            !m.texto && !m.cita && !m.eliminado && m.adjuntos.length > 0 && m.adjuntos.every((x) => { const t = tipoDe(x); return (t === "imagen" || t === "video") && !!x.url; })
+                              ? "p-1.5"
+                              : m.adjuntos.length > 0 && !m.eliminado && !m.cita
+                                ? "px-2 pb-2 pt-2"
+                                : "px-3.5 py-2"
+                          } ${
                             Object.keys(m.reacciones).length > 0 ? "mb-4" : ""
-                          } ${m.propio ? "" : "bg-white"}`}
+                          } ${m.propio ? GLOBO_PROPIO : "bg-white"}`}
                         >
 
                           {/* El nombre va DENTRO del globo: afuera, sobre el
@@ -2344,8 +2827,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             </div>
                           ) : (
                             <>
+                              {/* Primero lo adjunto y debajo el texto, como un pie de foto. */}
+                              {m.adjuntos.map((a, k) => (
+                                <div key={a.path} className={k > 0 ? "mt-1.5" : ""}>
+                                  <Adjuntito
+                                    a={a}
+                                    onVer={() => abrirVisor(a)}
+                                    onDescargar={() => void descargar(a)}
+                                  />
+                                </div>
+                              ))}
                               {m.texto ? (
-                                <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">
+                                <p className={`whitespace-pre-wrap break-words text-[14.5px] leading-relaxed ${m.adjuntos.length > 0 ? "mt-1.5 px-0.5" : ""}`}>
                                   <span className="float-right ml-2 mt-[9px] text-[11px] leading-none text-slate-400">
                                     {m.pendiente
                                       ? "enviando…"
@@ -2362,19 +2855,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                   {m.texto}
                                 </p>
                               ) : null}
-                              {m.adjuntos.map((a) => (
-                                <div key={a.path} className="mt-1.5">
-                                  <Adjuntito
-                                    a={a}
-                                    onVer={() => abrirVisor(a)}
-                                    onDescargar={() => void descargar(a)}
-                                  />
-                                </div>
-                              ))}
                             </>
                           )}
                           {!m.texto || m.eliminado || editando?.id === m.id ? (
-                            <div className="mt-0.5 text-right text-[11px] text-slate-400">
+                            <div className="mt-1 px-1 text-right text-[11px] text-slate-400">
                               {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
                               {m.pendiente ? "" : hora(m.created_at)}
                               {" "}
@@ -2517,7 +3001,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                       Respondiendo a {nombreCorto(citando.autor)}
                     </span>
                     <span className="line-clamp-2 text-[11px] text-slate-500">
-                      {citando.texto ?? "Archivo adjunto"}
+                      {citando.texto ?? "📎 Archivo"}
                     </span>
                   </div>
                   <button type="button" onClick={() => setCitando(null)} aria-label="Cancelar respuesta">
@@ -2526,40 +3010,81 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 </div>
               ) : null}
               {adjuntos.length > 0 ? (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {adjuntos.map((a) => (
-                    <span
-                      key={a.path}
-                      className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600"
-                    >
-                      <Paperclip className="h-3 w-3" />
-                      <span className="max-w-[160px] truncate">{a.nombre}</span>
-                      <button
-                        type="button"
-                        onClick={() => setAdjuntos((p) => p.filter((x) => x.path !== a.path))}
-                        aria-label={`Quitar ${a.nombre}`}
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {adjuntos.map((a) => {
+                    const previa = previas[a.path] ?? (tipoDe(a) === "imagen" ? a.url : null);
+                    const { Icono, color, fondo } = pintaDeArchivo(a);
+                    return (
+                      <span
+                        key={a.path}
+                        className="relative flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-8 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
                       >
-                        <X className="h-3 w-3 text-slate-400 hover:text-slate-700" />
-                      </button>
-                    </span>
-                  ))}
+                        {previa ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={previa} alt="" className="h-12 w-12 shrink-0 rounded-lg bg-slate-100 object-cover" />
+                        ) : (
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ background: fondo, color }}>
+                            <Icono className="h-5 w-5" />
+                          </span>
+                        )}
+                        <span className="min-w-0">
+                          <span className="block max-w-[170px] truncate text-[12px] font-semibold text-slate-700">{a.nombre}</span>
+                          <span className="block text-[10.5px] uppercase text-slate-400">
+                            {(a.nombre.split(".").pop() ?? "").slice(0, 5)} · {pesoLegible(a.size_bytes)}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAdjuntos((p) => p.filter((x) => x.path !== a.path))}
+                          aria-label={`Quitar ${a.nombre}`}
+                          title="Quitar"
+                          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
               ) : null}
               {/* Una tarjeta grande con el clip a la izquierda y las acciones
                   abajo a la derecha: se lee como una hoja donde escribir, no
                   como una barra de controles. */}
-              <div className="rounded-2xl border border-[#4FAEB2]/25 bg-white px-3 py-2.5 shadow-[0_1px_5px_rgba(47,110,113,0.10)] transition-colors focus-within:border-[#4FAEB2] focus-within:shadow-[0_2px_10px_rgba(79,174,178,0.18)]">
-                <div className="flex items-start gap-2">
+              <div className="rounded-2xl border border-[#4FAEB2]/25 bg-white px-2 py-1.5 shadow-[0_1px_5px_rgba(47,110,113,0.10)] transition-colors focus-within:border-[#4FAEB2] focus-within:shadow-[0_2px_10px_rgba(79,174,178,0.18)]">
+                {/* Una sola fila: clip, texto, micrófono y enviar, todos a la misma altura. Al
+                    crecer el texto, los botones se quedan abajo, junto a la última línea. */}
+                <div className="flex items-end gap-1.5">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={subiendo}
                   title="Adjuntar archivo"
-                  className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-[#2F6E71] disabled:opacity-40"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#2F6E71] disabled:opacity-40"
                 >
                   {subiendo ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Paperclip className="h-[18px] w-[18px]" />}
                 </button>
-                <div className="relative flex-1">
+                {grabando ? (
+                  <div className="flex min-h-[36px] flex-1 items-center gap-2.5 rounded-xl bg-rose-50 px-3 text-rose-700">
+                    <span className="relative flex h-3 w-3 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-70" />
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-600" />
+                    </span>
+                    <span className="text-[14px] font-semibold">Grabando audio</span>
+                    <span className="hidden text-[12px] text-rose-500 sm:inline">· al parar se envía</span>
+                    <span className="text-[14px] tabular-nums">{mmss(segGrabando)}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        descartarAudioRef.current = true;
+                        recRef.current?.stop();
+                      }}
+                      className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Descartar
+                    </button>
+                  </div>
+                ) : null}
+                <div className={`relative flex-1 ${grabando ? "hidden" : ""}`}>
                 {sugeridosMencion.length > 0 ? (
                   <ul className="absolute bottom-full left-0 z-30 mb-1 w-60 overflow-hidden rounded-xl border border-[#4FAEB2]/25 bg-white p-1 shadow-xl">
                     {sugeridosMencion.map((m) => (
@@ -2631,19 +3156,63 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     }
                   }}
                   placeholder="Escribí @ para mencionar a alguien"
-                  className="max-h-40 min-h-[26px] w-full resize-none bg-transparent text-[14.5px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  className="block min-h-[36px] w-full resize-none bg-transparent py-[6px] text-[14.5px] leading-[24px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
                 </div>
-                </div>
 
-                <div className="mt-1 flex items-center justify-end gap-1">
+                <div className="relative flex shrink-0 items-center gap-1">
+                  {emojisAbierto ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Cerrar emojis"
+                        className="fixed inset-0 z-30 cursor-default"
+                        onClick={() => setEmojisAbierto(false)}
+                      />
+                      <div className="absolute bottom-full right-0 z-40 mb-2 max-h-72 w-[296px] chat-scroll overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                        {EMOJIS_CUADRO.map((g) => (
+                          <div key={g.titulo}>
+                            <p className="px-1 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                              {g.titulo}
+                            </p>
+                            <div className="grid grid-cols-8">
+                              {g.lista.map((e) => (
+                                <button
+                                  key={e}
+                                  type="button"
+                                  // `onMouseDown`: que el cuadro no pierda el cursor.
+                                  onMouseDown={(ev) => {
+                                    ev.preventDefault();
+                                    ponerEmoji(e);
+                                  }}
+                                  className="flex h-[35px] items-center justify-center rounded-lg text-[20px] leading-none transition-colors hover:bg-slate-100"
+                                >
+                                  {e}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setEmojisAbierto((v) => !v)}
+                    title="Emojis"
+                    className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                      emojisAbierto ? "bg-slate-100 text-[#2F6E71]" : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
+                    }`}
+                  >
+                    <Smile className="h-[18px] w-[18px]" />
+                  </button>
                   <button
                     type="button"
                     onClick={alternarGrabacion}
                     title={grabando ? "Detener y enviar audio" : "Grabar audio"}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                    className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
                       grabando
-                        ? "animate-pulse bg-rose-50 text-rose-600"
+                        ? "bg-rose-600 text-white hover:bg-rose-700"
                         : "text-slate-400 hover:bg-slate-100 hover:text-[#2F6E71]"
                     }`}
                   >
@@ -2658,6 +3227,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   >
                     <Send className="h-[18px] w-[18px]" />
                   </button>
+                </div>
                 </div>
               </div>
               <input
@@ -2684,7 +3254,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             mobile ? "absolute inset-0 z-20" : "ml-3 w-80 shrink-0"
           }`}
         >
-          <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-gradient-to-r from-[#4FAEB2]/12 via-[#4FAEB2]/5 to-white px-3 py-3">
+          <div className="flex items-center gap-2 border-b border-[#4FAEB2]/15 bg-white px-3 py-3">
             <button
               type="button"
               onClick={() => setPanel(null)}
@@ -2696,7 +3266,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             <h3 className="text-[14px] font-semibold text-slate-800">Acerca del chat</h3>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          <div className="min-h-0 flex-1 space-y-3 chat-scroll overflow-y-auto p-3">
             {/* Identidad. En un grupo, un administrador la edita acá mismo:
                 el nombre, la descripción y la foto son del grupo y cambian
                 cuando el grupo cambia. */}
@@ -2875,7 +3445,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         className="min-w-0 flex-1 bg-transparent text-[12px] focus:outline-none"
                       />
                     </div>
-                    <ul className="max-h-44 overflow-y-auto">
+                    <ul className="max-h-44 chat-scroll overflow-y-auto">
                       {candidatosASumar.length === 0 ? (
                         <li className="px-1 py-1.5 text-[11.5px] text-slate-400">
                           {sumando.trim()
@@ -3309,7 +3879,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     className="w-full bg-transparent text-[12.5px] focus:outline-none"
                   />
                 </div>
-                <ul className="mt-1.5 max-h-56 overflow-y-auto rounded-xl border border-slate-100 p-1">
+                <ul className="mt-1.5 max-h-56 chat-scroll overflow-y-auto rounded-xl border border-slate-100 p-1">
                   {usuariosFiltrados.map((u) => {
                     const sel = elegidos.includes(u.id);
                     return (

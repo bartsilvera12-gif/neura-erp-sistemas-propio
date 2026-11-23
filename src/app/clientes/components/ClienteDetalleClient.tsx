@@ -831,7 +831,9 @@ export default function ClienteDetalleClient({
         vendedor_usuario_id: form.vendedor_usuario_id.trim() || null,
         project_manager_id:  form.project_manager_id.trim() || null,
         tipo_servicio_cliente: tipoTs || null,
-        estado:              form.estado,
+        // `estado` NO se manda desde la ficha: lo cambian solo los botones
+        // dedicados (Dar de baja / Desactivar / Reactivar). Si se enviara acá,
+        // guardar la ficha con el estado viejo revertiría una baja ya hecha.
         ...sifenManualPayload,
       });
     } catch (err) {
@@ -2025,20 +2027,10 @@ export default function ClienteDetalleClient({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Estado</label>
-                    <select
-                      name="estado"
-                      value={form.estado}
-                      onChange={(e) => setForm((p) => ({ ...p, estado: e.target.value as Cliente["estado"] }))}
-                      className={inputClass}
-                    >
-                      <option value="activo">Activo</option>
-                      <option value="inactivo">Inactivo</option>
-                    </select>
-                  </div>
-                </div>
+                {/* El estado (Activo/Inactivo) se cambia con los botones del
+                    encabezado (Dar de baja / Desactivar / Reactivar), no desde
+                    la ficha: un select acá se pisaba solo al guardar y revertía
+                    bajas. */}
 
                 {/* Campos factura Contado */}
                 {form.condicion_pago === "CONTADO" && (

@@ -16,6 +16,8 @@
   --zentra-login-bg-mid: #0b2f4c;
   --zentra-login-bg-deep: #051525;
   --sidebar: var(--zentra-sidebar);
+  /* Color de marca: lo usa el Manual (portado de 2.0, donde todo sale de esta variable). */
+  --brand: #3f8e91;
   --primary: #0EA5E9;
   --primary-hover: #0284C7;
   --primary-light: #E0F2FE;
@@ -213,4 +215,154 @@ html:has(#neura-app-shell) body {
   .ficha-telon {
     animation-duration: 1ms;
   }
+}
+
+/**
+ * Color del ERP por persona. Las clases con el turquesa de marca salen de estas variables
+ * (las convierte postcss-tema.cjs). Por defecto valen el color de siempre; `data-tema` en <html>
+ * las cambia (lo elige cada uno en su menú de usuario; se guarda en su navegador).
+ * Cada color alternativo es el mismo juego de tonos con otro matiz.
+ */
+:root {
+  --tema-rgb: 79 174 178;
+  --tema-fuerte-rgb: 63 142 145;
+  --tema-oscuro-rgb: 47 110 113;
+  --tema-claro-rgb: 125 207 210;
+  --tema-lateral-rgb: 34 78 85;
+  --tema-lateral-alto-rgb: 40 92 98;
+  --tema-fondo-rgb: 11 58 61;
+  --tema-fondo-alto-rgb: 16 74 78;
+}
+:root[data-tema="azul"] {
+  --tema-rgb: 72 121 185;
+  --tema-fuerte-rgb: 57 98 151;
+  --tema-oscuro-rgb: 42 75 118;
+  --tema-claro-rgb: 119 161 216;
+  --tema-lateral-rgb: 30 56 89;
+  --tema-lateral-alto-rgb: 36 65 102;
+  --tema-fondo-rgb: 7 32 65;
+  --tema-fondo-alto-rgb: 11 42 83;
+}
+:root[data-tema="violeta"] {
+  --tema-rgb: 114 74 183;
+  --tema-fuerte-rgb: 92 59 149;
+  --tema-oscuro-rgb: 70 44 116;
+  --tema-claro-rgb: 155 121 214;
+  --tema-lateral-rgb: 52 31 88;
+  --tema-lateral-alto-rgb: 60 37 101;
+  --tema-fondo-rgb: 29 8 64;
+  --tema-fondo-alto-rgb: 38 13 81;
+}
+:root[data-tema="rosa"] {
+  --tema-rgb: 185 72 117;
+  --tema-fuerte-rgb: 151 57 95;
+  --tema-oscuro-rgb: 118 42 72;
+  --tema-claro-rgb: 216 119 158;
+  --tema-lateral-rgb: 89 30 54;
+  --tema-lateral-alto-rgb: 102 36 62;
+  --tema-fondo-rgb: 65 7 30;
+  --tema-fondo-alto-rgb: 83 11 40;
+}
+:root[data-tema="verde"] {
+  --tema-rgb: 79 178 132;
+  --tema-fuerte-rgb: 63 145 107;
+  --tema-oscuro-rgb: 47 113 82;
+  --tema-claro-rgb: 125 210 170;
+  --tema-lateral-rgb: 34 85 61;
+  --tema-lateral-alto-rgb: 40 98 71;
+  --tema-fondo-rgb: 11 61 38;
+  --tema-fondo-alto-rgb: 16 78 49;
+}
+:root[data-tema="naranja"] {
+  --tema-rgb: 200 114 57;
+  --tema-fuerte-rgb: 163 92 45;
+  --tema-oscuro-rgb: 128 70 32;
+  --tema-claro-rgb: 229 155 106;
+  --tema-lateral-rgb: 96 52 23;
+  --tema-lateral-alto-rgb: 111 61 27;
+  --tema-fondo-rgb: 72 29 0;
+  --tema-fondo-alto-rgb: 92 38 2;
+}
+:root[data-tema="grafito"] {
+  --tema-rgb: 118 127 139;
+  --tema-fuerte-rgb: 95 102 113;
+  --tema-oscuro-rgb: 73 79 87;
+  --tema-claro-rgb: 158 166 177;
+  --tema-lateral-rgb: 54 59 65;
+  --tema-lateral-alto-rgb: 63 68 75;
+  --tema-fondo-rgb: 31 35 41;
+  --tema-fondo-alto-rgb: 40 46 54;
+}
+
+/**
+ * Color de las letras sobre el color del sistema (menú lateral y botones), para quien lo elige en
+ * Configuración → Apariencia: blanco pleno, gris o negro. Las reglas solo existen con
+ * `data-letras` en <html>: sin elegir nada quedan las letras de siempre (blancas con grises suaves).
+ */
+:root { --tema-letra-rgb: 255 255 255; }
+:root[data-letras="negro"] { --tema-letra-rgb: 17 17 17; }
+:root[data-letras="gris"] { --tema-letra-rgb: 100 105 115; }
+
+/* Menú lateral: textos, íconos, resaltados y líneas pasan a salir del color de letra. */
+:root[data-letras] #neura-sidebar :is(.text-white, .text-slate-200, .text-slate-300, [class*="hover:text-white"]:hover, [class*="hover:text-slate-200"]:hover) { color: rgb(var(--tema-letra-rgb)) !important; }
+:root[data-letras] #neura-sidebar :is(.text-slate-400, .text-slate-500) { color: rgb(var(--tema-letra-rgb) / 0.68) !important; }
+/* Blanco elegido a mano = blanco pleno en todo el menú, sin apagar los textos secundarios. */
+:root[data-letras="blanco"] #neura-sidebar :is(.text-slate-400, .text-slate-500) { color: rgb(255 255 255) !important; }
+:root[data-letras] #neura-sidebar :is([class*="text-[#7DCFD2]"], [class*="text-amber-300"]) { color: rgb(var(--tema-letra-rgb)) !important; }
+:root[data-letras] #neura-sidebar input { color: rgb(var(--tema-letra-rgb)) !important; }
+:root[data-letras] #neura-sidebar input::placeholder { color: rgb(var(--tema-letra-rgb) / 0.55) !important; }
+:root[data-letras="blanco"] #neura-sidebar input::placeholder { color: rgb(255 255 255 / 0.85) !important; }
+:root[data-letras] #neura-sidebar :is([class~="bg-white/[0.10]"], [class~="bg-white/10"]) { background-color: rgb(var(--tema-letra-rgb) / 0.14) !important; }
+:root[data-letras] #neura-sidebar :is([class*="hover:bg-white/"]:hover, [class~="bg-white/[0.04]"], [class~="bg-white/[0.05]"], [class~="bg-white/[0.06]"], [class~="bg-black/20"], [class~="bg-black/30"]) { background-color: rgb(var(--tema-letra-rgb) / 0.08) !important; }
+:root[data-letras] #neura-sidebar :is([class*="border-white/"], [class*="zentra-sidebar-border"]) { border-color: rgb(var(--tema-letra-rgb) / 0.16) !important; }
+:root[data-letras] #neura-sidebar { border-color: rgb(var(--tema-letra-rgb) / 0.16) !important; }
+/* El logo es blanco: se lo lleva al color de letra. */
+:root[data-letras="negro"] #neura-sidebar img { filter: brightness(0); }
+:root[data-letras="gris"] #neura-sidebar img { filter: brightness(0); opacity: 0.6; }
+
+/* Botones y pastillas pintados con el color del sistema: su letra blanca pasa al color de letra. */
+:root[data-letras] :is(
+  [class~="bg-[#4FAEB2]" i], [class~="bg-[#3F8E91]" i], [class~="bg-[#2F6E71]" i], [class~="bg-[#224E55]" i],
+  [class~="bg-[#285C62]" i], [class~="bg-[#0B3A3D]" i], [class~="bg-[var(--brand)]"], [class~="bg-[color:var(--zentra-sidebar)]"],
+  [class~="from-[#4FAEB2]" i], [class~="from-[#3F8E91]" i]
+):is(.text-white, [class*="hover:text-white"]:hover) { color: rgb(var(--tema-letra-rgb)) !important; }
+
+/**
+ * Chat interno: globo de los mensajes propios. Es el color del sistema mezclado con blanco, así
+ * acompaña al color que cada uno eligió en Apariencia. Donde el navegador no sabe mezclar
+ * colores queda el verde claro de antes.
+ */
+.chat-globo-propio { background-color: #E3F3E5; }
+@supports (background-color: color-mix(in srgb, red 10%, white)) {
+  .chat-globo-propio { background-color: color-mix(in srgb, rgb(var(--tema-rgb)) 22%, #ffffff); }
+}
+
+/*
+ * Chat interno: barra de desplazamiento fina y discreta. En Windows la barra por defecto es
+ * ancha, gris y con flechas, y rompe el fondo de la conversación.
+ */
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(100 116 139 / 0.35) transparent;
+}
+.chat-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-button {
+  display: none;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgb(100 116 139 / 0.3);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.chat-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(100 116 139 / 0.5);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }

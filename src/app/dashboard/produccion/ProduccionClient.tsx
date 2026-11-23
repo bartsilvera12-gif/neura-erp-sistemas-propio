@@ -60,14 +60,14 @@ export default function ProduccionClient() {
   const is403 = error?.status === 403;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-7xl">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#4FAEB2]/10 text-[#4FAEB2]">
             <Factory className="h-5 w-5" />
           </span>
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">Producción</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Producción</h1>
             <p className="text-sm text-slate-500">Tablero de programación · flujo, cuellos de botella y entregas</p>
           </div>
         </div>

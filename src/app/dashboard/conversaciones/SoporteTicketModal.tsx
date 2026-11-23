@@ -21,6 +21,8 @@ type Datos = {
   estados?: EstadoCatTicket[];
   clasificaciones: SoporteClasificacion[];
   asignacion: Record<"error" | "cambio", { responsable: { id: string; nombre: string; area: string } | null; motivo: "ordinario" | "guardia" | "guardia_sin_asignar" }>;
+  /** Quiénes pueden quedar a cargo (Desarrollo, QA y el principal de guardia en su franja). */
+  a_cargo?: { id: string; nombre: string }[];
   clientes: { id: string; nombre: string }[];
 };
 
@@ -84,6 +86,11 @@ export default function SoporteTicketModal({
   const [archivos, setArchivos] = useState<File[]>([]);
   const [avisoArchivos, setAvisoArchivos] = useState<string | null>(null);
   const [creado, setCreado] = useState<{ esTicket: boolean; id?: string; numero?: number } | null>(null);
+  /**
+   * "Asignar a": vacío = la asignación automática (Neurita en horario laboral, el
+   * de guardia en su franja). Solo viaja al servidor si se eligió a otra persona.
+   */
+  const [asignadoA, setAsignadoA] = useState("");
 
   useEffect(() => {
     let vivo = true;
@@ -165,6 +172,19 @@ export default function SoporteTicketModal({
   const nivelElegido = niveles.find((c) => c.codigo === nivel);
   const entrega = nivelElegido ? vencimientoSla(Date.now(), nivelElegido.sla_horas) : null;
 
+  const automatica = esTicket ? datos?.asignacion?.[tipo === "cambio" ? "cambio" : "error"] ?? null : null;
+  const automaticoId = automatica?.responsable?.id ?? "";
+  // Lo que muestra el selector: lo elegido, o el automático si no se tocó.
+  const responsableSel = asignadoA || automaticoId;
+  const opcionesACargo = useMemo(() => {
+    const lista = (datos?.a_cargo ?? []).map((p) => ({ value: p.id, label: p.nombre }));
+    // El automático siempre tiene que poder verse en la lista, aunque no venga en a_cargo.
+    if (automatica?.responsable && !lista.some((o) => o.value === automatica.responsable!.id)) {
+      lista.unshift({ value: automatica.responsable.id, label: automatica.responsable.nombre });
+    }
+    return lista;
+  }, [datos, automatica]);
+
   const faltan: string[] = [];
   if (!cliente) faltan.push("cliente");
   if (esTicket && !proyecto) faltan.push("proyecto");
@@ -192,6 +212,8 @@ export default function SoporteTicketModal({
           subestado_id: subestadoTip,
           clasificacion_codigo: nivel || null,
           descripcion,
+          // Solo si se eligió a alguien distinto del automático.
+          ...(esTicket && asignadoA && asignadoA !== automaticoId ? { responsable_id: asignadoA } : {}),
         }),
       });
       const fueTicket = r.ticket !== false && !!r.id;
@@ -413,11 +435,29 @@ export default function SoporteTicketModal({
                   <ZonaArchivos archivos={archivos} onCambio={setArchivos} compacta deshabilitada={guardando} />
                 </div>
               ) : null}
-              {esTicket && datos.asignacion?.[tipo === "cambio" ? "cambio" : "error"]?.responsable ? (
-                <p className="rounded-xl bg-slate-50 px-3 py-2 text-[12.5px] text-slate-600">
-                  Se asigna a <strong className="text-slate-800">{datos.asignacion[tipo === "cambio" ? "cambio" : "error"].responsable?.nombre}</strong> (
-                  {({ ordinario: "Desarrollo de Soporte", guardia: "desarrollador de guardia", guardia_sin_asignar: "no hay guardia cargada esta semana" })[datos.asignacion[tipo === "cambio" ? "cambio" : "error"].motivo]}).
-                </p>
+              {esTicket && opcionesACargo.length > 0 ? (
+                <div>
+                  <span className={claseEtiqueta}>Asignar a</span>
+                  <SelectorBuscable
+                    ariaLabel="Asignar a"
+                    value={responsableSel}
+                    onChange={setAsignadoA}
+                    opciones={opcionesACargo}
+                    placeholder="Elegí quién lo toma"
+                    buscarPlaceholder="Buscar desarrollador…"
+                    vacio="Nadie coincide"
+                  />
+                  <p className="mt-1 text-[11.5px] text-slate-500">
+                    {responsableSel && responsableSel === automaticoId && automatica
+                      ? `Por defecto (${({ ordinario: "Desarrollo de Soporte", guardia: "desarrollador de guardia", guardia_sin_asignar: "no hay guardia cargada esta semana" })[automatica.motivo]}).`
+                      : "Elegido a mano: no sigue la asignación automática."}
+                    {responsableSel !== automaticoId && automaticoId ? (
+                      <button type="button" onClick={() => setAsignadoA("")} className="ml-1.5 font-semibold text-[#2F6E71] hover:underline">
+                        Volver a {automatica?.responsable?.nombre}
+                      </button>
+                    ) : null}
+                  </p>
+                </div>
               ) : null}
               {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{error}</p> : null}
             </div>

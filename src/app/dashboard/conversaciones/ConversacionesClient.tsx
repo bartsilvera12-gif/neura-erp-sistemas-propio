@@ -8,6 +8,7 @@ import { agruparReacciones, wamidDeMensaje, type ReaccionEnUI } from "@/lib/chat
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Desplegable } from "@/components/ui/Desplegable";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import {
   readInboxList,
@@ -61,7 +62,7 @@ import { pickRecorderMimeType, extForAudioType } from "@/lib/chat/audio-recordin
 import { listActiveQuickRepliesForQueue } from "@/lib/chat/quick-replies-actions";
 import {
   X,
-  CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, Smile, Square, Trash2, UserRound, UserPlus, Zap } from "lucide-react";
+  CheckCircle2, ArrowLeftRight, Headset, Download, FileText, Maximize2, RotateCw, ZoomIn, ZoomOut, Flame, Mic, Paperclip, Smile, Square, Trash2, UserRound, UserPlus, Zap, MessagesSquare, ChevronRight } from "lucide-react";
 
 /** Emojis del composer (escritorio). Set curado, sin dependencias externas. */
 const EMOJI_GRUPOS: { grupo: string; items: string[] }[] = [
@@ -104,6 +105,7 @@ import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { ChannelBadge } from "@/components/chat/ChannelBadge";
 import dynamic from "next/dynamic";
 import { puedeCargarSoporte } from "./SoporteTicketModal";
+import { linkAlMapa, ubicacionDelMensaje } from "@/lib/chat/ubicacion";
 
 // La ventana de Soporte sólo se descarga cuando alguien la abre.
 const SoporteTicketModal = dynamic(() => import("./SoporteTicketModal"), { ssr: false });
@@ -791,10 +793,10 @@ function VisorImagen({
 }
 
 function tabClass(active: boolean) {
-  return `px-4 py-2 text-xs font-semibold rounded-xl transition-all ${
+  return `px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all ${
     active
-      ? "bg-[#4FAEB2] text-white shadow-sm shadow-[#4FAEB2]/25"
-      : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+      ? "bg-[#4FAEB2] text-white shadow-sm"
+      : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
   }`;
 }
 
@@ -804,14 +806,14 @@ function tabClass(active: boolean) {
  */
 function opPresenceToggleClass(isSelected: boolean, variant: "ready" | "offline") {
   const base =
-    "px-3 py-1.5 text-xs font-semibold rounded-md transition-all disabled:opacity-50 min-w-[6.75rem] text-center border-2";
+    "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 min-w-[6.75rem] text-center border";
   if (!isSelected) {
-    return `${base} border-transparent bg-slate-200/60 text-slate-500 hover:bg-slate-200 hover:text-slate-600`;
+    return `${base} border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-700`;
   }
   if (variant === "ready") {
-    return `${base} border-emerald-500 bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-200/90 z-[1]`;
+    return `${base} border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm z-[1]`;
   }
-  return `${base} border-slate-600 bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/90 z-[1]`;
+  return `${base} border-sky-200 bg-sky-50 text-sky-700 shadow-sm z-[1]`;
 }
 
 function LiveElapsedLabel({ sinceIso }: { sinceIso: string | null }) {
@@ -896,6 +898,26 @@ function VentanaWhatsApp({ messages }: { messages: ChatMessage[] }) {
   );
 }
 
+/**
+ * Pastillas de cada chat en la lista (estado, cola, espera, agente): todas con la
+ * misma altura, redondeadas, de fondo suave y sin borde, para que la fila se lea
+ * pareja. Solo cambia el color según lo que dicen.
+ */
+const CHIP_LISTA =
+  "inline-flex h-[18px] max-w-full items-center gap-1 rounded-full px-2 text-[10px] font-medium leading-none";
+
+function chipEstadoLista(s: string): { caja: string; punto: string } {
+  if (s === "open") return { caja: "bg-sky-50 text-sky-700", punto: "bg-sky-500" };
+  if (s === "pending") return { caja: "bg-amber-50 text-amber-700", punto: "bg-amber-500" };
+  return { caja: "bg-slate-100 text-slate-600", punto: "bg-slate-400" };
+}
+
+function chipEsperaLista(tone: "amber" | "slate" | "indigo"): string {
+  if (tone === "amber") return "bg-amber-50 text-amber-700";
+  if (tone === "indigo") return "bg-indigo-50 text-indigo-700";
+  return "bg-slate-100 text-slate-600";
+}
+
 function inboxClientWaitingSince(c: InboxConversation): string | null {
   if (c.awaiting_agent_reply_since) return null;
   return c.awaiting_client_reply_since ?? null;
@@ -906,11 +928,14 @@ function InboxReplyTurnBadges({ c, dense }: { c: InboxConversation; dense?: bool
   const clientSince = inboxClientWaitingSince(c);
   if (!agentSince && !clientSince) return null;
   const pad = dense ? "px-1.5 py-0.5 text-[9px]" : "px-1.5 py-0.5 text-[10px]";
+  // En la lista (dense) todas las pastillas comparten forma: ver CHIP_LISTA.
+  const caja = (color: string, suave: string) =>
+    dense ? `${CHIP_LISTA} ${suave} tabular-nums shrink-0` : `inline-flex items-center gap-0.5 font-semibold ${color} rounded ${pad} shrink-0`;
   return (
     <>
       {agentSince ? (
         <span
-          className={`inline-flex items-center gap-0.5 font-semibold text-orange-950 bg-orange-50 border border-orange-200 rounded ${pad} shrink-0`}
+          className={caja("text-orange-950 bg-orange-50 border border-orange-200", "bg-orange-50 text-orange-700")}
           title="Cliente escribió; falta respuesta humana del asesor"
         >
           <Flame className={`shrink-0 text-orange-600 ${dense ? "w-3 h-3" : "w-3.5 h-3.5"}`} aria-hidden />
@@ -919,7 +944,7 @@ function InboxReplyTurnBadges({ c, dense }: { c: InboxConversation; dense?: bool
       ) : null}
       {clientSince ? (
         <span
-          className={`inline-flex items-center gap-0.5 font-semibold text-sky-950 bg-sky-50 border border-sky-200 rounded ${pad} shrink-0`}
+          className={caja("text-sky-950 bg-sky-50 border border-sky-200", "bg-sky-50 text-sky-700")}
           title="Tiempo desde TU último mensaje (turno del contacto). No es la ventana de 24 h de WhatsApp: esa cuenta desde el último mensaje del cliente."
         >
           <UserRound className={`shrink-0 text-sky-600 ${dense ? "w-3 h-3" : "w-3.5 h-3.5"}`} aria-hidden />
@@ -927,6 +952,67 @@ function InboxReplyTurnBadges({ c, dense }: { c: InboxConversation; dense?: bool
         </span>
       ) : null}
     </>
+  );
+}
+
+/** "MILAGROS LUJAN GOMEZ FLORES" → "Milagros L.": en la lista alcanza para saber quién atiende. */
+function agenteCortoLista(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "—";
+  const cap = (p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+  return partes.length > 1 ? `${cap(partes[0])} ${partes[1].charAt(0).toUpperCase()}.` : cap(partes[0]);
+}
+
+/**
+ * La cola en corto, para que entre en una línea junto al estado y al agente: "Atención al
+ * cliente" → "ATC", "Ventas neura" → "Ventas". El nombre entero queda en el título al pasar el mouse.
+ */
+function colaCortaLista(nombre: string): string {
+  const n = nombre.trim();
+  if (/^atenci[oó]n\s+al\s+cliente$/i.test(n)) return "ATC";
+  const cap = (p: string) => p.charAt(0).toUpperCase() + p.slice(1);
+  if (n.length <= 22) return cap(n);
+  return cap(n.split(/\s+/)[0]);
+}
+
+/**
+ * Hace cuánto, arriba a la derecha de cada chat de la lista.
+ *
+ * Es el mismo reloj de antes, sin pastilla: naranja con la llama si el cliente escribió y falta
+ * responderle; azul con la persona si ya respondimos nosotros. A la izquierda, cuántos hay sin leer.
+ */
+function HaceCuantoLista({ c, bot }: { c: InboxConversation; bot: boolean }) {
+  const agentSince = bot ? null : c.awaiting_agent_reply_since;
+  const clientSince = bot ? null : inboxClientWaitingSince(c);
+  const desde = agentSince ?? clientSince ?? c.last_message_at ?? null;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-[11px]">
+      {c.unread_count > 0 ? (
+        <span className="inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#4FAEB2] px-1 text-[10px] font-bold leading-none text-white">
+          {c.unread_count}
+        </span>
+      ) : null}
+      {bot ? <span className="font-medium text-violet-700">Bot</span> : null}
+      {desde ? (
+        <span
+          className={`inline-flex items-center gap-0.5 ${agentSince ? "text-orange-600" : clientSince ? "text-sky-600" : "text-slate-400"}`}
+          title={
+            agentSince
+              ? "El cliente escribió; falta la respuesta del asesor"
+              : clientSince
+                ? "Tiempo desde nuestro último mensaje"
+                : "Último mensaje"
+          }
+        >
+          {agentSince ? (
+            <Flame className="h-3 w-3 shrink-0" aria-hidden />
+          ) : clientSince ? (
+            <UserRound className="h-3 w-3 shrink-0" aria-hidden />
+          ) : null}
+          <LiveElapsedLabel sinceIso={desde} />
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -2269,6 +2355,13 @@ export function ConversacionesClient({
           last_message_at: createdAt,
           last_message_preview: preview ?? cur.last_message_preview,
           unread_count: bumpUnread ? (cur.unread_count ?? 0) + 1 : cur.unread_count,
+          // De quién es el turno, con la misma regla que usa el servidor al cargar la lista: lo
+          // decide quién mandó el último mensaje. Sin esto el fueguito quedaba pegado cuando el
+          // que contestaba era un envío automático (el aviso de ticket creado), porque nadie
+          // volvía a pedir la lista; y al revés, el azul quedaba pegado si escribía el cliente.
+          last_message_from_me: fromMe,
+          awaiting_agent_reply_since: fromMe ? null : (cur.awaiting_agent_reply_since ?? createdAt),
+          awaiting_client_reply_since: fromMe ? createdAt : null,
         };
         next.sort((a, b) => {
           const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
@@ -3342,7 +3435,7 @@ export function ConversacionesClient({
               <div className="mt-4 space-y-3">
                 <div>
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Estado</label>
-                  <select
+                  <Desplegable
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                     value={finalizeStateId}
                     onChange={(e) => setFinalizeStateId(e.target.value)}
@@ -3352,7 +3445,7 @@ export function ConversacionesClient({
                         {s.label}
                       </option>
                     ))}
-                  </select>
+                  </Desplegable>
                 </div>
                 {(() => {
                   const st = finalizeOptions.states.find((s) => s.id === finalizeStateId);
@@ -3360,7 +3453,7 @@ export function ConversacionesClient({
                   return (
                     <div>
                       <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">Subestado</label>
-                      <select
+                      <Desplegable
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                         value={finalizeSubstateId}
                         onChange={(e) => setFinalizeSubstateId(e.target.value)}
@@ -3371,7 +3464,7 @@ export function ConversacionesClient({
                             {sub.label}
                           </option>
                         ))}
-                      </select>
+                      </Desplegable>
                     </div>
                   );
                 })()}
@@ -3380,7 +3473,7 @@ export function ConversacionesClient({
                     <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#2F6E71]">
                       Rubro <span className="font-normal text-slate-400">(opcional)</span>
                     </label>
-                    <select
+                    <Desplegable
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                       value={finalizeRubroId}
                       onChange={(e) => setFinalizeRubroId(e.target.value)}
@@ -3391,7 +3484,7 @@ export function ConversacionesClient({
                           {rb.label}
                         </option>
                       ))}
-                    </select>
+                    </Desplegable>
                   </div>
                 ) : null}
                 <div>
@@ -3502,7 +3595,7 @@ export function ConversacionesClient({
                   Colas
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  <select
+                  <Desplegable
                     disabled={opsBusy}
                     className="min-w-[12rem] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#4FAEB2] focus:outline-none focus:ring-2 focus:ring-[#4FAEB2]/20"
                     value={transferQueueTarget}
@@ -3515,7 +3608,7 @@ export function ConversacionesClient({
                         {q.nombre}
                       </option>
                     ))}
-                  </select>
+                  </Desplegable>
                   <button
                     type="button"
                     disabled={opsBusy || !transferQueueTarget}
@@ -3629,14 +3722,7 @@ export function ConversacionesClient({
       <>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 shrink-0">
         <div className="min-w-0 flex flex-1 items-center gap-2 flex-wrap pt-1">
-          <span
-            aria-hidden="true"
-            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#4FAEB2] shadow-[0_0_0_3px_rgba(79,174,178,0.18)]"
-          />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#4FAEB2] hidden sm:inline">
-            Omnicanal
-          </span>
-          <h1 className="text-base font-semibold tracking-tight text-slate-900 leading-tight truncate">
+          <h1 className="text-sm font-semibold tracking-tight text-slate-800 leading-tight truncate">
             {agentDisplayName}
           </h1>
           <span className="text-xs text-slate-500 leading-snug">
@@ -3659,7 +3745,7 @@ export function ConversacionesClient({
         {mode === "inbox" && opPresenceLoaded && !opInQueues ? (
           initialCabeceraInsignia === "admin" ? (
             <div className="flex items-center gap-2 shrink-0">
-              <span className="inline-flex items-center rounded-full bg-slate-800 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                 Administrador
               </span>
               <span className="text-[10px] text-slate-600 leading-snug">
@@ -3671,7 +3757,7 @@ export function ConversacionesClient({
             </div>
           ) : initialCabeceraInsignia === "supervisor" ? (
             <div className="flex items-center gap-2 shrink-0">
-              <span className="inline-flex items-center rounded-full bg-indigo-800 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
                 Supervisor
               </span>
               <span className="text-[10px] text-slate-600 leading-snug">
@@ -3702,7 +3788,7 @@ export function ConversacionesClient({
               {opPresenceBusy ? (
                 <span className="text-[10px] font-medium text-[#4FAEB2] animate-pulse">Guardando…</span>
               ) : null}
-              <div className="flex items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 shadow-inner">
+              <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1">
                 <button
                   type="button"
                   disabled={opPresenceBusy}
@@ -3779,7 +3865,7 @@ export function ConversacionesClient({
       {mode === "inbox" || mode === "historial" ? (
         <div className="flex flex-wrap items-center gap-2 shrink-0 min-w-0">
           {mode === "inbox" ? (
-            <div className="flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100/80 p-1 w-fit shrink-0">
+            <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1 w-fit shrink-0">
               <button type="button" className={tabClass(vista === "inbox")} onClick={() => setVista("inbox")}>
                 Inbox
               </button>
@@ -3828,7 +3914,7 @@ export function ConversacionesClient({
           </button>
           {mode === "historial" || vista === "inbox" ? (
             <>
-              <select
+              <Desplegable
                 className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8.5rem] max-w-[min(16rem,60vw)] shrink-0"
                 style={{
                   backgroundImage:
@@ -3849,8 +3935,8 @@ export function ConversacionesClient({
                     {formatChannelOptionLabel(c)}
                   </option>
                 ))}
-              </select>
-              <select
+              </Desplegable>
+              <Desplegable
                 className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8.5rem] shrink-0"
                 style={{
                   backgroundImage:
@@ -3873,8 +3959,8 @@ export function ConversacionesClient({
                       {q.nombre}
                     </option>
                   ))}
-              </select>
-              <select
+              </Desplegable>
+              <Desplegable
                 className="appearance-none rounded-lg border border-slate-200 bg-white bg-[length:13px_13px] bg-[right_0.55rem_center] bg-no-repeat px-2.5 py-2 pr-7 text-xs font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-[#4FAEB2]/60 focus:border-[#4FAEB2] focus:ring-2 focus:ring-[#4FAEB2]/20 min-w-[8rem] shrink-0"
                 style={{
                   backgroundImage:
@@ -3910,7 +3996,7 @@ export function ConversacionesClient({
                     <option value="sin_asignar">Sin asignar</option>
                   </>
                 )}
-              </select>
+              </Desplegable>
             </>
           ) : null}
         </div>
@@ -3997,7 +4083,7 @@ export function ConversacionesClient({
                   className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                     active
                       ? "bg-[#4FAEB2] text-white shadow-sm"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   }`}
                 >
                   {t.label}
@@ -4034,50 +4120,33 @@ export function ConversacionesClient({
                   onMouseEnter={() => onHoverConversation(c.id)}
                   onMouseLeave={onLeaveConversation}
                   onFocus={() => prefetchConversation(c.id)}
-                  className={`w-full text-left px-3 py-2 border-b border-slate-100 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_76px] ${
+                  className={`w-full text-left px-3 py-2.5 border-b border-slate-100 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_96px] ${
                     isSelected ? "bg-white border-l-[3px] border-l-[#4FAEB2]" : "hover:bg-white"
                   }`}
                 >
-                  <div className="flex items-start gap-2.5">
+                  <div className="flex items-center gap-2.5">
                     <span
                       aria-hidden="true"
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${
+                      className={`flex h-10 w-10 shrink-0 self-start items-center justify-center rounded-full text-[13px] font-semibold ${
                         hasNameInCard
-                          ? "bg-[#4FAEB2]/12 text-[#3F8E91] border border-[#4FAEB2]/30"
-                          : "bg-slate-100 text-slate-500 border border-slate-200"
+                          ? "bg-[#4FAEB2]/12 text-[#3F8E91]"
+                          : "bg-slate-100 text-slate-500"
                       }`}
                     >
                       {cardInitial}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900 truncate">
-                            {cardName}
-                          </div>
-                          <div className="text-[11px] text-slate-500 font-mono truncate tabular-nums">
-                            {telefonoMostrableContacto(c.contact)}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          {esAsesor && vista !== "bot" ? <InboxReplyTurnBadges c={c} dense /> : null}
-                          {vista === "bot" ? (
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded">
-                              Bot
-                            </span>
-                          ) : c.human_taken_over || c.flow_status === "human" ? (
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                              Humano
-                            </span>
-                          ) : null}
-                          {c.unread_count > 0 && (
-                            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-[#4FAEB2] px-1.5 py-0.5 text-[11px] font-bold text-white">
-                              {c.unread_count}
-                            </span>
-                          )}
-                        </div>
+                      {/* Renglón 1: quién es, y a la derecha hace cuánto (con el punto si hay sin leer). */}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className={`min-w-0 truncate text-[14px] text-slate-900 ${c.unread_count > 0 ? "font-bold" : "font-semibold"}`}>
+                          {cardName}
+                        </span>
+                        <HaceCuantoLista c={c} bot={vista === "bot"} />
                       </div>
-                      <p className="mt-1 text-[12px] text-slate-500 truncate leading-snug">
+                      <div className="text-[11px] text-slate-500 truncate tabular-nums">
+                        {telefonoMostrableContacto(c.contact)}
+                      </div>
+                      <p className={`mt-0.5 text-[12px] truncate leading-snug ${c.unread_count > 0 ? "text-slate-700" : "text-slate-500"}`}>
                         {c.last_message_from_me ? (
                           <MessageDeliveryTicks
                             status={c.last_message_status}
@@ -4088,46 +4157,39 @@ export function ConversacionesClient({
                         ) : null}
                         {textoDeVistaPrevia(c.last_message_preview) ?? (attachmentCaptionForDisplay(c.last_message_preview) || "—")}
                       </p>
-                    </div>
-                  </div>
-                  {!esAsesor ? (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    <span
-                      className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${badgeEstadoClass(c.status)}`}
-                    >
-                      {labelEstado(c.status)}
-                    </span>
-                    {c.queue_name ? (
-                      <span
-                        className="text-[9px] font-medium text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded truncate max-w-full"
-                        title={`Cola: ${c.queue_name}`}
-                      >
-                        Cola · {c.queue_name}
-                      </span>
-                    ) : null}
-                    {vista !== "bot" ? <InboxReplyTurnBadges c={c} dense /> : null}
-                    {c.assigned_agent_name ? (
-                      <span
-                        className="text-[9px] font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded truncate max-w-full"
-                        title={`Agente asignado: ${c.assigned_agent_name}`}
-                      >
-                        Agente · {c.assigned_agent_name}
-                      </span>
-                    ) : (
-                      (() => {
-                        const w = assignmentWaitBadge(c.assignment_wait_code, Boolean(c.queue_id));
-                        return (
-                          <span
-                            className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border truncate max-w-full ${assignmentWaitBadgeClass(w.tone)}`}
-                            title="Sin agente asignado"
-                          >
-                            {w.label}
+                      {/* Renglón de datos: cola | quién atiende. El estado (abierta/pendiente) se sacó: no decía quién debía responder. */}
+                      <div className="mt-1.5 flex min-w-0 items-center gap-2 text-[11px] text-slate-500">
+                        {c.queue_name ? (
+                          <>
+                            <span className="inline-flex min-w-0 shrink-0 max-w-[45%] items-center gap-1" title={`Cola: ${c.queue_name}`}>
+                              <Headset className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+                              <span className="truncate">{colaCortaLista(c.queue_name)}</span>
+                            </span>
+                            <span aria-hidden="true" className="h-3 w-px shrink-0 bg-slate-200" />
+                          </>
+                        ) : null}
+                        {c.assigned_agent_name ? (
+                          <span className="inline-flex min-w-0 items-center gap-1" title={`Agente asignado: ${c.assigned_agent_name}`}>
+                            <UserRound className="h-3 w-3 shrink-0 text-slate-400" aria-hidden />
+                            <span className="truncate">{agenteCortoLista(c.assigned_agent_name)}</span>
                           </span>
-                        );
-                      })()
-                    )}
+                        ) : (
+                          (() => {
+                            const w = assignmentWaitBadge(c.assignment_wait_code, Boolean(c.queue_id));
+                            return (
+                              <span
+                                className={`min-w-0 truncate font-medium ${w.tone === "amber" ? "text-amber-700" : w.tone === "indigo" ? "text-indigo-700" : "text-slate-500"}`}
+                                title="Sin agente asignado"
+                              >
+                                {w.label}
+                              </span>
+                            );
+                          })()
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" aria-hidden />
                   </div>
-                  ) : null}
                 </button>
                 );
               })
@@ -4152,7 +4214,8 @@ export function ConversacionesClient({
           }`}
         >
           {!selectedId ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 text-sm min-h-0 px-2">
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm min-h-0 px-2">
+              <MessagesSquare aria-hidden="true" strokeWidth={1.5} className="h-10 w-10 text-slate-300" />
               <span>Seleccioná una conversación</span>
               {listColumnHidden ? (
                 <button
@@ -4324,16 +4387,6 @@ export function ConversacionesClient({
                                 Reabrir
                               </button>
                             ) : null}
-                            {isHumanActive ? (
-                              <button
-                                type="button"
-                                disabled={releasingBot}
-                                onClick={() => void handleReleaseToBot()}
-                                className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition-colors hover:border-[#4FAEB2]/60 hover:text-[#3F8E91] disabled:opacity-50"
-                              >
-                                {releasingBot ? "…" : "Modo bot"}
-                              </button>
-                            ) : null}
                             {listColumnHidden ? (
                               <button
                                 type="button"
@@ -4373,17 +4426,15 @@ export function ConversacionesClient({
                               <span aria-hidden="true" className="h-1 w-1 rounded-full bg-violet-500" />
                               Bot
                             </span>
-                          ) : isHumanActive ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                              <span aria-hidden="true" className="h-1 w-1 rounded-full bg-emerald-500" />
-                              Humano
+                          ) : null}
+                          {/* Abierta/Pendiente y "Humano" se sacaron: no decían nada útil. "Cerrada" sí se avisa. */}
+                          {selected.status === "closed" ? (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeEstadoClass(selected.status)}`}
+                            >
+                              {labelEstado(selected.status)}
                             </span>
                           ) : null}
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeEstadoClass(selected.status)}`}
-                          >
-                            {labelEstado(selected.status)}
-                          </span>
 
                           {vista !== "bot" ? (
                             <>
@@ -4478,7 +4529,7 @@ export function ConversacionesClient({
                               <span aria-hidden="true" className="mx-0.5 h-3.5 w-px bg-slate-200" />
                               {(selected.contact.cliente_id ?? clienteDeChat[selected.id]) ? (
                                 <Link
-                                  href={`/clientes/${selected.contact.cliente_id ?? clienteDeChat[selected.id]}`}
+                                  href={`/gestion-clientes?cliente=${encodeURIComponent(selected.contact.cliente_id ?? clienteDeChat[selected.id] ?? "")}`}
                                   className="inline-flex items-center gap-1 rounded-full border border-[#4FAEB2]/30 bg-[#4FAEB2]/8 px-2 py-0.5 text-[10px] font-semibold text-[#3F8E91] transition-colors hover:bg-[#4FAEB2]/12"
                                 >
                                   Cliente →
@@ -5016,6 +5067,33 @@ export function ConversacionesClient({
                             })()
                           ) : m.message_type === "contacts" ? (
                             <ContactCardsView message={m} fromMe={m.from_me} />
+                          ) : m.message_type === "location" && ubicacionDelMensaje(m.raw_payload) ? (
+                            (() => {
+                              const u = ubicacionDelMensaje(m.raw_payload)!;
+                              return (
+                                <a
+                                  href={linkAlMapa(u)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`flex items-center gap-2.5 rounded-lg px-1 py-0.5 ${m.from_me ? "text-white" : "text-slate-800"} hover:opacity-90`}
+                                >
+                                  <span
+                                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-base ${m.from_me ? "bg-white/20" : "bg-slate-100"}`}
+                                    aria-hidden
+                                  >
+                                    📍
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block font-semibold underline underline-offset-2">
+                                      {u.nombre || "Ubicación"} · Ver en el mapa
+                                    </span>
+                                    <span className={`block text-[11px] ${m.from_me ? "text-sky-100" : "text-slate-500"}`}>
+                                      {u.direccion || `${u.lat.toFixed(5)}, ${u.lng.toFixed(5)}`}
+                                    </span>
+                                  </span>
+                                </a>
+                              );
+                            })()
                           ) : (
                             // "[reaction]" y "[revoke]" son rótulos internos del ERP; al
                             // asesor hay que decirle qué pasó, no mostrarle el código.
@@ -5109,7 +5187,7 @@ export function ConversacionesClient({
                   ref={fileInputRef}
                   type="file"
                   className="hidden"
-                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.apk,.zip"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.apk,.zip"
                   onChange={(e) => void handleSendFile(e)}
                 />
                 {sendError && (

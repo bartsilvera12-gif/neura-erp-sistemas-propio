@@ -6,6 +6,8 @@ import {
   nombreVisible,
   requireChatInterno,
   respuestaAuth,
+  etiquetaDeAdjuntos,
+  quienesCumplenHoy,
 } from "@/lib/chat-interno/core";
 
 export const runtime = "nodejs";
@@ -89,6 +91,8 @@ export async function GET(request: Request) {
       }))
     );
 
+    const cumplenHoy = new Set((await quienesCumplenHoy(catalog, empresaId)).map((u) => u.id));
+
     const porSala = new Map<string, string[]>();
     for (const m of (miembros ?? []) as { sala_id: string; usuario_id: string }[]) {
       porSala.set(m.sala_id, [...(porSala.get(m.sala_id) ?? []), m.usuario_id]);
@@ -138,6 +142,8 @@ export async function GET(request: Request) {
             ? (otro ? avatarDe.get(otro) ?? null : null)
             : avatarDeSala.get(id) ?? null,
         mi_rol: miRolEn.get(id) ?? "miembro",
+        // Sólo en el directo: en un grupo no se sabe a quién señala el regalo.
+        cumple_hoy: s.tipo === "directo" && !!otro && cumplenHoy.has(otro),
         // El cargo se muestra mientras no haya nada que previsualizar: una fila
         // sin mensajes con un renglón vacío se ve rota.
         subtitulo:
@@ -147,7 +153,7 @@ export async function GET(request: Request) {
         ultimo_mensaje_at: s.ultimo_mensaje_at ?? null,
         no_leidos: noLeidos.get(id) ?? 0,
         vista_previa: ultimo
-          ? (ultimo.texto ?? "").trim() || (adj.length > 0 ? "Archivo adjunto" : "")
+          ? (ultimo.texto ?? "").trim() || etiquetaDeAdjuntos(adj)
           : "",
         vista_previa_autor: ultimo?.usuario_id ? nombreDe.get(ultimo.usuario_id) ?? "" : "",
       };

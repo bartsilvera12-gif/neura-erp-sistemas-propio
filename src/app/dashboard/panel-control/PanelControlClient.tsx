@@ -778,7 +778,7 @@ export default function PanelControlClient() {
 
   if (cargando && !datos) {
     return (
-      <div className="p-4 md:p-6">
+      <div className="">
         <div className="h-6 w-56 animate-pulse rounded bg-slate-200" />
         <div className="mt-6 h-[92px] animate-pulse rounded-2xl bg-slate-100" />
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
@@ -791,7 +791,7 @@ export default function PanelControlClient() {
   }
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           {/* BlurText renderiza un <p>, así que el título real va aparte y oculto:
@@ -801,7 +801,7 @@ export default function PanelControlClient() {
             text="Estado de infraestructura"
             animateBy="words"
             delay={60}
-            className="text-xl font-bold text-slate-900"
+            className="text-2xl font-semibold tracking-tight text-slate-900"
           />
           <p className="mt-0.5 text-sm text-slate-500">Se actualiza cada 30 segundos</p>
         </div>

@@ -153,7 +153,7 @@ export default function CampanasListClient() {
 
   if (loading) {
     return (
-      <div className="space-y-4 p-6">
+      <div className="space-y-4">
         <div className="flex items-center gap-2">
           <span
             aria-hidden="true"
@@ -173,7 +173,7 @@ export default function CampanasListClient() {
 
   if (err) {
     return (
-      <div className="space-y-4 p-6">
+      <div className="space-y-4">
         <h1 className="text-lg font-semibold tracking-tight text-slate-900">Campañas WhatsApp</h1>
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {err}
@@ -183,7 +183,7 @@ export default function CampanasListClient() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4">
       {/* Encabezado */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -196,7 +196,7 @@ export default function CampanasListClient() {
               Marketing · Campañas
             </p>
           </div>
-          <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-slate-900">
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
             Campañas WhatsApp
           </h1>
           <p className="text-xs text-slate-500">

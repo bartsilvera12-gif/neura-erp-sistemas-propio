@@ -353,6 +353,13 @@ export type ActualizarClienteInput = Omit<
 > & {
   /** null quita el tipo. */
   tipo_servicio_cliente?: string | null;
+  /**
+   * Opt-in explícito para cambiar `estado` (activo/inactivo). El PATCH de ficha
+   * ignora `estado` salvo que venga este flag en true. Así un guardado de ficha
+   * nunca revierte una baja; el estado solo lo cambian las acciones dedicadas
+   * (Dar de baja / Desactivar / Reactivar) que sí lo setean.
+   */
+  cambiar_estado?: boolean;
 };
 
 /** Misma lógica que aplica el PATCH de API; centralizada para no desviar campos. */
@@ -567,7 +574,8 @@ export async function addNotaCliente(clienteId: string, texto: string): Promise<
 }
 
 export async function toggleEstado(id: string, estado: EstadoCliente): Promise<void> {
-  await updateCliente(id, { estado });
+  // cambiar_estado: true = opt-in explícito; sin este flag el PATCH ignora `estado`.
+  await updateCliente(id, { estado, cambiar_estado: true });
 }
 
 /** Nombre de display según tipo de cliente. Delega en el helper canónico único. */

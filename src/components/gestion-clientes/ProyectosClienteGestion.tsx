@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, ExternalLink, FolderKanban, Lock, PauseCircle, RefreshCw } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { AccesoSistemaCompacto } from "@/components/proyectos/AccesoSistemaControl";
 
 type ProyectoFila = {
   id: string;
@@ -212,6 +213,9 @@ export function ProyectosClienteGestion({
                           ) : null}
                         </p>
                       </Link>
+                      <div className="mt-1.5 px-1">
+                        <AccesoSistemaCompacto proyectoId={p.id} />
+                      </div>
                     </li>
                   );
                 })}

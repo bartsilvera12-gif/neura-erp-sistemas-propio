@@ -134,6 +134,20 @@ export async function POST(request: NextRequest) {
   const quotedWaMessageId = String(body?.quotedWaMessageId ?? "").trim();
   // Tarjeta(s) de contacto compartidas, ya con la forma que el inbox sabe dibujar.
   const contacts = Array.isArray(body?.contacts) ? body!.contacts : null;
+  // Ubicación compartida (si el puente la manda): se guarda en la raíz del raw_payload con
+  // la misma forma que YCloud ({latitude, longitude, name, address}), así el inbox la dibuja
+  // como link al mapa. Puentes viejos no la mandan: queda el "[ubicación]" de siempre.
+  const location = (() => {
+    const l = body?.location;
+    if (!l || typeof l !== "object") return null;
+    const o = l as Record<string, unknown>;
+    const latitude = Number(o.latitude);
+    const longitude = Number(o.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    const name = typeof o.name === "string" ? o.name.slice(0, 200) : null;
+    const address = typeof o.address === "string" ? o.address.slice(0, 300) : null;
+    return { latitude, longitude, name, address, live: o.live === true };
+  })();
   // JID original de WhatsApp con su sufijo real (`<id>@lid` o `<pn>@s.whatsapp.net`).
   // El puente ya lo manda; lo preservamos para enviar al destino correcto (ver abajo).
   const fromJid = typeof body?.fromJid === "string" ? (body.fromJid as string).trim() : "";
@@ -222,6 +236,7 @@ export async function POST(request: NextRequest) {
           // `contacts` en la raíz es donde el inbox busca las tarjetas de contacto (misma
           // forma que YCloud/Meta), así que se guardan ahí y se dibujan sin tocar el front.
           ...(contacts ? { contacts } : {}),
+          ...(location ? { location } : {}),
           bridge: {
             fromDigits,
             messageKind,
@@ -395,7 +410,12 @@ export async function POST(request: NextRequest) {
       try {
         const crmSchema = await fetchDataSchemaForEmpresaId(empresaId);
         const crmPool = getChatPostgresPool();
-        if (crmPool && isLikelyUnexposedTenantChatSchema(crmSchema)) {
+        // Mismo criterio que el webhook YCloud: alcanza con tener pool PG.
+        // NO filtrar por isLikelyUnexposedTenantChatSchema: ese helper devuelve
+        // false para `neura` (es el APP_DB_SCHEMA), lo que apagaba la creación
+        // del lead en TODOS los entrantes por QR de Neura. La función valida el
+        // schema internamente (assertAllowedChatDataSchema) y es idempotente.
+        if (crmPool) {
           const crm = await ensureWhatsappInboundCrmLeadPg({
             pool: crmPool,
             data_schema: crmSchema,

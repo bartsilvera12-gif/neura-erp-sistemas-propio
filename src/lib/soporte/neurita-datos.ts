@@ -1,0 +1,338 @@
+import type { SoporteContexto } from "@/lib/soporte/soporte-auth";
+import { clientesDeEmpresa } from "@/lib/soporte/servidor";
+import { ticketsParaAgregar } from "@/lib/soporte/agregados-servidor";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import type { TicketFila } from "@/lib/soporte/dominio";
+import { TZ_PY } from "@/lib/format/hora-py";
+
+/**
+ * El usuario del agente en sistema propio. Se busca por email y, si no está,
+ * por nombre: la cuenta se renombró de "Soporte Ia" a "Neurita" y el nombre
+ * puede volver a cambiar, el email no.
+ */
+const EMAIL_AGENTE = process.env.SOPORTE_AGENTE_EMAIL?.trim() || "soporte-ia@neura.com.py";
+const NOMBRE_AGENTE = "neurit";
+
+/** Espejo de AGENTE_TOPE_MES_USD del agente: al llegar, deja de tomar tickets nuevos. */
+const TOPE_MES_USD = Number(process.env.SOPORTE_AGENTE_TOPE_MES_USD || 1000);
+
+function hoyPy(): string {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("year")}-${g("month")}-${g("day")}`;
+}
+
+const red = (n: number) => Math.round(n * 100) / 100;
+
+/** Mediana, no promedio: un ticket de seis horas no tiene que mover el número. */
+function mediana(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const o = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(o.length / 2);
+  return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2;
+}
+
+type FilaGasto = { fecha: string; ticket_numero: number | null; usd: number | string | null; detalle: string | null };
+type FilaHist = { ticket_id: string; usuario_id: string | null; valor_nuevo: string | null; created_at: string };
+
+/** Lee una tabla por lotes: el historial de un año no entra en una sola consulta. */
+async function porLotes<T>(consulta: (desde: number, hasta: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
+  const todos: T[] = [];
+  for (let desde = 0; desde < 100_000; desde += 1000) {
+    const { data, error } = await consulta(desde, desde + 999);
+    if (error) throw new Error(error.message);
+    const lote = (data ?? []) as T[];
+    todos.push(...lote);
+    if (lote.length < 1000) break;
+  }
+  return todos;
+}
+
+/**
+ * GET /api/soporte/neurita — tablero del agente de IA.
+ *
+ * Todo sale de datos que ya existen: los avisos de gasto, los tickets donde el
+ * agente es responsable y el historial de estados. El agente no informa nada
+ * especial para esto.
+ *
+ * Las vueltas de un ticket se cuentan solas: el agente avisa un gasto por cada
+ * vuelta del modelo, así que la cantidad de avisos de un ticket ES su cantidad
+ * de vueltas.
+ */
+/**
+ * Todo lo que muestra el tablero de Neurita. Lo usan la pantalla y el PDF, así
+ * que el número que se ve y el que se descarga salen del mismo cálculo.
+ */
+export type RangoNeurita = { desde: string | null; hasta: string | null };
+
+/** Días que abarca el gráfico cuando no hay rango elegido. */
+const DIAS_POR_DEFECTO = 14;
+/** Tope de barras: un rango de un año dibujado día por día no se lee. */
+const MAX_BARRAS = 45;
+
+export async function datosNeurita(auth: SoporteContexto, rango: RangoNeurita = { desde: null, hasta: null }) {
+
+    const catalog = createServiceRoleClient();
+    const { data: usuarios, error: eUsr } = await catalog.from("usuarios").select("id, nombre, email").eq("empresa_id", auth.empresaId);
+    if (eUsr) throw new Error(eUsr.message);
+    const lista = (usuarios ?? []) as { id: string; nombre: string | null; email: string | null }[];
+    const agente =
+      lista.find((u) => (u.email ?? "").toLowerCase() === EMAIL_AGENTE) ??
+      lista.find((u) => (u.nombre ?? "").toLowerCase().includes(NOMBRE_AGENTE)) ??
+      null;
+
+    const hoy = hoyPy();
+    const mes = hoy.slice(0, 7);
+    // El rango filtra por el día de Paraguay que trae cada aviso, que es el
+    // mismo criterio con el que se guardó: no hay conversión de zona de por medio.
+    const { desde, hasta } = rango;
+    const enRango = (f: string | null | undefined) =>
+      typeof f === "string" && (!desde || f >= desde) && (!hasta || f <= hasta);
+    const hayRango = Boolean(desde || hasta);
+
+    const gastos = await porLotes<FilaGasto>((d, h) =>
+      auth.sb.from("soporte_agente_gastos").select("fecha, ticket_numero, usd, detalle").eq("empresa_id", auth.empresaId).order("fecha").range(d, h)
+    );
+
+    let usdHoy = 0;
+    let usdMes = 0;
+    let usdTotal = 0;
+    const usdPorTicket = new Map<number, number>();
+    const vueltasPorTicket = new Map<number, number>();
+    let vueltasHoy = 0;
+    let usdPeriodo = 0;
+    let vueltasPeriodo = 0;
+    // `gastos` queda filtrado para todo lo que mira el período; el total
+    // histórico y el del mes se calculan antes, sobre la lista completa.
+    const gastosTodos = gastos;
+    for (const g of gastosTodos) {
+      const usd = Number(g.usd ?? 0);
+      if (!Number.isFinite(usd)) continue;
+      usdTotal += usd;
+      if (enRango(g.fecha)) {
+        usdPeriodo += usd;
+        if (g.ticket_numero != null) vueltasPeriodo++;
+      }
+      // Un aviso sin número de ticket no es una vuelta del modelo: es una carga
+      // hecha a mano (el gasto previo a esta tabla). Suma plata, no vueltas.
+      if (g.fecha === hoy) {
+        usdHoy += usd;
+        if (g.ticket_numero != null) vueltasHoy++;
+      }
+      if (typeof g.fecha === "string" && g.fecha.startsWith(mes)) usdMes += usd;
+      if (g.ticket_numero != null && enRango(g.fecha)) {
+        usdPorTicket.set(g.ticket_numero, (usdPorTicket.get(g.ticket_numero) ?? 0) + usd);
+        vueltasPorTicket.set(g.ticket_numero, (vueltasPorTicket.get(g.ticket_numero) ?? 0) + 1);
+      }
+    }
+    const gastosPeriodo = hayRango ? gastosTodos.filter((g) => enRango(g.fecha)) : gastosTodos;
+
+    // Tickets y su historial de estados. Con el historial se sabe QUIÉN resolvió
+    // cada uno y cuándo, que es lo que `responsable_id` solo no dice.
+    const tickets = await ticketsParaAgregar(auth.sb, auth.empresaId);
+    const porId = new Map(tickets.map((t) => [t.id, t] as const));
+    const historial = await porLotes<FilaHist>((d, h) =>
+      auth.sb
+        .from("soporte_ticket_historial")
+        .select("ticket_id, usuario_id, valor_nuevo, created_at")
+        .eq("empresa_id", auth.empresaId)
+        .in("valor_nuevo", ["en_proceso", "resuelto", "reabierto"])
+        .order("created_at")
+        .range(d, h)
+    );
+
+    // Por persona: qué tickets resolvió, cuánto tardó, y cuántos le volvieron.
+    const tomaPor = new Map<string, number>(); // ticket+usuario → primer "en proceso"
+    const resueltosPor = new Map<string, { ticket: string; minutos: number | null; cuando: number }[]>();
+    const reaperturas = new Map<string, number[]>(); // ticket → momentos en que se reabrió
+    for (const h of historial) {
+      const cuando = Date.parse(h.created_at);
+      if (!Number.isFinite(cuando)) continue;
+      if (h.valor_nuevo === "reabierto") {
+        const xs = reaperturas.get(h.ticket_id) ?? [];
+        xs.push(cuando);
+        reaperturas.set(h.ticket_id, xs);
+        continue;
+      }
+      if (!h.usuario_id) continue;
+      const clave = `${h.ticket_id}|${h.usuario_id}`;
+      if (h.valor_nuevo === "en_proceso") {
+        if (!tomaPor.has(clave)) tomaPor.set(clave, cuando);
+        continue;
+      }
+      // resuelto
+      const inicio = tomaPor.get(clave);
+      const xs = resueltosPor.get(h.usuario_id) ?? [];
+      xs.push({ ticket: h.ticket_id, minutos: inicio != null ? (cuando - inicio) / 60_000 : null, cuando });
+      resueltosPor.set(h.usuario_id, xs);
+    }
+
+    /** El día de Paraguay de un instante, para comparar contra el rango. */
+    const diaPy = (ms: number) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: TZ_PY, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+
+    const resumenDe = (usuarioId: string) => {
+      // El rango se aplica sobre CUÁNDO se resolvió: los tiempos y las
+      // reaperturas se siguen calculando con todo el historial, que es lo que
+      // permite saber si un ticket del período volvió después.
+      const xs = (resueltosPor.get(usuarioId) ?? []).filter((x) => !hayRango || enRango(diaPy(x.cuando)));
+      // Un ticket resuelto dos veces (volvió y se arregló de nuevo) cuenta una.
+      const unicos = new Set(xs.map((x) => x.ticket));
+      // "Volvió" = lo dio por resuelto y después alguien lo reabrió. Es la única
+      // medida honesta de si el arreglo servía.
+      const volvieron = [...unicos].filter((t) => {
+        const primerCierre = Math.min(...xs.filter((x) => x.ticket === t).map((x) => x.cuando));
+        return (reaperturas.get(t) ?? []).some((r) => r > primerCierre);
+      });
+      return {
+        resueltos: unicos.size,
+        medianaMinutos: mediana(xs.map((x) => x.minutos).filter((m): m is number => m != null)),
+        volvieron: volvieron.length,
+        ticketsVolvieron: volvieron,
+      };
+    };
+
+    const clientes = new Map((await clientesDeEmpresa(auth.sb, auth.empresaId)).map((c) => [c.id, c.nombre] as const));
+    const porNumeroTodos = new Map(tickets.map((t) => [t.numero, t] as const));
+    const mio = agente ? resumenDe(agente.id) : { resueltos: 0, medianaMinutos: null, volvieron: 0, ticketsVolvieron: [] as string[] };
+    const abiertos = agente
+      ? tickets.filter((t) => t.responsable_id === agente.id && !["cerrado", "cancelado", "resuelto"].includes(t.estado_codigo)).length
+      : 0;
+
+    // Lo que trabajó hoy, tomado de los avisos de gasto (un aviso = una vuelta).
+    const numerosHoy = [...new Set(gastosPeriodo.filter((g) => g.ticket_numero != null).map((g) => g.ticket_numero as number))];
+    const deHoy = numerosHoy
+      .map((numero) => {
+        const t: TicketFila | undefined = porNumeroTodos.get(numero);
+        return {
+          numero,
+          id: t?.id ?? null,
+          asunto: t?.asunto ?? "(ticket que no está en la lista)",
+          cliente: t?.cliente_id ? (clientes.get(t.cliente_id) ?? null) : null,
+          estado_codigo: t?.estado_codigo ?? null,
+          usd: red(usdPorTicket.get(numero) ?? 0),
+          vueltas: vueltasPorTicket.get(numero) ?? 0,
+        };
+      })
+      .sort((a, b) => b.usd - a.usd);
+
+    /**
+     * El gasto día por día. Sin rango, los últimos 14. Con rango, el rango —
+     * recortado a los últimos MAX_BARRAS días, porque más barras no se leen.
+     */
+    const dias: { fecha: string; usd: number; vueltas: number }[] = [];
+    const sumaDia = (f: string) => {
+      const d = gastosTodos.filter((g) => g.fecha === f);
+      return { fecha: f, usd: red(d.reduce((a, g) => a + Number(g.usd ?? 0), 0)), vueltas: d.length };
+    };
+    const diaMenos = (base: string, n: number) => {
+      const d = new Date(`${base}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - n);
+      return d.toISOString().slice(0, 10);
+    };
+    const finSerie = hasta && hasta < hoy ? hasta : hoy;
+    let largo = DIAS_POR_DEFECTO;
+    if (hayRango && desde) {
+      const ms = Date.parse(`${finSerie}T12:00:00Z`) - Date.parse(`${desde}T12:00:00Z`);
+      largo = Math.min(MAX_BARRAS, Math.max(1, Math.round(ms / 86_400_000) + 1));
+    } else if (hayRango) {
+      largo = MAX_BARRAS;
+    }
+    for (let i = largo - 1; i >= 0; i--) dias.push(sumaDia(diaMenos(finSerie, i)));
+
+    // Por sistema: `detalle` guarda el repo del cliente en el que trabajó.
+    const porSistema = new Map<string, { usd: number; vueltas: number; tickets: Set<number> }>();
+    for (const g of gastosPeriodo) {
+      const nombre = (g.detalle ?? "").trim() || "sin identificar";
+      const x = porSistema.get(nombre) ?? { usd: 0, vueltas: 0, tickets: new Set<number>() };
+      x.usd += Number(g.usd ?? 0);
+      x.vueltas++;
+      if (g.ticket_numero != null) x.tickets.add(g.ticket_numero);
+      porSistema.set(nombre, x);
+    }
+    const sistemas = [...porSistema.entries()]
+      .map(([nombre, x]) => ({ nombre, usd: red(x.usd), vueltas: x.vueltas, tickets: x.tickets.size }))
+      .sort((a, b) => b.usd - a.usd);
+
+    const ficha = (t: TicketFila) => ({
+      id: t.id,
+      numero: t.numero,
+      asunto: t.asunto,
+      cliente: t.cliente_id ? (clientes.get(t.cliente_id) ?? null) : null,
+      estado_codigo: t.estado_codigo,
+      usd: red(usdPorTicket.get(t.numero) ?? 0),
+      vueltas: vueltasPorTicket.get(t.numero) ?? 0,
+    });
+
+    // Los que dio por resueltos y volvieron: la lista, no solo el porcentaje.
+    const idsVolvieron = new Set(mio.ticketsVolvieron);
+    const volvieronLista = tickets.filter((t) => idsVolvieron.has(t.id)).map(ficha).sort((a, b) => b.numero - a.numero);
+
+    // En qué está ahora.
+    const abiertosLista = agente
+      ? tickets
+          .filter((t) => t.responsable_id === agente.id && !["cerrado", "cancelado", "resuelto"].includes(t.estado_codigo))
+          .map((t) => ({ ...ficha(t), desde: t.updated_at }))
+          .sort((a, b) => Date.parse(a.desde) - Date.parse(b.desde))
+      : [];
+
+    // Los que más costaron: un ticket caro es un ticket que se le complicó.
+    const caros = [...usdPorTicket.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([numero]) => porNumeroTodos.get(numero))
+      .filter((t): t is TicketFila => !!t)
+      .map(ficha);
+
+    // Todo lo que resolvió, no solo lo que tiene gasto informado: los tickets
+    // anteriores a esta tabla también son trabajo suyo.
+    const resueltosLista = agente
+      ? [...(resueltosPor.get(agente.id) ?? []).filter((x) => !hayRango || enRango(diaPy(x.cuando)))]
+          .reduce((acc, x) => {
+            // Un ticket resuelto dos veces aparece una sola vez, con la última.
+            const prev = acc.get(x.ticket);
+            if (!prev || x.cuando > prev) acc.set(x.ticket, x.cuando);
+            return acc;
+          }, new Map<string, number>())
+      : new Map<string, number>();
+    const resueltos = [...resueltosLista.entries()]
+      .map(([id, cuando]) => {
+        const t = porId.get(id);
+        if (!t) return null;
+        return { ...ficha(t), resuelto_at: new Date(cuando).toISOString(), volvio: idsVolvieron.has(id) };
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x)
+      .sort((a, b) => Date.parse(b.resuelto_at) - Date.parse(a.resuelto_at));
+
+    const vueltas = [...vueltasPorTicket.values()];
+    return {
+      agente: agente ? { id: agente.id, nombre: agente.nombre ?? "Neurita" } : null,
+      rango: { desde: desde ?? null, hasta: hasta ?? null, activo: hayRango, diasGrafico: dias.length },
+      gasto: {
+        hoy: red(usdHoy),
+        mes: red(usdMes),
+        total: red(usdTotal),
+        topeMes: TOPE_MES_USD,
+        vueltasHoy,
+        // Lo gastado dentro del rango. Sin rango es igual al total.
+        periodo: red(hayRango ? usdPeriodo : usdTotal),
+        vueltasPeriodo: hayRango ? vueltasPeriodo : [...vueltasPorTicket.values()].reduce((a, b) => a + b, 0),
+      },
+      trabajo: {
+        resueltos: mio.resueltos,
+        abiertos,
+        costoPorTicket: mio.resueltos ? red((hayRango ? usdPeriodo : usdTotal) / mio.resueltos) : null,
+        medianaMinutos: mio.medianaMinutos == null ? null : Math.round(mio.medianaMinutos),
+        vueltasMediana: mediana(vueltas),
+        volvieron: mio.volvieron,
+        ticketsConGasto: vueltasPorTicket.size,
+      },
+      hoy: deHoy,
+      dias,
+      sistemas,
+      volvieronLista,
+      abiertos: abiertosLista,
+      caros,
+      resueltos,
+    };
+}

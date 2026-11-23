@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, Wallet, CheckCircle2, Timer, RotateCcw, Repeat2, Flame, Server, Activity, Download, Loader2, CalendarDays, X, ChevronDown } from "lucide-react";
 import { apiSoporte } from "../_ui/api";
-import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio } from "../_ui/ui";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { Aviso, Cargando, Encabezado, Pagina, Tarjeta, Vacio, claseBoton } from "../_ui/ui";
 
 type Ficha = { id: string | null; numero: number; asunto: string; cliente: string | null; estado_codigo: string | null; usd: number; vueltas: number };
 
 type Resp = {
   agente: { id: string; nombre: string } | null;
-  gasto: { hoy: number; mes: number; total: number; topeMes: number; vueltasHoy: number };
+  rango: { desde: string | null; hasta: string | null; activo: boolean; diasGrafico: number };
+  gasto: { hoy: number; mes: number; total: number; topeMes: number; vueltasHoy: number; periodo: number; vueltasPeriodo: number };
   trabajo: {
     resueltos: number;
     abiertos: number;
@@ -87,14 +89,132 @@ function FilaTicket({ t, extra }: { t: Ficha; extra?: React.ReactNode }) {
   );
 }
 
+/**
+ * Colores de la dona: 24 tonos vivos, alternando cálido y frío para que dos
+ * porciones vecinas nunca se parezcan. Las porciones chicas usan la segunda
+ * docena (los mismos tonos, un punto más claros), nunca grises lavados.
+ */
+const COLORES = [
+  "#3b82f6", "#f59e0b", "#10b981", "#f43f5e", "#8b5cf6", "#06b6d4",
+  "#f97316", "#ec4899", "#84cc16", "#6366f1", "#14b8a6", "#d946ef",
+  "#60a5fa", "#fbbf24", "#34d399", "#fb7185", "#a78bfa", "#22d3ee",
+  "#fb923c", "#f472b6", "#a3e635", "#818cf8", "#2dd4bf", "#e879f9",
+];
+const colorPorcion = (i: number) => COLORES[i % COLORES.length];
+
+/**
+ * Las cargas a mano (el gasto previo a la tabla) llegan con un texto largo
+ * como nombre de sistema. En la torta se juntan en una sola porción.
+ */
+const nombreCorto = (n: string) => (/^carga inicial/i.test(n) ? "Carga inicial" : n.replace(/^neura-erp-/, ""));
+
+/**
+ * Dona plana, de frente y quieta. Sin librería de gráficos: es geometría y SVG.
+ * Arranca arriba (t = 0) y gira en sentido horario.
+ */
+const DONA = { R: 100, r: 50 };
+
+const punto = (t: number, rad: number) => {
+  const a = 2 * Math.PI * t - Math.PI / 2;
+  return { x: rad * Math.cos(a), y: rad * Math.sin(a) };
+};
+const n2 = (v: number) => v.toFixed(2);
+
+/** Una porción: un trozo de aro entre t0 y t1. */
+function arco(t0: number, t1: number): string {
+  if (t1 - t0 >= 0.999) return `${arco(t0, t0 + 0.5)} ${arco(t0 + 0.5, t1 - 0.0001)}`;
+  const { R, r } = DONA;
+  const g = t1 - t0 > 0.5 ? 1 : 0;
+  const a = punto(t0, R), b = punto(t1, R), c = punto(t1, r), d = punto(t0, r);
+  return `M ${n2(a.x)} ${n2(a.y)} A ${R} ${R} 0 ${g} 1 ${n2(b.x)} ${n2(b.y)} L ${n2(c.x)} ${n2(c.y)} A ${r} ${r} 0 ${g} 0 ${n2(d.x)} ${n2(d.y)} Z`;
+}
+
 export default function NeuritaPage() {
   const [d, setD] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bajando, setBajando] = useState(false);
+  /** Porción de la torta bajo el cursor: se eleva y se separa del resto. */
+  const [porcionActiva, setPorcionActiva] = useState<string | null>(null);
+  /**
+   * Las listas se muestran recortadas: "Todo lo que resolvió" puede traer
+   * cientos de filas y hace la página larguísima. Cada una se despliega sola.
+   */
+  const TOPE_LISTA = 8;
+  const [abiertas, setAbiertas] = useState<Record<string, boolean>>({});
+  const recortar = <T,>(clave: string, xs: T[]) => (abiertas[clave] ? xs : xs.slice(0, TOPE_LISTA));
+  const VerMas = ({ clave, total }: { clave: string; total: number }) => {
+    if (total <= TOPE_LISTA) return null;
+    const abierta = !!abiertas[clave];
+    return (
+      <div className="border-t border-slate-100 px-5 py-2.5">
+        <button
+          type="button"
+          onClick={() => setAbiertas((p) => ({ ...p, [clave]: !p[clave] }))}
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#2F7F83] hover:underline"
+        >
+          {abierta ? "Ver menos" : `Ver las ${total}`}
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${abierta ? "rotate-180" : ""}`} aria-hidden />
+        </button>
+      </div>
+    );
+  };
+
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+
+  /** `?desde=…&hasta=…` o vacío. Lo usan la consulta y la descarga del PDF. */
+  const query = useMemo(() => {
+    const p = new URLSearchParams();
+    if (desde) p.set("desde", desde);
+    if (hasta) p.set("hasta", hasta);
+    const q = p.toString();
+    return q ? `?${q}` : "";
+  }, [desde, hasta]);
+
+  /** Día de hoy en hora local, que es la que ve quien usa la pantalla. */
+  const diaISO = (resta = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() - resta);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const atajo = (dias: number | "mes") => {
+    if (dias === "mes") {
+      setDesde(diaISO().slice(0, 8) + "01");
+      setHasta(diaISO());
+      return;
+    }
+    setDesde(diaISO(dias));
+    setHasta(diaISO());
+  };
+
+  /**
+   * El PDF lo arma el servidor con los mismos datos de la pantalla. Se pide con
+   * la sesión (no es una URL pública) y se entrega como descarga.
+   */
+  const descargar = async () => {
+    setBajando(true);
+    try {
+      const r = await fetchWithSupabaseSession(`/api/soporte/neurita/pdf${query}`, { cache: "no-store" });
+      if (!r || !r.ok) throw new Error("No se pudo generar el PDF");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `neurita-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      // Sin revoke, el blob queda en memoria mientras viva la pestaña.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo generar el PDF");
+    } finally {
+      setBajando(false);
+    }
+  };
 
   useEffect(() => {
     let vivo = true;
     const traer = () =>
-      apiSoporte<Resp>("/api/soporte/neurita")
+      apiSoporte<Resp>(`/api/soporte/neurita${query}`)
         .then((r) => {
           if (!vivo) return;
           setD(r);
@@ -107,7 +227,7 @@ export default function NeuritaPage() {
       vivo = false;
       clearInterval(t);
     };
-  }, []);
+  }, [query]);
 
   if (error) return <Pagina><Aviso>{error}</Aviso></Pagina>;
   if (!d) return <Pagina><Cargando /></Pagina>;
@@ -119,12 +239,79 @@ export default function NeuritaPage() {
 
   return (
     <Pagina>
-      <Encabezado titulo={d.agente?.nombre ?? "Neurita"} subtitulo="Qué hizo y cuánto costó el agente de IA" icono={Bot} tono="violeta" />
+      <Encabezado
+        titulo={d.agente?.nombre ?? "Neurita"}
+        subtitulo="Qué hizo y cuánto costó el agente de IA"
+        icono={Bot}
+        tono="violeta"
+        acciones={
+          <button type="button" onClick={descargar} disabled={bajando} className={claseBoton("secundario")}>
+            {bajando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+            {bajando ? "Generando…" : "Descargar PDF"}
+          </button>
+        }
+      />
+
+      {/* Filtro de fechas: los atajos cubren el 90% y las dos cajas el resto. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <CalendarDays className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+        {([["Hoy", 0], ["7 días", 6], ["30 días", 29], ["Este mes", "mes"]] as const).map(([et, v]) => (
+          <button
+            key={et}
+            type="button"
+            onClick={() => atajo(v as number | "mes")}
+            className="rounded-lg border border-slate-200 px-2.5 py-1 text-[12px] font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+          >
+            {et}
+          </button>
+        ))}
+        <span className="mx-1 h-5 w-px bg-slate-200" aria-hidden />
+        <label className="sr-only" htmlFor="neurita-desde">Desde</label>
+        <input
+          id="neurita-desde"
+          type="date"
+          value={desde}
+          max={hasta || undefined}
+          onChange={(e) => setDesde(e.target.value)}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-[12px] text-slate-700 outline-none focus:border-[#7DCFD2]"
+        />
+        <span className="text-[12px] text-slate-400">a</span>
+        <label className="sr-only" htmlFor="neurita-hasta">Hasta</label>
+        <input
+          id="neurita-hasta"
+          type="date"
+          value={hasta}
+          min={desde || undefined}
+          onChange={(e) => setHasta(e.target.value)}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-[12px] text-slate-700 outline-none focus:border-[#7DCFD2]"
+        />
+        {(desde || hasta) && (
+          <button
+            type="button"
+            onClick={() => {
+              setDesde("");
+              setHasta("");
+            }}
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden /> Todo el historial
+          </button>
+        )}
+        <span className="ml-auto text-[11px] text-slate-400">
+          {d.rango.activo ? "Los números de abajo son del período elegido" : "Sin filtro: todo el historial"}
+        </span>
+      </div>
 
       <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <Dato etiqueta="Gastó hoy" valor={usd(gasto.hoy)} pie={`${gasto.vueltasHoy} ${gasto.vueltasHoy === 1 ? "vuelta" : "vueltas"} del modelo`} icono={Wallet} tono="text-violet-500" />
+        <Dato
+          etiqueta={d.rango.activo ? "Gasto del período" : "Gastó hoy"}
+          valor={usd(d.rango.activo ? gasto.periodo : gasto.hoy)}
+          pie={`${d.rango.activo ? gasto.vueltasPeriodo : gasto.vueltasHoy} ${(d.rango.activo ? gasto.vueltasPeriodo : gasto.vueltasHoy) === 1 ? "vuelta" : "vueltas"} del modelo`}
+          icono={Wallet}
+          tono="text-violet-500"
+        />
         <Dato etiqueta="Este mes" valor={usd(gasto.mes)} pie={`${pctMes}% del tope de ${usd(gasto.topeMes)}`} icono={Wallet} tono="text-violet-500" />
-        <Dato etiqueta="Total" valor={usd(gasto.total)} pie="desde que empezó a informar" icono={Wallet} />
+        <Dato etiqueta="Total histórico" valor={usd(gasto.total)} pie="no cambia con el filtro" icono={Wallet} />
         <Dato etiqueta="Resueltos" valor={String(trabajo.resueltos)} pie={trabajo.abiertos ? `${trabajo.abiertos} abiertos ahora` : "ninguno abierto"} icono={CheckCircle2} tono="text-emerald-500" />
         <Dato etiqueta="Costo por ticket" valor={trabajo.costoPorTicket == null ? "—" : usd(trabajo.costoPorTicket)} pie="todo lo gastado ÷ resueltos" icono={Wallet} />
         <Dato
@@ -147,7 +334,7 @@ export default function NeuritaPage() {
         />
       </div>
 
-      <Tarjeta titulo="Gasto de los últimos 14 días" icono={Activity} tono="violeta" className="mb-5">
+      <Tarjeta titulo={d.rango.activo ? `Gasto por día (${d.rango.diasGrafico} días)` : "Gasto de los últimos 14 días"} icono={Activity} tono="violeta" className="mb-5">
         <div className="flex h-40 gap-1.5">
           {d.dias.map((x) => (
             <div
@@ -170,13 +357,14 @@ export default function NeuritaPage() {
       </Tarjeta>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Tarjeta titulo="En qué está ahora" icono={Bot} tono="violeta" padding="p-0">
+        <Tarjeta titulo="En qué está ahora" icono={Bot} tono="violeta" padding="p-0" accion={<span className="text-[11px] text-slate-400">no depende del filtro</span>}>
           {d.abiertos.length === 0 ? (
             <div className="p-5"><Vacio titulo="No tiene nada abierto" detalle="Cuando tome un ticket aparece acá, con cuánto hace que lo tiene." icono={Bot} tono="violeta" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <tbody>
-                {d.abiertos.map((t) => (
+                {recortar("abiertos", d.abiertos).map((t) => (
                   <FilaTicket
                     key={t.numero}
                     t={t}
@@ -190,6 +378,8 @@ export default function NeuritaPage() {
                 ))}
               </tbody>
             </table>
+            <VerMas clave="abiertos" total={d.abiertos.length} />
+            </>
           )}
         </Tarjeta>
 
@@ -197,23 +387,27 @@ export default function NeuritaPage() {
           {d.volvieronLista.length === 0 ? (
             <div className="p-5"><Vacio titulo="Ninguno volvió" detalle="Los tickets que dio por resueltos y después se reabrieron aparecen acá." icono={RotateCcw} tono="rosa" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <tbody>
-                {d.volvieronLista.map((t) => (
+                {recortar("volvieron", d.volvieronLista).map((t) => (
                   <FilaTicket key={t.numero} t={t} extra={<td className="px-5 py-3 text-right tabular-nums text-[12px] text-slate-500">{t.vueltas} {t.vueltas === 1 ? "vuelta" : "vueltas"}</td>} />
                 ))}
               </tbody>
             </table>
+            <VerMas clave="volvieron" total={d.volvieronLista.length} />
+            </>
           )}
         </Tarjeta>
 
-        <Tarjeta titulo="Lo que trabajó hoy" icono={Bot} tono="violeta" padding="p-0">
+        <Tarjeta titulo={d.rango.activo ? "Lo que trabajó en el período" : "Lo que trabajó hoy"} icono={Bot} tono="violeta" padding="p-0">
           {d.hoy.length === 0 ? (
-            <div className="p-5"><Vacio titulo="Hoy todavía no trabajó" icono={Bot} tono="violeta" /></div>
+            <div className="p-5"><Vacio titulo={d.rango.activo ? "No trabajó nada en ese período" : "Hoy todavía no trabajó"} icono={Bot} tono="violeta" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <tbody>
-                {d.hoy.map((t) => (
+                {recortar("trabajados", d.hoy).map((t) => (
                   <FilaTicket
                     key={t.numero}
                     t={t}
@@ -227,6 +421,8 @@ export default function NeuritaPage() {
                 ))}
               </tbody>
             </table>
+            <VerMas clave="trabajados" total={d.hoy.length} />
+            </>
           )}
         </Tarjeta>
 
@@ -253,30 +449,109 @@ export default function NeuritaPage() {
           )}
         </Tarjeta>
 
-        <Tarjeta titulo="En qué sistemas gastó" icono={Server} tono="celeste" padding="p-0" className="xl:col-span-2">
+        <Tarjeta titulo="En qué sistemas gastó" icono={Server} tono="celeste" className="xl:col-span-2">
           {d.sistemas.length === 0 ? (
-            <div className="p-5"><Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" /></div>
+            <Vacio titulo="Sin gasto informado todavía" icono={Server} tono="celeste" />
           ) : (
-            <table className="w-full text-left text-[13px]">
-              <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  <th className="px-5 py-2.5">Sistema</th>
-                  <th className="px-3 py-2.5 text-right">Tickets</th>
-                  <th className="px-3 py-2.5 text-right">Vueltas</th>
-                  <th className="px-5 py-2.5 text-right">Gasto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.sistemas.map((s) => (
-                  <tr key={s.nombre} className="border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-3 font-medium text-slate-700">{s.nombre}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.tickets || "—"}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-slate-600">{s.vueltas}</td>
-                    <td className="px-5 py-3 text-right font-semibold tabular-nums text-slate-700">{usd(s.usd)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            (() => {
+              // Las cargas a mano se juntan en una sola porción; el resto entra completo.
+              const juntos = new Map<string, { usd: number; tickets: number; vueltas: number }>();
+              for (const x of d.sistemas) {
+                const k = nombreCorto(x.nombre);
+                const a = juntos.get(k) ?? { usd: 0, tickets: 0, vueltas: 0 };
+                a.usd += x.usd;
+                a.tickets += x.tickets;
+                a.vueltas += x.vueltas;
+                juntos.set(k, a);
+              }
+              const porciones = [...juntos.entries()].map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.usd - a.usd);
+              const total = porciones.reduce((a, x) => a + x.usd, 0) || 1;
+              let acum = 0;
+              const conArco = porciones.map((x, i) => {
+                const t0 = acum / total;
+                acum += x.usd;
+                return { ...x, t0, t1: acum / total, pct: (x.usd / total) * 100, color: colorPorcion(i) };
+              });
+              const activa = porcionActiva;
+              return (
+                <div className="flex flex-col items-center">
+                  <svg viewBox="-102 -102 204 204" className="w-full max-w-[420px]" role="img" aria-label="Gasto por sistema">
+                    {conArco.map((x) => (
+                      <path
+                        key={x.nombre}
+                        d={arco(x.t0, x.t1)}
+                        fill={x.color}
+                        onMouseEnter={() => setPorcionActiva(x.nombre)}
+                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
+                        className="cursor-pointer"
+                      >
+                        <title>{`${x.nombre}: ${usd(x.usd)} (${x.pct.toFixed(1)}%)`}</title>
+                      </path>
+                    ))}
+                    {conArco
+                      .filter((x) => x.pct >= 5)
+                      .map((x) => {
+                        const m = punto((x.t0 + x.t1) / 2, (DONA.R + DONA.r) / 2);
+                        return (
+                          <text
+                            key={`pct-${x.nombre}`}
+                            x={m.x}
+                            y={m.y + 3.5}
+                            textAnchor="middle"
+                            className="pointer-events-none fill-white text-[10px] font-bold"
+                          >
+                            {Math.round(x.pct)}%
+                          </text>
+                        );
+                      })}
+                  </svg>
+                  {/* Lo que dice la porción elevada, o el total si no hay ninguna. */}
+                  <div className="-mt-1 h-9 text-center">
+                    {activa ? (
+                      (() => {
+                        const x = conArco.find((y) => y.nombre === activa);
+                        if (!x) return null;
+                        return (
+                          <>
+                            <p className="text-[14px] font-semibold text-slate-800">
+                              {x.nombre} · {usd(x.usd)}
+                            </p>
+                            <p className="text-[11px] text-slate-400">
+                              {x.pct.toFixed(1)}% del gasto
+                              {x.tickets ? ` · ${x.tickets} ${x.tickets === 1 ? "ticket" : "tickets"}` : ""} · {x.vueltas} vueltas
+                            </p>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <>
+                        <p className="text-[14px] font-semibold text-slate-800">{usd(total)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          en {porciones.length} {porciones.length === 1 ? "sistema" : "sistemas"} · pasá el cursor por una porción
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  {/* Leyenda secundaria: para las porciones finas que no tienen etiqueta. */}
+                  <ul className="mt-4 flex w-full flex-wrap justify-center gap-x-4 gap-y-1.5 border-t border-slate-100 pt-3">
+                    {conArco.map((x) => (
+                      <li
+                        key={x.nombre}
+                        onMouseEnter={() => setPorcionActiva(x.nombre)}
+                        onMouseLeave={() => setPorcionActiva((p) => (p === x.nombre ? null : p))}
+                        className={`flex cursor-default items-center gap-1.5 rounded px-1 text-[11px] transition-colors ${
+                          activa === x.nombre ? "bg-slate-100 text-slate-600" : "text-slate-400"
+                        }`}
+                      >
+                        <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: x.color }} aria-hidden />
+                        <span className="text-slate-500">{x.nombre}</span>
+                        <span className="tabular-nums">{x.pct < 1 ? "<1" : Math.round(x.pct)}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()
           )}
         </Tarjeta>
 
@@ -284,6 +559,7 @@ export default function NeuritaPage() {
           {d.resueltos.length === 0 ? (
             <div className="p-5"><Vacio titulo="Todavía no resolvió ninguno" icono={CheckCircle2} tono="verde" /></div>
           ) : (
+            <>
             <table className="w-full text-left text-[13px]">
               <thead>
                 <tr className="border-b border-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-400">
@@ -293,7 +569,7 @@ export default function NeuritaPage() {
                 </tr>
               </thead>
               <tbody>
-                {d.resueltos.map((t) => (
+                {recortar("resueltos", d.resueltos).map((t) => (
                   <FilaTicket
                     key={t.numero}
                     t={t}
@@ -319,6 +595,8 @@ export default function NeuritaPage() {
                 ))}
               </tbody>
             </table>
+            <VerMas clave="resueltos" total={d.resueltos.length} />
+            </>
           )}
         </Tarjeta>
       </div>

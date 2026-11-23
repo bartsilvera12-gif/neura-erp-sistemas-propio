@@ -177,13 +177,13 @@ export default function OrganigramaPage() {
   }, [nodos]);
 
   return (
-    <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-[1600px]">
       <header className="mb-6 flex items-center gap-3">
         <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#4FAEB2]/12 text-[#3F8E91]">
           <Network className="h-5 w-5" />
         </span>
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Organigrama</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Organigrama</h1>
           <p className="text-sm text-slate-500">Estructura organizacional de la empresa.</p>
         </div>
       </header>

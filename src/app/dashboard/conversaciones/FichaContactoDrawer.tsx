@@ -342,7 +342,7 @@ function Contenido({
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs font-semibold text-slate-900">{cliente.nombre}</p>
               <Link
-                href={`/clientes/${cliente.id}`}
+                href={`/gestion-clientes?cliente=${encodeURIComponent(cliente.id)}`}
                 className="shrink-0 text-[11px] font-semibold text-[#3F8E91] hover:underline"
               >
                 Abrir →

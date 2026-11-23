@@ -8,7 +8,7 @@ export default function VentasPage() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-5xl">
       {/* Header */}
       <div className="mb-10">
         <div className="flex items-center gap-2">

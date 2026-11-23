@@ -50,6 +50,10 @@ import {
   HandCoins,
   ServerCog,
   Network,
+  Briefcase,
+  Landmark,
+  LifeBuoy,
+  Bot,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -58,9 +62,11 @@ import { isBootstrapSuperAdminEmail } from "@/lib/auth/super-admin-bootstrap-ema
 import { puedeEntrarAlPanelControl } from "@/lib/infra/acceso-panel-control";
 import { supabase } from "@/lib/supabase";
 import type { ModuloEmpresa } from "@/lib/empresas/actions";
-import { getFavoritos, toggleFavorito } from "@/lib/favorites";
+import { favDeRuta, toggleFavorito, useFavoritos } from "@/lib/favorites";
 import { canAccessSidebarSlug } from "@/lib/modulos/route-slug-map";
 import { useBoot } from "@/components/BootContext";
+import { hrefFamilia, publicarMenuVisible, type FamiliaMenu } from "@/lib/menu/menu-visible-store";
+import { MODULO_QUE_HABILITA, puedeVerPropuestas } from "@/lib/propuestas/acceso";
 
 type MenuItem = {
   key: string;
@@ -93,6 +99,11 @@ function menuItemMatchesQuery(item: MenuItem, queryRaw: string): boolean {
   if (!q) return true;
   if (normalizeMenuSearch(item.label).includes(q)) return true;
   return item.children?.some((c) => normalizeMenuSearch(c.label).includes(q)) ?? false;
+}
+
+function menuSearchTextMatches(texto: string, queryRaw: string): boolean {
+  const q = normalizeMenuSearch(queryRaw);
+  return !q || normalizeMenuSearch(texto).includes(q);
 }
 
 function adminEmpresasMatchesQuery(queryRaw: string): boolean {
@@ -204,6 +215,8 @@ const MENU_STRUCTURE: MenuItem[] = [
   { key: "planes", slug: "planes", label: "Planes", href: "/planes", icon: FileText },
   { key: "gestion-clientes", slug: "gestion-clientes", label: "Gestión Clientes", href: "/gestion-clientes", icon: Users },
   { key: "crm", slug: "crm", label: "CRM Funnel", href: "/crm", icon: Handshake },
+  // Propuestas: no es un módulo de empresa; lo ve quien tiene CRM Funnel (ver lib/propuestas/acceso).
+  { key: "propuestas", slug: "propuestas", label: "Propuestas", href: "/propuestas", icon: ScrollText },
   { key: "marketing", slug: "marketing", label: "Marketing Legacy", href: "/marketing", icon: Megaphone },
   { key: "marketing_ops", slug: "marketing_ops", label: "Marketing Ops", href: "/dashboard/marketing-ops", icon: Megaphone },
   {
@@ -318,27 +331,40 @@ function useOcultosSoporte(activo: boolean): Set<string> {
   return ocultos;
 }
 
-const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
-  {
-    id: "inicio",
-    title: "Inicio",
-    itemKeys: ["dashboard", "panel_control", "tableros", "chat_interno", "organigrama"],
-  },
+type IconoMenu = React.ComponentType<{ className?: string; strokeWidth?: number }>;
+
+/**
+ * El menú lateral muestra UN renglón por familia (como el ERP 2.0): cada renglón
+ * abre su portada (`/panel/<id>`) con una tarjeta por pantalla. "Inicio" no tiene
+ * portada: entra directo al Dashboard.
+ */
+/**
+ * Pantallas de adentro con ícono propio cuando van a Favoritos. Sin esto heredan el del módulo
+ * (Neurita salía con el auricular de Soporte); Neurita lleva su robot, el mismo de su avatar.
+ */
+const ICONO_DE_RUTA: Record<string, IconoMenu> = {
+  "/dashboard/soporte/neurita": Bot,
+};
+
+const MENU_FAMILIES: { id: string; title: string; icon: IconoMenu; itemKeys: string[] }[] = [
+  { id: "inicio", title: "Inicio", icon: LayoutGrid, itemKeys: ["dashboard"] },
   {
     id: "comercial",
     title: "Comercial",
-    itemKeys: ["clientes", "crm", "gestion-clientes", "comisiones", "planes", "agenda", "proyectos"],
+    icon: Briefcase,
+    itemKeys: ["clientes", "crm", "gestion-clientes", "propuestas", "comisiones", "planes", "agenda", "proyectos", "tableros"],
   },
   {
     id: "finanzas",
     title: "Finanzas",
+    icon: Landmark,
     itemKeys: ["ventas", "cobranzas", "pagos", "gastos", "compras", "notas_credito", "reportes"],
   },
-  { id: "operaciones", title: "Operaciones", itemKeys: ["inventario", "produccion"] },
-  { id: "rrhh", title: "RRHH", itemKeys: ["personal", "usuarios", "guardias"] },
+  { id: "operaciones", title: "Operaciones", icon: Package, itemKeys: ["inventario", "produccion"] },
   {
     id: "omnicanal",
     title: "Omnicanal",
+    icon: MessagesSquare,
     itemKeys: [
       "conversaciones",
       "conversaciones-finalizadas",
@@ -346,16 +372,34 @@ const MENU_FAMILIES: { id: string; title: string; itemKeys: string[] }[] = [
       "historial-omnicanal",
       "campanas",
       "etiquetas",
+      "chat_interno",
     ],
   },
-  { id: "soporte", title: "Soporte", itemKeys: ["soporte"] },
+  { id: "soporte", title: "Soporte", icon: LifeBuoy, itemKeys: ["soporte"] },
+  { id: "rrhh", title: "RRHH", icon: IdCard, itemKeys: ["personal", "usuarios", "guardias", "organigrama"] },
   {
     id: "marketing",
-    title: "Marketing y Automatización",
+    title: "Marketing",
+    icon: Megaphone,
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
-  { id: "administracion", title: "Administración", itemKeys: ["configuracion"] },
+  { id: "administracion", title: "Administración", icon: Settings, itemKeys: ["configuracion", "panel_control"] },
 ];
+
+/**
+ * Las pantallas de un ítem para su portada: un ítem con submenú aporta una
+ * tarjeta por hijo (más la del propio ítem si su ruta no es la de ningún hijo).
+ */
+function pantallasDeItem(item: MenuItem, ocultos: Set<string>): { label: string; href: string; fav: string }[] {
+  if (!item.children?.length) return [{ label: item.label, href: item.href, fav: item.key }];
+  const hijos = item.children
+    .filter((c) => !ocultos.has(c.href))
+    .map((c) => ({ label: c.label, href: c.href, fav: favDeRuta(c.href) }));
+  const propia = item.children.some((c) => c.href === item.href)
+    ? []
+    : [{ label: item.label, href: item.href, fav: item.key }];
+  return [...propia, ...hijos];
+}
 
 /**
  * ¿Se muestra este ítem? Para todos vale el permiso de módulo; "Panel de
@@ -374,13 +418,14 @@ function esItemVisible(
   if (item.key === "panel_control") {
     return esSuperAdmin || puedeEntrarAlPanelControl(email, rol, esTecnico);
   }
+  if (item.key === "propuestas") return puedeVerPropuestas(email) || access(MODULO_QUE_HABILITA);
   return access(item.slug);
 }
 
 function modulosSyntheticFromMenu(): ModuloEmpresa[] {
   // Panel de Control queda afuera: no es un módulo de empresa y su visibilidad
   // no depende de ser super admin, sino del correo habilitado.
-  return MENU_STRUCTURE.filter((item) => item.key !== "panel_control").map((item) => ({
+  return MENU_STRUCTURE.filter((item) => item.key !== "panel_control" && item.key !== "propuestas").map((item) => ({
     id: item.slug,
     nombre: item.label,
     slug: item.slug,
@@ -560,7 +605,7 @@ type SidebarProps = {
 export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps = {}) {
   const pathname = usePathname();
   const [modulos, setModulos] = useState<ModuloEmpresa[]>([]);
-  const [favoritos, setFavoritos] = useState<string[]>([]);
+  const favoritos = useFavoritos();
   const [collapsed, setCollapsed] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
     inventario: true,
@@ -586,9 +631,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     setSidebarReady(!cargando);
   }, [cargando, setSidebarReady]);
 
-  useEffect(() => {
-    setFavoritos(getFavoritos());
-  }, []);
 
   /**
    * Cargamos el menú una sola vez al montar. Para los eventos posteriores de
@@ -704,14 +746,16 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   }, []);
 
   const handleToggleFavorito = (id: string) => {
-    setFavoritos(toggleFavorito(id));
+    toggleFavorito(id);
   };
 
   const modulosSlugs = new Set(modulos.map((m) => m.slug));
   const hasAccess = (slug: string) =>
     slug === "panel_control"
       ? esSuperAdmin || puedeEntrarAlPanelControl(emailSesion, rolSesion, esTecnicoSesion)
-      : canAccessSidebarSlug(slug, modulosSlugs, esSuperAdmin);
+      : slug === "propuestas"
+        ? puedeVerPropuestas(emailSesion) || canAccessSidebarSlug(MODULO_QUE_HABILITA, modulosSlugs, esSuperAdmin)
+        : canAccessSidebarSlug(slug, modulosSlugs, esSuperAdmin);
 
   const isActive = (slug: string, href: string) => {
     const p = pathname ?? "";
@@ -771,11 +815,89 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     return fams.filter((f) => f.items.length > 0);
   }, [mainItemsFiltered]);
 
+  /**
+   * Todo lo que la sesión puede ver, por familia, SIN el filtro de búsqueda ni
+   * el de favoritos: son los renglones del menú corto y las tarjetas de las
+   * portadas (un favorito sigue teniendo su tarjeta en la portada).
+   */
+  const ocultosSoporteMenu = useOcultosSoporte(!cargando && canAccessSidebarSlug("soporte", modulosSlugs, esSuperAdmin));
+  const familiasVisibles = useMemo(() => {
+    const slugs = new Set(modulos.map((m) => m.slug));
+    const access = (slug: string) => canAccessSidebarSlug(slug, slugs, esSuperAdmin);
+    const visibles = MENU_STRUCTURE.filter((item) =>
+      esItemVisible(item, access, emailSesion, rolSesion, esTecnicoSesion, esSuperAdmin)
+    );
+    const byKey = new Map(visibles.map((it) => [it.key, it]));
+    const assigned = new Set<string>();
+    const fams: { id: string; title: string; icon: IconoMenu; items: MenuItem[] }[] = MENU_FAMILIES.map((fam) => {
+      const items = fam.itemKeys.map((k) => byKey.get(k)).filter((x): x is MenuItem => Boolean(x));
+      items.forEach((it) => assigned.add(it.key));
+      return { id: fam.id, title: fam.title, icon: fam.icon, items };
+    });
+    const otros = visibles.filter((it) => !assigned.has(it.key));
+    if (otros.length > 0) fams.push({ id: "otros", title: "Otros", icon: LayoutGrid, items: otros });
+    return fams.filter((f) => f.items.length > 0);
+  }, [modulos, esSuperAdmin, emailSesion, rolSesion, esTecnicoSesion]);
+
+  useEffect(() => {
+    const familias: FamiliaMenu[] = familiasVisibles.map((f) => ({
+      id: f.id,
+      title: f.title,
+      pantallas: f.items.flatMap((it) => pantallasDeItem(it, ocultosSoporteMenu)),
+    }));
+    publicarMenuVisible({ cargando, familias });
+  }, [familiasVisibles, ocultosSoporteMenu, cargando]);
+
+  /**
+   * Pantallas de adentro marcadas como favoritas (Tickets, Neurita…): van en
+   * "Favoritos" como un renglón directo, con el ícono de su ítem.
+   */
+  const subFavoritos = useMemo(() => {
+    const vistos = new Set<string>();
+    return familiasVisibles.flatMap((f) =>
+      f.items.flatMap((it) =>
+        (it.children ?? [])
+          .filter((c) => !ocultosSoporteMenu.has(c.href))
+          .map((c) => ({ id: favDeRuta(c.href), label: c.label, href: c.href, exactMatch: c.exactMatch, padre: it.label, icon: ICONO_DE_RUTA[c.href] ?? it.icon }))
+          .filter((c) => {
+            if (!favoritos.includes(c.id) || vistos.has(c.id)) return false;
+            if (!menuSearchTextMatches(`${c.label} ${c.padre}`, menuSearchQuery)) return false;
+            vistos.add(c.id);
+            return true;
+          })
+      )
+    );
+  }, [familiasVisibles, ocultosSoporteMenu, favoritos, menuSearchQuery]);
+  const hayFavoritos = favoritosItemsFiltered.length > 0 || subFavoritos.length > 0;
+
+  /**
+   * Adónde lleva el renglón de una familia. Con una sola pantalla habilitada no
+   * tiene sentido una portada de una tarjeta: el renglón lleva directo a ella y
+   * toma su nombre (p. ej. un asesor que de Finanzas solo ve Cobranzas).
+   */
+  const destinoFamilia = (fam: { id: string; title: string; items: MenuItem[] }) => {
+    if (fam.id === "inicio") return { href: "/", label: fam.title };
+    const pantallas = fam.items.flatMap((it) => pantallasDeItem(it, ocultosSoporteMenu));
+    if (pantallas.length === 1) return { href: pantallas[0].href, label: pantallas[0].label };
+    return { href: hrefFamilia(fam.id), label: fam.title };
+  };
+
+  /** ¿Está el usuario en la portada de la familia o en alguna de sus pantallas? */
+  const familiaActiva = (fam: { id: string; items: MenuItem[] }) => {
+    const p = pathname ?? "";
+    if (fam.id === "inicio") return p === "/";
+    if (p === hrefFamilia(fam.id)) return true;
+    return fam.items.some(
+      (it) =>
+        isActive(it.slug, it.href) || !!it.children?.some((c) => menuChildPathActive(p, c.href, c.exactMatch))
+    );
+  };
+
   const toggleFamily = (id: string) =>
     setCollapsedFamilies((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const anyMenuVisible =
-    favoritosItemsFiltered.length > 0 ||
+    hayFavoritos ||
     mainItemsFiltered.length > 0 ||
     (esSuperAdmin && adminEmpresasMatchesQuery(menuSearchQuery));
 
@@ -914,7 +1036,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         ) : null}
 
         {/* Favoritos */}
-        {favoritosItemsFiltered.length > 0 && !collapsed && (
+        {hayFavoritos && !collapsed && (
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-2 px-3">
               <Star className="h-3 w-3 fill-current text-[#7DCFD2]" />
@@ -938,6 +1060,46 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                   onToggleExpand={() => toggleExpand(item.key)}
                 />
               ))}
+              {subFavoritos.map((c) => {
+                const Icono = c.icon;
+                const activa = menuChildPathActive(pathname ?? "", c.href, c.exactMatch);
+                return (
+                  <Link
+                    key={c.id}
+                    href={c.href}
+                    title={`${c.padre} · ${c.label}`}
+                    className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${
+                      activa
+                        ? "bg-gradient-to-r from-[#7DCFD2]/22 via-[#7DCFD2]/12 to-transparent font-semibold text-white"
+                        : "font-medium text-slate-300 hover:bg-white/[0.04] hover:text-white"
+                    }`}
+                  >
+                    {activa ? (
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-[#7DCFD2] shadow-[0_0_12px_rgba(125,207,210,0.7)]"
+                      />
+                    ) : null}
+                    <Icono
+                      className={`h-[18px] w-[18px] shrink-0 transition-colors ${
+                        activa ? "text-[#7DCFD2]" : "text-slate-400 group-hover:text-slate-200"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {c.label}
+                      <span className="ml-1.5 text-[11px] font-normal text-slate-500">{c.padre}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); handleToggleFavorito(c.id); }}
+                      className="rounded-md p-1 text-amber-300 transition-all hover:text-amber-200"
+                      aria-label={`Quitar ${c.label} de favoritos`}
+                    >
+                      <Star className="h-3.5 w-3.5 fill-current" />
+                    </button>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}
@@ -950,22 +1112,61 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
             <div className="h-8 animate-pulse rounded-lg bg-white/[0.04]" />
           </div>
         ) : collapsed ? (
-          /* Modo icono (80px): lista plana, sin encabezados de familia. */
+          /* Modo icono (72px): un ícono por familia. */
           <div className="space-y-0.5">
-            {mainItemsFiltered.map((item) => (
-              <NavItem
-                key={item.key}
-                item={item}
-                itemId={item.key}
-                isActive={isActive(item.slug, item.href)}
-                isFavorito={favoritos.includes(item.key)}
-                onToggleFavorito={handleToggleFavorito}
-                hasAccess={hasAccess(item.slug)}
-                collapsed={collapsed}
-                expanded={expandedItems[item.key] ?? false}
-                onToggleExpand={() => toggleExpand(item.key)}
-              />
-            ))}
+            {familiasVisibles.map((fam) => {
+              const Icono = fam.icon;
+              const activa = familiaActiva(fam);
+              return (
+                <Link
+                  key={fam.id}
+                  href={destinoFamilia(fam).href}
+                  title={destinoFamilia(fam).label}
+                  aria-label={destinoFamilia(fam).label}
+                  className={`flex items-center justify-center rounded-xl py-3 transition-all ${
+                    activa ? "bg-white/[0.10] text-white" : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                  }`}
+                >
+                  <Icono strokeWidth={1.75} className="h-5 w-5 shrink-0" />
+                </Link>
+              );
+            })}
+          </div>
+        ) : normalizeMenuSearch(menuSearchQuery).length === 0 ? (
+          /* Menú corto: un renglón por familia; cada uno abre su portada. */
+          <div className="space-y-0.5">
+            {hayFavoritos ? (
+              <div className="mb-2 flex items-center gap-2 px-3">
+                <span className="h-1 w-1 shrink-0 rounded-full bg-[#7DCFD2]" />
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Menú</p>
+                <span className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent" />
+              </div>
+            ) : null}
+            {familiasVisibles.map((fam) => {
+              const Icono = fam.icon;
+              const activa = familiaActiva(fam);
+              const destino = destinoFamilia(fam);
+              return (
+                <Link
+                  key={fam.id}
+                  href={destino.href}
+                  title={destino.label}
+                  className={`group/fam flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] transition-all ${
+                    activa
+                      ? "bg-white/[0.10] font-semibold text-white"
+                      : "font-medium text-slate-300 hover:bg-white/[0.05] hover:text-white"
+                  }`}
+                >
+                  <Icono
+                    strokeWidth={1.75}
+                    className={`h-[18px] w-[18px] shrink-0 transition-colors ${
+                      activa ? "text-white" : "text-slate-400 group-hover/fam:text-slate-200"
+                    }`}
+                  />
+                  <span className="flex-1 truncate">{destino.label}</span>
+                </Link>
+              );
+            })}
           </div>
         ) : (
           <div className="space-y-4">

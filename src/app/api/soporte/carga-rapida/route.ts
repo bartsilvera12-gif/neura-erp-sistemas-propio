@@ -129,7 +129,8 @@ export async function GET(request: Request) {
       estados: estadosCat,
       clasificaciones: cat.clasificaciones.filter((c) => c.activo),
       a_cargo: personas.filter((p) => esResponsableElegible(p, principalGuardia)),
-      // Quién recibe el ticket: se asigna solo, quien carga no elige.
+      // Quién recibe el ticket si no se elige a nadie: la asignación automática.
+      // Quien carga puede cambiarla por alguien de `a_cargo`.
       asignacion: {
         error: { responsable: personas.find((p) => p.id === asigError.responsableId) ?? null, motivo: asigError.motivo },
         cambio: { responsable: personas.find((p) => p.id === asigCambio.responsableId) ?? null, motivo: asigCambio.motivo },
@@ -243,6 +244,9 @@ export async function POST(request: Request) {
       exigirProyecto: true,
       origen: "conversacion",
       conversationId,
+      // Opcional: si quien carga eligió otra persona en "Asignar a". Sin esto,
+      // asignación automática (Neurita en horario laboral, guardia en su franja).
+      responsableElegidoId: typeof body.responsable_id === "string" && UUID.test(body.responsable_id) ? body.responsable_id : null,
     });
     if (!r.ok) return falla(r.mensaje, r.status);
 

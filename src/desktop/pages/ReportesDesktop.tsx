@@ -1,7 +1,7 @@
 "use client";
 
 import { Wallet, ShoppingCart, Scale, Megaphone, BookText, BookOpen, Layers, HandCoins, BookMarked, Tags, ShieldCheck } from "lucide-react";
-import { SettingsModuleCard } from "@/components/config/SettingsModuleCard";
+import { GRILLA_PORTADA, TarjetaPortada } from "@/components/ui/TarjetaPortada";
 
 type ReporteCard = {
   title: string;
@@ -102,6 +102,37 @@ const REPORTES: ReporteCard[] = [
   },
 ];
 
+/**
+ * Secciones de la pantalla. Varias áreas tienen un solo reporte: se juntan para
+ * que no quede una fila con una tarjeta suelta.
+ */
+const SECCION_DE: Record<string, string> = {
+  Contabilidad: "Contabilidad",
+  Finanzas: "Finanzas y cobranzas",
+  Cobranzas: "Finanzas y cobranzas",
+  Comercial: "Comercial y atención",
+  Marketing: "Comercial y atención",
+  Atención: "Comercial y atención",
+};
+const seccionDe = (r: ReporteCard) => SECCION_DE[r.subtitle] ?? r.subtitle;
+const SECCIONES = Array.from(new Set(REPORTES.map(seccionDe)));
+
+/** Foto y color de cada reporte (fotos del ERP 2.0, en public/portadas). */
+const FOTOS: Record<string, { imagen: string; color: string }> = {
+  "/reportes/libro-compras": { imagen: "/portadas/reportes/cuentas-pagar-facturas-calculadora-dueno.webp", color: "26 50% 24%" },
+  "/reportes/libro-ventas": { imagen: "/portadas/reportes/ventas-mes-grafico-barras-dueno.webp", color: "182 39% 28%" },
+  "/reportes/libro-diario": { imagen: "/portadas/finanzas/credito-libro-cuentas.webp", color: "214 40% 24%" },
+  "/reportes/libro-mayor": { imagen: "/portadas/finanzas/conciliacion-planilla-laptop.webp", color: "258 28% 30%" },
+  "/reportes/cuentas-por-pagar": { imagen: "/portadas/reportes/proveedores-descarga-camion-dueno.webp", color: "352 38% 27%" },
+  "/reportes/estado-cuenta": { imagen: "/portadas/reportes/estado-cuenta-informes-dueno.webp", color: "214 40% 24%" },
+  "/reportes/ventas": { imagen: "/portadas/reportes/ventas-periodo-dashboard-dueno.webp", color: "182 39% 28%" },
+  "/cobranzas/conciliacion": { imagen: "/portadas/reportes/cuentas-cobrar-deudas-laptop-dueno.webp", color: "152 34% 22%" },
+  "/reportes/campanas-meta": { imagen: "/portadas/reportes/productos-vendidos-graficos-dueno.webp", color: "352 38% 27%" },
+  "/reportes/tipificaciones": { imagen: "/portadas/soporte/mis-tickets-lista-pendientes.webp", color: "258 28% 30%" },
+  "/reportes/guardias": { imagen: "/portadas/comercial/agenda-planificador-escribiendo.webp", color: "196 45% 20%" },
+};
+const FOTO_POR_DEFECTO = { imagen: "/portadas/finanzas/reportes-graficos-pantalla.webp", color: "182 39% 28%" };
+
 export default function ReportesPage() {
   return (
     <div className="w-full min-w-0 max-w-full space-y-6">
@@ -117,23 +148,30 @@ export default function ReportesPage() {
           </p>
         </div>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Reportes</h1>
-        <p className="mt-1 text-sm text-slate-500">Panel de análisis y reportería operativa</p>
+        <p className="mt-1 text-sm text-slate-500">Elegí un reporte para ver el detalle, filtrarlo y bajarlo en Excel.</p>
       </div>
 
-      {/* Cards de reportes */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {REPORTES.map((r) => (
-          <SettingsModuleCard
-            key={r.href}
-            title={r.title}
-            subtitle={r.subtitle}
-            description={r.description}
-            icon={r.icon}
-            href={r.href}
-            actionLabel="Ver reporte"
-          />
-        ))}
-      </div>
+      {/* Reportes por sección, con tarjetas de foto como las portadas del menú. */}
+      {SECCIONES.map((sec) => (
+        <section key={sec} aria-label={sec}>
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{sec}</h2>
+          <div className={GRILLA_PORTADA}>
+            {REPORTES.filter((r) => seccionDe(r) === sec).map((r) => {
+              const foto = FOTOS[r.href] ?? FOTO_POR_DEFECTO;
+              return (
+                <TarjetaPortada
+                  key={r.href}
+                  href={r.href}
+                  titulo={r.title}
+                  imagen={foto.imagen}
+                  color={foto.color}
+                  detalle={r.description}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

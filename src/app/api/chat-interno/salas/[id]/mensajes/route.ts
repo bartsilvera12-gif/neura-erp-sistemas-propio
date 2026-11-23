@@ -3,6 +3,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
 import { notificarMensajeChat } from "@/lib/chat-interno/notificar";
 import {
+  etiquetaDeAdjuntos,
   esMiembro,
   firmarAdjuntos,
   firmarAvatares,
@@ -90,7 +91,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       citados.length
         ? sb
             .from("chat_interno_mensajes")
-            .select("id, usuario_id, texto, eliminado_at")
+            .select("id, usuario_id, texto, adjuntos, eliminado_at")
             .in("id", citados)
         : Promise.resolve({ data: [] as unknown[] }),
     ]);
@@ -126,7 +127,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         String(o.id),
         {
           autor: o.usuario_id ? nombreDe.get(String(o.usuario_id)) ?? "—" : "—",
-          texto: o.eliminado_at ? null : ((o.texto as string | null) ?? null),
+          // Un mensaje que sólo traía archivos no está eliminado: se cita por lo que traía.
+          texto: o.eliminado_at
+            ? null
+            : ((o.texto as string | null) ?? "").trim() ||
+              etiquetaDeAdjuntos(Array.isArray(o.adjuntos) ? (o.adjuntos as unknown[]) : []) ||
+              null,
         },
       ])
     );

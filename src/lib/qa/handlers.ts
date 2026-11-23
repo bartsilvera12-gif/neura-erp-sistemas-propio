@@ -283,19 +283,28 @@ export async function handleClaim(input: {
   runnerId: string;
   repo: QaRunsRepo;
 }): Promise<HandlerResult<ClaimedJob | null>> {
-  const claimed = await input.repo.claimNextJob(input.runnerId);
-  if (!claimed) return { ok: true, status: 204, body: null };
-  // Doble chequeo del estado al momento del claim: el proyecto puede haberse
-  // marcado entregado o la autorización puede haber vencido entre el encolado
-  // y el pick. Si falla, el job queda bloqueado y el runner no lo recibe.
-  const veredicto = puedeEjecutarRun(claimed.project);
-  if (!veredicto.ok) {
-    return {
-      ok: false,
-      status: 403,
-      body: { error: veredicto.razon, code: veredicto.codigo === "entregado" ? "project_entregado" : "project_no_autorizado" },
-    };
+  // claimNextJob valida `puedeEjecutarRun` dentro de la transacción. Si el
+  // gate rechaza, hace ROLLBACK y lanza con `qaClaimRejected` — así el run
+  // NO queda marcado como `running` sin eventos.
+  let claimed: ClaimedJob | null;
+  try {
+    claimed = await input.repo.claimNextJob(input.runnerId);
+  } catch (err) {
+    const rejected = (err as { qaClaimRejected?: "entregado" | "no_autorizado" | "autorizacion_vencida" | "estado_desconocido" }).qaClaimRejected;
+    if (rejected) {
+      const code: HandlerErrorCode =
+        rejected === "entregado" ? "project_entregado" :
+        rejected === "autorizacion_vencida" ? "autorizacion_vencida" :
+        "project_no_autorizado";
+      return {
+        ok: false,
+        status: 403,
+        body: { error: err instanceof Error ? err.message : String(err), code },
+      };
+    }
+    throw err;
   }
+  if (!claimed) return { ok: true, status: 204, body: null };
   return { ok: true, status: 200, body: claimed };
 }
 

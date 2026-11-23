@@ -15,6 +15,7 @@
 
 import type pg from "pg";
 import { withQaClient, withQaTransaction } from "./pg-pool";
+import { puedeEjecutarRun } from "./project-estado";
 import type {
   ClaimedJob,
   FinishRunInput,
@@ -202,8 +203,12 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
   }
 
   async claimNextJob(workerId: string): Promise<ClaimedJob | null> {
+    // Transacción: si el gate `puedeEjecutarRun` rechaza, el ROLLBACK deshace
+    // `claim_next_job` (que marca claimed_by + attempts++) y el UPDATE a
+    // 'running'. Antes del fix, un claim rechazado dejaba el run como
+    // "running fantasma" (sin eventos y sin heartbeat progresando) hasta que
+    // el reaper lo liberaba, generando apariencia de cuelgue del runner.
     return this.run(async (c) => {
-      // Llama la función del schema (atómica, FOR UPDATE SKIP LOCKED).
       const r = await c.query(
         `SELECT ${JOB_COLS} FROM qa_center.claim_next_job($1)`,
         [workerId]
@@ -212,7 +217,39 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       if (!first || first.id === null) return null;
       const job = asJob(first);
 
-      // Transicionar el run a 'running'.
+      // Leer run + project ANTES de transicionar a running, para validar
+      // el gate de ciclo de vida sin dejar huella si la autorización no
+      // está vigente.
+      const preRun = await c.query(
+        `SELECT ${RUN_COLS} FROM qa_center.runs WHERE id=$1`,
+        [job.run_id]
+      );
+      if (!preRun.rows[0]) {
+        throw new Error("qa_claim_rollback: run no existe");
+      }
+      const runPre = asRun(preRun.rows[0]);
+      const projectRows = await c.query(
+        `SELECT id, slug, name, repo_url, default_branch, target_base_url, target_env,
+                owner_user_id, created_at, updated_at, archived_at,
+                estado_entrega, autorizacion_qa_hasta, permite_lectura_sin_env_assert
+           FROM qa_center.projects WHERE id=$1`,
+        [runPre.project_id]
+      );
+      const projectRow = projectRows.rows[0];
+      if (!projectRow) {
+        throw new Error("qa_claim_rollback: project no existe");
+      }
+      const veredicto = puedeEjecutarRun({
+        estado_entrega: projectRow.estado_entrega as "en_desarrollo" | "en_qa" | "entregado",
+        autorizacion_qa_hasta: (projectRow.autorizacion_qa_hasta as string | Date | null)?.toString() ?? null,
+      });
+      if (!veredicto.ok) {
+        // ROLLBACK → nada queda escrito. El handler mapea el código a 403.
+        const err = new Error(veredicto.razon) as Error & { qaClaimRejected?: typeof veredicto.codigo };
+        err.qaClaimRejected = veredicto.codigo;
+        throw err;
+      }
+
       const runR = await c.query(
         `UPDATE qa_center.runs
             SET status='running', started_at=now()
@@ -226,7 +263,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       const suite = await this.getSuite(run.suite_id);
       if (!project || !suite) return null;
       return { job, run, project, suite };
-    });
+    }, /* tx = */ true);
   }
 
   async heartbeat(runId: string, workerId: string): Promise<void> {

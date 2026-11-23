@@ -1138,7 +1138,7 @@ function GestionClientesPageInner() {
                   onAdministrar={() => setModalContactos(true)}
                 />
 
-                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
                   <BotonOperativo label="Tipificación" icon="📋" activo href={`/clientes/${selected.id}/tipificacion`} />
                   <BotonOperativo label="Contactos" icon="👥" activo onClick={() => setModalContactos(true)} />
                   <BotonOperativo
@@ -1174,8 +1174,8 @@ function GestionClientesPageInner() {
                     activo
                     onClick={() => setModalProyectos(true)}
                   />
+                  <AccesoSistemaCliente clienteId={selected.id} />
                 </div>
-                <AccesoSistemaCliente clienteId={selected.id} />
               </section>
 
               <section>

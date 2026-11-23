@@ -184,7 +184,7 @@ function BotonAcceso({
  * botón. Si el proyecto todavía no tiene dominio cargado, lleva a la pestaña
  * "Acceso" del proyecto para cargarlo.
  */
-export function AccesoSistemaCompacto({ proyectoId }: { proyectoId: string }) {
+export function AccesoSistemaCompacto({ proyectoId, sinDominio = false }: { proyectoId: string; sinDominio?: boolean }) {
   const { estado, guardando, errorAccion, ejecutar } = useAccesoSistema(proyectoId);
 
   if (estado.tipo === "cargando") {
@@ -228,7 +228,7 @@ export function AccesoSistemaCompacto({ proyectoId }: { proyectoId: string }) {
           </Link>
         ) : null}
       </div>
-      {acceso.dominios.length > 0 ? (
+      {!sinDominio && acceso.dominios.length > 0 ? (
         <p className="truncate text-[10.5px] text-slate-400" title={acceso.dominios.join(", ")}>
           {acceso.dominios.join(" · ")}
         </p>

@@ -51,7 +51,7 @@ export default function AccesoSistemaCliente({ clienteId }: { clienteId: string 
               {p.titulo || "Proyecto"}:
             </span>
           ) : null}
-          <AccesoSistemaCompacto proyectoId={p.id} />
+          <AccesoSistemaCompacto proyectoId={p.id} sinDominio />
         </div>
       ))}
     </>

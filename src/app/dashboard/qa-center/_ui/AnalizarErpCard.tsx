@@ -83,75 +83,128 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
 
   return (
     <div
-      className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-white to-[#7DCFD2]/5 shadow-sm"
       data-testid="analizar-erp-card"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Agente QA · sandbox interactivo
-          </p>
-          <h3 className="mt-1 text-base font-semibold text-slate-900">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-[#0EA5E9]/5 via-white to-white p-5">
+        <div className="min-w-0 flex-1">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-[#0EA5E9]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0284C7] ring-1 ring-[#0EA5E9]/20">
+            <span className="relative inline-flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0EA5E9] opacity-60" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#0EA5E9]" />
+            </span>
+            Agente IA · sandbox interactivo
+          </div>
+          <h3 className="mt-2 text-lg font-semibold text-slate-900">
             Ejecutar pruebas funcionales
           </h3>
-          <p className="mt-1 text-xs text-slate-600">
-            Levanta una copia temporal del ERP y el agente navega la UI con
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+            El agente levanta una copia temporal del ERP y recorre la UI con
             Playwright: descubre módulos, prueba altas, búsquedas y lecturas.
-            Base ficticia; nunca toca producción. Requiere{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">target_base_url</code>{" "}
-            cargado.
+            Base ficticia; nunca toca producción.
           </p>
         </div>
         <button
           onClick={() => void ejecutarSandbox()}
           disabled={cargando}
           data-testid={`btn-ejecutar-sandbox-${props.projectSlug}`}
-          className="shrink-0 rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0284C7] disabled:opacity-60"
+          className="group/btn inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#0EA5E9]/20 transition-all hover:from-[#0284C7] hover:to-[#0369A1] hover:shadow-lg hover:shadow-[#0EA5E9]/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-md"
         >
-          {cargando ? "Encolando…" : "Ejecutar sandbox"}
+          {cargando ? (
+            <>
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              Encolando…
+            </>
+          ) : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="transition-transform group-hover/btn:translate-x-0.5">
+                <polygon points="6 3 20 12 6 21" />
+              </svg>
+              Ejecutar sandbox
+            </>
+          )}
         </button>
       </div>
-      {err && <p className="mt-2 text-xs text-rose-700">Error: {err}</p>}
-      {ok && <p className="mt-2 text-xs text-emerald-700">{ok}</p>}
 
-      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-          <p className="text-slate-500">Últimos descubrimientos</p>
-          {totalesDiscovery ? (
-            <p className="mt-0.5 font-medium text-slate-800">
-              {Number(totalesDiscovery.modulos ?? 0)} módulos ·{" "}
-              {Number(totalesDiscovery.endpoints ?? 0)} endpoints ·{" "}
-              {Number(totalesDiscovery.tablas ?? 0)} tablas
-            </p>
-          ) : (
-            <p className="mt-0.5 text-slate-400">todavía no analizado</p>
-          )}
+      {(err || ok) && (
+        <div className={`px-5 py-2 text-xs font-medium ${err ? "bg-rose-50 text-rose-800" : "bg-emerald-50 text-emerald-800"}`}>
+          {err ? `⚠ ${err}` : `✓ ${ok}`}
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-          <p className="text-slate-500">Costo acumulado (IA)</p>
-          <p className="mt-0.5 font-medium text-slate-800">
-            USD {props.totalCostUsd.toFixed(4)}{" "}
-            <span className="text-slate-500">/ límite USD 2.00 por corrida</span>
-          </p>
-        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 p-5 pb-4 sm:grid-cols-2">
+        <MetricTile
+          icon="radar"
+          label="Últimos descubrimientos"
+          value={totalesDiscovery
+            ? `${Number(totalesDiscovery.modulos ?? 0)} módulos · ${Number(totalesDiscovery.endpoints ?? 0)} endpoints · ${Number(totalesDiscovery.tablas ?? 0)} tablas`
+            : "todavía no analizado"}
+          muted={!totalesDiscovery}
+        />
+        <MetricTile
+          icon="coin"
+          label="Costo acumulado (IA)"
+          value={`USD ${props.totalCostUsd.toFixed(4)}`}
+          hint="límite USD 2.00 por corrida"
+        />
       </div>
 
-      <PrerequisitosChecklist
-        togglePermiteLectura={props.togglePermiteLectura}
-        anthropicConfigured={props.anthropicConfigured}
-        credencialesRoRunnerConfigured={props.credencialesRoRunnerConfigured}
-      />
-
-      <CoberturaIAViewer cobertura={props.cobertura} />
-
-      {props.lastInforme && (
-        <InformeIaViewer
-          resumen={props.lastInforme.resumen}
-          modulos={props.lastInforme.modulos}
-          parcial={props.lastInforme.parcial}
-          createdAt={props.lastInforme.created_at}
+      <div className="border-t border-slate-100 bg-slate-50/40 px-5 py-4">
+        <PrerequisitosChecklist
+          togglePermiteLectura={props.togglePermiteLectura}
+          anthropicConfigured={props.anthropicConfigured}
+          credencialesRoRunnerConfigured={props.credencialesRoRunnerConfigured}
         />
-      )}
+
+        <CoberturaIAViewer cobertura={props.cobertura} />
+
+        {props.lastInforme && (
+          <InformeIaViewer
+            resumen={props.lastInforme.resumen}
+            modulos={props.lastInforme.modulos}
+            parcial={props.lastInforme.parcial}
+            createdAt={props.lastInforme.created_at}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MetricTile({
+  icon,
+  label,
+  value,
+  hint,
+  muted,
+}: {
+  icon: "radar" | "coin";
+  label: string;
+  value: string;
+  hint?: string;
+  muted?: boolean;
+}) {
+  const paths: Record<"radar" | "coin", React.ReactNode> = {
+    radar: (<><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></>),
+    coin:  (<><circle cx="12" cy="12" r="10" /><path d="M12 6v12" /><path d="M9 9h4.5a2.5 2.5 0 0 1 0 5H9m0-5v10m0-5h5a2.5 2.5 0 0 1 0 5H9" /></>),
+  };
+  return (
+    <div className="group/tile flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 transition-all hover:border-[#7DCFD2]/60 hover:shadow-sm">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition-colors group-hover/tile:bg-[#7DCFD2]/20 group-hover/tile:text-[#0B3A3D]">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {paths[icon]}
+        </svg>
+      </span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+        <p className={`mt-0.5 text-xs font-semibold ${muted ? "font-normal text-slate-400" : "text-slate-800"}`}>
+          {value}
+        </p>
+        {hint && <p className="mt-0.5 text-[10px] text-slate-400">{hint}</p>}
+      </div>
     </div>
   );
 }

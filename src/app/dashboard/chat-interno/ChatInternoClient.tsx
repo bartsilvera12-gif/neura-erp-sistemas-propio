@@ -199,6 +199,41 @@ type Mensaje = {
 /** Lista corta a propósito: se lee de un vistazo, un selector completo no. */
 const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
 
+/** Un enlace web dentro de un mensaje: http(s)://… o www.… */
+const RE_ENLACE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+
+/**
+ * El texto de un mensaje con los enlaces que se pueden tocar. Se abren en otra pestaña para no
+ * perder la conversación. Los signos de puntuación del final ("mirá esto: https://x.com.") no
+ * entran en el enlace.
+ */
+function TextoConEnlaces({ texto, propio }: { texto: string; propio: boolean }) {
+  const partes: React.ReactNode[] = [];
+  let desde = 0;
+  for (const m of texto.matchAll(RE_ENLACE)) {
+    let url = m[0];
+    const sobra = url.match(/[.,;:!?)\]]+$/)?.[0] ?? "";
+    if (sobra) url = url.slice(0, -sobra.length);
+    const i = m.index ?? 0;
+    if (i > desde) partes.push(texto.slice(desde, i));
+    partes.push(
+      <a
+        key={i}
+        href={url.startsWith("www.") ? `https://${url}` : url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className={`break-all underline underline-offset-2 ${propio ? "text-[#2F6E71]" : "text-sky-700"} hover:opacity-80`}
+      >
+        {url}
+      </a>
+    );
+    desde = i + url.length;
+  }
+  if (desde < texto.length) partes.push(texto.slice(desde));
+  return <>{partes}</>;
+}
+
 /** Tope de alto del cuadro de escribir: unas ocho líneas. */
 const ALTO_MAX_CUADRO = 204;
 
@@ -2851,7 +2886,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                       />
                                     ) : null}
                                   </span>
-                                  {m.texto}
+                                  <TextoConEnlaces texto={m.texto} propio={m.propio} />
                                 </p>
                               ) : null}
                             </>

@@ -1,15 +1,8 @@
 /**
- * Layout del QA Center: envuelve todas las sub-páginas con el sub-nav
- * horizontal (Proyectos · Ejecución · Resultados · Historial). Las
- * pantallas de detalle (p.ej. /runs/[id]) también heredan este layout.
+ * Layout del QA Center: la navegación entre Proyectos / Ejecución /
+ * Resultados / Historial vive en el sidebar global (ver `Sidebar.tsx`),
+ * así que acá sólo pasamos los children sin sub-nav extra.
  */
-import QaCenterNav from "./_ui/QaCenterNav";
-
 export default function QaCenterLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div>
-      <QaCenterNav />
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 }

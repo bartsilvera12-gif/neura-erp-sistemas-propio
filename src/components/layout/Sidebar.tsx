@@ -285,6 +285,19 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: Tags,
   },
   {
+    key: "qa_center",
+    slug: "qa_center",
+    label: "QA Center",
+    href: "/dashboard/qa-center",
+    icon: ShieldCheck,
+    children: [
+      { label: "Proyectos", href: "/dashboard/qa-center", exactMatch: true },
+      { label: "Ejecución", href: "/dashboard/qa-center/ejecucion" },
+      { label: "Resultados", href: "/dashboard/qa-center/resultados" },
+      { label: "Historial", href: "/dashboard/qa-center/historial" },
+    ],
+  },
+  {
     // Panel de Control: NO se rige por módulos de empresa. Se muestra sólo a
     // los correos de `acceso-panel-control` — ni siquiera a los otros super
     // admins (ver `esItemVisible` más abajo). El permiso real lo aplican la
@@ -384,6 +397,7 @@ const MENU_FAMILIES: { id: string; title: string; icon: IconoMenu; itemKeys: str
     itemKeys: ["marketing", "marketing_ops", "sorteos"],
   },
   { id: "administracion", title: "Administración", icon: Settings, itemKeys: ["configuracion", "panel_control"] },
+  { id: "qa", title: "QA", icon: ShieldCheck, itemKeys: ["qa_center"] },
 ];
 
 /**

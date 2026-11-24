@@ -401,10 +401,10 @@ function pesoLegible(bytes: number): string {
 /**
  * El visto de un mensaje propio.
  *
- * Un tilde = salió. Dos grises = alguien lo leyó, pero no todos. Dos en color
- * = lo leyeron todos. En un directo "todos" es una sola persona, así que se
- * comporta igual que el de siempre; en un grupo, el estado intermedio es la
- * información que importa, y por eso no se colapsa a leído/no leído.
+ * Como en WhatsApp: mientras sale, "enviando…" (lo pone el globo, acá no se
+ * llega). Ya guardado, dos tildes grises: el mensaje está entregado aunque el
+ * otro todavía no haya abierto el ERP. Dos en azul = lo leyeron todos. En un
+ * grupo, quién lo leyó y cuántos faltan va en el título del tilde.
  */
 function Visto({
   leidoPor,
@@ -419,20 +419,16 @@ function Visto({
   const todos = leidoPor >= destinatarios;
   const titulo =
     leidoPor === 0
-      ? "Todavía no lo leyó nadie"
+      ? "Enviado · todavía no lo leyó nadie"
       : `Leído por ${nombres.map((n) => nombreCorto(n)).join(", ")}${
           todos ? "" : ` · faltan ${destinatarios - leidoPor}`
         }`;
   return (
     <span title={titulo} className="inline-flex translate-y-[2px] align-baseline">
-      {leidoPor === 0 ? (
-        <Check className="h-3.5 w-3.5 text-slate-400" strokeWidth={2.5} />
-      ) : (
-        <CheckCheck
-          className={`h-3.5 w-3.5 ${todos ? "text-[#2F9BD8]" : "text-slate-400"}`}
-          strokeWidth={2.5}
-        />
-      )}
+      <CheckCheck
+        className={`h-3.5 w-3.5 ${todos ? "text-[#2F9BD8]" : "text-slate-400"}`}
+        strokeWidth={2.5}
+      />
     </span>
   );
 }

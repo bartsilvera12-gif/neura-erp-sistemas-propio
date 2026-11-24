@@ -116,16 +116,63 @@ export default function RepoSelector({ value, onChange, disabled, testid }: Prop
     return state.repos.find((r) => r.url === value) ?? null;
   }, [state, value]);
 
+  // MODO SELECCIONADO: cuando ya hay un repo elegido, mostramos solo una
+  // card compacta con los datos + botón "Cambiar" para volver al buscador.
+  // Esto ahorra espacio vertical y aclara el estado.
+  if (value) {
+    const meta = seleccion;
+    return (
+      <div data-testid={testid ?? "repo-selector"}>
+        <div className="group flex items-center gap-3 rounded-lg border-2 border-emerald-200 bg-emerald-50/50 p-3 transition-colors">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-mono text-xs font-semibold text-slate-900" data-testid="repo-seleccionado">
+              {meta ? `${meta.owner}/${meta.name}` : value}
+              {meta?.private ? " 🔒" : ""}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-slate-600">
+              {meta ? (
+                <>
+                  rama <span className="font-mono">{meta.default_branch}</span>
+                  {" · "}codebase <span className="font-mono">{meta.codebase}</span>
+                </>
+              ) : (
+                <span className="font-mono text-slate-500">{value}</span>
+              )}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="repo-cambiar"
+            onClick={() => onChange(null, null)}
+            disabled={disabled}
+            className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
+          >
+            Cambiar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // MODO BÚSQUEDA: sin selección, mostramos input + lista para elegir.
   return (
     <div data-testid={testid ?? "repo-selector"} className="space-y-2">
-      <div>
+      <div className="relative">
+        <svg className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
         <input
           data-testid="repo-busq"
           placeholder="Buscar repositorio por nombre, owner o URL…"
           value={busq}
           onChange={(e) => setBusq(e.target.value)}
           disabled={disabled}
-          className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+          className="w-full rounded-lg border border-slate-300 bg-white px-8 py-2 text-xs transition-colors focus:border-[#0EA5E9] focus:outline-none focus:ring-2 focus:ring-[#0EA5E9]/20"
         />
       </div>
 
@@ -147,33 +194,34 @@ export default function RepoSelector({ value, onChange, disabled, testid }: Prop
 
       {state.kind === "ok" && state.repos.length === 0 && (
         <p className="text-xs text-slate-500" data-testid="repo-vacio">
-          Sin resultados para "{busq}". Owners autorizados: {state.allowed_owners.join(", ") || "(ninguno)"}
+          Sin resultados para &quot;{busq}&quot;. Owners autorizados: {state.allowed_owners.join(", ") || "(ninguno)"}
         </p>
       )}
 
       {state.kind === "ok" && state.repos.length > 0 && (
         <>
-          <select
+          <ul
             data-testid="repo-select"
-            value={value ?? ""}
-            onChange={(e) => {
-              const v = e.target.value || null;
-              const meta = v ? state.repos.find((r) => r.url === v) ?? null : null;
-              onChange(v, meta);
-            }}
-            disabled={disabled}
-            size={Math.min(8, Math.max(4, state.repos.length + 1))}
-            className="w-full rounded border border-slate-300 px-2 py-1 text-xs font-mono"
+            className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white"
+            role="listbox"
           >
-            <option value="">— sin repositorio —</option>
             {state.repos.map((r) => (
-              <option key={r.url} value={r.url} title={r.url}>
-                {r.owner}/{r.name}
-                {r.private ? " 🔒" : ""}
-                {" "}· rama {r.default_branch}
-              </option>
+              <li key={r.url}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => onChange(r.url, r)}
+                  disabled={disabled}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-[#0EA5E9]/10 focus:bg-[#0EA5E9]/10 focus:outline-none"
+                >
+                  <span className="font-mono font-medium text-slate-800">{r.owner}/{r.name}</span>
+                  {r.private && <span title="Privado" className="text-amber-600">🔒</span>}
+                  <span className="ml-auto text-[10px] text-slate-400">rama {r.default_branch}</span>
+                </button>
+              </li>
             ))}
-          </select>
+          </ul>
           <div className="flex items-center justify-between text-[11px] text-slate-500">
             <span data-testid="repo-count">
               Mostrando {state.repos.length}
@@ -196,14 +244,6 @@ export default function RepoSelector({ value, onChange, disabled, testid }: Prop
             )}
           </div>
         </>
-      )}
-
-      {seleccion && (
-        <p className="text-[11px] text-slate-500" data-testid="repo-sel-info">
-          <span className="font-mono">{seleccion.url}</span>
-          {" · codebase="}<span className="font-mono">{seleccion.codebase}</span>
-          {" · rama por defecto "}<span className="font-mono">{seleccion.default_branch}</span>
-        </p>
       )}
     </div>
   );

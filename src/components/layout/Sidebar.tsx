@@ -625,6 +625,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
     inventario: true,
     sorteos: true,
     compras: true,
+    qa_center: true,
   });
   /** Familias colapsadas (solo visual). Ausente = expandida. */
   const [collapsedFamilies, setCollapsedFamilies] = useState<Record<string, boolean>>({});
@@ -1157,6 +1158,26 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
               </div>
             ) : null}
             {familiasVisibles.map((fam) => {
+              // Familia con un solo ítem CON hijos (ej. QA → QA Center con
+              // subpáginas): no la mostramos como renglón-portada que rebota a
+              // /panel/<id>; renderizamos el NavItem directo con sus hijos.
+              if (fam.items.length === 1 && (fam.items[0].children?.length ?? 0) > 0) {
+                const soloItem = fam.items[0];
+                return (
+                  <NavItem
+                    key={fam.id}
+                    item={soloItem}
+                    itemId={soloItem.key}
+                    isActive={isActive(soloItem.slug, soloItem.href)}
+                    isFavorito={favoritos.includes(soloItem.key)}
+                    onToggleFavorito={handleToggleFavorito}
+                    hasAccess={hasAccess(soloItem.slug)}
+                    collapsed={collapsed}
+                    expanded={expandedItems[soloItem.key] ?? true}
+                    onToggleExpand={() => toggleExpand(soloItem.key)}
+                  />
+                );
+              }
               const Icono = fam.icon;
               const activa = familiaActiva(fam);
               const destino = destinoFamilia(fam);

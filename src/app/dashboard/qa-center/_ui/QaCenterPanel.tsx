@@ -218,43 +218,18 @@ export default function QaCenterPanel({
         )}
       </section>
 
-      <section>
-        <SectionHeader title="Últimas ejecuciones" subtitle="Se muestran las 10 más recientes." />
-        {runs.data.length === 0 ? (
-          <EmptyState
-            title="Sin ejecuciones todavía"
-            hint='Cargá un proyecto + suite y ejecutá con "Ejecutar pruebas".'
-          />
-        ) : (
-          <ul className="divide-y rounded-lg border bg-white" data-testid="lista-runs">
-            {runs.data.map((r) => (
-              <li key={r.id} className="grid grid-cols-7 items-center px-4 py-3 text-sm" data-testid={`row-run-${r.id.slice(0, 8)}`}>
-                <Link
-                  href={`/dashboard/qa-center/runs/${r.id}`}
-                  className="col-span-2 font-mono text-xs text-slate-700 hover:underline"
-                >
-                  {r.id.slice(0, 8)}
-                </Link>
-                <span><StatusBadge status={r.status} /></span>
-                <span className="text-slate-600">{traducirTrigger(r.trigger)}</span>
-                <span className="text-slate-600">{r.duration_ms != null ? `${r.duration_ms} ms` : "—"}</span>
-                <span className="text-xs text-slate-400">
-                  {new Date(r.created_at).toLocaleString("es-PY")}
-                </span>
-                <span className="text-right">
-                  <Link
-                    href={`/dashboard/qa-center/runs/${r.id}`}
-                    data-testid={`link-ver-${r.id.slice(0, 8)}`}
-                    className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-700 hover:bg-slate-100"
-                  >
-                    Ver detalle
-                  </Link>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {runs.data.length > 0 && (
+        <section className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          Hay {runs.data.length} ejecucion(es) recientes. Mirá el detalle en{" "}
+          <Link href="/dashboard/qa-center/resultados" className="font-medium text-[#0EA5E9] hover:underline">
+            Resultados
+          </Link>{" "}
+          o la lista completa en{" "}
+          <Link href="/dashboard/qa-center/historial" className="font-medium text-[#0EA5E9] hover:underline">
+            Historial
+          </Link>.
+        </section>
+      )}
 
       {showNew && (
         <NuevoProyectoDialog

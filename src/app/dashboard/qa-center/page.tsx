@@ -11,7 +11,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveQaAccess } from "@/lib/qa/authorize";
 import { listQaProjects, listQaRuns } from "@/lib/qa/db";
 import { buildQaRepo } from "@/lib/qa/route-helpers";
-import type { QaFindingRow } from "@/lib/qa/repo-types";
 import QaCenterPanel, { type AiEstadoProyecto } from "./_ui/QaCenterPanel";
 import { codebaseDeProyecto } from "@/lib/qa/pruebas-catalogo";
 
@@ -50,15 +49,11 @@ export default async function QaCenterPage() {
     };
   }
 
-  // Findings — lectura directa del repo (fail-closed: si QA_DB_URL falta, lista vacía).
-  let findings: QaFindingRow[] = [];
+  // Hidratar estado IA por proyecto: cobertura, último discovery, último informe, costo.
   const aiEstado: Record<string, AiEstadoProyecto> = {};
   try {
     const repo = buildQaRepo();
     if (repo) {
-      findings = await repo.listFindings({ limit: 200 });
-
-      // Hidratar estado IA por proyecto: cobertura, último discovery, último informe, costo.
       for (const p of projects.data ?? []) {
         const codebase = codebaseDeProyecto({ slug: p.slug });
         try {
@@ -103,14 +98,13 @@ export default async function QaCenterPage() {
       }
     }
   } catch {
-    findings = [];
+    // ignore
   }
 
   return (
     <QaCenterPanel
       projects={projects}
       runs={runs}
-      findings={findings}
       aiEstado={aiEstado}
       anthropicConfigured={null}
       credencialesRoRunnerConfigured={null}

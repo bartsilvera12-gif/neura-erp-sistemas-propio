@@ -10,7 +10,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { QaListResult, QaProjectRow, QaRunRow } from "@/lib/qa/db";
-import type { QaFindingRow } from "@/lib/qa/repo-types";
 import type { CoberturaModulo } from "./CoberturaIAViewer";
 import EjecutarQaButton from "./EjecutarQaButton";
 import NuevoProyectoDialog from "./NuevoProyectoDialog";
@@ -19,7 +18,6 @@ import SuitesSection from "./SuitesSection";
 import AnalizarErpCard from "./AnalizarErpCard";
 import CredencialesProyecto from "./CredencialesProyecto";
 import SeccionAvanzado from "./SeccionAvanzado";
-import FindingsSection from "./FindingsSection";
 import PermiteLecturaToggle from "./PermiteLecturaToggle";
 import { AutorizarDialog, EntregarDialog, EstadoBadge } from "./EstadoProyectoDialogs";
 
@@ -53,7 +51,6 @@ export type AiEstadoProyecto = {
 type Props = {
   projects: QaListResult<QaProjectRow>;
   runs: QaListResult<QaRunRow>;
-  findings?: QaFindingRow[];
   aiEstado?: Record<string, AiEstadoProyecto>;
   anthropicConfigured?: boolean | null;
   credencialesRoRunnerConfigured?: boolean | null;
@@ -62,7 +59,6 @@ type Props = {
 export default function QaCenterPanel({
   projects,
   runs,
-  findings,
   aiEstado = {},
   anthropicConfigured = null,
   credencialesRoRunnerConfigured = null,
@@ -221,8 +217,6 @@ export default function QaCenterPanel({
           </ul>
         )}
       </section>
-
-      <FindingsSection initial={findings} />
 
       <section>
         <SectionHeader title="Últimas ejecuciones" subtitle="Se muestran las 10 más recientes." />

@@ -33,7 +33,7 @@ export default function CoberturaIAViewer({ cobertura }: CoberturaIAViewerProps)
   if (!cobertura || cobertura.length === 0) {
     return (
       <div className="mt-3 rounded border bg-white p-3 text-xs text-slate-500">
-        Todavía no hay cobertura registrada. Al tocar <strong>Analizar ERP completo</strong> se
+        Todavía no hay cobertura registrada. Al tocar <strong>Ejecutar sandbox</strong> se
         descubren los módulos y se generan/ejecutan las pruebas.
       </div>
     );

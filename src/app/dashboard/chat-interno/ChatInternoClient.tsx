@@ -376,10 +376,13 @@ function conMiReaccion(m: Mensaje, emoji: string, yo: Yo, quiero: boolean): Mens
 }
 
 function firmaDeMensajes(ms: Mensaje[]): string {
+  // `destinatarios` va en la firma: el mensaje propio nace con 0 (optimista) y
+  // el servidor trae el número real. Sin esto el refresco se descartaba por
+  // "igual" y las tildes no aparecían hasta que el otro lo leía.
   return ms
     .map(
       (m) =>
-        `${m.id}|${m.editado_at ?? ""}|${m.eliminado ? 1 : 0}|${m.leido_por}|${JSON.stringify(
+        `${m.id}|${m.editado_at ?? ""}|${m.eliminado ? 1 : 0}|${m.leido_por}|${m.destinatarios}|${JSON.stringify(
           m.reacciones
         )}`
     )

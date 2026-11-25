@@ -23,10 +23,12 @@ export type TipoDePrueba =
   | "auditoria_integral";
 
 /**
- * Codebase del proyecto. Lo asignamos explícitamente por slug — NO por dominio:
- * dos ERPs distintos pueden compartir TLD y no compartir código.
+ * Codebase del proyecto. Identifica el schema fuente en Supabase central del
+ * que el runner clona DDL para la DB QA efímera. Los "canónicos" son los
+ * historicos; cualquier string válido es aceptable (ej. autodetectado por
+ * repo_url: neura-erp-X → "erp-X").
  */
-export type CodebaseProyecto = "sistemas-propio" | "erp-neura" | "fake-app" | "acaihouse" | "otro";
+export type CodebaseProyecto = "sistemas-propio" | "erp-neura" | "fake-app" | "acaihouse" | "otro" | (string & {});
 
 /**
  * Mapa de slug → codebase. Única fuente de verdad de la compatibilidad.
@@ -48,16 +50,20 @@ export const CODEBASE_POR_SLUG: Readonly<Record<string, CodebaseProyecto>> = {
 };
 
 export function codebaseDeProyecto(p: { slug: string; repo_url?: string | null }): CodebaseProyecto {
-  // 1) Mapeo explícito (slugs canónicos del equipo Neura).
+  // 1) Mapeo explícito (overrides canónicos del equipo Neura).
   const explicito = CODEBASE_POR_SLUG[p.slug];
   if (explicito) return explicito;
-  // 2) Autodetección por repo_url: todos los ERPs de clientes viven en
-  //    repos "neura-erp-<nombre>" y comparten el codebase erp-neura. Así
-  //    cada ERP nuevo funciona en QA sin tener que agregar el slug al mapa.
+  // 2) Autodetección por repo_url: cada ERP de cliente vive en un repo
+  //    "neura-erp-<X>" y tiene su propio schema source "erp_<X>" en Supabase
+  //    (snake_case en vez de kebab). Devolvemos el codebase canónico en
+  //    kebab-case: "erp-<X>"; el endpoint init-sql luego hace replace(/-/g,"_")
+  //    para derivar el schema real. Así cada ERP nuevo funciona en QA sin
+  //    editar el mapa.
   const repo = (p.repo_url ?? "").toLowerCase();
-  if (/github\.com\/[^/]+\/neura-erp-[^/]+/i.test(repo)) return "erp-neura";
-  // 3) Autodetección por slug: los ERPs del equipo suelen empezar con "erp-".
-  if (/^erp-/i.test(p.slug)) return "erp-neura";
+  const m = repo.match(/github\.com\/[^/]+\/neura-(erp-[a-z0-9-]+)(?:\.git)?\/?$/i);
+  if (m) return m[1];
+  // 3) Autodetección por slug (si tiene forma de nombre de repo).
+  if (/^erp-[a-z0-9-]+$/i.test(p.slug)) return p.slug;
   // 4) Último recurso: desconocido.
   return "otro";
 }
@@ -129,11 +135,13 @@ function esSistemasPropio(p: { slug: string; target_base_url: string }): boolean
 }
 
 /** Proyectos del codebase genérico neura-erp (ERPs de clientes). */
-function esErpNeura(p: { slug: string; target_base_url: string }): boolean {
+function esErpNeura(p: { slug: string; target_base_url: string; repo_url?: string | null }): boolean {
   const kind = codebaseDeProyecto(p);
   // sistemas-propio también deriva del codebase neura-erp y puede correr las
   // specs de auditoría integral; por eso ambos aceptan auditoria_integral.
-  return kind === "erp-neura" || kind === "sistemas-propio";
+  // Todos los ERPs de cliente (schemas erp-X) también son del mismo codebase
+  // base, por eso aceptamos el prefijo "erp-".
+  return kind === "sistemas-propio" || /^erp-/i.test(String(kind));
 }
 
 function safeHost(url: string): string {

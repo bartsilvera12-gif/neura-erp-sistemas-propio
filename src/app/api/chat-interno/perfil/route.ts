@@ -95,7 +95,18 @@ export async function PATCH(request: Request) {
       cumple?: { mes?: number; dia?: number } | null;
       banner_color?: string | null;
       fecha_nacimiento?: string | null;
+      area?: string | null;
     };
+    // El área (Soporte, Desarrollo…): la que se ve en el directorio y en el perfil.
+    if ("area" in body) {
+      const area = typeof body.area === "string" ? body.area.trim().replace(/\s+/g, " ").slice(0, 60) : "";
+      const { error } = await createServiceRoleClient()
+        .from("usuarios")
+        .update({ area: area || null })
+        .eq("id", usuarioId);
+      if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+      return NextResponse.json(successResponse({ area: area || null }));
+    }
     // La fecha de nacimiento completa (la misma de la ficha del usuario). El día y el mes del
     // cumpleaños del chat los completa un trigger de la base a partir de esta fecha.
     if ("fecha_nacimiento" in body) {

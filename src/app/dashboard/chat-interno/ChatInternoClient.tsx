@@ -2426,18 +2426,38 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                       : "hover:bg-[#4FAEB2]/8"
                   }`}
                 >
-                  <Avatar
-                    nombre={s.nombre}
-                    url={s.avatar_url}
-                    size={46}
-                    icono={s.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
-                  />
+                  {/* En un directo, la foto y el nombre abren el perfil de la persona;
+                      el resto de la fila abre la conversación. */}
+                  <span
+                    role={s.otro_usuario_id ? "button" : undefined}
+                    title={s.otro_usuario_id ? "Ver su perfil" : undefined}
+                    onClick={(e) => {
+                      if (!s.otro_usuario_id) return;
+                      e.stopPropagation();
+                      setPerfilVer(s.otro_usuario_id);
+                    }}
+                    className="shrink-0 rounded-full"
+                  >
+                    <Avatar
+                      nombre={s.nombre}
+                      url={s.avatar_url}
+                      size={46}
+                      icono={s.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
+                    />
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
                       <span
+                        role={s.otro_usuario_id ? "button" : undefined}
+                        title={s.otro_usuario_id ? "Ver su perfil" : undefined}
+                        onClick={(e) => {
+                          if (!s.otro_usuario_id) return;
+                          e.stopPropagation();
+                          setPerfilVer(s.otro_usuario_id);
+                        }}
                         className={`min-w-0 truncate text-[14px] font-semibold ${
                           activa ? "text-white" : "text-slate-800"
-                        }`}
+                        } ${s.otro_usuario_id ? "hover:underline" : ""}`}
                       >
                         {nombreCapitular(s.nombre)}
                         {s.cumple_hoy ? <span title="Hoy cumple años"> 🎁</span> : null}

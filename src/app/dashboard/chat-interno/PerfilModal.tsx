@@ -142,6 +142,7 @@ export default function PerfilModal({
   const [editNombre, setEditNombre] = useState<string | null>(null);
   /** Fecha de nacimiento mientras se edita (AAAA-MM-DD); `null` = cerrado. */
   const [editCumple, setEditCumple] = useState<string | null>(null);
+  const [editArea, setEditArea] = useState<string | null>(null);
   const [verColores, setVerColores] = useState(false);
   const fotoRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
@@ -411,9 +412,45 @@ export default function PerfilModal({
                   </button>
                 ) : null}
               </Fila>
-              {p.area ? (
+              {p.area || propio ? (
                 <Fila icono={<Building2 className="h-4 w-4" />} etiqueta="Área">
-                  {nombreCapitular(p.area)}
+                  {editArea !== null ? (
+                    <span className="flex w-full items-center gap-1.5">
+                      <input
+                        autoFocus
+                        value={editArea}
+                        maxLength={60}
+                        onChange={(e) => setEditArea(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void guardar({ area: editArea }, "area").then((ok) => ok && setEditArea(null));
+                          if (e.key === "Escape") setEditArea(null);
+                        }}
+                        placeholder="Ej: Soporte"
+                        className="min-w-0 flex-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[13px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void guardar({ area: editArea }, "area").then((ok) => ok && setEditArea(null))}
+                        className="rounded-md bg-[#7C6FD8] px-2 py-0.5 text-[12px] font-semibold text-white"
+                      >
+                        {ocupado === "area" ? "…" : "Listo"}
+                      </button>
+                    </span>
+                  ) : p.area ? (
+                    p.area.charAt(0).toUpperCase() + p.area.slice(1)
+                  ) : (
+                    <span className="text-slate-400">Sin cargar</span>
+                  )}
+                  {propio && editArea === null ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditArea(p.area ?? "")}
+                      aria-label="Cambiar mi área"
+                      className="ml-auto text-slate-300 hover:text-slate-500"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                 </Fila>
               ) : null}
               <Fila icono={<Clock className="h-4 w-4" />} etiqueta="Última vez activo">

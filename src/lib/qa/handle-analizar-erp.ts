@@ -127,7 +127,7 @@ export async function handleInteractuarAgente(
   if (!project.target_base_url || project.target_base_url.length === 0) {
     return { ok: false, status: 400, body: { error: "el proyecto no tiene target_base_url — necesario para el agente interactivo", code: "target_missing" } };
   }
-  const codebase = codebaseDeProyecto({ slug: project.slug });
+  const codebase = codebaseDeProyecto({ slug: project.slug, repo_url: project.repo_url ?? null });
   const suiteSlug = `ai-interaction-${project.slug}`;
   const suites = await input.repo.listSuitesForProject(project.id);
   let suite = suites.find((s) => s.slug === suiteSlug) ?? null;

@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     safety_level === "static_analysis" || safety_level === "discovery" || safety_level === "interaction_sandbox"
       ? resolverRepoUrlProyecto(project.slug, project.repo_url ?? null)
       : null;
-  const codebase = codebaseDeProyecto({ slug: project.slug });
+  const codebase = codebaseDeProyecto({ slug: project.slug, repo_url: project.repo_url ?? null });
   // El runner saltea env-assert sólo para authenticated_read_only cuando el
   // admin del proyecto lo autorizó. El flag llega desde la DB del proyecto.
   const skip_env_assert =

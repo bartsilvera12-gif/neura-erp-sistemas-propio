@@ -47,8 +47,19 @@ export const CODEBASE_POR_SLUG: Readonly<Record<string, CodebaseProyecto>> = {
   "qa-fixture-app": "erp-neura",
 };
 
-export function codebaseDeProyecto(p: { slug: string }): CodebaseProyecto {
-  return CODEBASE_POR_SLUG[p.slug] ?? "otro";
+export function codebaseDeProyecto(p: { slug: string; repo_url?: string | null }): CodebaseProyecto {
+  // 1) Mapeo explícito (slugs canónicos del equipo Neura).
+  const explicito = CODEBASE_POR_SLUG[p.slug];
+  if (explicito) return explicito;
+  // 2) Autodetección por repo_url: todos los ERPs de clientes viven en
+  //    repos "neura-erp-<nombre>" y comparten el codebase erp-neura. Así
+  //    cada ERP nuevo funciona en QA sin tener que agregar el slug al mapa.
+  const repo = (p.repo_url ?? "").toLowerCase();
+  if (/github\.com\/[^/]+\/neura-erp-[^/]+/i.test(repo)) return "erp-neura";
+  // 3) Autodetección por slug: los ERPs del equipo suelen empezar con "erp-".
+  if (/^erp-/i.test(p.slug)) return "erp-neura";
+  // 4) Último recurso: desconocido.
+  return "otro";
 }
 
 /**

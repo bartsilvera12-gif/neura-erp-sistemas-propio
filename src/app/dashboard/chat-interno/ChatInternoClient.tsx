@@ -2513,7 +2513,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         ) : null}
                         {s.vista_previa
                           ? `${
-                              s.tipo === "grupo" && s.vista_previa_autor
+                              s.tipo === "grupo" && s.vista_previa_autor && !s.vista_previa_propia
                                 ? `${nombreCorto(s.vista_previa_autor)}: `
                                 : ""
                             }${s.vista_previa}`

@@ -151,6 +151,7 @@ export async function GET(request: Request) {
             ? (otro ? avatarDe.get(otro) ?? null : null)
             : avatarDeSala.get(id) ?? null,
         mi_rol: miRolEn.get(id) ?? "miembro",
+        otro_usuario_id: s.tipo === "directo" ? otro ?? null : null,
         // Sólo en el directo: en un grupo no se sabe a quién señala el regalo.
         cumple_hoy: s.tipo === "directo" && !!otro && cumplenHoy.has(otro),
         // El cargo se muestra mientras no haya nada que previsualizar: una fila

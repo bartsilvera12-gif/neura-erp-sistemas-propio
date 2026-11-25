@@ -4,10 +4,11 @@ import { errorResponse, successResponse } from "@/lib/api/response";
 import { getChatServiceClientForEmpresa } from "@/lib/supabase/chat-service-role-empresa";
 import { requireTenantUserApiAccess } from "@/lib/contabilidad/contabilidad-auth";
 import { fetchJefesExtra, syncJefesExtra } from "@/lib/organigrama/jefes-service";
+import { usuarioParaNodo, usuariosDeEmpresa } from "@/lib/organigrama/vincular-usuario";
 
 export const runtime = "nodejs";
 
-const SELECT_COLS = "id, empresa_id, parent_id, titulo, nombre_persona, orden, color, foto_url, created_at, updated_at";
+const SELECT_COLS = "id, empresa_id, parent_id, titulo, nombre_persona, usuario_id, orden, color, foto_url, created_at, updated_at";
 
 function esAdmin(rol: string | null): boolean {
   const r = String(rol ?? "").trim();
@@ -59,7 +60,11 @@ export async function GET(request: Request) {
       jefes_extra: jefesMap.get(String(n.id)) ?? [],
     }));
 
-    return NextResponse.json(successResponse({ nodos, meta: { can_edit: esAdmin(auth.rol) } }));
+    // Para vincular cada puesto con un usuario (solo quien edita ve la lista).
+    const usuarios = esAdmin(auth.rol)
+      ? (await usuariosDeEmpresa(auth.empresaId)).map((u) => ({ id: u.id, nombre: (u.nombre ?? "").trim(), nombre_chat: (u.nombre_chat ?? "").trim() || null }))
+      : [];
+    return NextResponse.json(successResponse({ nodos, meta: { can_edit: esAdmin(auth.rol), usuarios } }));
   } catch (e) {
     const message = e instanceof Error ? e.message : "No se pudo cargar el organigrama";
     return NextResponse.json(errorResponse(message), { status: 500 });
@@ -118,6 +123,7 @@ export async function POST(request: Request) {
         parent_id: parentId,
         titulo,
         nombre_persona: nombrePersona,
+        usuario_id: await usuarioParaNodo(auth.empresaId, (body as { usuario_id?: unknown }).usuario_id, nombrePersona),
         color,
         orden,
         foto_url: fotoUrl,

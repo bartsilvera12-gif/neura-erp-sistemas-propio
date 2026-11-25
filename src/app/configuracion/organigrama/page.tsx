@@ -9,6 +9,8 @@ type Nodo = {
   parent_id: string | null;
   titulo: string;
   nombre_persona: string | null;
+  /** Usuario del sistema vinculado al puesto (perfil del chat, supervisor, etc.). */
+  usuario_id?: string | null;
   orden: number;
   color: string | null;
   foto_url: string | null;
@@ -16,6 +18,16 @@ type Nodo = {
 };
 
 type FilaPlano = Nodo & { depth: number };
+
+/** "KAREN MAGNOLIA AYALA URUNAGA" → "Karen Magnolia"; usa el nombre del chat si lo tiene. */
+function nombreCortoUsuario(u: { nombre: string; nombre_chat: string | null }): string {
+  const base = (u.nombre_chat || u.nombre || "").trim().toLowerCase();
+  return base
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+}
 
 /** Lee una imagen, la recorta/redimensiona a 160×160 (cover) y devuelve un data URL JPEG liviano. */
 async function fileToAvatarDataUrl(file: File): Promise<string> {
@@ -107,6 +119,9 @@ export default function ConfigOrganigramaPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editTitulo, setEditTitulo] = useState("");
   const [editPersona, setEditPersona] = useState("");
+  /** "" = detectar por el nombre escrito · "none" = sin vincular · id = ese usuario. */
+  const [editUsuario, setEditUsuario] = useState("");
+  const [usuarios, setUsuarios] = useState<{ id: string; nombre: string; nombre_chat: string | null }[]>([]);
   const [editParent, setEditParent] = useState<string>("");
   const [editFoto, setEditFoto] = useState<string | null>(null);
   const [editJefesExtra, setEditJefesExtra] = useState<string[]>([]);
@@ -121,6 +136,7 @@ export default function ConfigOrganigramaPage() {
       if (!json?.success) throw new Error(json?.error ?? "No se pudo cargar el organigrama");
       setNodos((json.data?.nodos ?? []) as Nodo[]);
       setCanEdit(Boolean(json.data?.meta?.can_edit));
+      setUsuarios(Array.isArray(json.data?.meta?.usuarios) ? json.data.meta.usuarios : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar");
     } finally {
@@ -167,6 +183,7 @@ export default function ConfigOrganigramaPage() {
     setEditId(n.id);
     setEditTitulo(n.titulo);
     setEditPersona(n.nombre_persona ?? "");
+    setEditUsuario(n.usuario_id ?? "");
     setEditParent(n.parent_id ?? "");
     setEditFoto(n.foto_url ?? null);
     setEditJefesExtra(Array.isArray(n.jefes_extra) ? n.jefes_extra : []);
@@ -197,6 +214,7 @@ export default function ConfigOrganigramaPage() {
         body: JSON.stringify({
           titulo,
           nombre_persona: editPersona.trim() || null,
+          ...(editUsuario === "" ? {} : { usuario_id: editUsuario === "none" ? null : editUsuario }),
           parent_id: editParent || null,
           foto_url: editFoto,
           jefes_extra: editJefesExtra.filter((j) => j !== (editParent || "")),
@@ -348,6 +366,32 @@ export default function ConfigOrganigramaPage() {
                         </button>
                       </div>
                     </div>
+                    <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5">
+                      <label className={F_LABEL}>Usuario del sistema</label>
+                      <select
+                        className={F_INPUT}
+                        value={editUsuario}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setEditUsuario(v);
+                          const u = usuarios.find((x) => x.id === v);
+                          if (u && !editPersona.trim()) setEditPersona(nombreCortoUsuario(u));
+                        }}
+                      >
+                        <option value="">Detectar por el nombre de la persona</option>
+                        <option value="none">Sin vincular</option>
+                        {[...usuarios]
+                          .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.nombre_chat ? `${u.nombre_chat} (${u.nombre})` : u.nombre}
+                            </option>
+                          ))}
+                      </select>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Con el usuario vinculado, el cargo y el supervisor aparecen en su perfil del chat.
+                      </p>
+                    </div>
                     <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-2.5">
                       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-[#4FAEB2] bg-slate-100 text-slate-400">
                         {editFoto ? (
@@ -454,6 +498,9 @@ export default function ConfigOrganigramaPage() {
                         <p className="truncate text-sm font-semibold text-slate-900">{f.titulo}</p>
                         <p className="truncate text-[11px] text-slate-500">
                           {f.nombre_persona ? f.nombre_persona : <span className="italic text-slate-400">Sin asignar</span>}
+                          {f.nombre_persona && !f.usuario_id ? (
+                            <span className="ml-1 text-amber-600">(sin usuario vinculado)</span>
+                          ) : null}
                           {f.parent_id && byId.get(f.parent_id) ? ` · reporta a ${byId.get(f.parent_id)!.titulo}` : ""}
                           {f.jefes_extra?.length
                             ? ` · también: ${f.jefes_extra.map((id) => byId.get(id)?.titulo).filter(Boolean).join(", ")}`

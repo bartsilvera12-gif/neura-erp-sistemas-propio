@@ -93,7 +93,25 @@ export async function PATCH(request: Request) {
     const body = (await request.json().catch(() => ({}))) as {
       nombre?: string;
       cumple?: { mes?: number; dia?: number } | null;
+      banner_color?: string | null;
     };
+    // El banner del perfil como color: reemplaza a la imagen si había una.
+    if ("banner_color" in body) {
+      const color = typeof body.banner_color === "string" ? body.banner_color.trim() : null;
+      if (color && !/^#[0-9a-f]{6}$/i.test(color)) {
+        return NextResponse.json(errorResponse("Color inválido"), { status: 400 });
+      }
+      const catalog = createServiceRoleClient();
+      const { data: previo } = await catalog.from("usuarios").select("banner_path").eq("id", usuarioId).maybeSingle();
+      const { error } = await catalog
+        .from("usuarios")
+        .update({ banner_color: color || null, banner_path: null })
+        .eq("id", usuarioId);
+      if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+      const anterior = (previo as { banner_path?: string | null } | null)?.banner_path;
+      if (anterior) await auth.sb.storage.from(AVATAR_BUCKET).remove([anterior]);
+      return NextResponse.json(successResponse({ banner_color: color || null, banner_url: null }));
+    }
     // El cumpleaños: día y mes, sin año. `null` lo borra.
     if ("cumple" in body) {
       const mes = Number(body.cumple?.mes);
@@ -162,6 +180,27 @@ export async function POST(request: Request) {
     }
 
     await ensureAvatarBucket(sb);
+    // tipo=banner: la imagen de fondo del perfil, en el mismo bucket que la foto.
+    if (form.get("tipo") === "banner") {
+      const pathB = avatarPath(empresaId, `${usuarioId}-banner`, file.type);
+      const { error: eUp } = await sb.storage
+        .from(AVATAR_BUCKET)
+        .upload(pathB, file, { contentType: file.type, upsert: false });
+      if (eUp) return NextResponse.json(errorResponse(eUp.message), { status: 400 });
+      const catalog = createServiceRoleClient();
+      const { data: previo } = await catalog.from("usuarios").select("banner_path").eq("id", usuarioId).maybeSingle();
+      const { error: eB } = await catalog
+        .from("usuarios")
+        .update({ banner_path: pathB, banner_color: null })
+        .eq("id", usuarioId);
+      if (eB) return NextResponse.json(errorResponse(eB.message), { status: 400 });
+      const anterior = (previo as { banner_path?: string | null } | null)?.banner_path;
+      if (anterior && anterior !== pathB) await sb.storage.from(AVATAR_BUCKET).remove([anterior]);
+      const urls = await firmarAvatares(sb, [{ id: "banner", avatar_path: pathB }]);
+      return NextResponse.json(successResponse({ banner_url: urls.get("banner") ?? null, banner_color: null }), {
+        status: 201,
+      });
+    }
     const path = avatarPath(empresaId, usuarioId, file.type);
     const { error } = await sb.storage
       .from(AVATAR_BUCKET)

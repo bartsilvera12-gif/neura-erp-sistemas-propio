@@ -57,6 +57,7 @@ import {
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { BotonFondoChat, useFondoChat } from "./fondo-chat";
+import PerfilModal from "./PerfilModal";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 
@@ -83,6 +84,8 @@ type Sala = {
   mi_rol: string;
   /** En un directo: la otra persona cumple años hoy. */
   cumple_hoy?: boolean;
+  /** En un directo: la otra persona (para abrir su perfil). */
+  otro_usuario_id?: string | null;
 };
 
 type Adjunto = {
@@ -879,6 +882,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   /** Canal común, para avisar a quien NO tiene esta conversación abierta. */
   const avisosRef = useRef<RealtimeChannel | null>(null);
   const [abriendoDirecto, setAbriendoDirecto] = useState<string | null>(null);
+  /** Perfil abierto en el modal (el mío o el de alguien), por id de usuario. */
+  const [perfilVer, setPerfilVer] = useState<string | null>(null);
   /** Alto real disponible: se mide, no se adivina con un `calc` fijo. */
   const contRef = useRef<HTMLDivElement>(null);
   const [alto, setAlto] = useState<number | null>(null);
@@ -2063,6 +2068,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    * Abre la conversación con alguien. Si ya existe se reusa —el servidor no
    * crea un segundo hilo con la misma persona—, y si no, se crea ahí mismo.
    */
+  /** Tras editar mi perfil en el modal: nombre, foto y cumpleaños se ven en todo el chat. */
+  async function recargarMiPerfil() {
+    const r = await fetchWithSupabaseSession("/api/chat-interno/perfil", { cache: "no-store" });
+    const j = (await r.json().catch(() => ({}))) as { data?: Perfil };
+    if (j?.data) setPerfil(j.data);
+    void cargarSalas();
+  }
+
   async function abrirDirecto(u: UsuarioOpcion) {
     setAbriendoDirecto(u.id);
     try {
@@ -2252,17 +2265,25 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 className="w-full rounded-lg border border-[#4FAEB2] px-1.5 py-0.5 text-[13px] font-semibold text-slate-800 focus:outline-none"
               />
             ) : (
-              <button
-                type="button"
-                onClick={() => setEditandoNombre(perfil?.nombre ?? "")}
-                title="Cambiar como me ven en el chat"
-                className="flex w-full items-center gap-1 text-left"
-              >
-                <span className="min-w-0 truncate text-[13px] font-semibold text-slate-800">
+              <span className="flex w-full items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => perfil && setPerfilVer(perfil.usuario_id)}
+                  title="Ver mi perfil"
+                  className="min-w-0 truncate text-left text-[13px] font-semibold text-slate-800 hover:text-[#6A5CC9]"
+                >
                   {perfil ? nombreCapitular(perfil.nombre) : "…"}
-                </span>
-                <Pencil className="h-3 w-3 shrink-0 text-slate-300" />
-              </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoNombre(perfil?.nombre ?? "")}
+                  title="Cambiar como me ven en el chat"
+                  aria-label="Cambiar como me ven en el chat"
+                  className="shrink-0"
+                >
+                  <Pencil className="h-3 w-3 text-slate-300 hover:text-slate-500" />
+                </button>
+              </span>
             )}
             <button
               type="button"
@@ -2641,18 +2662,37 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 </button>
               ) : null}
               <span className={mobile ? "hidden" : "block"}>
-                <Avatar
-                  nombre={salaActual.nombre}
-                  url={salaActual.avatar_url}
-                  size={44}
-                  icono={salaActual.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
-                />
+                <button
+                  type="button"
+                  disabled={!salaActual.otro_usuario_id}
+                  onClick={() => salaActual.otro_usuario_id && setPerfilVer(salaActual.otro_usuario_id)}
+                  title={salaActual.otro_usuario_id ? "Ver su perfil" : undefined}
+                  className="block rounded-full disabled:cursor-default"
+                >
+                  <Avatar
+                    nombre={salaActual.nombre}
+                    url={salaActual.avatar_url}
+                    size={44}
+                    icono={salaActual.tipo === "grupo" ? <Users className="h-5 w-5" /> : undefined}
+                  />
+                </button>
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="flex items-baseline gap-2 truncate">
-                  <span className="truncate text-[16px] font-semibold text-slate-800">
-                    {nombreCapitular(salaActual.nombre)}
-                  </span>
+                  {salaActual.otro_usuario_id ? (
+                    <button
+                      type="button"
+                      onClick={() => setPerfilVer(salaActual.otro_usuario_id!)}
+                      title="Ver su perfil"
+                      className="truncate text-[16px] font-semibold text-slate-800 hover:text-[#6A5CC9]"
+                    >
+                      {nombreCapitular(salaActual.nombre)}
+                    </button>
+                  ) : (
+                    <span className="truncate text-[16px] font-semibold text-slate-800">
+                      {nombreCapitular(salaActual.nombre)}
+                    </span>
+                  )}
                   {salaActual.cumple_hoy ? (
                     <span className="shrink-0 text-[14px]" title="Hoy cumple años">🎁</span>
                   ) : null}
@@ -2862,7 +2902,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           // En un audio la foto va a media altura, al lado del botón de reproducir;
                           // en el resto, abajo, pegada a la última línea del mensaje.
                           <span className={`${!m.texto && !m.eliminado && m.adjuntos.length > 0 && m.adjuntos.every((x) => tipoDe(x) === "audio") ? "self-center" : "self-end"} ${seguido ? "invisible" : ""}`}>
-                            <Avatar nombre={m.autor} url={m.autor_avatar} size={34} />
+                            <button
+                              type="button"
+                              onClick={() => m.usuario_id && setPerfilVer(m.usuario_id)}
+                              title={`Ver el perfil de ${nombreCapitular(m.autor)}`}
+                              className="rounded-full"
+                            >
+                              <Avatar nombre={m.autor} url={m.autor_avatar} size={34} />
+                            </button>
                           </span>
                         ) : null}
                         <div
@@ -2883,9 +2930,14 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               fondo, los colores claros de la paleta no llegan a
                               contrastar y el renglón se pierde. */}
                           {!seguido && !m.propio && salaActual.tipo === "grupo" ? (
-                            <div className="mb-0.5 text-[13px] font-semibold" style={{ color: c }}>
+                            <button
+                              type="button"
+                              onClick={() => m.usuario_id && setPerfilVer(m.usuario_id)}
+                              className="mb-0.5 block text-left text-[13px] font-semibold hover:underline"
+                              style={{ color: c }}
+                            >
                               {nombreCapitular(m.autor)}
-                            </div>
+                            </button>
                           ) : null}
                           {m.cita ? (
                             <div className="mb-1.5 border-l-[3px] border-[#4FAEB2] pl-2.5 text-[13px]">
@@ -3585,7 +3637,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     >
                       {/* La corona va sobre el avatar: así se ve quién manda
                           mirando las caras, sin leer una línea por persona. */}
-                      <span className="relative shrink-0">
+                      <span
+                        className="relative shrink-0 cursor-pointer"
+                        role="button"
+                        title="Ver su perfil"
+                        onClick={() => setPerfilVer(m.usuario_id)}
+                      >
                         <Avatar nombre={m.nombre} url={m.avatar_url} size={30} />
                         {m.rol === "admin" ? (
                           <Crown
@@ -4028,6 +4085,19 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             </div>
           </div>
         </div>
+      ) : null}
+
+      {perfilVer ? (
+        <PerfilModal
+          usuarioId={perfilVer}
+          onCerrar={() => setPerfilVer(null)}
+          onAbrirPerfil={(id) => setPerfilVer(id)}
+          onCambio={() => void recargarMiPerfil()}
+          onEnviarMensaje={(id, nombre) => {
+            setPerfilVer(null);
+            void abrirDirecto({ id, nombre, area: "", avatar_url: null });
+          }}
+        />
       ) : null}
     </div>
   );

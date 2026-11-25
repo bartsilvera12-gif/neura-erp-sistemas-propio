@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
-import { inicialesNombre, nombreCapitular } from "@/lib/format/nombres";
+import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 
 /**
  * Perfil de una persona en el chat interno. El propio se edita (foto, nombre del chat,
@@ -39,6 +39,8 @@ type PerfilCompleto = {
   cumple_mes: number | null;
   cumple_dia: number | null;
   cumple_disponible: boolean;
+  /** Sólo en el propio: la fecha completa (AAAA-MM-DD). */
+  fecha_nacimiento: string | null;
   cargo: string | null;
   supervisores: Persona[];
   equipo: Persona[];
@@ -47,7 +49,14 @@ type PerfilCompleto = {
 };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-const DIAS_DEL_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+/** "1995-03-14" → "14 de marzo de 1995 (31 años)". */
+function fechaLarga(iso: string): string {
+  const [a, m, d] = iso.split("-").map(Number);
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - a;
+  if (hoy.getMonth() + 1 < m || (hoy.getMonth() + 1 === m && hoy.getDate() < d)) edad -= 1;
+  return `${d} de ${MESES[m - 1]} de ${a} (${edad} años)`;
+}
 
 /** Colores del banner: los de la marca, oscuros lo justo para que el nombre blanco se lea. */
 export const COLORES_BANNER = ["#7C6FD8", "#4FAEB2", "#2F9BD8", "#22A06B", "#E0784A", "#D9477E", "#E0A526", "#475569"];
@@ -131,7 +140,8 @@ export default function PerfilModal({
   const [err, setErr] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [editNombre, setEditNombre] = useState<string | null>(null);
-  const [editCumple, setEditCumple] = useState<{ mes: number; dia: number } | null>(null);
+  /** Fecha de nacimiento mientras se edita (AAAA-MM-DD); `null` = cerrado. */
+  const [editCumple, setEditCumple] = useState<string | null>(null);
   const [verColores, setVerColores] = useState(false);
   const fotoRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
@@ -343,7 +353,7 @@ export default function PerfilModal({
                 {p.supervisores.length === 0 ? (
                   <span className="text-slate-400">—</span>
                 ) : (
-                  <span className="flex flex-col gap-1">
+                  <span className="flex flex-col gap-1.5 py-0.5">
                     {p.supervisores.map((s) => (
                       <PersonaChip key={`${s.cargo}-${s.nombre}`} persona={s} onAbrir={onAbrirPerfil} />
                     ))}
@@ -359,48 +369,42 @@ export default function PerfilModal({
                   </span>
                 </Fila>
               ) : null}
-              <Fila icono={<Cake className="h-4 w-4" />} etiqueta="Cumpleaños">
-                {editCumple ? (
+              <Fila icono={<Cake className="h-4 w-4" />} etiqueta={propio ? "Fecha de nacimiento" : "Cumpleaños"}>
+                {editCumple !== null ? (
                   <span className="flex items-center gap-1.5">
-                    <select
-                      value={editCumple.dia}
-                      onChange={(e) => setEditCumple({ ...editCumple, dia: Number(e.target.value) })}
-                      className="rounded-md border border-slate-200 px-1 py-0.5 text-[13px]"
-                    >
-                      {Array.from({ length: DIAS_DEL_MES[editCumple.mes - 1] }, (_, i) => (
-                        <option key={i + 1} value={i + 1}>{i + 1}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={editCumple.mes}
-                      onChange={(e) => {
-                        const mes = Number(e.target.value);
-                        setEditCumple({ mes, dia: Math.min(editCumple.dia, DIAS_DEL_MES[mes - 1]) });
-                      }}
-                      className="rounded-md border border-slate-200 px-1 py-0.5 text-[13px]"
-                    >
-                      {MESES.map((m, i) => (
-                        <option key={m} value={i + 1}>{m}</option>
-                      ))}
-                    </select>
+                    <input
+                      type="date"
+                      value={editCumple}
+                      min="1920-01-01"
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setEditCumple(e.target.value)}
+                      className="rounded-md border border-slate-200 px-1.5 py-0.5 text-[13px]"
+                    />
                     <button
                       type="button"
-                      onClick={() => void guardar({ cumple: editCumple }, "cumple").then((ok) => ok && setEditCumple(null))}
+                      onClick={() =>
+                        void guardar({ fecha_nacimiento: editCumple || null }, "cumple").then((ok) => ok && setEditCumple(null))
+                      }
                       className="rounded-md bg-[#7C6FD8] px-2 py-0.5 text-[12px] font-semibold text-white"
                     >
                       {ocupado === "cumple" ? "…" : "Listo"}
                     </button>
+                    <button type="button" onClick={() => setEditCumple(null)} className="text-[12px] text-slate-400">
+                      Cancelar
+                    </button>
                   </span>
+                ) : propio && p.fecha_nacimiento ? (
+                  fechaLarga(p.fecha_nacimiento)
                 ) : p.cumple_mes && p.cumple_dia ? (
                   `${p.cumple_dia} de ${MESES[p.cumple_mes - 1]}`
                 ) : (
                   <span className="text-slate-400">Sin cargar</span>
                 )}
-                {propio && p.cumple_disponible && !editCumple ? (
+                {propio && p.cumple_disponible && editCumple === null ? (
                   <button
                     type="button"
-                    onClick={() => setEditCumple({ mes: p.cumple_mes ?? 1, dia: p.cumple_dia ?? 1 })}
-                    aria-label="Cambiar mi cumpleaños"
+                    onClick={() => setEditCumple(p.fecha_nacimiento ?? "")}
+                    aria-label="Cambiar mi fecha de nacimiento"
                     className="ml-auto text-slate-300 hover:text-slate-500"
                   >
                     <Pencil className="h-3.5 w-3.5" />
@@ -475,12 +479,15 @@ function Fila({
     <li className="flex items-start gap-3 py-2.5">
       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">{icono}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] text-slate-400">{etiqueta}</p>
-        <div className="flex items-center text-[13.5px] text-slate-700">{children}</div>
+        {/* La fuente va al lado del título y no en una columna aparte: ahí se encimaba con el dato. */}
+        <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          {etiqueta}
+          {fuente ? (
+            <span className="rounded-full bg-violet-50 px-1.5 py-px text-[9.5px] font-medium text-violet-500">{fuente}</span>
+          ) : null}
+        </p>
+        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[13.5px] text-slate-700">{children}</div>
       </div>
-      {fuente ? (
-        <span className="mt-1 shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-[10.5px] font-medium text-violet-600">{fuente}</span>
-      ) : null}
     </li>
   );
 }
@@ -501,15 +508,19 @@ function PersonaChip({
       disabled={!puede}
       onClick={() => persona.usuario_id && onAbrir?.(persona.usuario_id)}
       title={persona.cargo}
-      className={`inline-flex items-center gap-1.5 text-left ${
+      className={`inline-flex min-w-0 max-w-full items-center gap-2 text-left ${
         compacto ? "rounded-full bg-slate-50 py-0.5 pl-0.5 pr-2" : ""
       } ${puede ? "hover:text-[#6A5CC9]" : "cursor-default"}`}
     >
-      <Cara nombre={persona.nombre} url={persona.avatar_url} size={compacto ? 20 : 22} />
-      <span className="truncate text-[13px]">
-        {nombreCapitular(persona.nombre)}
-        {!compacto ? <span className="text-slate-400"> · {persona.cargo}</span> : null}
-      </span>
+      <Cara nombre={persona.nombre} url={persona.avatar_url} size={compacto ? 20 : 28} />
+      {compacto ? (
+        <span className="truncate text-[12.5px]">{nombreCorto(persona.nombre)}</span>
+      ) : (
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-[13px] font-medium">{nombreCorto(persona.nombre)}</span>
+          <span className="truncate text-[11.5px] text-slate-400">{persona.cargo}</span>
+        </span>
+      )}
     </button>
   );
 }

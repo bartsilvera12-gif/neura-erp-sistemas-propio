@@ -25,6 +25,7 @@ type Usuario = UsuarioEmpresa & {
   cumple_dia?: number | null;
   banner_color?: string | null;
   banner_path?: string | null;
+  fecha_nacimiento?: string | null;
 };
 
 type Persona = { usuario_id: string | null; nombre: string; cargo: string; avatar_url: string | null };
@@ -53,7 +54,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ usua
     // Columnas opcionales aparte: si el SQL todavía no corrió, el perfil sale igual sin ellas.
     const { data: extra, error: eExtra } = await catalog
       .from("usuarios")
-      .select("cumple_mes, cumple_dia, banner_color, banner_path")
+      .select("cumple_mes, cumple_dia, banner_color, banner_path, fecha_nacimiento")
       .eq("id", usuarioId)
       .maybeSingle();
     const ex = (eExtra ? {} : extra ?? {}) as Partial<Usuario>;
@@ -163,6 +164,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ usua
         cumple_mes: ex.cumple_mes ?? null,
         cumple_dia: ex.cumple_dia ?? null,
         cumple_disponible: !eExtra,
+        // El año sólo para uno mismo: a los demás les basta el día y el mes.
+        fecha_nacimiento: u.id === yo ? ex.fecha_nacimiento ?? null : null,
         cargo: miNodo?.titulo ?? null,
         supervisores: supervisoresNodos.map(aPersona),
         equipo: equipoNodos.map(aPersona),

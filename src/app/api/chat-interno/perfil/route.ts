@@ -94,7 +94,29 @@ export async function PATCH(request: Request) {
       nombre?: string;
       cumple?: { mes?: number; dia?: number } | null;
       banner_color?: string | null;
+      fecha_nacimiento?: string | null;
     };
+    // La fecha de nacimiento completa (la misma de la ficha del usuario). El día y el mes del
+    // cumpleaños del chat los completa un trigger de la base a partir de esta fecha.
+    if ("fecha_nacimiento" in body) {
+      const f = typeof body.fecha_nacimiento === "string" ? body.fecha_nacimiento.trim() : "";
+      if (f) {
+        const d = new Date(`${f}T12:00:00Z`);
+        const anio = Number(f.slice(0, 4));
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== f) {
+          return NextResponse.json(errorResponse("Esa fecha no existe"), { status: 400 });
+        }
+        if (anio < 1920 || d.getTime() > Date.now()) {
+          return NextResponse.json(errorResponse("Revisá el año de nacimiento"), { status: 400 });
+        }
+      }
+      const { error } = await createServiceRoleClient()
+        .from("usuarios")
+        .update(f ? { fecha_nacimiento: f } : { fecha_nacimiento: null, cumple_mes: null, cumple_dia: null })
+        .eq("id", usuarioId);
+      if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
+      return NextResponse.json(successResponse({ fecha_nacimiento: f || null }));
+    }
     // El banner del perfil como color: reemplaza a la imagen si había una.
     if ("banner_color" in body) {
       const color = typeof body.banner_color === "string" ? body.banner_color.trim() : null;

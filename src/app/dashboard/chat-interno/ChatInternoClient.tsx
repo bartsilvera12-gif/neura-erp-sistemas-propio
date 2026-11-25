@@ -2242,95 +2242,27 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           mobile ? "w-full" : "w-[19rem] shrink-0"
         } flex-col overflow-hidden rounded-2xl border border-[#4FAEB2]/20 bg-white shadow-[0_2px_12px_rgba(47,110,113,0.08)]`}
       >
-        {/* Mi perfil. La foto se cambia acá porque acá es donde uno se ve
-            como lo ven los demás. */}
+        {/* Mi perfil: tocar la foto o el nombre abre el modal, donde se edita todo
+            (foto, nombre del chat, fecha de nacimiento y fondo). */}
         <div className="flex items-center gap-2.5 border-b border-[#4FAEB2]/15 bg-white px-3 py-2.5">
           <button
             type="button"
-            onClick={() => fotoRef.current?.click()}
-            disabled={subiendoFoto}
-            title="Cambiar mi foto de perfil"
-            className="group/foto relative shrink-0 rounded-full"
+            onClick={() => perfil && setPerfilVer(perfil.usuario_id)}
+            title="Ver mi perfil"
+            className="shrink-0 rounded-full"
           >
             <Avatar nombre={perfil?.nombre ?? "?"} url={perfil?.avatar_url} size={38} />
-            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-900/50 opacity-0 transition-opacity group-hover/foto:opacity-100">
-              {subiendoFoto ? (
-                <Loader2 className="h-4 w-4 animate-spin text-white" />
-              ) : (
-                <Camera className="h-4 w-4 text-white" />
-              )}
-            </span>
           </button>
-          <div className="min-w-0 flex-1">
-            {editandoNombre !== null ? (
-              <input
-                autoFocus
-                value={editandoNombre}
-                maxLength={60}
-                onChange={(e) => setEditandoNombre(e.target.value)}
-                onBlur={() => void guardarMiNombre()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void guardarMiNombre();
-                  if (e.key === "Escape") setEditandoNombre(null);
-                }}
-                placeholder={perfil?.nombre_catalogo ?? ""}
-                className="w-full rounded-lg border border-[#4FAEB2] px-1.5 py-0.5 text-[13px] font-semibold text-slate-800 focus:outline-none"
-              />
-            ) : (
-              <span className="flex w-full items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => perfil && setPerfilVer(perfil.usuario_id)}
-                  title="Ver mi perfil"
-                  className="min-w-0 truncate text-left text-[13px] font-semibold text-slate-800 hover:text-[#6A5CC9]"
-                >
-                  {perfil ? nombreCapitular(perfil.nombre) : "…"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditandoNombre(perfil?.nombre ?? "")}
-                  title="Cambiar como me ven en el chat"
-                  aria-label="Cambiar como me ven en el chat"
-                  className="shrink-0"
-                >
-                  <Pencil className="h-3 w-3 text-slate-300 hover:text-slate-500" />
-                </button>
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => fotoRef.current?.click()}
-              className="text-[10.5px] text-slate-400 hover:text-[#2F6E71]"
-            >
-              {perfil?.avatar_url ? "Cambiar foto" : "Poner una foto"}
-            </button>
-            {perfil?.avatar_url ? (
-              <button
-                type="button"
-                onClick={() => void quitarMiFoto()}
-                disabled={subiendoFoto}
-                className="ml-2 text-[10.5px] text-slate-400 hover:text-rose-600 disabled:opacity-40"
-              >
-                Quitar foto
-              </button>
-            ) : null}
-            {perfil?.cumple_disponible ? (
-              <button
-                type="button"
-                onClick={() =>
-                  setEditandoCumple(
-                    editandoCumple ? null : { mes: perfil.cumple_mes ?? 1, dia: perfil.cumple_dia ?? 1 }
-                  )
-                }
-                title="Mi cumpleaños"
-                className="block text-[10.5px] text-slate-400 hover:text-[#2F6E71]"
-              >
-                {perfil.cumple_mes && perfil.cumple_dia
-                  ? `🎂 ${perfil.cumple_dia} de ${MESES[perfil.cumple_mes - 1]}`
-                  : "🎂 Poner mi cumpleaños"}
-              </button>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            onClick={() => perfil && setPerfilVer(perfil.usuario_id)}
+            className="group/perfil min-w-0 flex-1 text-left"
+          >
+            <span className="block truncate text-[13.5px] font-semibold text-slate-800 group-hover/perfil:text-[#6A5CC9]">
+              {perfil ? nombreCapitular(perfil.nombre) : "…"}
+            </span>
+            <span className="block text-[11px] text-slate-400 group-hover/perfil:text-[#6A5CC9]">Ver mi perfil</span>
+          </button>
           <button
             type="button"
             onClick={abrirModal}
@@ -2339,17 +2271,6 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           >
             <Plus className="h-4 w-4" />
           </button>
-          <input
-            ref={fotoRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f) void cambiarFoto(f);
-            }}
-          />
         </div>
 
         {editandoCumple ? (

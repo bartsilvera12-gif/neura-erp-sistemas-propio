@@ -211,7 +211,40 @@ const RE_ENLACE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
  * perder la conversación. Los signos de puntuación del final ("mirá esto: https://x.com.") no
  * entran en el enlace.
  */
-function TextoConEnlaces({ texto, propio }: { texto: string; propio: boolean }) {
+function TextoConEnlaces({
+  texto,
+  propio,
+  menciones = [],
+}: {
+  texto: string;
+  propio: boolean;
+  /** Nombres (tal como se escriben después del @) de quienes están en la sala. */
+  menciones?: string[];
+}) {
+  // Las menciones (@Nombre Apellido) se pintan aparte para que se vea a quién se le habla.
+  const nombres = [...new Set(menciones.filter((n) => n && n !== "—"))].sort((a, b) => b.length - a.length);
+  if (nombres.length === 0 || !texto.includes("@")) return <>{conEnlaces(texto, propio, "t")}</>;
+  const re = new RegExp(`@(?:${nombres.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+  const partes: React.ReactNode[] = [];
+  let desde = 0;
+  for (const m of texto.matchAll(re)) {
+    const i = m.index ?? 0;
+    if (i > desde) partes.push(...conEnlaces(texto.slice(desde, i), propio, `t${desde}`));
+    partes.push(
+      <span
+        key={`m${i}`}
+        className="rounded bg-blue-100 px-1 font-semibold text-blue-700"
+      >
+        {m[0]}
+      </span>
+    );
+    desde = i + m[0].length;
+  }
+  if (desde < texto.length) partes.push(...conEnlaces(texto.slice(desde), propio, `t${desde}`));
+  return <>{partes}</>;
+}
+
+function conEnlaces(texto: string, propio: boolean, clave: string): React.ReactNode[] {
   const partes: React.ReactNode[] = [];
   let desde = 0;
   for (const m of texto.matchAll(RE_ENLACE)) {
@@ -222,7 +255,7 @@ function TextoConEnlaces({ texto, propio }: { texto: string; propio: boolean }) 
     if (i > desde) partes.push(texto.slice(desde, i));
     partes.push(
       <a
-        key={i}
+        key={`${clave}-a${i}`}
         href={url.startsWith("www.") ? `https://${url}` : url}
         target="_blank"
         rel="noopener noreferrer"
@@ -235,7 +268,7 @@ function TextoConEnlaces({ texto, propio }: { texto: string; propio: boolean }) 
     desde = i + url.length;
   }
   if (desde < texto.length) partes.push(texto.slice(desde));
-  return <>{partes}</>;
+  return partes;
 }
 
 /** Tope de alto del cuadro de escribir: unas ocho líneas. */
@@ -1549,6 +1582,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     if (/\s/.test(frag)) return null;
     return { inicio: i, frag };
   }
+
+  /** Cómo se escribe cada integrante después del @, para pintar las menciones en los mensajes. */
+  const nombresMencionables = useMemo(
+    () => miembrosSala.map((m) => nombreCorto(m.nombre)),
+    [miembrosSala]
+  );
 
   const sugeridosMencion =
     consultaMencion == null
@@ -2912,7 +2951,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                       />
                                     ) : null}
                                   </span>
-                                  <TextoConEnlaces texto={m.texto} propio={m.propio} />
+                                  <TextoConEnlaces
+                                    texto={m.texto}
+                                    propio={m.propio}
+                                    menciones={nombresMencionables}
+                                  />
                                 </p>
                               ) : null}
                             </>

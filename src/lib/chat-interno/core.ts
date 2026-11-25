@@ -23,8 +23,8 @@ import type { AppSupabaseClient } from "@/lib/supabase/schema";
 export const MODULO_CHAT_INTERNO = "chat_interno";
 
 export const CHAT_BUCKET = "chat-interno";
-/** 25 MB por archivo: alcanza para un audio largo o un PDF, y no llena el storage. */
-export const CHAT_ARCHIVO_MAX_BYTES = 25 * 1024 * 1024;
+/** 50 MB por archivo: alcanza para videos cortos, audios largos o PDFs pesados. */
+export const CHAT_ARCHIVO_MAX_BYTES = 50 * 1024 * 1024;
 export const CHAT_SIGNED_URL_TTL = 60 * 60;
 
 export type ChatAuthOk = {

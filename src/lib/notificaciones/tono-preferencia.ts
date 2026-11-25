@@ -53,7 +53,7 @@ export function obtenerUrlTonoActual(): string {
  * distinto del resto de los avisos, para saber qué es sin mirar la pantalla.
  */
 const STORAGE_KEY_CHAT = "neura_erp_chat_interno_tone";
-export const TONO_CHAT_POR_DEFECTO = "13";
+export const TONO_CHAT_POR_DEFECTO = "5";
 
 export function leerTonoChat(): string {
   if (typeof window === "undefined") return TONO_CHAT_POR_DEFECTO;
@@ -64,7 +64,7 @@ export function leerTonoChat(): string {
     /* ignore */
   }
   // Si el tono general ya es el del chat, el default del chat pasa a otro para que no se confundan.
-  return leerTonoSeleccionado() === TONO_CHAT_POR_DEFECTO ? "2" : TONO_CHAT_POR_DEFECTO;
+  return leerTonoSeleccionado() === TONO_CHAT_POR_DEFECTO ? "13" : TONO_CHAT_POR_DEFECTO;
 }
 
 export function escribirTonoChat(id: string): void {

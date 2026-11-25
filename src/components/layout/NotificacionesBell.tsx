@@ -275,7 +275,7 @@ export default function NotificacionesBell() {
   const [sonidoActivado, setSonidoActivado] = useState(true);
   const [tonoAbierto, setTonoAbierto] = useState(false);
   const [tonoSel, setTonoSel] = useState<string>("1");
-  const [tonoChatSel, setTonoChatSel] = useState<string>("13");
+  const [tonoChatSel, setTonoChatSel] = useState<string>("5");
   const [cargando, setCargando] = useState(false);
   const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);

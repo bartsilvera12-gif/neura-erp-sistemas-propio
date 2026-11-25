@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         .eq("empresa_id", empresaId)
         .in("id", ids)
         .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false }),
-      sb.from("chat_interno_miembros").select("sala_id, usuario_id").in("sala_id", ids),
+      sb.from("chat_interno_miembros").select("sala_id, usuario_id, ultima_lectura_at").in("sala_id", ids),
       // Sólo lo necesario para la vista previa de la bandeja.
       sb
         .from("chat_interno_mensajes")
@@ -94,8 +94,17 @@ export async function GET(request: Request) {
     const cumplenHoy = new Set((await quienesCumplenHoy(catalog, empresaId)).map((u) => u.id));
 
     const porSala = new Map<string, string[]>();
-    for (const m of (miembros ?? []) as { sala_id: string; usuario_id: string }[]) {
+    // Hasta cuándo leyó cada uno de los otros: el visto del último mensaje propio en la bandeja.
+    const lecturasDe = new Map<string, (string | null)[]>();
+    for (const m of (miembros ?? []) as {
+      sala_id: string;
+      usuario_id: string;
+      ultima_lectura_at: string | null;
+    }[]) {
       porSala.set(m.sala_id, [...(porSala.get(m.sala_id) ?? []), m.usuario_id]);
+      if (m.usuario_id !== usuarioId) {
+        lecturasDe.set(m.sala_id, [...(lecturasDe.get(m.sala_id) ?? []), m.ultima_lectura_at]);
+      }
     }
 
     type Msg = {
@@ -156,6 +165,15 @@ export async function GET(request: Request) {
           ? (ultimo.texto ?? "").trim() || etiquetaDeAdjuntos(adj)
           : "",
         vista_previa_autor: ultimo?.usuario_id ? nombreDe.get(ultimo.usuario_id) ?? "" : "",
+        // Último mensaje propio: tildes como en WhatsApp (mismo criterio que el chat:
+        // leído = su ultima_lectura_at llega a la hora del mensaje).
+        vista_previa_propia: !!ultimo && ultimo.usuario_id === usuarioId,
+        vista_previa_destinatarios:
+          ultimo && ultimo.usuario_id === usuarioId ? (lecturasDe.get(id) ?? []).length : 0,
+        vista_previa_leido_por:
+          ultimo && ultimo.usuario_id === usuarioId
+            ? (lecturasDe.get(id) ?? []).filter((l) => !!l && l >= ultimo.created_at).length
+            : 0,
       };
     });
 

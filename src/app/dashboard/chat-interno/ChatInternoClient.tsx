@@ -70,6 +70,10 @@ type Sala = {
   no_leidos: number;
   vista_previa: string;
   vista_previa_autor: string;
+  /** El último mensaje es mío: la bandeja muestra sus tildes de enviado / leído. */
+  vista_previa_propia?: boolean;
+  vista_previa_destinatarios?: number;
+  vista_previa_leido_por?: number;
   /** La cara de la otra persona en un directo, o la foto del grupo. */
   avatar_url: string | null;
   descripcion: string | null;
@@ -448,10 +452,13 @@ function Visto({
   leidoPor,
   destinatarios,
   nombres,
+  sobreColor = false,
 }: {
   leidoPor: number;
   destinatarios: number;
   nombres: string[];
+  /** Sobre el fondo de color de la fila elegida en la bandeja: tonos claros para que se lean. */
+  sobreColor?: boolean;
 }) {
   if (destinatarios === 0) return null;
   const todos = leidoPor >= destinatarios;
@@ -464,7 +471,11 @@ function Visto({
   return (
     <span title={titulo} className="inline-flex translate-y-[2px] align-baseline">
       <CheckCheck
-        className={`h-3.5 w-3.5 ${todos ? "text-[#2F9BD8]" : "text-slate-400"}`}
+        className={`h-3.5 w-3.5 ${
+          sobreColor
+            ? todos ? "text-[#A8E4FF]" : "text-white/60"
+            : todos ? "text-[#2F9BD8]" : "text-slate-400"
+        }`}
         strokeWidth={2.5}
       />
     </span>
@@ -1191,12 +1202,17 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             table: "chat_interno_miembros",
             filter: `sala_id=eq.${salaId}`,
           },
-          () => void cargarMensajes(salaId, undefined, true)
+          () => {
+            void cargarMensajes(salaId, undefined, true);
+            void cargarSalas();
+          }
         )
         .on("broadcast", { event: "mensaje" }, refrescar)
-        .on("broadcast", { event: "leido" }, () =>
-          void cargarMensajes(salaId, undefined, true)
-        )
+        .on("broadcast", { event: "leido" }, () => {
+          void cargarMensajes(salaId, undefined, true);
+          // Y la bandeja: las tildes del último mensaje se ponen azules en el acto.
+          void cargarSalas();
+        })
         .on("broadcast", { event: "escribiendo" }, ({ payload }) => {
           const p = payload as { usuario_id?: string; nombre?: string };
           if (!p?.usuario_id || !p.nombre) return;
@@ -2446,6 +2462,16 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           activa ? "text-white/90" : "text-slate-500"
                         }`}
                       >
+                        {s.vista_previa && s.vista_previa_propia ? (
+                          <span className="mr-1 inline-flex align-baseline">
+                            <Visto
+                              leidoPor={s.vista_previa_leido_por ?? 0}
+                              destinatarios={s.vista_previa_destinatarios ?? 0}
+                              nombres={[]}
+                              sobreColor={activa}
+                            />
+                          </span>
+                        ) : null}
                         {s.vista_previa
                           ? `${
                               s.tipo === "grupo" && s.vista_previa_autor

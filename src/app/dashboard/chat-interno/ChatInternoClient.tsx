@@ -3761,13 +3761,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             {biblioteca && biblioteca.audios.length > 0 && (!filtroBiblio || filtroBiblio === "audios") ? (
               <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
                 <p className="mb-2 text-[13px] font-semibold text-slate-800">Audios</p>
+                {/* El mismo reproductor de los mensajes (barritas, avance y velocidad), no el del navegador. */}
                 <ul className="space-y-2">
                   {biblioteca.audios.map((a) => (
-                    <li key={a.path} className="rounded-lg border border-slate-100 px-2 py-1.5">
-                      <span className="mb-1 block truncate text-[10.5px] text-slate-400">
-                        {nombreCorto(a.autor)} · {fechaCorta(a.created_at)}
+                    <li key={a.path} className="rounded-xl bg-[#4FAEB2]/[0.07] px-2.5 pb-1.5 pt-2">
+                      <span className="mb-1 flex items-center gap-1.5">
+                        <Avatar nombre={a.autor} size={18} />
+                        <span className="min-w-0 truncate text-[11.5px] font-medium text-slate-600">
+                          {nombreCorto(a.autor)}
+                        </span>
+                        <span className="ml-auto shrink-0 text-[10.5px] text-slate-400">{fechaCorta(a.created_at)}</span>
                       </span>
-                      {a.url ? <audio controls preload="none" src={a.url} className="h-8 w-full" /> : null}
+                      {a.url ? <AudioMensaje src={a.url} /> : null}
                     </li>
                   ))}
                 </ul>

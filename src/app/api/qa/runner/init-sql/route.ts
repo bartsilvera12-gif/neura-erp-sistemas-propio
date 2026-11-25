@@ -67,13 +67,16 @@ export async function POST(request: Request) {
       const client = new PgClient({ connectionString: pgUrl, statement_timeout: 120_000 });
       try {
         await client.connect();
+        // pg_namespace > information_schema.schemata: esta última filtra
+        // schemas por permisos del usuario conectado. Si el rol de prod
+        // (p.ej. qa_center_api) no tiene USAGE explícito sobre el schema
+        // tenant, information_schema.schemata lo oculta aunque exista.
         const schemaCheck = await client.query(
-          `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1`,
+          `SELECT 1 FROM pg_namespace WHERE nspname = $1`,
           [sourceSchema]
         );
         if (schemaCheck.rows.length === 0) {
-          // Fallback: usar directamente el codebase pedido (sin transform).
-          const alt = await client.query(`SELECT 1 FROM information_schema.schemata WHERE schema_name = $1`, [codebase]);
+          const alt = await client.query(`SELECT 1 FROM pg_namespace WHERE nspname = $1`, [codebase]);
           if (alt.rows.length === 0) {
             // Este conn no tiene el schema — probamos el siguiente candidato.
             const tag = (() => { try { return new URL(pgUrl).host; } catch { return "db"; } })();

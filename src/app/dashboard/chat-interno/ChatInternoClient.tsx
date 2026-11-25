@@ -843,6 +843,9 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [panel, setPanel] = useState<"archivos" | null>(null);
   const [biblioteca, setBiblioteca] = useState<Biblioteca | null>(null);
   const [cargandoBiblio, setCargandoBiblio] = useState(false);
+  /** Qué tipo de archivos se ve en el panel de info; `null` = todo. */
+  const [filtroBiblio, setFiltroBiblio] = useState<"archivos" | "imagenes" | "audios" | "enlaces" | null>(null);
+  useEffect(() => setFiltroBiblio(null), [salaId]);
   const buscaRef = useRef<HTMLInputElement>(null);
   /** Temporizador del buscador: se espera a que deje de tipear. */
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -3663,37 +3666,55 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             <div className="overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
               {(
                 [
-                  { icono: <FileText className="h-4 w-4" />, txt: "Documentos", n: biblioteca?.archivos.length },
-                  { icono: <ImageIcon className="h-4 w-4" />, txt: "Fotos y videos", n: biblioteca?.imagenes.length },
-                  { icono: <Mic className="h-4 w-4" />, txt: "Audios", n: biblioteca?.audios.length },
-                  { icono: <Link2 className="h-4 w-4" />, txt: "Enlaces", n: biblioteca?.enlaces.length },
+                  { id: "archivos", icono: <FileText className="h-4 w-4" />, txt: "Documentos", n: biblioteca?.archivos.length },
+                  { id: "imagenes", icono: <ImageIcon className="h-4 w-4" />, txt: "Fotos y videos", n: biblioteca?.imagenes.length },
+                  { id: "audios", icono: <Mic className="h-4 w-4" />, txt: "Audios", n: biblioteca?.audios.length },
+                  { id: "enlaces", icono: <Link2 className="h-4 w-4" />, txt: "Enlaces", n: biblioteca?.enlaces.length },
                 ] as const
-              ).map((f) => (
-                <div
-                  key={f.txt}
-                  className="flex items-center gap-2.5 border-b border-slate-50 px-4 py-2.5 last:border-0"
-                >
-                  <span className="text-[#4FAEB2]">{f.icono}</span>
-                  <span className="flex-1 text-[13px] font-medium text-slate-700">{f.txt}</span>
-                  <span className="min-w-[22px] rounded-full bg-slate-100 px-1.5 py-0.5 text-center text-[11px] font-semibold text-slate-500">
-                    {cargandoBiblio ? "…" : f.n ?? 0}
-                  </span>
-                </div>
-              ))}
+              ).map((f) => {
+                const sel = filtroBiblio === f.id;
+                return (
+                  // Tocar un tipo muestra sólo eso abajo; tocarlo otra vez vuelve a mostrar todo.
+                  <button
+                    key={f.txt}
+                    type="button"
+                    onClick={() => setFiltroBiblio(sel ? null : f.id)}
+                    aria-pressed={sel}
+                    className={`flex w-full items-center gap-2.5 border-b border-slate-50 px-4 py-2.5 text-left transition-colors last:border-0 ${
+                      sel ? "bg-[#4FAEB2]/10" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="text-[#4FAEB2]">{f.icono}</span>
+                    <span className={`flex-1 text-[13px] ${sel ? "font-semibold text-[#2F6E71]" : "font-medium text-slate-700"}`}>
+                      {f.txt}
+                    </span>
+                    <span className="min-w-[22px] rounded-full bg-slate-100 px-1.5 py-0.5 text-center text-[11px] font-semibold text-slate-500">
+                      {cargandoBiblio ? "…" : f.n ?? 0}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+            {filtroBiblio ? (
+              <button
+                type="button"
+                onClick={() => setFiltroBiblio(null)}
+                className="px-1 text-left text-[11.5px] font-medium text-[#2F6E71] hover:underline"
+              >
+                ← Ver todo
+              </button>
+            ) : null}
 
             {cargandoBiblio && !biblioteca ? (
               <p className="px-1 text-[12px] text-slate-400">Cargando…</p>
             ) : null}
 
             {/* Imágenes */}
-            {biblioteca && biblioteca.imagenes.length > 0 ? (
+            {biblioteca && biblioteca.imagenes.length > 0 && (!filtroBiblio || filtroBiblio === "imagenes") ? (
               <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-                <p className="mb-2 text-[13px] font-semibold text-slate-800">
-                  Archivos y contenido multimedia
-                </p>
+                <p className="mb-2 text-[13px] font-semibold text-slate-800">Fotos y videos</p>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {biblioteca.imagenes.slice(0, 12).map((a) =>
+                  {(filtroBiblio === "imagenes" ? biblioteca.imagenes : biblioteca.imagenes.slice(0, 12)).map((a) =>
                     a.url ? (
                       <a
                         key={a.path}
@@ -3716,12 +3737,29 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               </div>
             ) : null}
 
-            {/* Documentos y audios */}
-            {biblioteca && biblioteca.archivos.length + biblioteca.audios.length > 0 ? (
+            {/* Audios: se escuchan ahí mismo */}
+            {biblioteca && biblioteca.audios.length > 0 && (!filtroBiblio || filtroBiblio === "audios") ? (
+              <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                <p className="mb-2 text-[13px] font-semibold text-slate-800">Audios</p>
+                <ul className="space-y-2">
+                  {biblioteca.audios.map((a) => (
+                    <li key={a.path} className="rounded-lg border border-slate-100 px-2 py-1.5">
+                      <span className="mb-1 block truncate text-[10.5px] text-slate-400">
+                        {nombreCorto(a.autor)} · {fechaCorta(a.created_at)}
+                      </span>
+                      {a.url ? <audio controls preload="none" src={a.url} className="h-8 w-full" /> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Documentos */}
+            {biblioteca && biblioteca.archivos.length > 0 && (!filtroBiblio || filtroBiblio === "archivos") ? (
               <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
                 <p className="mb-2 text-[13px] font-semibold text-slate-800">Documentos</p>
                 <ul className="space-y-1">
-                  {[...biblioteca.archivos, ...biblioteca.audios].map((a) => (
+                  {biblioteca.archivos.map((a) => (
                     <li key={a.path}>
                       <a
                         href={a.url ?? "#"}
@@ -3753,7 +3791,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             ) : null}
 
             {/* Enlaces */}
-            {biblioteca && biblioteca.enlaces.length > 0 ? (
+            {biblioteca && biblioteca.enlaces.length > 0 && (!filtroBiblio || filtroBiblio === "enlaces") ? (
               <div className="rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
                 <p className="mb-2 text-[13px] font-semibold text-slate-800">Enlaces</p>
                 <ul className="space-y-1">

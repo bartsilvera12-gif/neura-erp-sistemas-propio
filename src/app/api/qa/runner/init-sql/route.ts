@@ -48,41 +48,59 @@ export async function POST(request: Request) {
     const codebase = parsed.data.codebase.toLowerCase().replace(/[^a-z0-9_-]/g, "");
     if (codebase.length === 0) return NextResponse.json({ error: "codebase inválido", code: "validation" }, { status: 400 });
 
-    const pgUrl = process.env.SUPABASE_DB_URL ?? process.env.QA_DB_URL;
-    if (!pgUrl) return NextResponse.json({ error: "DB URL no configurada", code: "internal" }, { status: 500 });
-
-    const client = new PgClient({ connectionString: pgUrl, statement_timeout: 120_000 });
-    await client.connect();
-    try {
-      // Verificamos que el schema source existe (sino la lectura rompería).
-      const schemaCheck = await client.query(
-        `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1`,
-        [codebase.replace(/-/g, "_")]
-      );
-      if (schemaCheck.rows.length === 0) {
-        // Fallback: usar directamente el codebase pedido
-        const alt = await client.query(`SELECT 1 FROM information_schema.schemata WHERE schema_name = $1`, [codebase]);
-        if (alt.rows.length === 0) {
-          return NextResponse.json({ error: `schema source no existe para codebase ${codebase}`, code: "schema_missing" }, { status: 404 });
-        }
-      }
-
-      const sourceSchema = codebase.replace(/-/g, "_");
-      const qaSchema = `${sourceSchema}_qa`;
-      const ddl = await generarInitSql(client, { sourceSchema, qaSchema });
-
-      const sourceHash = createHash("sha256").update(ddl).digest("hex").slice(0, 16);
-
-      return NextResponse.json({
-        ddl,
-        qa_schema: qaSchema,
-        source_hash: sourceHash,
-        line_count: ddl.split("\n").length,
-        bytes: Buffer.byteLength(ddl, "utf8"),
-      }, { status: 200 });
-    } finally {
-      try { await client.end(); } catch { /* ignore */ }
+    // Probamos AMBAS URLs en orden: QA_DB_URL (apunta a la DB operativa del
+    // QA Center, donde viven los schemas tenant de cada ERP) y luego
+    // SUPABASE_DB_URL como fallback. En algunos entornos están configuradas
+    // apuntando a DBs distintas; esta robustez evita que un env mal
+    // configurado rompa init-sql.
+    const candidatos = [process.env.QA_DB_URL, process.env.SUPABASE_DB_URL]
+      .filter((u): u is string => typeof u === "string" && u.length > 0);
+    if (candidatos.length === 0) {
+      return NextResponse.json({ error: "DB URL no configurada", code: "internal" }, { status: 500 });
     }
+
+    const sourceSchema = codebase.replace(/-/g, "_");
+    const qaSchema = `${sourceSchema}_qa`;
+    const probados: string[] = [];
+
+    for (const pgUrl of candidatos) {
+      const client = new PgClient({ connectionString: pgUrl, statement_timeout: 120_000 });
+      try {
+        await client.connect();
+        const schemaCheck = await client.query(
+          `SELECT 1 FROM information_schema.schemata WHERE schema_name = $1`,
+          [sourceSchema]
+        );
+        if (schemaCheck.rows.length === 0) {
+          // Fallback: usar directamente el codebase pedido (sin transform).
+          const alt = await client.query(`SELECT 1 FROM information_schema.schemata WHERE schema_name = $1`, [codebase]);
+          if (alt.rows.length === 0) {
+            // Este conn no tiene el schema — probamos el siguiente candidato.
+            const tag = (() => { try { return new URL(pgUrl).host; } catch { return "db"; } })();
+            probados.push(tag);
+            continue;
+          }
+        }
+
+        const ddl = await generarInitSql(client, { sourceSchema, qaSchema });
+        const sourceHash = createHash("sha256").update(ddl).digest("hex").slice(0, 16);
+
+        return NextResponse.json({
+          ddl,
+          qa_schema: qaSchema,
+          source_hash: sourceHash,
+          line_count: ddl.split("\n").length,
+          bytes: Buffer.byteLength(ddl, "utf8"),
+        }, { status: 200 });
+      } finally {
+        try { await client.end(); } catch { /* ignore */ }
+      }
+    }
+
+    return NextResponse.json({
+      error: `schema source no existe para codebase ${codebase} en ninguna DB configurada (probadas: ${probados.join(", ")})`,
+      code: "schema_missing",
+    }, { status: 404 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "error";
     console.error("[runner/init-sql POST] error:", err);

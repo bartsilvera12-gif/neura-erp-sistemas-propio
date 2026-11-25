@@ -99,11 +99,18 @@ export async function handleAnalizarErp(
 
 export const AI_DISCOVERY_SUITE_PREFIX = "ai-discovery-";
 /**
- * Prefijo de suite que dispara el modo `interaction_sandbox` del runner:
- * el agente navega la UI con Playwright y realiza operaciones ficticias.
- * Solo se autoriza sobre hosts en la allowlist del runner (qa-fixture-app).
+ * Prefijo de suite legado para modo `interaction_sandbox` (copia efímera).
+ * Mantenido solo para backwards compat; ver AI_DIRECT_SUITE_PREFIX más abajo.
  */
 export const AI_INTERACTION_SUITE_PREFIX = "ai-interaction-";
+/**
+ * Prefijo de suite "directo": el agente IA + Playwright se conecta DIRECTO
+ * al target_base_url del proyecto (sin clone, build, ni DB efímera). Usa
+ * las credenciales QA del proyecto en modo solo-lectura. Es lo que hace un
+ * QA humano: entra al sitio y recorre. Mucho más rápido y robusto que el
+ * modo sandbox, que falla por mil razones de infraestructura.
+ */
+export const AI_DIRECT_SUITE_PREFIX = "ai-direct-";
 export const AI_DISCOVERY_SPEC_PLACEHOLDER = SPEC_PLACEHOLDER;
 
 /**
@@ -125,19 +132,24 @@ export async function handleInteractuarAgente(
   // Las protecciones reales (no tocar schema prod, no escribir contra real
   // base) viven en el runner: allowlist de hosts sandbox + aislamiento DB.
   if (!project.target_base_url || project.target_base_url.length === 0) {
-    return { ok: false, status: 400, body: { error: "el proyecto no tiene target_base_url — necesario para el agente interactivo", code: "target_missing" } };
+    return { ok: false, status: 400, body: { error: "el proyecto no tiene target_base_url — necesario para el agente QA", code: "target_missing" } };
   }
   const codebase = codebaseDeProyecto({ slug: project.slug, repo_url: project.repo_url ?? null });
-  const suiteSlug = `ai-interaction-${project.slug}`;
+  // Pasamos a modo DIRECTO: el agente IA + Playwright se conecta al
+  // target_base_url y recorre la UI con las credenciales del proyecto.
+  // Sin sandbox efímero (que fallaba por clone/build/postgres/init-sql y
+  // tenía 10 puntos de ruptura). El modo directo es lo que hace un QA
+  // humano real, con el agente en modo solo-lectura por default.
+  const suiteSlug = `ai-direct-${project.slug}`;
   const suites = await input.repo.listSuitesForProject(project.id);
   let suite = suites.find((s) => s.slug === suiteSlug) ?? null;
   if (!suite) {
     const created = await input.repo.createSuite({
       project_id: project.id,
       slug: suiteSlug,
-      name: "IA · Agente interactivo sandbox",
-      tags: ["ia", "interaction", "sandbox"],
-      specs: ["ai/interaction.pseudo"],
+      name: "IA · Agente QA directo (producción solo-lectura)",
+      tags: ["ia", "direct", "read-only"],
+      specs: ["ai/direct.pseudo"],
       enabled: true,
     });
     if ("conflict" in created) {

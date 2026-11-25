@@ -39,7 +39,11 @@ export async function POST(request: Request) {
   // El runner navega la UI con Playwright y opera formularios ficticios.
   // Solo se ejecuta contra hosts en la allowlist del runner (fixture-app).
   const esSuiteInteraction = suite.slug.startsWith(AI_INTERACTION_SUITE_PREFIX);
-  const esProduccionLectura = suite.slug === "ai-production-readonly-acai-house";
+  // Suite de agente DIRECTO: slug `ai-direct-<proyecto>`. Sin sandbox:
+  // Playwright se conecta al target_base_url real con credenciales QA y
+  // recorre solo-lectura. Lo tratamos como production_read_only.
+  const esSuiteDirect = suite.slug.startsWith("ai-direct-");
+  const esProduccionLectura = suite.slug === "ai-production-readonly-acai-house" || esSuiteDirect;
 
   // Nivel de seguridad agregado desde el catálogo. Si devuelve null o un
   // nivel no corrible ("mixed_analysis", "write_required"), en teoría el
@@ -93,12 +97,16 @@ export async function POST(request: Request) {
     safety_level === "static_analysis" ? "" : run.target_base_url;
 
   // Para discovery permitimos skip_env_assert cuando el admin lo autorizó.
+  // Para suites ai-direct-* saltamos env-assert siempre: el modo directo
+  // asume target real y solo-lectura con credenciales del proyecto.
   const skip_env_assert_final =
-    (safety_level === "authenticated_read_only" ||
-      safety_level === "discovery") &&
-    project.permite_lectura_sin_env_assert === true
+    esSuiteDirect
       ? true
-      : skip_env_assert;
+      : (safety_level === "authenticated_read_only" ||
+         safety_level === "discovery") &&
+        project.permite_lectura_sin_env_assert === true
+        ? true
+        : skip_env_assert;
 
   const flat = {
     job_id: job.id,

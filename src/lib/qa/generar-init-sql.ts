@@ -68,6 +68,25 @@ END$init$;`);
     log(`CREATE TYPE ${ident(QA)}.${ident(r.typname)} AS ENUM (${labels});`);
   }
 
+  // FUNCIONES — se emiten ANTES de las tablas porque las tablas pueden
+  // tener CHECK constraints o GENERATED columns que las referencian
+  // (p.ej. CHECK (norm(nombre) IS NOT NULL)). Sin esto falla con
+  // 'function ... does not exist' al crear la tabla.
+  const fxEarly = await client.query(
+    `SELECT pg_get_functiondef(p.oid) AS def
+     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+     WHERE n.nspname=$1 ORDER BY p.proname`,
+    [SRC]
+  );
+  for (const r of fxEarly.rows) {
+    log(rewriteSchema(r.def as string) + ";");
+  }
+
+  // Aseguramos que el search_path busque funciones en qa_schema primero.
+  // Si un CHECK constraint usa 'norm(x)' sin schema, con esto Postgres lo
+  // encuentra en el qa_schema (donde acabamos de crearla) en vez de fallar.
+  log(`SET LOCAL search_path TO ${ident(QA)}, public;`);
+
   // SEQUENCES — tienen que existir ANTES de las tablas porque los DEFAULT
   // nextval('<qa>.<seq>_id_seq') se evalúan al crear la tabla. Sin esto
   // falla con 'relation ... does not exist'.
@@ -147,16 +166,7 @@ END$init$;`);
     log(`ALTER TABLE ${ident(QA)}.${ident(r.src_table)} ADD CONSTRAINT ${ident(r.conname)} ${def};`);
   }
 
-  // Funciones
-  const fx = await client.query(
-    `SELECT pg_get_functiondef(p.oid) AS def
-     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-     WHERE n.nspname=$1 ORDER BY p.proname`,
-    [SRC]
-  );
-  for (const r of fx.rows) {
-    log(rewriteSchema(r.def as string) + ";");
-  }
+  // (Funciones ya emitidas arriba, antes de las tablas.)
 
   // Triggers
   const trs = await client.query(

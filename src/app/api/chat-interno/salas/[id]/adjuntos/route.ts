@@ -35,7 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json(errorResponse("Archivo vacío"), { status: 400 });
     }
     if (file.size > CHAT_ARCHIVO_MAX_BYTES) {
-      return NextResponse.json(errorResponse("El archivo supera los 50 MB"), { status: 400 });
+      return NextResponse.json(errorResponse("El archivo supera los 100 MB"), { status: 400 });
     }
 
     await ensureChatBucket(sb);

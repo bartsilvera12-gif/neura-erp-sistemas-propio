@@ -2565,7 +2565,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
           <div className="pointer-events-none absolute inset-2 z-40 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#4FAEB2] bg-white/90 text-[#2F6E71]">
             <Paperclip className="h-9 w-9" />
             <p className="text-[16px] font-semibold">Soltá acá para adjuntar</p>
-            <p className="text-[12.5px] text-slate-500">Fotos, videos o archivos de hasta 50 MB</p>
+            <p className="text-[12.5px] text-slate-500">Fotos, videos o archivos de hasta 100 MB</p>
           </div>
         ) : null}
         {!salaActual ? (

@@ -218,14 +218,18 @@ function TextoConEnlaces({
   texto,
   propio,
   menciones = [],
+  onMencion,
 }: {
   texto: string;
   propio: boolean;
-  /** Nombres (tal como se escriben después del @) de quienes están en la sala. */
-  menciones?: string[];
+  /** Quienes están en la sala, con el nombre tal como se escribe después del @. */
+  menciones?: { nombre: string; id: string }[];
+  /** Tocar una mención abre el perfil de esa persona. */
+  onMencion?: (usuarioId: string) => void;
 }) {
   // Las menciones (@Nombre Apellido) se pintan aparte para que se vea a quién se le habla.
-  const nombres = [...new Set(menciones.filter((n) => n && n !== "—"))].sort((a, b) => b.length - a.length);
+  const idDe = new Map(menciones.filter((x) => x.nombre && x.nombre !== "—").map((x) => [x.nombre, x.id]));
+  const nombres = [...idDe.keys()].sort((a, b) => b.length - a.length);
   if (nombres.length === 0 || !texto.includes("@")) return <>{conEnlaces(texto, propio, "t")}</>;
   const re = new RegExp(`@(?:${nombres.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
   const partes: React.ReactNode[] = [];
@@ -233,10 +237,18 @@ function TextoConEnlaces({
   for (const m of texto.matchAll(re)) {
     const i = m.index ?? 0;
     if (i > desde) partes.push(...conEnlaces(texto.slice(desde, i), propio, `t${desde}`));
+    const id = idDe.get(m[0].slice(1));
     partes.push(
       <span
         key={`m${i}`}
-        className="rounded bg-blue-100 px-1 font-semibold text-blue-700"
+        role={id && onMencion ? "button" : undefined}
+        title={id && onMencion ? "Ver perfil" : undefined}
+        onClick={(e) => {
+          if (!id || !onMencion) return;
+          e.stopPropagation();
+          onMencion(id);
+        }}
+        className={`rounded bg-blue-100 px-1 font-semibold text-blue-700 ${id && onMencion ? "cursor-pointer hover:bg-blue-200" : ""}`}
       >
         {m[0]}
       </span>
@@ -1590,7 +1602,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
   /** Cómo se escribe cada integrante después del @, para pintar las menciones en los mensajes. */
   const nombresMencionables = useMemo(
-    () => miembrosSala.map((m) => nombreCorto(m.nombre)),
+    () => miembrosSala.map((m) => ({ nombre: nombreCorto(m.nombre), id: m.usuario_id })),
     [miembrosSala]
   );
 
@@ -3007,6 +3019,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                                     texto={m.texto}
                                     propio={m.propio}
                                     menciones={nombresMencionables}
+                                    onMencion={setPerfilVer}
                                   />
                                 </p>
                               ) : null}

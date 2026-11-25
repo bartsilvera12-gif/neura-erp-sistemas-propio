@@ -10,6 +10,7 @@ import { signOut } from "@/lib/auth";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import ChatPestanaBadge from "@/components/layout/ChatPestanaBadge";
 import GuardiasBoton from "@/components/layout/GuardiasBoton";
+import AvisoReunion from "@/components/layout/AvisoReunion";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -104,6 +105,9 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps = {}) {
       </button>
       {/* A la izquierda: volver a la portada de la familia de esta pantalla (como el "← Comercial" de 2.0). */}
       <VolverAPortada />
+
+      {/* Mi reunión en curso o la próxima de hoy (de la agenda), en el espacio libre del medio. */}
+      <AvisoReunion />
 
       <div className="flex items-center gap-2">
         {/* Asistente de ayuda (Neurita) — desactivado temporalmente. */}

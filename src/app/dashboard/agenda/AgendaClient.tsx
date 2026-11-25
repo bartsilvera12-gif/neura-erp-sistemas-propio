@@ -139,6 +139,22 @@ export default function AgendaClient() {
     loadCitas();
   }, [loadCitas]);
 
+  // ?cita=<id> (desde el aviso de reunión de la barra de arriba): abre esa reunión.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("cita");
+    if (!id) return;
+    void (async () => {
+      try {
+        const res = await fetchWithSupabaseSession(`/api/agenda/${encodeURIComponent(id)}`);
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success && json.data) setDetalle(json.data as AgendaCitaEnriquecida);
+      } catch {
+        /* si no se puede abrir, queda la agenda */
+      }
+      window.history.replaceState(null, "", window.location.pathname);
+    })();
+  }, []);
+
   function refreshAll() {
     setFormOpen(false);
     setDetalle(null);

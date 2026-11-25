@@ -51,3 +51,4 @@ e2e-super-admin*.png
 
 # Auditorías locales (scripts scratch + CSV con datos sensibles, no commitear)
 /tmp/
+qa-diag-tmp.mjs

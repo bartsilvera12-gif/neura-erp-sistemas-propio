@@ -7,7 +7,7 @@
  * reproducción con el primer gesto (WebViews / autoplay policies).
  */
 
-import { obtenerUrlTonoActual } from "@/lib/notificaciones/tono-preferencia";
+import { obtenerUrlTonoActual, obtenerUrlTonoChat } from "@/lib/notificaciones/tono-preferencia";
 
 const STORAGE_KEY = "neura_erp_proyectos_notification_sound";
 
@@ -44,18 +44,24 @@ const VOLUMEN = 0.8;
 
 // Cache de un HTMLAudioElement por URL para no crear uno por aviso. Al cambiar
 // de tono en la config, la próxima llamada carga el nuevo y descarta el viejo.
-let audioActual: { url: string; el: HTMLAudioElement } | null = null;
+// El chat interno tiene su propio elemento: si compartiera el general, cada
+// aviso de chat obligaría a recargar el tono general y viceversa.
+const audios: Record<"general" | "chat", { url: string; el: HTMLAudioElement } | null> = {
+  general: null,
+  chat: null,
+};
 
-function obtenerAudio(url: string): HTMLAudioElement | null {
+function obtenerAudio(url: string, slot: "general" | "chat" = "general"): HTMLAudioElement | null {
   if (typeof window === "undefined") return null;
   try {
-    if (!audioActual || audioActual.url !== url) {
+    const actual = audios[slot];
+    if (!actual || actual.url !== url) {
       const el = new Audio(url);
       el.preload = "auto";
       el.volume = VOLUMEN;
-      audioActual = { url, el };
+      audios[slot] = { url, el };
     }
-    const el = audioActual.el;
+    const el = audios[slot]!.el;
     // Cinturón: si algo lo dejó mudo, se corrige antes de cada uso. Es barato y
     // es la diferencia entre un aviso que se oye y uno que no.
     el.muted = false;
@@ -115,9 +121,10 @@ export function prepararSonidos(): void {
   window.addEventListener("keydown", desbloquear);
 }
 
-function reproducir(): void {
+function reproducir(slot: "general" | "chat" = "general"): void {
   if (!leerSonidoActivado()) return;
-  const a = obtenerAudio(obtenerUrlTonoActual());
+  const a =
+    slot === "chat" ? obtenerAudio(obtenerUrlTonoChat(), "chat") : obtenerAudio(obtenerUrlTonoActual());
   if (!a) return;
   try {
     a.currentTime = 0;
@@ -133,8 +140,9 @@ function reproducir(): void {
 }
 
 /** Reproduce el tono elegido, para probarlo desde la configuración. */
-export function probarSonido(): void {
-  const a = obtenerAudio(obtenerUrlTonoActual());
+export function probarSonido(slot: "general" | "chat" = "general"): void {
+  const a =
+    slot === "chat" ? obtenerAudio(obtenerUrlTonoChat(), "chat") : obtenerAudio(obtenerUrlTonoActual());
   if (!a) return;
   try {
     a.currentTime = 0;
@@ -159,4 +167,9 @@ export function reproducirSonidoReunion(): void {
 /** Chat de cliente esperando en la cola. */
 export function reproducirSonidoConversacion(): void {
   reproducir();
+}
+
+/** Mensaje del chat interno: con su propio tono (ver obtenerUrlTonoChat). */
+export function reproducirSonidoChatInterno(): void {
+  reproducir("chat");
 }

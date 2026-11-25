@@ -13,6 +13,7 @@ import {
   BellRing,
   Headset,
   MessageSquare,
+  MessagesSquare,
   Music2,
   PackageCheck,
   Play,
@@ -33,6 +34,7 @@ import {
   reproducirSonidoNotificacion,
   reproducirSonidoReunion,
   reproducirSonidoConversacion,
+  reproducirSonidoChatInterno,
   prepararSonidos,
   probarSonido,
 } from "@/lib/notificaciones/sonido";
@@ -40,6 +42,8 @@ import {
   TONOS,
   escribirTonoSeleccionado,
   leerTonoSeleccionado,
+  escribirTonoChat,
+  leerTonoChat,
 } from "@/lib/notificaciones/tono-preferencia";
 import {
   estadoPermisoAviso,
@@ -158,9 +162,11 @@ const ESTILO_TIPO: Record<
     label: "Novedad de QA",
   },
   chat_interno_mensaje: {
-    icon: MessageSquare,
-    wrap: "bg-[#4FAEB2]/12 text-[#3F8E91]",
-    label: "Chat interno",
+    // Propio (globo doble, azul): antes compartía icono y color con los
+    // comentarios de proyecto y se confundían.
+    icon: MessagesSquare,
+    wrap: "bg-blue-50 text-blue-600",
+    label: "Chat",
   },
   conversacion_mensaje: {
     // Mismo look que la asignación: para quien mira, las dos cosas son "un
@@ -230,7 +236,7 @@ export default function NotificacionesBell() {
   const [abierto, setAbierto] = useState(false);
   const [items, setItems] = useState<Notificacion[]>([]);
   /** Bandeja visible: Soporte va aparte para que un ticket no se pierda entre comentarios. */
-  const [bandeja, setBandeja] = useState<"general" | "proyectos" | "soporte">("general");
+  const [bandeja, setBandeja] = useState<"general" | "proyectos" | "chat" | "soporte">("general");
   const [noLeidas, setNoLeidas] = useState(0);
   /** Cuántos de los no leídos son avisos derivados (no se pueden marcar). */
   const derivadasRef = useRef(0);
@@ -254,6 +260,8 @@ export default function NotificacionesBell() {
   const reunionesAvisadasRef = useRef<Set<string>>(new Set());
   /** Chats de cliente ya avisados, para no repetir el sonido por el mismo. */
   const chatsAvisadosRef = useRef<Set<string>>(new Set());
+  /** Mensajes del chat interno ya avisados (suenan con su propio tono). */
+  const chatInternoAvisadosRef = useRef<Set<string>>(new Set());
   /** Avisos del sistema ya mostrados, para no repetirlos en cada recarga. */
   const avisadosFueraRef = useRef<Set<string>>(new Set());
   const [permisoAviso, setPermisoAviso] = useState<EstadoPermiso>("default");
@@ -267,6 +275,7 @@ export default function NotificacionesBell() {
   const [sonidoActivado, setSonidoActivado] = useState(true);
   const [tonoAbierto, setTonoAbierto] = useState(false);
   const [tonoSel, setTonoSel] = useState<string>("1");
+  const [tonoChatSel, setTonoChatSel] = useState<string>("13");
   const [cargando, setCargando] = useState(false);
   const [sesion, setSesion] = useState<UsuarioSesion | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -331,14 +340,28 @@ export default function NotificacionesBell() {
               .map((n) => n.id)
           );
           const hayChatNuevo = [...idsChat].some((id) => !chatsAvisadosRef.current.has(id));
+          // El chat interno suena con su propio tono. Si en la misma carga llegó
+          // además otro tipo de aviso, gana el otro (el chat se ve en su pestaña).
+          const idsChatInterno = new Set(
+            j.data.notificaciones.filter((n) => n.tipo === "chat_interno_mensaje").map((n) => n.id)
+          );
+          const nuevosNoLeidos = guardadas.filter(
+            (n) => !n.leida_at && (ultimoVisto == null || n.created_at > ultimoVisto)
+          );
+          const soloChatInterno =
+            nuevosNoLeidos.length > 0 && nuevosNoLeidos.every((n) => n.tipo === "chat_interno_mensaje");
+          const hayChatInternoNuevo = [...idsChatInterno].some((id) => !chatInternoAvisadosRef.current.has(id));
           if (hayReunionNueva) {
             reproducirSonidoReunion();
           } else if (hayChatNuevo) {
             reproducirSonidoConversacion();
+          } else if (soloChatInterno || (hayChatInternoNuevo && nuevosNoLeidos.length === 0)) {
+            reproducirSonidoChatInterno();
           } else {
             reproducirSonidoNotificacion();
           }
           chatsAvisadosRef.current = idsChat;
+          chatInternoAvisadosRef.current = idsChatInterno;
 
           // Y afuera de la pestaña. Quien está en otro programa no ve la
           // campanita ni oye nada si el navegador está minimizado; esto es lo
@@ -374,6 +397,9 @@ export default function NotificacionesBell() {
               .filter((n) => n.tipo === "conversacion_asignada" || n.tipo === "conversacion_mensaje")
               .map((n) => n.id)
           );
+          chatInternoAvisadosRef.current = new Set(
+            j.data.notificaciones.filter((n) => n.tipo === "chat_interno_mensaje").map((n) => n.id)
+          );
         }
         noLeidasPreviasRef.current = j.data.no_leidas;
       }
@@ -395,6 +421,7 @@ export default function NotificacionesBell() {
   useEffect(() => {
     setSonidoActivado(leerSonidoActivado());
     setTonoSel(leerTonoSeleccionado());
+    setTonoChatSel(leerTonoChat());
   }, []);
 
   const alternarSonido = useCallback(() => {
@@ -413,6 +440,15 @@ export default function NotificacionesBell() {
     // desbloquea, y el primer aviso real ya suena sin depender de nada más.
     try {
       probarSonido();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const elegirTonoChat = useCallback((id: string) => {
+    escribirTonoChat(id);
+    setTonoChatSel(id);
+    try {
+      probarSonido("chat");
     } catch {
       /* ignore */
     }
@@ -530,14 +566,19 @@ export default function NotificacionesBell() {
   // avisos salen de General. Para el resto nada cambia (siguen en General, sin
   // pestaña Proyectos).
   const esDev = sesion?.ve_proyectos === true;
+  // El chat interno tiene su pestaña: los mensajes de compañeros no se mezclan con los avisos.
+  const esChat = (n: Notificacion) => n.tipo === "chat_interno_mensaje";
+  const esGeneral = (n: Notificacion) => !esSoporte(n) && !esChat(n) && !(esDev && esProyecto(n));
   const itemsBandeja = items.filter((n) => {
     if (bandeja === "soporte") return esSoporte(n);
     if (bandeja === "proyectos") return esProyecto(n);
-    return !esSoporte(n) && !(esDev && esProyecto(n));
+    if (bandeja === "chat") return esChat(n);
+    return esGeneral(n);
   });
   const noLeidasSoporte = items.filter((n) => esSoporte(n) && !n.leida_at).length;
   const noLeidasProyectos = esDev ? items.filter((n) => esProyecto(n) && !n.leida_at).length : 0;
-  const noLeidasGeneral = items.filter((n) => !esSoporte(n) && !(esDev && esProyecto(n)) && !n.leida_at).length;
+  const noLeidasChat = items.filter((n) => esChat(n) && !n.leida_at).length;
+  const noLeidasGeneral = items.filter((n) => esGeneral(n) && !n.leida_at).length;
   const idsMarcablesBandeja = itemsBandeja.filter((n) => !n.leida_at && !n.derivada).map((n) => n.id);
 
   return (
@@ -549,9 +590,14 @@ export default function NotificacionesBell() {
           if (!abierto) {
             // Al abrir, si la pestaña activa no tiene pendientes, saltar a la
             // primera que sí (General > Proyectos > Soporte).
-            const pend = { general: noLeidasGeneral, proyectos: noLeidasProyectos, soporte: noLeidasSoporte } as const;
+            const pend = {
+              general: noLeidasGeneral,
+              proyectos: noLeidasProyectos,
+              chat: noLeidasChat,
+              soporte: noLeidasSoporte,
+            } as const;
             if (pend[bandeja] === 0) {
-              const conPend = (["general", "proyectos", "soporte"] as const).find((b) => pend[b] > 0);
+              const conPend = (["general", "proyectos", "chat", "soporte"] as const).find((b) => pend[b] > 0);
               if (conPend) setBandeja(conPend);
             }
             void cargar();
@@ -652,6 +698,31 @@ export default function NotificacionesBell() {
                   );
                 })}
               </div>
+              <div className="mb-1.5 mt-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Tono del chat
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {TONOS.map((t) => {
+                  const activo = tonoChatSel === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => elegirTonoChat(t.id)}
+                      title={`Usar ${t.nombre} para el chat`}
+                      aria-pressed={activo}
+                      className={`flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
+                        activo
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                      }`}
+                    >
+                      <Play className="h-3 w-3" />
+                      {t.id}
+                    </button>
+                  );
+                })}
+              </div>
               <p className="mt-1.5 text-[10px] leading-tight text-slate-400">
                 Se guarda en este navegador. Tocá un tono para probarlo y elegirlo.
               </p>
@@ -663,8 +734,9 @@ export default function NotificacionesBell() {
               [
                 { id: "general", etiqueta: "General", n: noLeidasGeneral },
                 ...(esDev ? [{ id: "proyectos", etiqueta: "Proyectos", n: noLeidasProyectos }] : []),
+                { id: "chat", etiqueta: "Chat", n: noLeidasChat },
                 { id: "soporte", etiqueta: "Soporte", n: noLeidasSoporte },
-              ] as { id: "general" | "proyectos" | "soporte"; etiqueta: string; n: number }[]
+              ] as { id: "general" | "proyectos" | "chat" | "soporte"; etiqueta: string; n: number }[]
             ).map((t) => {
               const sel = bandeja === t.id;
               return (
@@ -702,6 +774,8 @@ export default function NotificacionesBell() {
                     ? "No hay avisos de Soporte pendientes."
                     : bandeja === "proyectos"
                       ? "No hay avisos de Proyectos pendientes."
+                      : bandeja === "chat"
+                      ? "No hay mensajes del chat pendientes."
                       : "Estás al día. No hay notificaciones pendientes."}
               </li>
             ) : (

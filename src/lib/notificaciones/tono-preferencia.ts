@@ -47,3 +47,37 @@ export function obtenerUrlTonoActual(): string {
   const id = leerTonoSeleccionado();
   return TONOS.find((t) => t.id === id)?.url ?? TONOS[0].url;
 }
+
+/**
+ * Tono propio del chat interno: un mensaje de un compañero tiene que sonar
+ * distinto del resto de los avisos, para saber qué es sin mirar la pantalla.
+ */
+const STORAGE_KEY_CHAT = "neura_erp_chat_interno_tone";
+export const TONO_CHAT_POR_DEFECTO = "13";
+
+export function leerTonoChat(): string {
+  if (typeof window === "undefined") return TONO_CHAT_POR_DEFECTO;
+  try {
+    const v = window.localStorage.getItem(STORAGE_KEY_CHAT);
+    if (v && TONOS.some((t) => t.id === v)) return v;
+  } catch {
+    /* ignore */
+  }
+  // Si el tono general ya es el del chat, el default del chat pasa a otro para que no se confundan.
+  return leerTonoSeleccionado() === TONO_CHAT_POR_DEFECTO ? "2" : TONO_CHAT_POR_DEFECTO;
+}
+
+export function escribirTonoChat(id: string): void {
+  if (typeof window === "undefined") return;
+  if (!TONOS.some((t) => t.id === id)) return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY_CHAT, id);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function obtenerUrlTonoChat(): string {
+  const id = leerTonoChat();
+  return TONOS.find((t) => t.id === id)?.url ?? TONOS[0].url;
+}

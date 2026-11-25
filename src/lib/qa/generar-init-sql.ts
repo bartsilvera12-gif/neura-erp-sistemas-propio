@@ -68,6 +68,34 @@ END$init$;`);
     log(`CREATE TYPE ${ident(QA)}.${ident(r.typname)} AS ENUM (${labels});`);
   }
 
+  // SEQUENCES — tienen que existir ANTES de las tablas porque los DEFAULT
+  // nextval('<qa>.<seq>_id_seq') se evalúan al crear la tabla. Sin esto
+  // falla con 'relation ... does not exist'.
+  const seqs = await client.query(
+    `SELECT c.relname AS seqname,
+            s.seqtypid::regtype::text AS seq_type,
+            s.seqstart, s.seqincrement, s.seqmax, s.seqmin, s.seqcache, s.seqcycle
+     FROM pg_class c
+     JOIN pg_namespace n ON n.oid=c.relnamespace
+     JOIN pg_sequence s ON s.seqrelid=c.oid
+     WHERE c.relkind='S' AND n.nspname=$1
+     ORDER BY c.relname`,
+    [SRC]
+  );
+  for (const r of seqs.rows) {
+    const parts = [
+      `CREATE SEQUENCE IF NOT EXISTS ${ident(QA)}.${ident(r.seqname as string)}`,
+      `AS ${r.seq_type as string}`,
+      `INCREMENT BY ${r.seqincrement}`,
+      `MINVALUE ${r.seqmin}`,
+      `MAXVALUE ${r.seqmax}`,
+      `START WITH ${r.seqstart}`,
+      `CACHE ${r.seqcache}`,
+      r.seqcycle ? "CYCLE" : "NO CYCLE",
+    ];
+    log(parts.join(" ") + ";");
+  }
+
   // Tablas (CREATE TABLE expandido)
   const tabs = await client.query(
     `SELECT tablename FROM pg_tables WHERE schemaname=$1 ORDER BY tablename`,
@@ -75,6 +103,24 @@ END$init$;`);
   );
   for (const r of tabs.rows) {
     log(await construirCreateTable(client, SRC, r.tablename, QA));
+  }
+
+  // SEQUENCE OWNED BY (vincula la secuencia a la columna para que DROP
+  // TABLE borre la secuencia). Va después de las tablas porque la columna
+  // tiene que existir.
+  const owned = await client.query(
+    `SELECT s.relname AS seqname, t.relname AS tablename, a.attname AS colname
+     FROM pg_class s
+     JOIN pg_namespace ns ON ns.oid=s.relnamespace
+     JOIN pg_depend d ON d.objid=s.oid AND d.classid='pg_class'::regclass AND d.refclassid='pg_class'::regclass
+     JOIN pg_class t ON t.oid=d.refobjid
+     JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=d.refobjsubid
+     WHERE s.relkind='S' AND ns.nspname=$1
+     ORDER BY s.relname`,
+    [SRC]
+  );
+  for (const r of owned.rows) {
+    log(`ALTER SEQUENCE ${ident(QA)}.${ident(r.seqname as string)} OWNED BY ${ident(QA)}.${ident(r.tablename as string)}.${ident(r.colname as string)};`);
   }
 
   // FKs

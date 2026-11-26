@@ -649,6 +649,8 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
   const pathname = usePathname();
   const [modulos, setModulos] = useState<ModuloEmpresa[]>([]);
   const favoritos = useFavoritos();
+  /** Mensajes sin leer del chat interno: con alguno, el chat sube arriba de todo. */
+  const noLeidosChat = useChatNoLeidos();
   const [collapsed, setCollapsed] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
     inventario: true,
@@ -1077,6 +1079,36 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         {showMenuNoResults ? (
           <p className="px-2 py-6 text-center text-xs text-slate-400">Sin resultados</p>
         ) : null}
+
+        {/* Chat interno con mensajes sin leer: si no está en favoritos, sube
+            arriba de todo para que se vea. Se va solo cuando se leen. */}
+        {(() => {
+          const itemChat = MENU_STRUCTURE.find((i) => i.key === "chat_interno");
+          if (
+            !itemChat ||
+            noLeidosChat <= 0 ||
+            favoritos.includes(itemChat.key) ||
+            !hasAccess(itemChat.slug) ||
+            normalizeMenuSearch(menuSearchQuery).length > 0
+          ) {
+            return null;
+          }
+          return (
+            <div className={collapsed ? "mb-2" : "mb-4"}>
+              <NavItem
+                item={itemChat}
+                itemId={itemChat.key}
+                isActive={isActive(itemChat.slug, itemChat.href)}
+                isFavorito={false}
+                onToggleFavorito={handleToggleFavorito}
+                hasAccess
+                collapsed={collapsed}
+                expanded={false}
+                onToggleExpand={() => {}}
+              />
+            </div>
+          );
+        })()}
 
         {/* Favoritos */}
         {hayFavoritos && !collapsed && (

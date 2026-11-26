@@ -164,6 +164,7 @@ const MENU_STRUCTURE: MenuItem[] = [
       { label: "Compras", href: "/compras" },
       { label: "Órdenes de Compra", href: "/compras/ordenes" },
       { label: "Recepciones", href: "/compras/recepciones" },
+      { label: "Pagos a proveedores", href: "/compras/pagos" },
       { label: "Proveedores", href: "/proveedores" },
     ],
   },

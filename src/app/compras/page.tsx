@@ -1,8 +1,13 @@
-import DeviceRouter from "@/shared/device/DeviceRouter";
-import ComprasDesktop from "@/desktop/pages/ComprasDesktop";
-import ComprasMobile from "@/mobile/pages/ComprasMobile";
+"use client";
 
-/** Módulo Compras. */
+/** Pantalla del ERP 2.0 tal cual (src/erp2), con los datos de Neura (/api/v2). */
+import Pagina from "@/erp2/paginas/compras/lista";
+import { ProveedorErp2 } from "@/erp2/lib/sesion/ProveedorErp2";
+
 export default function Page() {
-  return <DeviceRouter desktop={<ComprasDesktop />} mobile={<ComprasMobile />} />;
+  return (
+    <ProveedorErp2>
+      <Pagina />
+    </ProveedorErp2>
+  );
 }

@@ -230,6 +230,8 @@ export interface CompraMultilineaInput {
   idempotency_key: string | null;
   created_by: string | null;
   usuario_nombre: string | null;
+  /** Depósito al que entra la mercadería (si no viene: el principal del producto o el predeterminado). */
+  ubicacion_id?: string | null;
 }
 
 /** IVA INCLUIDO: el costo cargado es el total con IVA; el IVA se DEDUCE. */
@@ -318,6 +320,8 @@ export async function insertCompraMultilinea(
     await client.query("BEGIN");
 
     const numero = await nextNumeroControl(client, schema, empresaId);
+    // El trigger `inv_sync_deposito` lleva al depósito elegido lo que la compra suma al stock.
+    if (d.ubicacion_id) await client.query(`SELECT set_config('neura.inv_ubicacion', $1, true)`, [d.ubicacion_id]);
 
     let compra: CompraRow;
     try {

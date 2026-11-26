@@ -1,10 +1,13 @@
-import { redirect } from "next/navigation";
+"use client";
 
-/**
- * La carga de compras pasó a un modal compacto dentro de la lista (/compras),
- * con el estilo del ERP. Esta ruta queda como redirección para no dejar accesible
- * la vista antigua ni romper enlaces guardados.
- */
-export default function NuevaCompraRedirect() {
-  redirect("/compras");
+/** Pantalla del ERP 2.0 tal cual (src/erp2), con los datos de Neura (/api/v2). */
+import Pagina from "@/erp2/paginas/compras/nueva";
+import { ProveedorErp2 } from "@/erp2/lib/sesion/ProveedorErp2";
+
+export default function Page() {
+  return (
+    <ProveedorErp2>
+      <Pagina />
+    </ProveedorErp2>
+  );
 }

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       empresaId: c.empresaId,
       // En las pantallas del 2.0 "ADMIN" es quien administra el módulo. En Neura eso lo da tener
       // Inventario habilitado (igual que antes: Categorías y Depósitos los editaba quien tenía el módulo).
-      rol: c.esAdmin || c.modulos.has("inventario") ? "ADMIN" : "VENDEDOR",
+      rol: c.esAdmin || c.modulos.has("inventario") || c.modulos.has("compras") ? "ADMIN" : "VENDEDOR",
       nombre: c.nombre,
       email: c.email,
       sucursalId: null,

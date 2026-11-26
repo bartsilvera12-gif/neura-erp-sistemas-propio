@@ -26,6 +26,7 @@ const PORTADAS: Record<string, Portada> = {
   "/gastos": { imagen: "/portadas/finanzas/gastos-calculadora-teclas.webp", color: M },
   "/compras": { imagen: "/portadas/finanzas/compras-canasto-supermercado.webp", color: V },
   "/compras/ordenes": { imagen: "/portadas/finanzas/ordenes-compra-caja-pedido.webp", color: C },
+  "/compras/pagos": { imagen: "/portadas/finanzas/pagos-tarjeta-terminal.webp", color: R },
   "/compras/recepciones": { imagen: "/portadas/finanzas/ordenes-venta-ticket-impreso.webp", color: G },
   "/proveedores": { imagen: "/portadas/finanzas/proveedores-apreton-manos.webp", color: R, posicion: "50% 40%" },
   "/notas-credito": { imagen: "/portadas/finanzas/credito-libro-cuentas.webp", color: M },

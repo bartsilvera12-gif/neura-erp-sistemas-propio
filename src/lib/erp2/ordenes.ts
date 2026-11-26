@@ -11,7 +11,7 @@
  */
 import type { Pool } from "pg";
 import { cambiarEstadoOrden, createOrden, updateOrden, type IvaTipo } from "@/lib/ordenes/server/ordenes-pg";
-import { ErrorV2, esUuid } from "./server";
+import { enTransaccion, ErrorV2, esUuid } from "./server";
 
 const ESTADO_A_20: Record<string, string> = {
   solicitada: "solicitada",
@@ -235,6 +235,73 @@ export async function crearSolicitud(pool: Pool, q: { empresaId: string; usuario
     solicitada_by: q.usuarioId,
   });
   return { id: o.id, numero_oc: o.numero };
+}
+
+/**
+ * Fase 2 — Alan confirma una solicitud. Puede ajustar cantidades/costos o quitar
+ * líneas (lo que no se consigue) antes de aprobar. La solicitud pasa a 'aprobada'
+ * (queda firme, lista para que Guillermo confirme el pago y luego se reciba).
+ * Solo opera sobre una solicitud en estado 'solicitada'; todo en una transacción.
+ */
+export async function confirmarSolicitud(
+  pool: Pool,
+  q: { empresaId: string; usuarioId: string },
+  id: string,
+  b: Record<string, unknown>
+) {
+  // Si vienen líneas editadas, se revalidan (producto real + cantidad > 0) antes de tocar nada.
+  const items = Array.isArray(b.items) && (b.items as unknown[]).length ? await lineas(pool, q.empresaId, b) : null;
+  return enTransaccion(pool, async (c) => {
+    const { rows } = await c.query<{ estado: string }>(
+      `SELECT estado FROM neura.ordenes_compra WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+      [id, q.empresaId]
+    );
+    if (!rows[0]) throw new ErrorV2("Solicitud no encontrada", 404);
+    if (rows[0].estado !== "solicitada") throw new ErrorV2("Esta solicitud ya fue confirmada o rechazada.", 409);
+    if (items) {
+      await c.query(`DELETE FROM neura.orden_compra_items WHERE orden_id = $1::uuid AND empresa_id = $2::uuid`, [id, q.empresaId]);
+      for (const [k, it] of items.entries()) {
+        await c.query(
+          `INSERT INTO neura.orden_compra_items (empresa_id, orden_id, producto_id, producto_nombre, descripcion, cantidad,
+             costo_unitario_estimado, iva_tipo, cuenta_contable_id, orden_linea)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::numeric,$7::numeric,$8,$9::uuid,$10)`,
+          [q.empresaId, id, it.producto_id, it.producto_nombre, it.descripcion, it.cantidad,
+           it.costo_unitario_estimado, it.iva_tipo, it.cuenta_contable_id, k + 1]
+        );
+      }
+      const total = items.reduce((s, it) => s + it.cantidad * it.costo_unitario_estimado, 0);
+      await c.query(
+        `UPDATE neura.ordenes_compra SET total_estimado = $3::numeric WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+        [id, q.empresaId, total]
+      );
+    }
+    await c.query(
+      `UPDATE neura.ordenes_compra SET estado = 'aprobada', aprobada_by = $3::uuid, aprobada_at = now(), updated_at = now()
+        WHERE id = $1::uuid AND empresa_id = $2::uuid`,
+      [id, q.empresaId, q.usuarioId]
+    );
+    return { id, estado: "aprobada" as const };
+  });
+}
+
+/** Fase 2 — Alan rechaza una solicitud (con motivo). Pasa a 'rechazada'. */
+export async function rechazarSolicitud(
+  pool: Pool,
+  q: { empresaId: string; usuarioId: string },
+  id: string,
+  motivo: string
+) {
+  const m = (motivo ?? "").trim();
+  if (!m) throw new ErrorV2("Indicá el motivo del rechazo.");
+  const { rows } = await pool.query<{ id: string }>(
+    `UPDATE neura.ordenes_compra
+        SET estado = 'rechazada', rechazada_by = $3::uuid, rechazada_at = now(), motivo_rechazo = $4, updated_at = now()
+      WHERE id = $1::uuid AND empresa_id = $2::uuid AND estado = 'solicitada'
+      RETURNING id`,
+    [id, q.empresaId, q.usuarioId, m.slice(0, 500)]
+  );
+  if (!rows[0]) throw new ErrorV2("Esta solicitud ya fue confirmada o rechazada.", 409);
+  return { id, estado: "rechazada" as const };
 }
 
 export async function editarOrden(pool: Pool, empresaId: string, id: string, b: Record<string, unknown>) {

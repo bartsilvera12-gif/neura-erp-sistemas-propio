@@ -38,6 +38,22 @@ const nextConfig: NextConfig = {
      */
     proxyClientMaxBodySize: "70mb",
   },
+  /**
+   * pdfkit (usado por /api/qa/runs/[id]/report) requiere archivos .afm
+   * de fuentes PostScript que vienen con el paquete. Si Next.js lo
+   * bundlea en vez de usarlo como require() de Node, esos archivos no
+   * llegan al bundle y pdfkit falla en runtime con "ENOENT Helvetica.afm".
+   * Marcarlo como external lo deja como require nativo.
+   */
+  serverExternalPackages: ["pdfkit"],
+  /**
+   * Con output: "standalone" Next copia solo lo que su trazado detecta.
+   * Los .afm de pdfkit no se detectan automáticamente. Forzamos el
+   * include para que lleguen al .next/standalone.
+   */
+  outputFileTracingIncludes: {
+    "/api/qa/runs/**": ["./node_modules/pdfkit/js/data/**"],
+  },
 };
 
 export default nextConfig;

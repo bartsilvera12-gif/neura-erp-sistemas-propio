@@ -75,14 +75,33 @@ export async function GET(
       },
     });
   } catch (err) {
-    // Antes esto tiraba 500 HTML y el browser lo bajaba como "report.txt".
-    // Ahora devolvemos JSON legible con el stack para diagnosticar.
+    // Si el PDF falla, devolvemos HTML simple con status 200 (para que el
+    // browser no aborte la descarga ni intente guardar un .json/.txt raro).
+    // El usuario ve el error directo en pantalla y puede captura-pegarlo.
     const msg = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? (err.stack ?? "").slice(0, 2000) : "";
+    const stack = err instanceof Error ? (err.stack ?? "").slice(0, 2500) : "";
     console.error("[qa report pdf] error:", err);
-    return new Response(JSON.stringify({ error: "fallo generando PDF", detail: msg, stack }, null, 2), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
+    const html = `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Error generando PDF</title>
+<style>
+body{font-family:ui-sans-serif,system-ui,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;color:#0f172a}
+h1{color:#dc2626}
+.card{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin:12px 0}
+pre{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;overflow-x:auto;font-size:12px;line-height:1.4}
+.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#065f46;padding:12px;border-radius:6px;font-size:13px}
+</style></head><body>
+<h1>No se pudo generar el PDF</h1>
+<p>El endpoint falló al construir el informe. Detalle del error para que lo veas y lo pases al desarrollo:</p>
+<div class="card">
+  <strong>Mensaje:</strong>
+  <pre>${msg.replace(/[<&]/g, (c) => c === "<" ? "&lt;" : "&amp;")}</pre>
+  ${stack ? `<strong>Stack:</strong><pre>${stack.replace(/[<&]/g, (c) => c === "<" ? "&lt;" : "&amp;")}</pre>` : ""}
+</div>
+<p class="ok">Nota: los resultados del run SÍ están en la DB y se ven en la pantalla de detalle del run (<code>/dashboard/qa-center/runs/...</code>). El PDF es solo el archivo descargable que falló.</p>
+</body></html>`;
+    return new Response(html, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
 }

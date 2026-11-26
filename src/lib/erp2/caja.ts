@@ -875,8 +875,10 @@ export async function anularVenta(pool: Pool, u: UsrCaja, id: string, motivo: st
 }
 
 /** Usuario de caja a partir del contexto de /api/v2. */
-export const usrCaja = (c: { empresaId: string; usuarioId: string; nombre: string; authUserId: string | null; esAdmin: boolean }): UsrCaja => ({
-  empresaId: c.empresaId, usuarioId: c.usuarioId, nombre: c.nombre, authUserId: c.authUserId, esAdmin: c.esAdmin,
+/** `esAdmin` de la caja = configurar cajas: administrador o quien tiene el módulo Configuración.
+ *  (Anular ventas es aparte y sigue la regla de Facturas: solo el rol administrador.) */
+export const usrCaja = (c: { empresaId: string; usuarioId: string; nombre: string; authUserId: string | null; esAdmin: boolean; modulos: Set<string> }): UsrCaja => ({
+  empresaId: c.empresaId, usuarioId: c.usuarioId, nombre: c.nombre, authUserId: c.authUserId, esAdmin: c.esAdmin || c.modulos.has("configuracion"),
 });
 
 /** Totales del día (turnos abiertos hoy o todavía abiertos) para la pantalla de turnos. */

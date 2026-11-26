@@ -14,18 +14,22 @@ import { cambiarEstadoOrden, createOrden, updateOrden, type IvaTipo } from "@/li
 import { ErrorV2, esUuid } from "./server";
 
 const ESTADO_A_20: Record<string, string> = {
+  solicitada: "solicitada",
   borrador: "pendiente",
   aprobada: "pendiente",
   parcialmente_recibida: "recibida_parcial",
   recibida: "recibida_total",
   cerrada: "recibida_total",
   cancelada: "cancelada",
+  rechazada: "rechazada",
 };
 const ESTADOS_DE: Record<string, string[]> = {
+  solicitada: ["solicitada"],
   pendiente: ["borrador", "aprobada"],
   recibida_parcial: ["parcialmente_recibida"],
   recibida_total: ["recibida", "cerrada"],
   cancelada: ["cancelada"],
+  rechazada: ["rechazada"],
 };
 const IVA_20: Record<string, string> = { "10": "10%", "5": "5%", exenta: "exenta" };
 
@@ -204,6 +208,32 @@ export async function crearOrden(pool: Pool, q: { empresaId: string; usuarioId: 
   });
   // El 2.0 no tiene aprobación: la orden queda lista para recibir.
   if (o.estado === "borrador") await cambiarEstadoOrden("neura", q.empresaId, o.id, "aprobar", null, q.usuarioId);
+  return { id: o.id, numero_oc: o.numero };
+}
+
+/**
+ * Solicitud de compra (comercial). Igual que crearOrden pero queda 'solicitada':
+ * NO se auto-aprueba — espera la confirmación (Fase 2) y el pago (Fase 3) antes
+ * de poder recibirse. Las líneas ya exigen producto real del inventario.
+ */
+export async function crearSolicitud(pool: Pool, q: { empresaId: string; usuarioId: string; nombre: string }, b: Record<string, unknown>) {
+  const pr = await proveedor(pool, q.empresaId, b.proveedor_id);
+  const usd = b.moneda === "USD";
+  const o = await createOrden("neura", q.empresaId, {
+    proveedor_id: pr.id,
+    proveedor_nombre: pr.nombre,
+    fecha: hoy(),
+    fecha_estimada: typeof b.fecha_entrega === "string" && b.fecha_entrega ? b.fecha_entrega : null,
+    observaciones: escribirCondicion(b),
+    moneda: usd ? "USD" : "PYG",
+    tipo_cambio: usd ? Number(b.tipo_cambio) || 1 : 1,
+    items: await lineas(pool, q.empresaId, b),
+    idempotency_key: esUuid(b.idempotency_key) ? (b.idempotency_key as string) : null,
+    created_by: q.usuarioId,
+    usuario_nombre: q.nombre,
+    estado: "solicitada",
+    solicitada_by: q.usuarioId,
+  });
   return { id: o.id, numero_oc: o.numero };
 }
 

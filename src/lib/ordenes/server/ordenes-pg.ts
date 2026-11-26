@@ -19,7 +19,7 @@ function pool() {
   return p;
 }
 
-export type OrdenEstado = "borrador" | "aprobada" | "parcialmente_recibida" | "recibida" | "cerrada" | "cancelada";
+export type OrdenEstado = "solicitada" | "borrador" | "aprobada" | "parcialmente_recibida" | "recibida" | "cerrada" | "cancelada" | "rechazada";
 export type IvaTipo = "exenta" | "5" | "10";
 
 export interface OrdenItemInput {
@@ -44,6 +44,10 @@ export interface OrdenInput {
   idempotency_key: string | null;
   created_by: string | null;
   usuario_nombre: string | null;
+  /** 'solicitada' para el pedido de comercial; por defecto 'borrador'. */
+  estado?: OrdenEstado;
+  /** Quién solicitó (comercial). Se graba solo cuando estado = 'solicitada'. */
+  solicitada_by?: string | null;
 }
 
 export interface OrdenRow {
@@ -218,16 +222,21 @@ export async function createOrden(schemaRaw: string, empresaId: string, d: Orden
     const { rows: num } = await client.query<{ numero: string }>(
       `SELECT neura.next_numero_orden_empresa($1::uuid) AS numero`, [empresaId]
     );
+    // Comercial crea 'solicitada'; el alta directa de orden sigue naciendo 'borrador'.
+    const estado: OrdenEstado = d.estado === "solicitada" ? "solicitada" : "borrador";
+    const solicitadaBy = estado === "solicitada" ? (d.solicitada_by ?? d.created_by ?? null) : null;
     let orden: OrdenRow;
     try {
       const { rows } = await client.query(
         `INSERT INTO ${tO} (empresa_id, numero, proveedor_id, proveedor_nombre, fecha, fecha_estimada,
-           observaciones, moneda, tipo_cambio, total_estimado, estado, idempotency_key, created_by, usuario_nombre)
-         VALUES ($1::uuid,$2,$3::uuid,$4,$5::date,$6::date,$7,$8,$9::numeric,$10::numeric,'borrador',$11::uuid,$12::uuid,$13)
+           observaciones, moneda, tipo_cambio, total_estimado, estado, idempotency_key, created_by, usuario_nombre,
+           solicitada_by, solicitada_at)
+         VALUES ($1::uuid,$2,$3::uuid,$4,$5::date,$6::date,$7,$8,$9::numeric,$10::numeric,$11,$12::uuid,$13::uuid,$14,
+           $15::uuid, CASE WHEN $11 = 'solicitada' THEN now() ELSE NULL END)
          RETURNING ${OC_COLS.replace(/o\./g, "")}`,
         [empresaId, num[0].numero, d.proveedor_id, d.proveedor_nombre, d.fecha, d.fecha_estimada || null,
-         d.observaciones, d.moneda, d.tipo_cambio, totalEstimado(d.items), d.idempotency_key,
-         d.created_by, d.usuario_nombre]
+         d.observaciones, d.moneda, d.tipo_cambio, totalEstimado(d.items), estado, d.idempotency_key,
+         d.created_by, d.usuario_nombre, solicitadaBy]
       );
       orden = rows[0] as OrdenRow;
     } catch (e) {

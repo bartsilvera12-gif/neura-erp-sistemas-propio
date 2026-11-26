@@ -366,3 +366,17 @@ html:has(#neura-app-shell) body {
   border: 2px solid transparent;
   background-clip: padding-box;
 }
+
+/*
+ * Pantallas traídas del ERP 2.0 (src/erp2): usan `--brand` y sus tonos. Acá salen del color del
+ * tema de Neura, así respetan el color que eligió cada usuario.
+ */
+:root {
+  --brand: rgb(var(--tema-fuerte-rgb));
+  --brand-50: color-mix(in srgb, var(--brand) 8%, white);
+  --brand-100: color-mix(in srgb, var(--brand) 20%, white);
+  --brand-400: color-mix(in srgb, var(--brand) 78%, white);
+  --brand-600: color-mix(in srgb, var(--brand) 86%, black);
+  --brand-700: color-mix(in srgb, var(--brand) 72%, black);
+  --brand-dark: rgb(var(--tema-fondo-rgb));
+}

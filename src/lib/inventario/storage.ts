@@ -48,6 +48,13 @@ interface MovimientoRow {
   updated_at: string;
   created_by?: string | null;
   usuario_nombre?: string | null;
+  ubicacion_id?: string | null;
+  ubicacion_nombre?: string | null;
+  contraparte_nombre?: string | null;
+  documento_tipo?: string | null;
+  documento_id?: string | null;
+  documento_numero?: string | null;
+  saldo_deposito?: number | string | null;
 }
 
 // ─── Mapeo fila → tipo ────────────────────────────────────────────────────────
@@ -87,6 +94,13 @@ function rowToMovimiento(row: MovimientoRow): MovimientoInventario {
     fecha: row.fecha,
     created_by: row.created_by ?? null,
     usuario_nombre: row.usuario_nombre ?? null,
+    ubicacion_id: row.ubicacion_id ?? null,
+    ubicacion_nombre: row.ubicacion_nombre ?? null,
+    contraparte_nombre: row.contraparte_nombre ?? null,
+    documento_tipo: row.documento_tipo ?? null,
+    documento_id: row.documento_id ?? null,
+    documento_numero: row.documento_numero ?? null,
+    saldo_deposito: row.saldo_deposito == null ? null : Number(row.saldo_deposito),
   };
 }
 
@@ -254,9 +268,12 @@ export async function updateProducto(
 // ─── Movimientos ─────────────────────────────────────────────────────────────
 
 /** Lista movimientos via API server-side (PG directo). */
-export async function getMovimientos(): Promise<MovimientoInventario[]> {
+export async function getMovimientos(filtro?: { producto?: string; deposito?: string }): Promise<MovimientoInventario[]> {
   try {
-    const r = await fetch("/api/inventario/movimientos", { credentials: "include", cache: "no-store" });
+    const qs = new URLSearchParams();
+    if (filtro?.producto) qs.set("producto", filtro.producto);
+    if (filtro?.deposito) qs.set("deposito", filtro.deposito);
+    const r = await fetch(`/api/inventario/movimientos${qs.size ? `?${qs}` : ""}`, { credentials: "include", cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.success) {
       console.error("[inventario] getMovimientos:", (j as { error?: string })?.error ?? r.status);

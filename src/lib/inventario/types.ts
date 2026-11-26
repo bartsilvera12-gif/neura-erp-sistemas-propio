@@ -1,6 +1,17 @@
 export type MetodoValuacion = "CPP" | "FIFO" | "LIFO";
 export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE";
-export type OrigenMovimiento = "compra" | "venta" | "ajuste_manual" | "inventario_inicial";
+export type OrigenMovimiento =
+  | "compra"
+  | "venta"
+  | "ajuste_manual"
+  | "inventario_inicial"
+  | "recepcion"
+  | "ajuste"
+  | "perdida"
+  | "anulacion_ajuste"
+  | "traslado_salida"
+  | "traslado_entrada"
+  | "anulacion_traslado";
 
 export interface Producto {
   id: string;
@@ -34,4 +45,14 @@ export interface MovimientoInventario {
   referencia?: string; // ej: "COMP-000001"
   created_by?: string | null;
   usuario_nombre?: string | null;
+  /** Depósito donde pasó (vacío en movimientos anteriores al stock por depósito). */
+  ubicacion_id?: string | null;
+  ubicacion_nombre?: string | null;
+  /** En un traslado, el otro depósito. */
+  contraparte_nombre?: string | null;
+  documento_tipo?: string | null;
+  documento_id?: string | null;
+  documento_numero?: string | null;
+  /** Cuánto quedó en el depósito después del movimiento. */
+  saldo_deposito?: number | null;
 }

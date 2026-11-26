@@ -35,6 +35,9 @@ const PORTADAS: Record<string, Portada> = {
   "/inventario/movimientos": { imagen: "/portadas/inventario/movimientos-escaner.webp", color: A },
   "/inventario/categorias": { imagen: "/portadas/inventario/categorias-cajas.webp", color: M },
   "/inventario/ubicaciones": { imagen: "/portadas/inventario/depositos-racks.webp", color: V },
+  "/inventario/depositos": { imagen: "/portadas/inventario/depositos-racks.webp", color: V },
+  "/inventario/ajustes": { imagen: "/portadas/inventario/ajustes-cajas-danadas.webp", color: R },
+  "/inventario/traslados": { imagen: "/portadas/inventario/traslados-autoelevador.webp", color: P },
   "/dashboard/produccion": { imagen: "/portadas/inventario/traslados-autoelevador.webp", color: P },
   // Omnicanal
   "/dashboard/conversaciones": { imagen: "/portadas/omnicanal/conversaciones-chat-dueno.webp", color: T },

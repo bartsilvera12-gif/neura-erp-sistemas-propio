@@ -16,6 +16,7 @@ import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session"
 import { supabase } from "@/lib/supabase";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { EVENTO_CONVERSACIONES_PENDIENTES } from "@/components/layout/NotificacionesBell";
+import { publicarChatNoLeidos } from "@/lib/chat-interno/no-leidos-store";
 
 /**
  * Red de seguridad por si el realtime se cayó sin avisar. Lo normal es que el
@@ -159,6 +160,11 @@ export default function ChatPestanaBadge() {
 
   /** Lo que reclama atención, venga de donde venga. */
   const pendientes = total + conversaciones;
+
+  // El menú lateral muestra el mismo número junto a "Chat interno".
+  useEffect(() => {
+    publicarChatNoLeidos(total);
+  }, [total]);
 
   // Un mensaje nuevo en cualquier sala vuelve a contar. El filtro por sala no
   // se puede hacer acá —son varias—, así que se escucha la tabla y se recuenta.

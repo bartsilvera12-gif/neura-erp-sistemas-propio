@@ -67,6 +67,35 @@ import { canAccessSidebarSlug } from "@/lib/modulos/route-slug-map";
 import { useBoot } from "@/components/BootContext";
 import { hrefFamilia, publicarMenuVisible, type FamiliaMenu } from "@/lib/menu/menu-visible-store";
 import { MODULO_QUE_HABILITA, puedeVerPropuestas } from "@/lib/propuestas/acceso";
+import { useChatNoLeidos } from "@/lib/chat-interno/no-leidos-store";
+
+const RUTA_CHAT_INTERNO = "/dashboard/chat-interno";
+
+/** El número rojo de mensajes sin leer del chat interno (nada si no hay). */
+function ChatNoLeidosPastilla({ className = "" }: { className?: string }) {
+  const n = useChatNoLeidos();
+  if (n <= 0) return null;
+  return (
+    <span
+      aria-label={`${n} mensajes sin leer`}
+      className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-bold leading-none text-white shadow-[0_0_0_2px_rgba(0,0,0,0.12)] ${className}`}
+    >
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
+/** Punto rojo sobre el ícono, para el menú angosto (sin lugar para el número). */
+function ChatNoLeidosPunto() {
+  const n = useChatNoLeidos();
+  if (n <= 0) return null;
+  return (
+    <span
+      aria-label={`${n} mensajes sin leer`}
+      className="absolute right-3 top-2 h-2.5 w-2.5 rounded-full bg-rose-600 ring-2 ring-[color:var(--zentra-sidebar)]"
+    />
+  );
+}
 
 type MenuItem = {
   key: string;
@@ -586,9 +615,11 @@ function NavItem({
           isActive ? "text-[#7DCFD2]" : "text-slate-400 group-hover:text-slate-200"
         }`}
       />
+      {collapsed && item.href === RUTA_CHAT_INTERNO ? <ChatNoLeidosPunto /> : null}
       {!collapsed && (
         <>
           <span className="flex-1 truncate">{item.label}</span>
+          {item.href === RUTA_CHAT_INTERNO ? <ChatNoLeidosPastilla className="" /> : null}
           <button
             type="button"
             onClick={(e) => { e.preventDefault(); onToggleFavorito(itemId); }}
@@ -1101,6 +1132,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                       {c.label}
                       <span className="ml-1.5 text-[11px] font-normal text-slate-500">{c.padre}</span>
                     </span>
+                    {c.href === RUTA_CHAT_INTERNO ? <ChatNoLeidosPastilla className="" /> : null}
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); handleToggleFavorito(c.id); }}
@@ -1135,11 +1167,12 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                   href={destinoFamilia(fam).href}
                   title={destinoFamilia(fam).label}
                   aria-label={destinoFamilia(fam).label}
-                  className={`flex items-center justify-center rounded-xl py-3 transition-all ${
+                  className={`relative flex items-center justify-center rounded-xl py-3 transition-all ${
                     activa ? "bg-white/[0.10] text-white" : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
                   }`}
                 >
                   <Icono strokeWidth={1.75} className="h-5 w-5 shrink-0" />
+                  {fam.items.some((it) => it.href === RUTA_CHAT_INTERNO) ? <ChatNoLeidosPunto /> : null}
                 </Link>
               );
             })}
@@ -1176,6 +1209,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                     }`}
                   />
                   <span className="flex-1 truncate">{destino.label}</span>
+                  {fam.items.some((it) => it.href === RUTA_CHAT_INTERNO) ? <ChatNoLeidosPastilla className="" /> : null}
                 </Link>
               );
             })}

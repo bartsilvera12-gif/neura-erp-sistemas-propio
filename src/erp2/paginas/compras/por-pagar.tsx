@@ -8,8 +8,9 @@
  * a pago confirmado y queda lista para recibir. Versión simple: marca el pago (el
  * registro contable llega en una fase posterior).
  */
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { BadgeCheck, CheckCircle2, Loader2, Wallet, X } from "lucide-react";
+import { BadgeCheck, CheckCircle2, Loader2, PackageCheck, Wallet, X } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { Select } from "@/erp2/components/Select";
@@ -155,6 +156,8 @@ function DetallePago({ id, onClose, onCambio }: { id: string; onClose: () => voi
   useEffect(() => { cargar(); }, [cargar]);
 
   const pendiente = o?.pago_estado !== "confirmado";
+  // Contra entrega: una orden firme se puede recibir aunque el pago siga pendiente.
+  const recibible = o?.estado === "pendiente" || o?.estado === "recibida_parcial";
 
   async function confirmar() {
     setBusy(true); setError(null);
@@ -174,10 +177,19 @@ function DetallePago({ id, onClose, onCambio }: { id: string; onClose: () => voi
       titulo={o ? `Orden ${o.numero_oc}` : "Orden de compra"}
       subtitulo={o ? `${o.proveedor_nombre ?? "Sin proveedor"}` : undefined}
       onClose={onClose}
-      footer={o && pendiente ? (
-        <button onClick={confirmar} disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white hover:brightness-95 disabled:opacity-40" style={{ backgroundColor: TEAL }}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Confirmar pago
-        </button>
+      footer={o && (pendiente || recibible) ? (
+        <>
+          {recibible ? (
+            <Link href={`/compras/nueva?oc=${o.id}`} className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold hover:brightness-95 max-sm:flex-1 ${pendiente ? "border border-slate-200 text-slate-700 hover:bg-slate-50" : "text-white"}`} style={pendiente ? undefined : { backgroundColor: TEAL }}>
+              <PackageCheck className="h-4 w-4" /> Recibir mercadería
+            </Link>
+          ) : null}
+          {pendiente ? (
+            <button onClick={confirmar} disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white hover:brightness-95 disabled:opacity-40 max-sm:flex-[2] max-sm:px-3" style={{ backgroundColor: TEAL }}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Confirmar pago
+            </button>
+          ) : null}
+        </>
       ) : undefined}
     >
       {!o ? (

@@ -149,10 +149,11 @@ Puntos que tocan inventario: **Recepción** (entra) y **Venta** (sale).
 
 ## Decisiones pendientes
 
-1. **Orden del pago vs. recepción.** ¿Fastrax cobra por adelantado (pago antes de
-   recibir) o contra entrega (recibir y luego pagar)? → define si la Fase 4 exige
-   `pago_estado='confirmado'`. *Recomendado:* hacerlo **configurable por empresa**
-   (switch "requiere pago antes de recibir"), default **off**.
+1. **Orden del pago vs. recepción.** ✅ **DECIDIDO (2026-11-26): contra entrega.**
+   La Fase 4 **no** exige `pago_estado='confirmado'` para recibir — el stock puede
+   entrar aunque el pago siga pendiente. Queda pendiente para Fase 5 el switch
+   configurable por empresa "requiere pago antes de recibir" (default off) que
+   activaría el gate.
 2. **Alcance del pago de Guillermo.** ¿Solo marca "pagado" (simple) o además
    registra Compra + cuota para contabilidad (completo)? *Recomendado:* arrancar
    simple en Fase 3 y sumar el registro contable después.

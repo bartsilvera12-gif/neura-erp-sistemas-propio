@@ -18,7 +18,7 @@ export const COLS = `p.id, p.nombre, p.sku, p.codigo_barras, p.categoria_princip
   0::float AS descuento_pct, COALESCE(p.stock_actual, 0)::float AS stock_actual,
   COALESCE(p.stock_minimo, 0)::float AS stock_minimo, COALESCE(NULLIF(p.unidad_medida, ''), 'Unidad') AS unidad_medida,
   '10%'::text AS tipo_iva, 'reventa'::text AS tipo_producto, true AS controla_stock, false AS controla_lotes, true AS es_vendible,
-  COALESCE(p.activo, true) AS activo, p.imagen_url`;
+  COALESCE(p.activo, true) AS activo, p.imagen_url, p.imagen_path`;
 
 /** Lo único que se escribe en `neura.productos` (sus columnas de siempre). */
 const COLUMNAS_NEURA = new Set([

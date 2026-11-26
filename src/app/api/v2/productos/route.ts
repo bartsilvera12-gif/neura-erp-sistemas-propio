@@ -1,7 +1,22 @@
 import { ctxV2, enTransaccion, ErrorV2, esUuid, fallo, ok } from "@/lib/erp2/server";
 import { COLS, crearProducto, listarPaginado } from "@/lib/erp2/productos";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 
 export const runtime = "nodejs";
+
+/** Firma la imagen del bucket privado para que la miniatura se vea en listas/buscador. */
+async function firmarImagenes<T extends { imagen_url?: string | null; imagen_path?: string | null }>(rows: T[]): Promise<T[]> {
+  const sb = createServiceRoleClient() as Parameters<typeof signProductoImagen>[0];
+  const TOPE = 24; // solo las primeras visibles, para no encarecer la consulta
+  return Promise.all(
+    rows.map(async (r, i) => {
+      if (r.imagen_url || !r.imagen_path || i >= TOPE) return r;
+      const url = await signProductoImagen(sb, r.imagen_path, 3600).catch(() => null);
+      return url ? { ...r, imagen_url: url } : r;
+    })
+  );
+}
 
 /**
  * GET ?paginado=1&pagina&por_pagina&q&categoria&inactivos=1 → { rows, total } (pantalla Productos).
@@ -28,16 +43,15 @@ export async function GET(request: Request) {
     const c = await ctxV2(request, "inventario");
     if (sp.get("paginado") === "1") {
       const tipoSp = sp.get("tipo") ?? "";
-      return ok(
-        await listarPaginado(c.pool, c.empresaId, {
-          pagina: Math.max(1, Number(sp.get("pagina")) || 1),
-          porPagina: Math.min(200, Math.max(10, Number(sp.get("por_pagina")) || 25)),
-          q: (sp.get("q") ?? "").trim().slice(0, 200),
-          categoria: sp.get("categoria") ?? "",
-          inactivos: sp.get("inactivos") === "1",
-          tipo: ["reventa", "menu", "materia_prima", "stock", "vendible"].includes(tipoSp) ? tipoSp : null,
-        })
-      );
+      const data = await listarPaginado(c.pool, c.empresaId, {
+        pagina: Math.max(1, Number(sp.get("pagina")) || 1),
+        porPagina: Math.min(200, Math.max(10, Number(sp.get("por_pagina")) || 25)),
+        q: (sp.get("q") ?? "").trim().slice(0, 200),
+        categoria: sp.get("categoria") ?? "",
+        inactivos: sp.get("inactivos") === "1",
+        tipo: ["reventa", "menu", "materia_prima", "stock", "vendible"].includes(tipoSp) ? tipoSp : null,
+      });
+      return ok({ ...data, rows: await firmarImagenes(data.rows as Array<{ imagen_url?: string | null; imagen_path?: string | null }>) });
     }
     const { rows } = await c.pool.query(
       `SELECT ${COLS} FROM neura.productos p WHERE p.empresa_id = $1::uuid AND COALESCE(p.activo, true) ORDER BY lower(p.nombre) LIMIT 1000`,

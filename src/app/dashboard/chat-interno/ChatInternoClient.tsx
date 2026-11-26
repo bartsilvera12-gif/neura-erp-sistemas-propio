@@ -860,6 +860,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [citando, setCitando] = useState<Mensaje | null>(null);
   /** Mensaje en edición: su id y el texto en curso. */
   const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
+  /** Lo que estaba escrito en el cuadro antes de empezar a editar (vuelve al terminar). */
+  const borradorAntesDeEditarRef = useRef<string | null>(null);
   const [busca, setBusca] = useState("");
   const [enBusqueda, setEnBusqueda] = useState(false);
   /** Menú del mensaje (la flechita): dónde se abre y si muestra todas las reacciones. */
@@ -1260,6 +1262,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
       void cargarMensajes(salaId);
     }
     setCitando(null);
+    // Si quedó una edición a medias, se suelta y vuelve lo que estaba escrito.
+    if (borradorAntesDeEditarRef.current !== null) {
+      setTexto(borradorAntesDeEditarRef.current);
+      borradorAntesDeEditarRef.current = null;
+    }
     setEditando(null);
     setBusca("");
     setEnBusqueda(false);
@@ -1739,19 +1746,50 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     void cargarSalas();
   }
 
+  /** Editar se hace en el cuadro de abajo (como en WhatsApp): lo escrito se guarda y vuelve al terminar. */
+  function empezarEdicion(m: Mensaje) {
+    if (!editando) borradorAntesDeEditarRef.current = texto;
+    setCitando(null);
+    setEditando({ id: m.id, texto: m.texto ?? "" });
+    setTexto(m.texto ?? "");
+    setConsultaMencion(null);
+    requestAnimationFrame(() => {
+      const a = areaRef.current;
+      if (a) {
+        a.focus();
+        a.setSelectionRange(a.value.length, a.value.length);
+      }
+    });
+  }
+
+  function cancelarEdicion() {
+    setEditando(null);
+    setTexto(borradorAntesDeEditarRef.current ?? "");
+    borradorAntesDeEditarRef.current = null;
+  }
+
   async function guardarEdicion() {
     if (!editando) return;
+    const nuevo = texto;
+    if (!nuevo.trim()) {
+      setErr("El mensaje no puede quedar vacío. Para sacarlo, usá Eliminar.");
+      return;
+    }
+    if (nuevo === editando.texto) {
+      cancelarEdicion();
+      return;
+    }
     const r = await pedir(`/api/chat-interno/mensajes/${editando.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texto: editando.texto }),
+      body: JSON.stringify({ texto: nuevo }),
     });
     const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
     if (!r.ok || !j.success) {
       setErr(j.error ?? "No se pudo editar");
       return;
     }
-    setEditando(null);
+    cancelarEdicion();
     if (salaId) void cargarMensajes(salaId, enBusqueda ? busca : undefined);
   }
 
@@ -1828,6 +1866,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
    */
   async function enviar(audio?: Adjunto) {
     if (!salaId) return;
+    if (editando && !audio) {
+      await guardarEdicion();
+      return;
+    }
     // Un audio recién grabado sale solo, como mensaje aparte: lo que esté escrito o adjunto en
     // el cuadro se queda donde está.
     const cuerpo = audio ? "" : texto;
@@ -3162,31 +3204,6 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           ) : null}
                           {m.eliminado ? (
                             <p className="text-[14px] italic opacity-60">Mensaje eliminado</p>
-                          ) : editando?.id === m.id ? (
-                            <div className="space-y-1.5">
-                              <textarea
-                                autoFocus
-                                rows={2}
-                                value={editando.texto}
-                                onChange={(e) => setEditando({ id: m.id, texto: e.target.value })}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    void guardarEdicion();
-                                  }
-                                  if (e.key === "Escape") setEditando(null);
-                                }}
-                                className="w-full resize-none rounded-lg px-2 py-1 text-[12.5px] text-slate-800 focus:outline-none"
-                              />
-                              <div className="flex justify-end gap-2 text-[11px]">
-                                <button type="button" onClick={() => setEditando(null)} className="opacity-80">
-                                  Cancelar
-                                </button>
-                                <button type="button" onClick={() => void guardarEdicion()} className="font-bold">
-                                  Guardar
-                                </button>
-                              </div>
-                            </div>
                           ) : (
                             <>
                               {/* Primero lo adjunto y debajo el texto, como un pie de foto. */}
@@ -3226,7 +3243,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               ) : null}
                             </>
                           )}
-                          {!m.texto || m.eliminado || editando?.id === m.id ? (
+                          {!m.texto || m.eliminado ? (
                             <div className="mt-1 px-1 text-right text-[11px] text-slate-400">
                               {m.fijado ? <Pin className="mr-0.5 inline h-3 w-3 -translate-y-px" /> : null}
                               {m.destacado ? <Star className="mr-0.5 inline h-3 w-3 -translate-y-px fill-amber-400 text-amber-500" /> : null}
@@ -3335,6 +3352,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
 
             {/* --- Redacción ---------------------------------------------------- */}
             <div className="border-t border-[#4FAEB2]/15 bg-white px-3 py-3 sm:px-4">
+              {editando ? (
+                <div className="mb-2 flex items-start gap-2 rounded-lg border-l-2 border-[#4FAEB2] bg-slate-50 px-2.5 py-1.5">
+                  <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2F6E71]" />
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-[10.5px] font-semibold text-[#2F6E71]">Editando mensaje</span>
+                    <span className="line-clamp-2 text-[11px] text-slate-500">{editando.texto}</span>
+                  </div>
+                  <button type="button" onClick={cancelarEdicion} aria-label="Cancelar edición" title="Cancelar (Esc)">
+                    <X className="h-3.5 w-3.5 text-slate-400 hover:text-slate-700" />
+                  </button>
+                </div>
+              ) : null}
               {citando ? (
                 <div className="mb-2 flex items-start gap-2 rounded-lg border-l-2 border-[#4FAEB2] bg-slate-50 px-2.5 py-1.5">
                   <div className="min-w-0 flex-1">
@@ -3518,6 +3547,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     if (e.key === "Escape" && consultaMencion != null) {
                       e.preventDefault();
                       setConsultaMencion(null);
+                      return;
+                    }
+                    if (e.key === "Escape" && editando) {
+                      e.preventDefault();
+                      cancelarEdicion();
                       return;
                     }
                     // Con el menú abierto, Enter elige la sugerencia.
@@ -4398,7 +4432,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               accion: () => void marcar(m, "destacar", !m.destacado),
             });
             if (m.propio) {
-              items.push({ icono: Pencil, label: "Editar", accion: () => setEditando({ id: m.id, texto: m.texto ?? "" }) });
+              items.push({ icono: Pencil, label: "Editar", accion: () => empezarEdicion(m) });
             }
             if (m.propio || salaActual?.mi_rol === "admin") {
               items.push({ icono: Trash2, label: "Eliminar", peligro: true, accion: () => void borrarMensaje(m.id) });

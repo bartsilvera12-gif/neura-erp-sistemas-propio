@@ -27,8 +27,8 @@ function esAdmin(rol: string): boolean {
 
 export async function listarRolesCompra(pool: Pool, empresaId: string): Promise<{ usuarios: UsuarioRol[] }> {
   const catalog = createServiceRoleClient();
-  const { data: us } = await catalog.from("usuarios").select("id, nombre, email, rol, activo").eq("empresa_id", empresaId);
-  const activos = (us ?? []).filter((u) => (u as { activo?: boolean }).activo !== false);
+  const { data: us } = await catalog.from("usuarios").select("id, nombre, email, rol, estado").eq("empresa_id", empresaId);
+  const activos = (us ?? []).filter((u) => (u as { estado?: string | null }).estado !== "inactivo");
   const { rows } = await pool.query<{ usuario_id: string; confirma: boolean; paga: boolean; recibe: boolean }>(
     `SELECT usuario_id, confirma, paga, recibe FROM neura.compras_flujo_roles WHERE empresa_id = $1::uuid`,
     [empresaId]

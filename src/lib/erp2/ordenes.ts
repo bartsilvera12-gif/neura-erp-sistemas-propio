@@ -341,6 +341,36 @@ export async function listarPorPagar(pool: Pool, empresaId: string, sp: URLSearc
 }
 
 /**
+ * Fase 5.3 — "Mi bandeja de compras": cada persona ve las secciones que le tocan.
+ * Mis solicitudes (las que creé, siempre) + Por confirmar / Por pagar / Por recibir
+ * según los roles (resueltos por el llamador con fallback a admins).
+ */
+export async function miBandejaCompra(
+  pool: Pool,
+  q: { empresaId: string; usuarioId: string },
+  roles: { confirma: boolean; paga: boolean; recibe: boolean }
+) {
+  const seccion = async (where: string, args: unknown[]) => {
+    const [{ rows }, { rows: tot }] = await Promise.all([
+      pool.query(
+        `SELECT o.*, (SELECT count(*) FROM neura.orden_compra_items i WHERE i.orden_id = o.id)::int AS cantidad_items
+           FROM neura.ordenes_compra o WHERE ${where} ORDER BY o.fecha DESC, o.numero DESC LIMIT 6`,
+        args
+      ),
+      pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM neura.ordenes_compra o WHERE ${where}`, args),
+    ]);
+    return { total: tot[0]?.n ?? 0, rows: rows.map((o) => ({ ...fila(o), cantidad_items: o.cantidad_items })) };
+  };
+  const firme = "o.estado = ANY(ARRAY['aprobada','parcialmente_recibida','recibida','cerrada']::text[])";
+  const out: Record<string, { total: number; rows: unknown[] }> = {};
+  out.mis_solicitudes = await seccion("o.empresa_id = $1::uuid AND o.solicitada_by = $2::uuid", [q.empresaId, q.usuarioId]);
+  if (roles.confirma) out.por_confirmar = await seccion("o.empresa_id = $1::uuid AND o.estado = 'solicitada'", [q.empresaId]);
+  if (roles.paga) out.por_pagar = await seccion(`o.empresa_id = $1::uuid AND ${firme} AND COALESCE(o.pago_estado, 'pendiente') = 'pendiente'`, [q.empresaId]);
+  if (roles.recibe) out.por_recibir = await seccion("o.empresa_id = $1::uuid AND o.estado = ANY(ARRAY['aprobada','parcialmente_recibida']::text[])", [q.empresaId]);
+  return out;
+}
+
+/**
  * Fase 3 — Guillermo confirma el pago de una orden aprobada. Versión simple:
  * marca `pago_estado='confirmado'` con método/referencia opcionales. (El registro
  * contable — Compra + cuota — queda para una fase posterior, según el plan.)

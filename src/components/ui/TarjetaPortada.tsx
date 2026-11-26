@@ -76,8 +76,8 @@ export function TarjetaPortada({
           title={favorito ? "Quitar de favoritos" : "Agregar a favoritos"}
           className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-md outline-none transition-all duration-200 hover:scale-110 focus-visible:ring-2 focus-visible:ring-white ${
             favorito
-              ? "border-amber-200/60 bg-black/35 text-amber-300"
-              : "border-white/25 bg-black/20 text-white/80 hover:bg-black/40 hover:text-amber-300"
+              ? "border-[rgb(var(--estrella-rgb)/0.6)] bg-black/35 text-[rgb(var(--estrella-rgb))]"
+              : "border-white/25 bg-black/20 text-white/80 hover:bg-black/40 hover:text-[rgb(var(--estrella-rgb))]"
           }`}
         >
           <Star aria-hidden className={`h-4 w-4 ${favorito ? "fill-current" : ""}`} />

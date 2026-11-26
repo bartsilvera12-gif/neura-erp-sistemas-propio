@@ -67,7 +67,7 @@ export default function PortadaFamiliaPage() {
                     onClick={() => toggleFavorito(p.fav)}
                     aria-pressed={favoritos.includes(p.fav)}
                     aria-label={favoritos.includes(p.fav) ? `Quitar ${p.label} de favoritos` : `Agregar ${p.label} a favoritos`}
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center ${favoritos.includes(p.fav) ? "text-amber-400" : "text-slate-300"}`}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center ${favoritos.includes(p.fav) ? "text-[rgb(var(--estrella-rgb))] [&_svg]:drop-shadow-[0_0_1px_rgb(0_0_0/0.35)]" : "text-slate-300"}`}
                   >
                     <Star aria-hidden className={`h-[18px] w-[18px] ${favoritos.includes(p.fav) ? "fill-current" : ""}`} />
                   </button>

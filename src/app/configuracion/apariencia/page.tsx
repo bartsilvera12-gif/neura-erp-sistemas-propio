@@ -5,16 +5,20 @@
  * navegador; los demás no lo ven). De la lista, o uno propio con la paleta, en hex o en RGB.
  */
 import { useEffect, useState } from "react";
-import { Check, RotateCcw } from "lucide-react";
+import { BookmarkPlus, Check, RotateCcw, Star, X } from "lucide-react";
 import { ConfigFormCard, ConfigHelpText, ConfigSectionTitle, F_INPUT, F_LABEL } from "@/components/config/global-config-primitives";
 import { GlobalConfigSubpageShell } from "@/components/config/GlobalConfigSubpageShell";
-import { LETRAS, LETRA_POR_DEFECTO, TEMAS, TEMA_POR_DEFECTO, elegirLetras, elegirTema, hexARgb, luminancia, normalizarColor } from "@/lib/tema-color";
-import { useLetras, useTema } from "@/lib/useTema";
+import { ESTRELLAS, ESTRELLA_POR_DEFECTO, LETRAS, LETRA_POR_DEFECTO, TEMAS, TEMA_POR_DEFECTO, borrarColor, elegirEstrella, elegirLetras, elegirTema, guardarColor, hexARgb, luminancia, normalizarColor } from "@/lib/tema-color";
+import { useColoresGuardados, useEstrella, useLetras, useTema } from "@/lib/useTema";
 
 export default function ConfiguracionAparienciaPage() {
   const tema = useTema();
   const letras = useLetras();
+  const guardados = useColoresGuardados();
+  const estrella = useEstrella();
+  const estrellaHex = estrella === ESTRELLA_POR_DEFECTO ? ESTRELLAS[0].muestra : estrella;
   const esPropio = tema.startsWith("#");
+  const yaGuardado = esPropio && guardados.includes(tema.toLowerCase());
   const actual = esPropio ? tema : (TEMAS.find((t) => t.id === tema)?.muestra ?? TEMAS[0].muestra).toLowerCase();
   const [hex, setHex] = useState(actual);
   const [rgb, setRgb] = useState(hexARgb(actual).join(", "));
@@ -35,7 +39,7 @@ export default function ConfiguracionAparienciaPage() {
     if (c) aplicarPropio(c);
     return Boolean(c);
   };
-  const original = tema === TEMA_POR_DEFECTO && letras === LETRA_POR_DEFECTO;
+  const original = tema === TEMA_POR_DEFECTO && letras === LETRA_POR_DEFECTO && estrella === ESTRELLA_POR_DEFECTO;
   const hexValido = normalizarColor(hex) !== null;
   const rgbValido = normalizarColor(rgb) !== null;
 
@@ -67,6 +71,44 @@ export default function ConfiguracionAparienciaPage() {
               );
             })}
           </div>
+          {guardados.length ? (
+            <div className="mt-5">
+              <p className={F_LABEL}>Mis colores</p>
+              <div className="flex flex-wrap gap-3" role="radiogroup" aria-label="Mis colores">
+                {guardados.map((c) => {
+                  const elegido = tema.toLowerCase() === c;
+                  return (
+                    <div key={c} className="group relative">
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={elegido}
+                        onClick={() => aplicarPropio(c)}
+                        title={c}
+                        className={`flex flex-col items-center gap-1.5 rounded-xl border px-3 py-2.5 font-mono text-[11px] font-semibold transition-all hover:-translate-y-0.5 hover:shadow-sm ${
+                          elegido ? "border-slate-400 bg-slate-50 text-slate-900" : "border-slate-200 bg-white text-slate-500"
+                        }`}
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full border border-black/5 shadow-inner" style={{ backgroundColor: c }}>
+                          {elegido ? <Check aria-hidden className={`h-4 w-4 ${luminancia(c) > 0.45 ? "text-slate-800" : "text-white"}`} /> : null}
+                        </span>
+                        {c}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => borrarColor(c)}
+                        aria-label={`Sacar ${c} de mis colores`}
+                        title="Sacar de mis colores"
+                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 opacity-0 shadow-sm transition-opacity hover:text-rose-600 focus:opacity-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                      >
+                        <X aria-hidden className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </ConfigFormCard>
 
         <ConfigFormCard>
@@ -114,6 +156,18 @@ export default function ConfiguracionAparienciaPage() {
           <ConfigHelpText>
             Se usa exactamente el color que elijas, sin límites: el menú lateral y los botones quedan de ese color. Si es un color claro, cambiá abajo el color de las letras para que se lean.
           </ConfigHelpText>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => guardarColor(tema)}
+              disabled={!esPropio || yaGuardado}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-default disabled:opacity-50"
+            >
+              <BookmarkPlus aria-hidden className="h-4 w-4" />
+              {yaGuardado ? "Ya está en mis colores" : "Guardar en mis colores"}
+            </button>
+            {!esPropio ? <span className="text-xs text-slate-400">Elegí un color propio para poder guardarlo.</span> : null}
+          </div>
 
         </ConfigFormCard>
 
@@ -154,10 +208,48 @@ export default function ConfiguracionAparienciaPage() {
           </div>
         </ConfigFormCard>
 
+        <ConfigFormCard>
+          <ConfigSectionTitle>Estrellas de favoritos</ConfigSectionTitle>
+          <div className="flex flex-wrap items-end gap-3" role="radiogroup" aria-label="Color de las estrellas">
+            {ESTRELLAS.map((e) => {
+              const elegida = estrella === e.id;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={elegida}
+                  onClick={() => elegirEstrella(e.id)}
+                  className={`flex min-w-[104px] items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:shadow-sm ${
+                    elegida ? "border-slate-400 bg-slate-50 text-slate-900" : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#224E55]">
+                    <Star aria-hidden className="h-4 w-4 fill-current" style={{ color: e.muestra }} />
+                  </span>
+                  {e.nombre}
+                  {e.id === ESTRELLA_POR_DEFECTO ? <span className="text-[10px] font-medium text-slate-400">original</span> : null}
+                </button>
+              );
+            })}
+            <div>
+              <label htmlFor="estrella-paleta" className={F_LABEL}>Otro</label>
+              <input
+                id="estrella-paleta"
+                type="color"
+                value={estrellaHex}
+                onChange={(e) => elegirEstrella(e.target.value)}
+                className="h-[42px] w-20 cursor-pointer rounded-lg border border-slate-200 bg-white p-1"
+              />
+            </div>
+          </div>
+          <ConfigHelpText>Las estrellas de tus favoritos en el menú lateral y en las portadas.</ConfigHelpText>
+        </ConfigFormCard>
+
         <div>
           <button
             type="button"
-            onClick={() => { elegirTema(TEMA_POR_DEFECTO); elegirLetras(LETRA_POR_DEFECTO); }}
+            onClick={() => { elegirTema(TEMA_POR_DEFECTO); elegirLetras(LETRA_POR_DEFECTO); elegirEstrella(ESTRELLA_POR_DEFECTO); }}
             disabled={original}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-default disabled:opacity-50"
           >

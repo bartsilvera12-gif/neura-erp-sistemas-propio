@@ -125,6 +125,78 @@ export function elegirLetras(id: LetraId): void {
   window.dispatchEvent(new Event(EVENTO_TEMA));
 }
 
+// ── Mis colores: los propios que la persona guardó en la lista ───────────────
+export const CLAVE_GUARDADOS = "neura_colores_guardados";
+const MAX_GUARDADOS = 12;
+
+export function leerGuardados(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLAVE_GUARDADOS) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && HEX.test(x)).slice(0, MAX_GUARDADOS) : [];
+  } catch {
+    return [];
+  }
+}
+
+function escribirGuardados(lista: string[]): void {
+  try {
+    if (lista.length) localStorage.setItem(CLAVE_GUARDADOS, JSON.stringify(lista));
+    else localStorage.removeItem(CLAVE_GUARDADOS);
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  window.dispatchEvent(new Event(EVENTO_TEMA));
+}
+
+/** Suma un color propio a "Mis colores" (al principio; si ya estaba, no lo repite). */
+export function guardarColor(hex: string): void {
+  const c = hex.toLowerCase();
+  if (!HEX.test(c)) return;
+  escribirGuardados([c, ...leerGuardados().filter((x) => x !== c)].slice(0, MAX_GUARDADOS));
+}
+
+export function borrarColor(hex: string): void {
+  escribirGuardados(leerGuardados().filter((x) => x !== hex.toLowerCase()));
+}
+
+// ── Color de las estrellas de favoritos ──────────────────────────────────────
+export const CLAVE_ESTRELLA = "neura_estrella";
+/** "original" = el amarillo de siempre. */
+export const ESTRELLA_POR_DEFECTO = "original";
+export const ESTRELLAS = [
+  { id: "original", nombre: "Amarillo", muestra: "#fcd34d" },
+  { id: "#ffffff", nombre: "Blanco", muestra: "#ffffff" },
+  { id: "#fb923c", nombre: "Naranja", muestra: "#fb923c" },
+  { id: "#f87171", nombre: "Rojo", muestra: "#f87171" },
+  { id: "#f472b6", nombre: "Rosa", muestra: "#f472b6" },
+  { id: "#7dd3fc", nombre: "Celeste", muestra: "#7dd3fc" },
+  { id: "#86efac", nombre: "Verde", muestra: "#86efac" },
+] as const;
+
+/** "original" o "#rrggbb". */
+export function leerEstrella(): string {
+  try {
+    const v = localStorage.getItem(CLAVE_ESTRELLA) ?? "";
+    return HEX.test(v) ? v : ESTRELLA_POR_DEFECTO;
+  } catch {
+    return ESTRELLA_POR_DEFECTO;
+  }
+}
+
+export function elegirEstrella(valor: string): void {
+  const raiz = document.documentElement;
+  const c = HEX.test(valor) ? valor.toLowerCase() : null;
+  if (c) raiz.style.setProperty("--estrella-rgb", hexARgb(c).join(" "));
+  else raiz.style.removeProperty("--estrella-rgb");
+  try {
+    if (c) localStorage.setItem(CLAVE_ESTRELLA, c);
+    else localStorage.removeItem(CLAVE_ESTRELLA);
+  } catch {
+    // sin almacenamiento: vale hasta recargar
+  }
+  window.dispatchEvent(new Event(EVENTO_TEMA));
+}
+
 /** Lo elegido en este navegador: nombre de la lista o "#rrggbb". */
 export function leerTema(): string {
   try {
@@ -171,4 +243,6 @@ export const SCRIPT_TEMA = `try{var d=document.documentElement,t=localStorage.ge
   TEMAS.filter((t) => t.id !== TEMA_POR_DEFECTO).map((t) => t.id)
 )}.indexOf(t)>-1)d.setAttribute("data-tema",t);else if(t.charAt(0)=="#"){var c=localStorage.getItem(${JSON.stringify(
   CLAVE_TEMA_CSS
-)})||"";if(/^(--tema[a-z-]*rgb:\\d{1,3} \\d{1,3} \\d{1,3};){1,12}$/.test(c))d.style.cssText=c}var l=localStorage.getItem(${JSON.stringify(CLAVE_LETRAS)});if(l=="negro"||l=="gris"||l=="blanco")d.setAttribute("data-letras",l)}catch(e){}`;
+)})||"";if(/^(--tema[a-z-]*rgb:\\d{1,3} \\d{1,3} \\d{1,3};){1,12}$/.test(c))d.style.cssText=c}var l=localStorage.getItem(${JSON.stringify(CLAVE_LETRAS)});if(l=="negro"||l=="gris"||l=="blanco")d.setAttribute("data-letras",l);var s=localStorage.getItem(${JSON.stringify(
+  CLAVE_ESTRELLA
+)})||"";if(/^#[0-9a-f]{6}$/i.test(s))d.style.setProperty("--estrella-rgb",parseInt(s.slice(1,3),16)+" "+parseInt(s.slice(3,5),16)+" "+parseInt(s.slice(5,7),16))}catch(e){}`;

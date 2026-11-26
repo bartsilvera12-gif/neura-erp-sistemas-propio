@@ -506,8 +506,8 @@ function NavItem({
                 onClick={() => onToggleFavorito(itemId)}
                 className={`shrink-0 rounded-md p-1 transition-colors ${
                   isFavorito
-                    ? "text-amber-300"
-                    : "text-slate-500 opacity-0 hover:text-amber-300 group-hover/parent:opacity-100"
+                    ? "text-[rgb(var(--estrella-rgb))]"
+                    : "text-slate-500 opacity-0 hover:text-[rgb(var(--estrella-rgb))] group-hover/parent:opacity-100"
                 }`}
                 aria-label="Favorito"
               >
@@ -594,8 +594,8 @@ function NavItem({
             onClick={(e) => { e.preventDefault(); onToggleFavorito(itemId); }}
             className={`rounded-md p-1 transition-all ${
               isFavorito
-                ? "text-amber-300 opacity-100"
-                : "text-slate-500 opacity-0 hover:text-amber-300 group-hover:opacity-100"
+                ? "text-[rgb(var(--estrella-rgb))] opacity-100"
+                : "text-slate-500 opacity-0 hover:text-[rgb(var(--estrella-rgb))] group-hover:opacity-100"
             }`}
             aria-label="Favorito"
           >
@@ -1051,7 +1051,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
         {hayFavoritos && !collapsed && (
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-2 px-3">
-              <Star className="h-3 w-3 fill-current text-[#7DCFD2]" />
+              <Star className="h-3 w-3 fill-current text-[rgb(var(--estrella-rgb))]" />
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                 Favoritos
               </p>
@@ -1104,7 +1104,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarPr
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); handleToggleFavorito(c.id); }}
-                      className="rounded-md p-1 text-amber-300 transition-all hover:text-amber-200"
+                      className="rounded-md p-1 text-[rgb(var(--estrella-rgb))] transition-all hover:opacity-80"
                       aria-label={`Quitar ${c.label} de favoritos`}
                     >
                       <Star className="h-3.5 w-3.5 fill-current" />

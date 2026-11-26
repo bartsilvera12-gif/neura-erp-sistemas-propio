@@ -2,6 +2,8 @@
 
 /* Neura ERP - Paleta SaaS (Stripe/Linear/Vercel) */
 :root {
+  /* Estrellas de favoritos (Configuración › Apariencia las puede cambiar). */
+  --estrella-rgb: 252 211 77;
   --background: #F8FAFC;
   --foreground: #0F172A;
   --foreground-muted: #475569;

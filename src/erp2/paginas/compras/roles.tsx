@@ -9,7 +9,7 @@
  * el módulo Compras (no se configura).
  */
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Search, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Loader2, PackageCheck, Search, ShieldCheck, Wallet } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 
@@ -26,11 +26,16 @@ type UsuarioRol = {
   recibe: boolean;
 };
 type Campo = "confirma" | "paga" | "recibe";
-const COLUMNAS: { campo: Campo; label: string; ayuda: string }[] = [
-  { campo: "confirma", label: "Confirma", ayuda: "Aprueba o rechaza las solicitudes" },
-  { campo: "paga", label: "Paga", ayuda: "Confirma el pago de las órdenes" },
-  { campo: "recibe", label: "Recibe", ayuda: "Recibe la mercadería" },
+const COLUMNAS: { campo: Campo; label: string; ayuda: string; icono: typeof CheckCircle2 }[] = [
+  { campo: "confirma", label: "Confirma", ayuda: "Aprueba o rechaza las solicitudes", icono: CheckCircle2 },
+  { campo: "paga", label: "Paga", ayuda: "Confirma el pago de las órdenes", icono: Wallet },
+  { campo: "recibe", label: "Recibe", ayuda: "Recibe la mercadería", icono: PackageCheck },
 ];
+const iniciales = (n: string | null, e: string | null) => {
+  const base = (n ?? e ?? "?").trim();
+  const ps = base.split(/\s+/).filter(Boolean);
+  return ((ps[0]?.[0] ?? "") + (ps[1]?.[0] ?? "")).toUpperCase() || "?";
+};
 
 export default function RolesComprasPage() {
   const [rows, setRows] = useState<UsuarioRol[]>([]);
@@ -101,18 +106,21 @@ export default function RolesComprasPage() {
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-[var(--brand)]/25 bg-white shadow-sm ring-1 ring-[var(--brand)]/5">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="border-b bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-3 py-2.5 text-left">Usuario</th>
-              {COLUMNAS.map((c) => (
-                <th key={c.campo} className="px-3 py-2.5 text-center">
-                  <span className="block">{c.label}</span>
-                  <span className="block text-[10px] font-normal normal-case text-slate-400">{c.ayuda}</span>
-                  {sinRol(c.campo) ? <span className="mt-0.5 block text-[10px] font-semibold normal-case text-amber-600">→ admins</span> : null}
-                </th>
-              ))}
+          <thead>
+            <tr className="border-b-2 border-[var(--brand)]/15 bg-[var(--brand)]/5 text-[var(--brand)]">
+              <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider">Usuario</th>
+              {COLUMNAS.map((c) => {
+                const Ic = c.icono;
+                return (
+                  <th key={c.campo} className="px-3 py-3 text-center align-top">
+                    <span className="flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wider"><Ic className="h-3.5 w-3.5" />{c.label}</span>
+                    <span className="mt-0.5 block text-[10px] font-normal normal-case text-slate-400">{c.ayuda}</span>
+                    {sinRol(c.campo) ? <span className="mt-0.5 block text-[10px] font-semibold normal-case text-amber-600">→ admins</span> : null}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -125,25 +133,38 @@ export default function RolesComprasPage() {
               </td></tr>
             ) : filtradas.length === 0 ? (
               <tr><td colSpan={4} className="px-3 py-10 text-center text-sm text-slate-400">Ningún usuario coincide con “{q}”.</td></tr>
-            ) : filtradas.map((u) => (
-              <tr key={u.id} className="border-b last:border-0 hover:bg-slate-50/60">
-                <td className="px-3 py-2.5">
-                  <span className="block font-medium text-slate-800">{u.nombre ?? u.email ?? "—"}</span>
-                  <span className="block text-[11px] text-slate-400">{u.es_admin ? "Administrador" : (u.rol || "—")}{guardando === u.id ? " · guardando…" : ""}</span>
-                </td>
-                {COLUMNAS.map((c) => (
-                  <td key={c.campo} className="px-3 py-2.5 text-center">
-                    <input
-                      type="checkbox"
-                      checked={u[c.campo]}
-                      onChange={() => toggle(u, c.campo)}
-                      aria-label={`${c.label} — ${u.nombre ?? u.email ?? u.id}`}
-                      className="h-5 w-5 cursor-pointer rounded border-slate-300 accent-[var(--brand)]"
-                    />
+            ) : filtradas.map((u) => {
+              const conRol = u.confirma || u.paga || u.recibe;
+              return (
+                <tr key={u.id} className={`border-b border-slate-100 last:border-0 transition-colors hover:bg-[var(--brand)]/[0.05] ${conRol ? "bg-[var(--brand)]/[0.025]" : ""}`}>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold" style={{ backgroundColor: `${TEAL}1a`, color: TEAL }}>{iniciales(u.nombre, u.email)}</span>
+                      <div className="min-w-0">
+                        <span className="block truncate font-medium text-slate-800">{u.nombre ?? u.email ?? "—"}</span>
+                        <span className="block text-[11px] text-slate-400">
+                          {u.es_admin ? "Administrador" : (u.rol || "—")}
+                          {guardando === u.id ? <span className="text-[var(--brand)]"> · guardando…</span> : null}
+                        </span>
+                      </div>
+                    </div>
                   </td>
-                ))}
-              </tr>
-            ))}
+                  {COLUMNAS.map((c) => (
+                    <td key={c.campo} className="px-3 py-2.5 text-center">
+                      <label className="inline-flex min-h-9 min-w-9 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-[var(--brand)]/10">
+                        <input
+                          type="checkbox"
+                          checked={u[c.campo]}
+                          onChange={() => toggle(u, c.campo)}
+                          aria-label={`${c.label} — ${u.nombre ?? u.email ?? u.id}`}
+                          className="h-[18px] w-[18px] cursor-pointer rounded border-slate-300 accent-[var(--brand)]"
+                        />
+                      </label>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

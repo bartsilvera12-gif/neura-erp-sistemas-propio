@@ -9,7 +9,7 @@
  * el módulo Compras (no se configura).
  */
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, Search, ShieldCheck } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 
@@ -37,6 +37,7 @@ export default function RolesComprasPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState<string | null>(null);
+  const [q, setQ] = useState("");
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -67,6 +68,14 @@ export default function RolesComprasPage() {
 
   const sinRol = (campo: Campo) => rows.length > 0 && !rows.some((r) => r[campo]);
 
+  // Buscador: sin tildes, orden libre, por varios campos (nombre, email, rol).
+  const norm = (s: string) => (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const tokens = norm(q).split(/\s+/).filter(Boolean);
+  const filtradas = tokens.length === 0 ? rows : rows.filter((u) => {
+    const heno = norm(`${u.nombre ?? ""} ${u.email ?? ""} ${u.es_admin ? "administrador" : u.rol ?? ""}`);
+    return tokens.every((t) => heno.includes(t));
+  });
+
   return (
     <div className="space-y-5 pb-10 sm:space-y-6">
       <header className="min-w-0">
@@ -76,6 +85,21 @@ export default function RolesComprasPage() {
       </header>
 
       {error ? <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+
+      {rows.length > 0 ? (
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar usuario…"
+            aria-label="Buscar usuario"
+            enterKeyHint="search"
+            className="h-11 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none transition hover:border-slate-300 focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)] md:h-auto md:py-2.5"
+          />
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full min-w-[640px] text-sm">
@@ -99,7 +123,9 @@ export default function RolesComprasPage() {
                 <ShieldCheck className="mx-auto h-7 w-7 text-slate-300" />
                 <p className="mt-2 text-sm text-slate-500">No hay usuarios para configurar.</p>
               </td></tr>
-            ) : rows.map((u) => (
+            ) : filtradas.length === 0 ? (
+              <tr><td colSpan={4} className="px-3 py-10 text-center text-sm text-slate-400">Ningún usuario coincide con “{q}”.</td></tr>
+            ) : filtradas.map((u) => (
               <tr key={u.id} className="border-b last:border-0 hover:bg-slate-50/60">
                 <td className="px-3 py-2.5">
                   <span className="block font-medium text-slate-800">{u.nombre ?? u.email ?? "—"}</span>

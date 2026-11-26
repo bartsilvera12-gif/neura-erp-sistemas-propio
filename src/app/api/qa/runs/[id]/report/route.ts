@@ -112,6 +112,23 @@ type ResultLike = Awaited<ReturnType<RepoNN["listResultsForRun"]>>[number];
 type ProjectLike = Awaited<ReturnType<RepoNN["getProject"]>>;
 type SuiteLike = Awaited<ReturnType<RepoNN["getSuite"]>>;
 
+/** Normaliza texto para pdfkit WinAnsi: quita emojis, box drawing,
+ *  smart quotes, bullets y cualquier char fuera de Latin1. Esto evita
+ *  que el PDF salga con gibberish al topar con chars no soportados. */
+function safe(txt: unknown): string {
+  if (txt == null) return "";
+  return String(txt)
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, "-")
+    .replace(/[•‣◦]/g, "-")
+    .replace(/…/g, "...")
+    .replace(/·/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/[^\x00-\xFF]/g, "?")
+    .trim();
+}
+
 async function construirPdf(args: {
   run: NonNullable<RunLike>;
   project: ProjectLike;
@@ -126,134 +143,150 @@ async function construirPdf(args: {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
   });
 
-  const fallidos = results.filter((r) => r.status === "failed" || r.status === "timed_out");
-  const exitosos = results.filter((r) => r.status === "passed");
-  const omitidos = results.filter((r) => r.status === "skipped");
-  const aptoParaEntrega = fallidos.length === 0 && results.length > 0;
+  // Deduplicar resultados (misma test_title + spec_file + status).
+  // Antes algunos runs persistían el mismo veredicto dos veces (uno en
+  // vivo, uno en el reporte final) y el PDF listaba duplicados.
+  const vistos = new Set<string>();
+  const dedup = results.filter((r) => {
+    const k = `${r.spec_file}|${r.test_title}|${r.status}`;
+    if (vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
 
-  // ─── Portada ────────────────────────────────────────────────────────
-  doc.rect(0, 0, doc.page.width, 160).fill(COLOR.marca);
-  doc.fillColor("white").fontSize(10).font("Helvetica")
-    .text("NEURA QA CENTER · REPORTE DE EJECUCIÓN", 50, 40);
-  doc.fontSize(24).font("Helvetica-Bold")
-    .text(project?.name ?? "Proyecto QA", 50, 65, { width: doc.page.width - 100 });
-  doc.fontSize(11).font("Helvetica").fillColor("rgba(255,255,255,0.85)")
+  const fallidos = dedup.filter((r) => r.status === "failed" || r.status === "timed_out");
+  const exitosos = dedup.filter((r) => r.status === "passed");
+  const omitidos = dedup.filter((r) => r.status === "skipped");
+  const aptoParaEntrega = fallidos.length === 0 && dedup.length > 0;
+
+  const W = doc.page.width;
+  const H = doc.page.height;
+  const M = 50;
+  const CW = W - 2 * M;
+  let y = M;
+  const nuevaPaginaSiHaceFalta = (needed: number = 80): void => {
+    if (y + needed > H - 50) { doc.addPage(); y = M; }
+  };
+
+  // ─── PORTADA ────────────────────────────────────────────────────────
+  doc.rect(0, 0, W, 180).fill(COLOR.marca);
+  doc.fillColor("#FFFFFF").fontSize(10).font("Helvetica").text(safe("NEURA QA CENTER"), M, 45);
+  doc.fontSize(9).fillColor("rgba(255,255,255,0.7)").text(safe("REPORTE DE EJECUCION AUTOMATIZADA"), M, 60);
+  doc.fontSize(22).font("Helvetica-Bold").fillColor("#FFFFFF")
+    .text(safe(project?.name ?? "Proyecto QA"), M, 85, { width: CW });
+  doc.fontSize(10).font("Helvetica").fillColor("rgba(255,255,255,0.85)")
     .text(
-      `Run #${run.id.slice(0, 8)}  ·  ${suite?.name ?? "Suite"}  ·  ${formatearFecha(run.created_at)}`,
-      50,
-      doc.y + 4,
-      { width: doc.page.width - 100 }
+      safe(`Run #${run.id.slice(0, 8)}   -   ${suite?.name ?? "Suite"}   -   ${formatearFecha(run.created_at)}`),
+      M, 150, { width: CW }
     );
-  doc.fillColor(COLOR.slateDeep);
-  doc.y = 190;
+  y = 210;
 
-  // ─── Veredicto global ───────────────────────────────────────────────
-  const veredictoColor = aptoParaEntrega ? COLOR.emerald : fallidos.length > 0 ? COLOR.rose : COLOR.slate;
-  const veredictoTexto = aptoParaEntrega
+  // ─── VEREDICTO ──────────────────────────────────────────────────────
+  const vColor = aptoParaEntrega ? COLOR.emerald : fallidos.length > 0 ? COLOR.rose : COLOR.slate;
+  const vTexto = aptoParaEntrega
     ? "APTO PARA ENTREGA"
     : fallidos.length > 0
-    ? "NO APTO · HAY FALLAS"
+    ? `NO APTO - ${fallidos.length} FALLA${fallidos.length > 1 ? "S" : ""} DETECTADA${fallidos.length > 1 ? "S" : ""}`
     : "SIN DATOS SUFICIENTES";
 
-  doc.rect(50, doc.y, doc.page.width - 100, 70).fillAndStroke(COLOR.slateBg, COLOR.slateLine);
+  doc.rect(M, y, CW, 90).fillAndStroke(COLOR.slateBg, COLOR.slateLine);
+  doc.fillColor(COLOR.slate).fontSize(9).font("Helvetica").text("VEREDICTO DE LA EJECUCION", M + 16, y + 14);
+  doc.fillColor(vColor).fontSize(18).font("Helvetica-Bold").text(safe(vTexto), M + 16, y + 32);
   doc.fillColor(COLOR.slate).fontSize(10).font("Helvetica")
-    .text("Veredicto de la ejecución", 65, doc.y - 55);
-  doc.fillColor(veredictoColor).fontSize(20).font("Helvetica-Bold")
-    .text(veredictoTexto, 65, doc.y - 40);
-  doc.fillColor(COLOR.slate).fontSize(10).font("Helvetica")
-    .text(
-      `${results.length} caso(s) evaluado(s) · ${exitosos.length} OK · ${fallidos.length} con fallas · ${omitidos.length} omitido(s)`,
-      65,
-      doc.y - 18
-    );
-  doc.y += 20;
+    .text(safe(`${dedup.length} caso(s) evaluado(s)  -  ${exitosos.length} OK  -  ${fallidos.length} fallas  -  ${omitidos.length} omitidos`), M + 16, y + 62);
+  y += 110;
 
-  // ─── Datos del proyecto ─────────────────────────────────────────────
-  seccion(doc, "Datos del proyecto");
-  filaDato(doc, "ERP", project?.name ?? "—");
-  filaDato(doc, "Repositorio", project?.repo_url ?? "—");
-  filaDato(doc, "Entorno probado", run.target_base_url || "—");
-  filaDato(doc, "Duración del run", run.duration_ms != null ? `${(run.duration_ms / 1000).toFixed(1)} s` : "—");
-  filaDato(doc, "Estado del run", traducirStatus(run.status));
-  doc.y += 10;
+  // ─── DATOS DEL PROYECTO ─────────────────────────────────────────────
+  doc.fillColor(COLOR.marca).fontSize(13).font("Helvetica-Bold").text("Datos del proyecto", M, y);
+  y += 18;
+  doc.rect(M, y, 40, 2).fill(COLOR.marca);
+  y += 10;
+  const filasDatos: Array<[string, string]> = [
+    ["ERP", project?.name ?? "-"],
+    ["Repositorio", project?.repo_url ?? "-"],
+    ["Entorno probado", run.target_base_url || "-"],
+    ["Duracion del run", run.duration_ms != null ? `${(run.duration_ms / 1000).toFixed(1)} s` : "-"],
+    ["Estado del run", traducirStatus(run.status)],
+  ];
+  for (const [k, v] of filasDatos) {
+    doc.fillColor(COLOR.slate).fontSize(9).font("Helvetica-Bold").text(safe(k), M, y, { width: 110 });
+    doc.fillColor(COLOR.slateDeep).fontSize(10).font("Helvetica").text(safe(v), M + 120, y, { width: CW - 120 });
+    y += 16;
+  }
+  y += 10;
 
-  // ─── Pruebas fallidas (lo más importante) ───────────────────────────
+  // ─── BUGS DETECTADOS ────────────────────────────────────────────────
   if (fallidos.length > 0) {
-    seccion(doc, `Pruebas fallidas (${fallidos.length})`, COLOR.rose);
+    nuevaPaginaSiHaceFalta(60);
+    doc.fillColor(COLOR.rose).fontSize(14).font("Helvetica-Bold").text(safe(`Bugs detectados (${fallidos.length})`), M, y);
+    y += 20;
+    doc.rect(M, y - 2, 50, 2).fill(COLOR.rose);
+    y += 10;
     fallidos.forEach((r, idx) => {
-      if (doc.y > doc.page.height - 180) doc.addPage();
-      const modulo = inferirModulo(r.spec_file);
-      doc.rect(50, doc.y, doc.page.width - 100, 4).fill(COLOR.rose);
-      doc.y += 6;
+      nuevaPaginaSiHaceFalta(140);
+      const titulo = safe(r.test_title);
+      const detalle = safe(r.error_message ?? "(sin detalle del error)");
+      const modulo = safe(inferirModulo(r.spec_file));
+
+      // Barra lateral roja
+      doc.rect(M, y, 4, 70).fill(COLOR.rose);
       doc.fillColor(COLOR.slateDeep).fontSize(11).font("Helvetica-Bold")
-        .text(`${idx + 1}. ${r.test_title}`, 50, doc.y, { width: doc.page.width - 100 });
-      doc.y += 4;
+        .text(safe(`#${idx + 1}  ${titulo}`), M + 14, y, { width: CW - 14 });
       doc.fillColor(COLOR.slate).fontSize(9).font("Helvetica")
-        .text(`Módulo: ${modulo}  ·  Caso: ${r.spec_file}`, 50, doc.y);
-      doc.y += 12;
+        .text(safe(`Modulo: ${modulo}   URL: ${run.target_base_url || "-"}`), M + 14, y + 18, { width: CW - 14 });
+      y += 40;
 
-      // Cuadro del error
-      const errorY = doc.y;
-      const errorAltura = estimarAlturaError(doc, r);
-      doc.rect(50, errorY, doc.page.width - 100, errorAltura).fillAndStroke("#FEF2F2", "#FECACA");
-      doc.fillColor(COLOR.rose).fontSize(9).font("Helvetica-Bold")
-        .text(`[${(r.error_type ?? "ERROR").toUpperCase()}]`, 62, errorY + 10);
-      doc.fillColor(COLOR.slateDeep).fontSize(10).font("Courier")
-        .text(r.error_message ?? "(sin detalle del error)", 62, errorY + 26, {
-          width: doc.page.width - 124,
-          align: "left",
-        });
-      doc.y = errorY + errorAltura + 14;
+      // Caja del error
+      doc.font("Courier").fontSize(9);
+      const alturaError = Math.max(50, doc.heightOfString(detalle, { width: CW - 30 }) + 24);
+      nuevaPaginaSiHaceFalta(alturaError + 10);
+      doc.rect(M, y, CW, alturaError).fillAndStroke("#FEF2F2", "#FECACA");
+      doc.fillColor(COLOR.rose).fontSize(8).font("Helvetica-Bold").text("DETALLE PARA EL PROGRAMADOR", M + 14, y + 8);
+      doc.fillColor(COLOR.slateDeep).fontSize(9).font("Courier").text(detalle, M + 14, y + 22, { width: CW - 30 });
+      y += alturaError + 14;
     });
-  } else {
-    seccion(doc, "Pruebas fallidas", COLOR.emerald);
-    doc.fillColor(COLOR.emerald).fontSize(11).font("Helvetica-Bold")
-      .text("✓  Ninguna prueba falló.", 50, doc.y);
-    doc.y += 24;
+    y += 10;
   }
 
-  // ─── Pruebas exitosas (resumen breve) ───────────────────────────────
+  // ─── PRUEBAS EXITOSAS (resumen) ─────────────────────────────────────
   if (exitosos.length > 0) {
-    if (doc.y > doc.page.height - 120) doc.addPage();
-    seccion(doc, `Pruebas exitosas (${exitosos.length})`, COLOR.emerald);
-    exitosos.forEach((r) => {
-      if (doc.y > doc.page.height - 50) doc.addPage();
-      const modulo = inferirModulo(r.spec_file);
-      doc.fillColor(COLOR.emerald).fontSize(10).font("Helvetica-Bold").text("✓", 50, doc.y, { continued: true });
-      doc.fillColor(COLOR.slateDeep).fontSize(10).font("Helvetica")
-        .text(`  ${r.test_title}`, { continued: true });
-      doc.fillColor(COLOR.slateMuted).fontSize(9).font("Helvetica").text(`  ·  ${modulo}`);
-      doc.y += 2;
-    });
+    nuevaPaginaSiHaceFalta(60);
+    doc.fillColor(COLOR.emerald).fontSize(13).font("Helvetica-Bold").text(safe(`Pruebas exitosas (${exitosos.length})`), M, y);
+    y += 20;
+    doc.rect(M, y - 2, 50, 2).fill(COLOR.emerald);
+    y += 10;
+    for (const r of exitosos) {
+      nuevaPaginaSiHaceFalta(16);
+      doc.fillColor(COLOR.emerald).fontSize(9).font("Helvetica-Bold").text("[OK]", M, y);
+      doc.fillColor(COLOR.slateDeep).fontSize(9).font("Helvetica").text(safe(r.test_title), M + 30, y, { width: CW - 30 });
+      y += 13;
+    }
+    y += 10;
   }
 
-  // ─── Conclusión final ───────────────────────────────────────────────
-  if (doc.y > doc.page.height - 160) doc.addPage();
-  doc.y += 16;
-  seccion(doc, "Conclusión");
+  // ─── CONCLUSION ─────────────────────────────────────────────────────
+  nuevaPaginaSiHaceFalta(140);
+  doc.fillColor(COLOR.marca).fontSize(13).font("Helvetica-Bold").text("Conclusion", M, y);
+  y += 20;
+  doc.rect(M, y - 2, 40, 2).fill(COLOR.marca);
+  y += 10;
   const conclusionTexto = aptoParaEntrega
     ? "Todas las verificaciones ejecutadas por el agente QA concluyeron sin hallazgos. El ERP puede avanzar al proceso de entrega."
     : fallidos.length > 0
-    ? `Se detectaron ${fallidos.length} hallazgo(s) que requieren corrección antes de entregar al cliente. Revisá la sección "Pruebas fallidas" con el detalle técnico de cada error para asignarlos a desarrollo.`
-    : "El agente QA no pudo completar las verificaciones mínimas. Revisá la ejecución y reintentá antes de evaluar la aptitud para entrega.";
+    ? `Se detectaron ${fallidos.length} hallazgo(s) que requieren correccion antes de entregar al cliente. Revisa la seccion "Bugs detectados" con el detalle tecnico de cada error.`
+    : "El agente QA no pudo completar las verificaciones minimas. Revisa la ejecucion y reintenta antes de evaluar la aptitud para entrega.";
   doc.fillColor(COLOR.slateDeep).fontSize(11).font("Helvetica")
-    .text(conclusionTexto, 50, doc.y, { width: doc.page.width - 100, align: "justify", lineGap: 3 });
+    .text(safe(conclusionTexto), M, y, { width: CW, align: "justify", lineGap: 3 });
+  y += 60;
 
-  if (run.summary) {
-    doc.y += 14;
-    doc.fillColor(COLOR.slate).fontSize(9).font("Helvetica-Oblique")
-      .text(`Resumen del agente: ${run.summary}`, 50, doc.y, { width: doc.page.width - 100, lineGap: 2 });
-  }
-
-  // ─── Footer con paginación ──────────────────────────────────────────
+  // ─── FOOTER ─────────────────────────────────────────────────────────
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
     doc.fillColor(COLOR.slateMuted).fontSize(8).font("Helvetica")
       .text(
-        `Página ${i - range.start + 1} de ${range.count}  ·  Generado automáticamente por NEURA QA Center`,
-        50, doc.page.height - 30,
-        { width: doc.page.width - 100, align: "center" }
+        safe(`NEURA QA Center  -  Run ${run.id.slice(0, 8)}  -  Pagina ${i - range.start + 1} de ${range.count}`),
+        M, H - 35, { width: CW, align: "center" }
       );
   }
 

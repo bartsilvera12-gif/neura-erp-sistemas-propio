@@ -167,6 +167,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: WalletCards,
     children: [
       { label: "Compras", href: "/compras" },
+      { label: "Solicitudes de compra", href: "/compras/solicitudes" },
       { label: "Órdenes de Compra", href: "/compras/ordenes" },
       { label: "Recepciones", href: "/compras/recepciones" },
       { label: "Pagos a proveedores", href: "/compras/pagos" },

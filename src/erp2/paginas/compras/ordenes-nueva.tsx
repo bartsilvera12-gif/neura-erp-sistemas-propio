@@ -29,16 +29,20 @@ const TEAL = clienteConfig.color;
 
 type Linea = { key: string; prod: ProductoInventario; cantidad: string; costo: number; ultima: number | null };
 
-export default function NuevaOrdenPage() {
+export default function NuevaOrdenPage({ modo }: { modo?: "solicitud" }) {
   return (
     <Suspense>
-      <NuevaOrden />
+      <NuevaOrden modo={modo} />
     </Suspense>
   );
 }
 
-function NuevaOrden() {
-  const editarId = useSearchParams().get("editar");
+function NuevaOrden({ modo }: { modo?: "solicitud" }) {
+  const sp = useSearchParams();
+  const editarId = sp.get("editar");
+  // Modo "solicitud": mismo formulario, pero crea una solicitud de compra
+  // (queda 'solicitada', a confirmar) en vez de una orden ya aprobada.
+  const esSolicitud = (modo === "solicitud" || sp.get("modo") === "solicitud") && !editarId;
   const [proveedores, setProveedores] = useState<ProveedorMin[]>([]);
   const [proveedorId, setProveedorId] = useState<string | null>(null);
   const [entrega, setEntrega] = useState("");
@@ -137,7 +141,7 @@ function NuevaOrden() {
     lineas.some((l) => !(Number(l.cantidad.replace(",", ".")) > 0)) && "la cantidad de algún producto",
   ].filter(Boolean) as string[];
 
-  const etiquetaGuardar = busy ? "Guardando…" : editarId ? "Guardar cambios" : "Crear orden de compra";
+  const etiquetaGuardar = busy ? "Guardando…" : editarId ? "Guardar cambios" : esSolicitud ? "Enviar solicitud" : "Crear orden de compra";
 
   async function guardar() {
     if (faltan.length || busy) return;
@@ -157,6 +161,8 @@ function NuevaOrden() {
       });
       const r = editarId
         ? await apiFetch<{ id: string; numero_oc: string }>(`/api/ordenes-compra/${editarId}`, { method: "PATCH", body })
+        : esSolicitud
+        ? await apiFetch<{ id: string; numero_oc: string }>("/api/v2/compras/solicitudes", { method: "POST", body })
         : await apiFetch<{ id: string; numero_oc: string }>("/api/ordenes-compra", { method: "POST", body });
       setHecha({ id: r.id, numero: r.numero_oc });
     } catch (e) {
@@ -167,6 +173,22 @@ function NuevaOrden() {
   }
 
   if (hecha) {
+    if (esSolicitud) {
+      return (
+        <div className="mx-auto max-w-lg py-16 text-center">
+          <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
+          <h1 className="mt-4 text-2xl font-semibold text-slate-900">Solicitud enviada</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            <strong className="font-semibold text-slate-700">{hecha.numero}</strong>. Queda a confirmación del encargado de compras;
+            cuando la aprueben y confirmen el pago, se recibe la mercadería y entra al stock.
+          </p>
+          <div className="mt-6 flex flex-col-reverse justify-center gap-2 sm:flex-row sm:flex-wrap">
+            <Link href="/compras/solicitudes/nueva" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 sm:min-h-0">Cargar otra</Link>
+            <Link href="/compras/solicitudes" className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white sm:min-h-0" style={{ backgroundColor: TEAL }}>Ver solicitudes</Link>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-lg py-16 text-center">
         <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
@@ -189,13 +211,13 @@ function NuevaOrden() {
   return (
     <div className="space-y-5 pb-10 max-lg:pb-28 sm:space-y-6">
       <header className="flex items-start gap-3">
-        <Link href="/compras/ordenes" aria-label="Volver a órdenes de compra" className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 sm:h-9 sm:w-9">
+        <Link href={esSolicitud ? "/compras/solicitudes" : "/compras/ordenes"} aria-label={esSolicitud ? "Volver a solicitudes" : "Volver a órdenes de compra"} className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 sm:h-9 sm:w-9">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: TEAL }}>Gastos empresariales · Compras</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 [overflow-wrap:anywhere] sm:text-2xl">{numeroEditando ? `Editar ${numeroEditando}` : "Nueva orden de compra"}</h1>
-          <p className="mt-1 text-[13px] text-slate-500 sm:text-sm">El pedido al proveedor. No mueve el stock: eso pasa cuando recibís la mercadería.</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: TEAL }}>{esSolicitud ? "Compras · Solicitud" : "Gastos empresariales · Compras"}</p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 [overflow-wrap:anywhere] sm:text-2xl">{numeroEditando ? `Editar ${numeroEditando}` : esSolicitud ? "Nueva solicitud de compra" : "Nueva orden de compra"}</h1>
+          <p className="mt-1 text-[13px] text-slate-500 sm:text-sm">{esSolicitud ? "Tu pedido de productos a comprar. Queda a confirmación; no mueve stock." : "El pedido al proveedor. No mueve el stock: eso pasa cuando recibís la mercadería."}</p>
         </div>
       </header>
 
@@ -319,7 +341,7 @@ function NuevaOrden() {
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               {etiquetaGuardar}
             </button>
-            <p className="mt-2 text-center text-[11px] text-slate-400">Después podés descargar el PDF para mandárselo.</p>
+            {esSolicitud ? null : <p className="mt-2 text-center text-[11px] text-slate-400">Después podés descargar el PDF para mandárselo.</p>}
           </div>
         </aside>
       </div>
@@ -336,7 +358,7 @@ function NuevaOrden() {
           <button type="button" onClick={() => void guardar()} disabled={!!faltan.length || busy}
             className="inline-flex h-12 max-w-[60%] shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-40" style={{ backgroundColor: TEAL }}>
             {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <CheckCircle2 className="h-4 w-4 shrink-0" />}
-            <span className="truncate">{busy ? "Guardando…" : editarId ? "Guardar cambios" : "Crear orden"}</span>
+            <span className="truncate">{busy ? "Guardando…" : editarId ? "Guardar cambios" : esSolicitud ? "Enviar solicitud" : "Crear orden"}</span>
           </button>
         </div>
       </div>

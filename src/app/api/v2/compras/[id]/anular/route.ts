@@ -1,6 +1,7 @@
 import { ctxV2, ErrorV2, esUuid, fallo, ok } from "@/lib/erp2/server";
 import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 import { anularCompra } from "@/lib/erp2/compras";
+import { actualizarEstadoOrden } from "@/lib/erp2/ordenes";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const motivo = String(b.motivo ?? "").trim();
     if (!motivo) throw new ErrorV2("Escribí el motivo de la anulación");
     try {
-      return ok(await anularCompra(c.pool, { empresaId: c.empresaId, usuarioId: c.usuarioId, nombre: c.nombre }, id, motivo));
+      const r = await anularCompra(c.pool, { empresaId: c.empresaId, usuarioId: c.usuarioId, nombre: c.nombre }, id, motivo);
+      const { rows } = await c.pool.query(`SELECT orden_compra_id FROM neura.compras WHERE id = $1::uuid`, [id]);
+      if (rows[0]?.orden_compra_id) await actualizarEstadoOrden(c.pool, c.empresaId, rows[0].orden_compra_id).catch(() => {});
+      return ok(r);
     } catch (e) {
       if (e instanceof ContabilidadError) throw new ErrorV2(e.message);
       throw e;

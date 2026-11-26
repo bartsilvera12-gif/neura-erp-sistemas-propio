@@ -1,5 +1,7 @@
 import { ctxV2, ErrorV2, fallo, ok } from "@/lib/erp2/server";
 import { crearCompra } from "@/lib/erp2/compras";
+import { actualizarEstadoOrden } from "@/lib/erp2/ordenes";
+import { esUuid } from "@/lib/erp2/server";
 import { ContabilidadError } from "@/lib/contabilidad/asientos-pg";
 
 export const runtime = "nodejs";
@@ -11,7 +13,10 @@ export async function POST(request: Request) {
     const b = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!b) throw new ErrorV2("Faltan los datos de la compra");
     try {
-      return ok(await crearCompra(c.pool, { empresaId: c.empresaId, usuarioId: c.usuarioId, nombre: c.nombre }, b), 201);
+      const r = await crearCompra(c.pool, { empresaId: c.empresaId, usuarioId: c.usuarioId, nombre: c.nombre }, b);
+      // Compra hecha desde una orden ("Recibir"): la orden pasa a recibida en parte o recibida.
+      if (esUuid(b.orden_compra_id)) await actualizarEstadoOrden(c.pool, c.empresaId, b.orden_compra_id as string).catch(() => {});
+      return ok(r, 201);
     } catch (e) {
       if (e instanceof ContabilidadError) throw new ErrorV2(e.message);
       throw e;

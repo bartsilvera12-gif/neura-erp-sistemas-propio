@@ -1,6 +1,13 @@
-import OrdenesClient from "./OrdenesClient";
+"use client";
 
-/** Órdenes de Compra (documento previo a recepciones y facturas). */
+/** Pantalla del ERP 2.0 tal cual (src/erp2), con los datos de Neura (/api/v2). */
+import Pagina from "@/erp2/paginas/compras/ordenes";
+import { ProveedorErp2 } from "@/erp2/lib/sesion/ProveedorErp2";
+
 export default function Page() {
-  return <OrdenesClient />;
+  return (
+    <ProveedorErp2>
+      <Pagina />
+    </ProveedorErp2>
+  );
 }

@@ -10,7 +10,7 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { BadgeCheck, CheckCircle2, Loader2, PackageCheck, Wallet, X } from "lucide-react";
+import { BadgeCheck, CheckCircle2, HelpCircle, Loader2, PackageCheck, Wallet, X } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { Select } from "@/erp2/components/Select";
@@ -92,6 +92,9 @@ export default function PorPagarPage() {
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: TEAL }}>Compras</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Órdenes por pagar</h1>
           <p className="mt-1 text-[13px] text-slate-500 sm:text-sm">Órdenes aprobadas esperando el pago. Al confirmarlo quedan listas para recibir.</p>
+          <Link href="/ayuda/flujo-solicitudes-de-compra" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-[var(--brand)]">
+            <HelpCircle className="h-3.5 w-3.5" /> ¿Cómo funciona?
+          </Link>
         </div>
       </header>
 

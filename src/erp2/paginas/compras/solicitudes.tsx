@@ -10,7 +10,7 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Ban, CheckCircle2, ClipboardList, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Ban, CheckCircle2, ClipboardList, HelpCircle, Loader2, Plus, Trash2, X } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { Select } from "@/erp2/components/Select";
@@ -93,6 +93,9 @@ export default function SolicitudesPage() {
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: TEAL }}>Compras</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Solicitudes de compra</h1>
           <p className="mt-1 text-[13px] text-slate-500 sm:text-sm">Pedidos de productos a comprar. Se confirman antes de pagarse y recibirse.</p>
+          <Link href="/ayuda/flujo-solicitudes-de-compra" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-[var(--brand)]">
+            <HelpCircle className="h-3.5 w-3.5" /> ¿Cómo funciona?
+          </Link>
         </div>
         <Link href="/compras/solicitudes/nueva" className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white sm:min-h-0" style={{ backgroundColor: TEAL }}>
           <Plus className="h-4 w-4" /> Nueva solicitud

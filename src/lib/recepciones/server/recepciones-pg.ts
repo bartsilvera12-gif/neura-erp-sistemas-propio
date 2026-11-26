@@ -166,7 +166,6 @@ export async function confirmarRecepcion(
   const tOCI = quoteSchemaTable(schema, "orden_compra_items");
   const tM = quoteSchemaTable(schema, "movimientos_inventario");
   const tP = quoteSchemaTable(schema, "productos");
-  const tSU = quoteSchemaTable(schema, "inventario_stock_ubicacion");
 
   const client = await pool().connect();
   try {
@@ -268,6 +267,9 @@ export async function confirmarRecepcion(
       if (!mov[0]?.id) throw new RecepcionError("No se pudo registrar el movimiento de inventario (producto inexistente).");
       movPorProducto.set(productoId, mov[0].id);
 
+      // El depósito de la recepción: el trigger `inv_sync_deposito` lleva ahí lo que sube el
+      // total (si no se indicó, va al depósito principal del producto o al predeterminado).
+      await client.query(`SELECT set_config('neura.inv_ubicacion', $1, true)`, [d.ubicacion_id ?? ""]);
       const upd = await client.query(
         `UPDATE ${tP} SET stock_actual = COALESCE(stock_actual,0) + $1::numeric,
                           costo_promedio = $2::numeric, updated_at = now()
@@ -276,16 +278,6 @@ export async function confirmarRecepcion(
       );
       if (upd.rowCount === 0) throw new RecepcionError("No se pudo actualizar el stock del producto.");
 
-      // Stock por ubicación (si el ERP la maneja y se indicó depósito).
-      if (d.ubicacion_id) {
-        await client.query(
-          `INSERT INTO ${tSU} (empresa_id, producto_id, ubicacion_id, stock_actual)
-           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::numeric)
-           ON CONFLICT (empresa_id, producto_id, ubicacion_id)
-             DO UPDATE SET stock_actual = ${tSU.split(".").pop()}.stock_actual + EXCLUDED.stock_actual, updated_at = now()`,
-          [empresaId, productoId, d.ubicacion_id, agg.cantidad]
-        );
-      }
     }
 
     for (const it of d.items) {

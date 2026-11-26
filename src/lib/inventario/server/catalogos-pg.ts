@@ -286,12 +286,15 @@ export async function setStockUbicacionInicial(
   if (cantidad <= 0) return;
   const schema = assertAllowedChatDataSchema(schemaRaw);
   const t = quoteSchemaTable(schema, "inventario_stock_ubicacion");
+  // La cantidad ya la cargó la base: el trigger `inv_sync_deposito` lleva el stock inicial del
+  // producto a su depósito principal al crearlo. Sumarla acá la contaba dos veces. Solo se
+  // marca ese depósito como principal.
   await pool().query(
     `INSERT INTO ${t} (empresa_id, producto_id, ubicacion_id, stock_actual, es_principal)
-     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::numeric, true)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, 0, true)
      ON CONFLICT (empresa_id, producto_id, ubicacion_id)
-     DO UPDATE SET stock_actual = ${t}.stock_actual + EXCLUDED.stock_actual, updated_at = now()`,
-    [empresaId, productoId, ubicacionId, cantidad]
+     DO UPDATE SET es_principal = true, updated_at = now()`,
+    [empresaId, productoId, ubicacionId]
   );
 }
 

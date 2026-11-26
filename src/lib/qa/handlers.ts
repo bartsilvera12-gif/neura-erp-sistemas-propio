@@ -343,7 +343,13 @@ export async function handleReportResult(input: {
   if (!run) return { ok: false, status: 404, body: { error: "run no existe", code: "run_not_found" } };
 
   const suite = await input.repo.getSuite(run.suite_id);
-  if (suite && !isSpecAuthorized(parsed.data.spec_file, suite.specs)) {
+  // Las suites ai-direct-* y ai-interaction-* emiten resultados que
+  // genera el agente al vuelo (uno por módulo recorrido), con nombres
+  // de spec dinámicos como "ai-direct/<modulo>.spec.ts". No están en
+  // la lista fija de specs del suite — se aceptan todos mientras
+  // vengan del suite correcto.
+  const esSuiteAgente = suite && (suite.slug.startsWith("ai-direct-") || suite.slug.startsWith("ai-interaction-"));
+  if (suite && !esSuiteAgente && !isSpecAuthorized(parsed.data.spec_file, suite.specs)) {
     return {
       ok: false,
       status: 400,

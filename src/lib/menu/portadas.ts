@@ -21,6 +21,9 @@ const PORTADAS: Record<string, Portada> = {
   "/dashboard/tableros": { imagen: "/portadas/comercial/proyectos-tablero-kanban.webp", color: A, posicion: "50% 60%" },
   // Finanzas
   "/ventas": { imagen: "/portadas/finanzas/caja-teclas-registradora.webp", color: T },
+  "/caja/nueva": { imagen: "/portadas/finanzas/caja-teclas-registradora.webp", color: T },
+  "/caja/turnos": { imagen: "/portadas/finanzas/caja-teclas-registradora.webp", color: T },
+  "/caja": { imagen: "/portadas/finanzas/caja-teclas-registradora.webp", color: T },
   "/cobranzas": { imagen: "/portadas/finanzas/cobranzas-agenda-vencimientos.webp", color: A, posicion: "50% 40%" },
   "/pagos": { imagen: "/portadas/finanzas/pagos-tarjeta-terminal.webp", color: P },
   "/gastos": { imagen: "/portadas/finanzas/gastos-calculadora-teclas.webp", color: M },

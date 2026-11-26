@@ -42,6 +42,8 @@ export function fallo(err: unknown, donde: string) {
 export interface CtxV2 {
   empresaId: string;
   usuarioId: string;
+  /** id de auth.users (FK de `pagos.usuario_id`, `facturas.anulado_por`). */
+  authUserId: string | null;
   nombre: string;
   email: string | null;
   rol: string;
@@ -69,6 +71,7 @@ export async function ctxV2(request: Request, modulo: string | null): Promise<Ct
   return {
     empresaId: auth.empresa_id,
     usuarioId: auth.usuarioCatalogId,
+    authUserId: auth.user?.id ?? null,
     nombre: (auth.nombre ?? "").trim() || auth.user.email || "",
     email: auth.user.email ?? null,
     rol: auth.rol ?? "",

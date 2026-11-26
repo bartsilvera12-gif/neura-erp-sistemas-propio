@@ -144,7 +144,12 @@ const MENU_STRUCTURE: MenuItem[] = [
     href: "/dashboard/monitoreo",
     icon: Activity,
   },
-  { key: "ventas", slug: "ventas", label: "Caja", href: "/ventas", icon: Wallet },
+  { key: "ventas", slug: "ventas", label: "Caja", href: "/caja/nueva", icon: Wallet, children: [
+    { label: "Vender", href: "/caja/nueva" },
+    { label: "Turnos y arqueo", href: "/caja/turnos" },
+    { label: "Órdenes de venta", href: "/caja" },
+    { label: "Factura manual", href: "/ventas" },
+  ]},
   { key: "inventario", slug: "inventario", label: "Inventario", href: "/inventario", icon: Package, children: [
     { label: "Productos", href: "/inventario" },
     { label: "Movimientos", href: "/inventario/movimientos" },

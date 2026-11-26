@@ -1,4 +1,4 @@
-import { ctxV2, enTransaccion, ErrorV2, fallo, ok } from "@/lib/erp2/server";
+import { ctxV2, enTransaccion, ErrorV2, esUuid, fallo, ok } from "@/lib/erp2/server";
 import { COLS, crearProducto, listarPaginado } from "@/lib/erp2/productos";
 
 export const runtime = "nodejs";
@@ -9,8 +9,23 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request) {
   try {
-    const c = await ctxV2(request, "inventario");
     const sp = new URL(request.url).searchParams;
+    // Catálogo de la caja: los activos con precio, con el stock del depósito de la caja.
+    if (sp.get("pos") === "1") {
+      const c = await ctxV2(request, "ventas");
+      const dep = sp.get("deposito") ?? "";
+      if (!esUuid(dep)) throw new ErrorV2("Falta el depósito de la caja");
+      const { rows } = await c.pool.query(
+        `SELECT ${COLS.replace("COALESCE(p.stock_actual, 0)::float AS stock_actual", "COALESCE(s.stock_actual, 0)::float AS stock_actual")}
+           FROM neura.productos p
+           LEFT JOIN neura.inventario_stock_ubicacion s ON s.producto_id = p.id AND s.ubicacion_id = $2::uuid AND s.empresa_id = p.empresa_id
+          WHERE p.empresa_id = $1::uuid AND COALESCE(p.activo, true)
+          ORDER BY lower(p.nombre) LIMIT 3000`,
+        [c.empresaId, dep]
+      );
+      return ok(rows);
+    }
+    const c = await ctxV2(request, "inventario");
     if (sp.get("paginado") === "1") {
       const tipoSp = sp.get("tipo") ?? "";
       return ok(

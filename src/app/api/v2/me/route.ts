@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     }
     if (c.modulos.has("compras")) permisos.push("registrar_compras", "anular_compras", "pagar_proveedores", "ver_costos", "exportar");
     if (c.modulos.has("ventas")) permisos.push("abrir_cerrar_caja", "movimientos_caja", "vender_credito", "registrar_cobros");
-    if (c.esAdmin) permisos.push("configuracion", "anular_ventas", "notas_credito", "ver_cierres_caja", "ver_reportes_financieros");
+    if (c.esAdmin) permisos.push("configuracion", "anular_ventas", "anular_ventas_cerradas", "ver_cierres_caja", "ver_reportes_financieros");
     return ok({
       usuarioId: c.usuarioId,
       empresaId: c.empresaId,

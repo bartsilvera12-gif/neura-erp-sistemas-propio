@@ -67,7 +67,8 @@ type TipoNotificacion =
   | "chat_interno_mensaje"
   | "conversacion_asignada"
   | "conversacion_mensaje"
-  | "soporte_revision";
+  | "soporte_revision"
+  | "compra_solicitud";
 
 type Notificacion = {
   id: string;
@@ -87,6 +88,9 @@ type Notificacion = {
     conversation_id?: string;
     /** Soporte: el ticket del aviso. */
     ticket_id?: string;
+    /** Compras: la orden/solicitud y a qué bandeja llevar. */
+    orden_id?: string;
+    bandeja?: string;
   } | null;
   /**
    * Aviso calculado en vivo por la API, sin fila en la base (compromiso de
@@ -229,6 +233,11 @@ const ESTILO_TIPO: Record<
     icon: MessageSquare,
     wrap: "bg-[#4FAEB2]/12 text-[#3F8E91]",
     label: "Nuevo comentario",
+  },
+  compra_solicitud: {
+    icon: PackageCheck,
+    wrap: "bg-amber-50 text-amber-600",
+    label: "Compras",
   },
 };
 
@@ -835,6 +844,8 @@ export default function NotificacionesBell() {
                   ? `/dashboard/soporte/tickets/${n.metadata.ticket_id}`
                   : n.tipo === "cobro_pendiente"
                   ? "/cobranzas/conciliacion"
+                  : n.tipo === "compra_solicitud"
+                  ? `/compras/${n.metadata?.bandeja === "por-pagar" ? "por-pagar" : "solicitudes"}`
                   : n.tipo === "comentario_proyecto" && n.proyecto_id
                   ? // Abre el MODAL del proyecto en el Kanban, directo en la solapa
                     // Comentarios y en la sección del canal (para PM/QA que ven

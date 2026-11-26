@@ -75,6 +75,10 @@ function fila(o: Record<string, unknown>) {
     tipo_cambio: Number(o.tipo_cambio) || 1,
     total: Number(o.total_estimado) || 0,
     estado: ESTADO_A_20[String(o.estado)] ?? "pendiente",
+    pago_estado: o.pago_estado === "confirmado" ? "confirmado" : "pendiente",
+    pago_metodo: (o.pago_metodo as string | null) ?? null,
+    pago_referencia: (o.pago_referencia as string | null) ?? null,
+    pago_confirmado_at: (o.pago_confirmado_at as string | null) ?? null,
     observacion: cond.observacion,
     usuario_nombre: o.usuario_nombre,
     cancelada_at: o.cancelada_at,
@@ -302,6 +306,66 @@ export async function rechazarSolicitud(
   );
   if (!rows[0]) throw new ErrorV2("Esta solicitud ya fue confirmada o rechazada.", 409);
   return { id, estado: "rechazada" as const };
+}
+
+/**
+ * Fase 3 — Bandeja de pagos (Guillermo). Órdenes ya firmes (aprobadas en
+ * adelante, sin cancelar/rechazar) con su estado de pago. Por defecto las que
+ * están 'pendiente'; `pago=confirmado` muestra las ya pagadas y `pago=''` todas.
+ */
+export async function listarPorPagar(pool: Pool, empresaId: string, sp: URLSearchParams) {
+  const args: unknown[] = [empresaId];
+  const where = ["o.empresa_id = $1::uuid", "o.estado = ANY(ARRAY['aprobada','parcialmente_recibida','recibida','cerrada']::text[])"];
+  const pago = sp.get("pago");
+  if (pago === "pendiente" || pago === "confirmado") {
+    args.push(pago);
+    where.push(`COALESCE(o.pago_estado, 'pendiente') = $${args.length}`);
+  } else if (pago == null) {
+    where.push(`COALESCE(o.pago_estado, 'pendiente') = 'pendiente'`);
+  }
+  const q = (sp.get("q") ?? "").trim();
+  if (q) {
+    args.push(`%${q}%`);
+    const a = `$${args.length}`;
+    where.push(`(o.numero ILIKE ${a} OR COALESCE(o.proveedor_nombre, '') ILIKE ${a})`);
+  }
+  const { rows } = await pool.query(
+    `SELECT o.*,
+            (SELECT count(*) FROM neura.orden_compra_items i WHERE i.orden_id = o.id)::int AS cantidad_items,
+            COALESCE((SELECT SUM(i.cantidad) FROM neura.orden_compra_items i WHERE i.orden_id = o.id), 0)::float AS unidades
+       FROM neura.ordenes_compra o WHERE ${where.join(" AND ")}
+      ORDER BY o.fecha DESC, o.numero DESC LIMIT 200`,
+    args
+  );
+  return { rows: rows.map((o) => ({ ...fila(o), cantidad_items: o.cantidad_items, unidades: o.unidades })) };
+}
+
+/**
+ * Fase 3 — Guillermo confirma el pago de una orden aprobada. Versión simple:
+ * marca `pago_estado='confirmado'` con método/referencia opcionales. (El registro
+ * contable — Compra + cuota — queda para una fase posterior, según el plan.)
+ * Solo sobre órdenes firmes con pago pendiente.
+ */
+export async function confirmarPago(
+  pool: Pool,
+  q: { empresaId: string; usuarioId: string },
+  id: string,
+  b: Record<string, unknown>
+) {
+  const metodo = typeof b.metodo === "string" ? b.metodo.trim().slice(0, 60) || null : null;
+  const referencia = typeof b.referencia === "string" ? b.referencia.trim().slice(0, 120) || null : null;
+  const { rows } = await pool.query<{ id: string }>(
+    `UPDATE neura.ordenes_compra
+        SET pago_estado = 'confirmado', pago_confirmado_by = $3::uuid, pago_confirmado_at = now(),
+            pago_metodo = $4, pago_referencia = $5, updated_at = now()
+      WHERE id = $1::uuid AND empresa_id = $2::uuid
+        AND estado = ANY(ARRAY['aprobada','parcialmente_recibida','recibida','cerrada']::text[])
+        AND COALESCE(pago_estado, 'pendiente') = 'pendiente'
+      RETURNING id`,
+    [id, q.empresaId, q.usuarioId, metodo, referencia]
+  );
+  if (!rows[0]) throw new ErrorV2("Esta orden no está lista para pagar o ya tiene el pago confirmado.", 409);
+  return { id, pago_estado: "confirmado" as const };
 }
 
 export async function editarOrden(pool: Pool, empresaId: string, id: string, b: Record<string, unknown>) {

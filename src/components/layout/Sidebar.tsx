@@ -168,6 +168,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     children: [
       { label: "Compras", href: "/compras" },
       { label: "Solicitudes de compra", href: "/compras/solicitudes" },
+      { label: "Órdenes por pagar", href: "/compras/por-pagar" },
       { label: "Órdenes de Compra", href: "/compras/ordenes" },
       { label: "Recepciones", href: "/compras/recepciones" },
       { label: "Pagos a proveedores", href: "/compras/pagos" },

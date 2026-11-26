@@ -44,6 +44,7 @@ import {
   Loader2,
   Mic,
   Paperclip,
+  Headphones,
   Pencil,
   Plus,
   Reply,
@@ -65,6 +66,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { BotonFondoChat, useFondoChat } from "./fondo-chat";
 import PerfilModal from "./PerfilModal";
+import CamaraModal from "./CamaraModal";
 import { autenticarRealtime } from "@/lib/realtime/autenticar";
 import { inicialesNombre, nombreCapitular, nombreCorto } from "@/lib/format/nombres";
 
@@ -948,6 +950,12 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [subiendo, setSubiendo] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** Input aparte para la cámara del celular (`capture`). */
+  const camaraInputRef = useRef<HTMLInputElement>(null);
+  /** Menú del clip, como el de WhatsApp: documento, fotos y videos, cámara, audio. */
+  const [adjMenu, setAdjMenu] = useState(false);
+  /** Cámara de la computadora abierta. */
+  const [camaraAbierta, setCamaraAbierta] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
 
   // --- Nuevo grupo / conversación -------------------------------------------
@@ -3387,15 +3395,61 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                 {/* Una sola fila: clip, texto, micrófono y enviar, todos a la misma altura. Al
                     crecer el texto, los botones se quedan abajo, junto a la última línea. */}
                 <div className="flex items-end gap-1.5">
+                <span className="relative shrink-0">
                 <button
                   type="button"
-                  onClick={() => fileRef.current?.click()}
+                  onClick={() => setAdjMenu((v) => !v)}
                   disabled={subiendo}
-                  title="Adjuntar archivo"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#2F6E71] disabled:opacity-40"
+                  title="Adjuntar"
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-slate-100 hover:text-[#2F6E71] disabled:opacity-40 ${
+                    adjMenu ? "bg-slate-100 text-[#2F6E71]" : "text-slate-400"
+                  }`}
                 >
                   {subiendo ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Paperclip className="h-[18px] w-[18px]" />}
                 </button>
+                {adjMenu ? (
+                  <>
+                    <div className="fixed inset-0 z-40" onMouseDown={() => setAdjMenu(false)} />
+                    <div role="menu" className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-2xl bg-white py-2 shadow-xl ring-1 ring-slate-200">
+                      {(
+                        [
+                          { icono: FileText, color: "text-violet-500", label: "Documento", accept: "" },
+                          { icono: ImageIcon, color: "text-sky-500", label: "Fotos y videos", accept: "image/*,video/*" },
+                          { icono: Camera, color: "text-pink-500", label: "Cámara", accept: "camara" },
+                          { icono: Headphones, color: "text-orange-500", label: "Audio", accept: "audio/*" },
+                        ] as const
+                      ).map((op) => {
+                        const Icono = op.icono;
+                        return (
+                          <button
+                            key={op.label}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setAdjMenu(false);
+                              if (op.accept === "camara") {
+                                // En el celular, la cámara del teléfono; en la computadora, la webcam.
+                                if (window.matchMedia("(pointer: coarse)").matches) camaraInputRef.current?.click();
+                                else setCamaraAbierta(true);
+                                return;
+                              }
+                              const inp = fileRef.current;
+                              if (!inp) return;
+                              if (op.accept) inp.accept = op.accept;
+                              else inp.removeAttribute("accept");
+                              inp.click();
+                            }}
+                            className="flex w-full items-center gap-3.5 px-4 py-2.5 text-left text-[14.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                          >
+                            <Icono className={`h-5 w-5 shrink-0 ${op.color}`} />
+                            {op.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null}
+                </span>
                 {grabando ? (
                   <div className="flex min-h-[36px] flex-1 items-center gap-2.5 rounded-xl bg-rose-50 px-3 text-rose-700">
                     <span className="relative flex h-3 w-3 shrink-0">
@@ -3573,6 +3627,20 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   e.target.value = "";
                 }}
               />
+              <input
+                ref={camaraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  void subirArchivos(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+              />
+              {camaraAbierta ? (
+                <CamaraModal onCerrar={() => setCamaraAbierta(false)} onFoto={(f) => void subirArchivos([f])} />
+              ) : null}
             </div>
           </>
         )}

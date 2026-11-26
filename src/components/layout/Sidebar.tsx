@@ -173,6 +173,7 @@ const MENU_STRUCTURE: MenuItem[] = [
       { label: "Recepciones", href: "/compras/recepciones" },
       { label: "Pagos a proveedores", href: "/compras/pagos" },
       { label: "Proveedores", href: "/proveedores" },
+      { label: "Roles del flujo de compra", href: "/compras/roles" },
     ],
   },
   { key: "gastos", slug: "gastos", label: "Gastos y Servicios", href: "/gastos", icon: Receipt },

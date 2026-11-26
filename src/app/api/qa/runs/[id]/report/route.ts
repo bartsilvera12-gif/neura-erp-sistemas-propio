@@ -40,39 +40,51 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
-  if (!UUID_RE.test(id)) {
-    return new Response(JSON.stringify({ error: "id debe ser UUID" }), { status: 400 });
+  try {
+    const { id } = await context.params;
+    if (!UUID_RE.test(id)) {
+      return new Response(JSON.stringify({ error: "id debe ser UUID" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+
+    const sb = await createSupabaseServerClient();
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user?.email) notFound();
+    const decision = await resolveQaAccess(sb, user.email);
+    if (!decision.ok) notFound();
+
+    const repo = buildQaRepo();
+    if (!repo) {
+      return new Response(JSON.stringify({ error: "QA_DB_URL no configurada" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+
+    const run = await repo.getRun(id);
+    if (!run) notFound();
+    const project = await repo.getProject(run.project_id);
+    const suite = await repo.getSuite(run.suite_id);
+    const results = await repo.listResultsForRun(id);
+
+    const buffer = await construirPdf({ run, project, suite, results });
+
+    const nombreArchivo = `qa-report-${project?.slug ?? "run"}-${id.slice(0, 8)}.pdf`;
+    return new Response(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${nombreArchivo}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    // Antes esto tiraba 500 HTML y el browser lo bajaba como "report.txt".
+    // Ahora devolvemos JSON legible con el stack para diagnosticar.
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? (err.stack ?? "").slice(0, 2000) : "";
+    console.error("[qa report pdf] error:", err);
+    return new Response(JSON.stringify({ error: "fallo generando PDF", detail: msg, stack }, null, 2), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  const sb = await createSupabaseServerClient();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user?.email) notFound();
-  const decision = await resolveQaAccess(sb, user.email);
-  if (!decision.ok) notFound();
-
-  const repo = buildQaRepo();
-  if (!repo) {
-    return new Response(JSON.stringify({ error: "QA_DB_URL no configurada" }), { status: 500 });
-  }
-
-  const run = await repo.getRun(id);
-  if (!run) notFound();
-  const project = await repo.getProject(run.project_id);
-  const suite = await repo.getSuite(run.suite_id);
-  const results = await repo.listResultsForRun(id);
-
-  const buffer = await construirPdf({ run, project, suite, results });
-
-  const nombreArchivo = `qa-report-${project?.slug ?? "run"}-${id.slice(0, 8)}.pdf`;
-  return new Response(new Uint8Array(buffer), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${nombreArchivo}"`,
-      "Cache-Control": "no-store",
-    },
-  });
 }
 
 type RepoNN = NonNullable<ReturnType<typeof buildQaRepo>>;

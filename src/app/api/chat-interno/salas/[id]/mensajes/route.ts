@@ -32,11 +32,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const antesDe = sp.get("antes_de");
     const busca = (sp.get("q") ?? "").trim();
 
+    const destacados = sp.get("destacados") === "1";
+    const SEL =
+      "id, usuario_id, texto, adjuntos, created_at, editado_at, eliminado_at, responde_a, reacciones, menciones, fijado_at, destacado_por";
+
     let q = sb
       .from("chat_interno_mensajes")
-      .select(
-        "id, usuario_id, texto, adjuntos, created_at, editado_at, eliminado_at, responde_a, reacciones, menciones"
-      )
+      .select(SEL)
       .eq("sala_id", salaId)
       .order("created_at", { ascending: false })
       .limit(PAGINA);
@@ -45,14 +47,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // ignora la paginación por fecha, que responde a otra pregunta.
     if (busca) q = sb
       .from("chat_interno_mensajes")
-      .select(
-        "id, usuario_id, texto, adjuntos, created_at, editado_at, eliminado_at, responde_a, reacciones, menciones"
-      )
+      .select(SEL)
       .eq("sala_id", salaId)
       .is("eliminado_at", null)
       .ilike("texto", `%${busca.replace(/[%_]/g, "")}%`)
       .order("created_at", { ascending: false })
       .limit(PAGINA);
+    // Mis destacados de esta sala: otra vista, como la búsqueda.
+    if (destacados) q = sb
+      .from("chat_interno_mensajes")
+      .select(SEL)
+      .eq("sala_id", salaId)
+      .is("eliminado_at", null)
+      .contains("destacado_por", [usuarioId])
+      .order("created_at", { ascending: false })
+      .limit(200);
 
     const { data, error } = await q;
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
@@ -75,7 +84,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       ...new Set(filas.map((m) => m.responde_a).filter((x): x is string => typeof x === "string")),
     ];
 
-    const [usuariosRes, urls, lectoresRes, originalesRes] = await Promise.all([
+    const [usuariosRes, urls, lectoresRes, originalesRes, fijadosRes] = await Promise.all([
       ids.length
         ? catalog.from("usuarios").select("id, nombre, nombre_chat, avatar_path").in("id", ids)
         : Promise.resolve({ data: [] as unknown[] }),
@@ -94,9 +103,30 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .select("id, usuario_id, texto, adjuntos, eliminado_at")
             .in("id", citados)
         : Promise.resolve({ data: [] as unknown[] }),
+      // Lo fijado va arriba de la conversación aunque sea de hace meses.
+      sb
+        .from("chat_interno_mensajes")
+        .select("id, usuario_id, texto, adjuntos, created_at, fijado_at")
+        .eq("sala_id", salaId)
+        .is("eliminado_at", null)
+        .not("fijado_at", "is", null)
+        .order("fijado_at", { ascending: false })
+        .limit(3),
     ]);
+    const filasFijadas = (fijadosRes.data ?? []) as Record<string, unknown>[];
+    // Los autores de lo fijado pueden no estar en esta página.
+    const faltan = [
+      ...new Set(
+        filasFijadas
+          .map((f) => f.usuario_id)
+          .filter((x): x is string => typeof x === "string" && !ids.includes(x))
+      ),
+    ];
+    const extraRes = faltan.length
+      ? await catalog.from("usuarios").select("id, nombre, nombre_chat, avatar_path").in("id", faltan)
+      : { data: [] as unknown[] };
 
-    const personas = (usuariosRes.data ?? []) as {
+    const personas = [...(usuariosRes.data ?? []), ...(extraRes.data ?? [])] as {
       id: string;
       nombre: string | null;
       nombre_chat: string | null;
@@ -184,12 +214,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             )
           ),
           menciones: Array.isArray(m.menciones) ? (m.menciones as string[]) : [],
+          fijado: !borrado && m.fijado_at != null,
+          destacado: Array.isArray(m.destacado_por) && (m.destacado_por as string[]).includes(usuarioId),
         };
       })
       .reverse();
 
     return NextResponse.json(
-      successResponse({ mensajes, hay_mas: filas.length === PAGINA, escribiendo })
+      successResponse({
+        mensajes,
+        hay_mas: !destacados && filas.length === PAGINA,
+        escribiendo,
+        fijados: filasFijadas.map((f) => ({
+          id: String(f.id),
+          autor: f.usuario_id ? nombreDe.get(String(f.usuario_id)) ?? "—" : "—",
+          texto:
+            ((f.texto as string | null) ?? "").trim() ||
+            etiquetaDeAdjuntos(Array.isArray(f.adjuntos) ? (f.adjuntos as unknown[]) : []) ||
+            "Mensaje",
+          created_at: String(f.created_at),
+        })),
+      })
     );
   } catch (e) {
     return NextResponse.json(

@@ -14,7 +14,14 @@ import {
   Camera,
   Check,
   CheckCheck,
+  ChevronDown,
   ChevronRight,
+  Copy,
+  Info,
+  Pin,
+  PinOff,
+  Star,
+  StarOff,
   Download,
   ExternalLink,
   File as FileIcon,
@@ -199,12 +206,28 @@ type Mensaje = {
   destinatarios: number;
   leido_por_nombres: string[];
   menciones: string[];
+  /** Fijado arriba de la conversación (lo ven todos). */
+  fijado?: boolean;
+  /** Lo destaqué yo (es personal). */
+  destacado?: boolean;
   /** Pintado al instante, todavia sin respuesta del servidor. */
   pendiente?: boolean;
 };
 
 /** Lista corta a propósito: se lee de un vistazo, un selector completo no. */
-const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
+const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+/** Todas las reacciones posibles (el "+" del menú). La misma lista valida el servidor. */
+const EMOJIS_REACCION = [
+  "👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "👀", "🔥", "👏", "💯", "✅",
+  "🙌", "😍", "🤔", "😅", "🥳", "💪", "👌", "😎", "🤝", "⭐", "🙈", "😡",
+];
+
+/** Lo fijado que se muestra arriba de la conversación. */
+type Fijado = { id: string; autor: string; texto: string; created_at: string };
+
+/** Valor de `busca` que significa "mis destacados" en vez de un texto a buscar. */
+const VISTA_DESTACADOS = "__destacados__";
 
 /** Un enlace web dentro de un mensaje: http(s)://… o www.… */
 const RE_ENLACE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
@@ -469,7 +492,7 @@ function firmaDeMensajes(ms: Mensaje[]): string {
   return ms
     .map(
       (m) =>
-        `${m.id}|${m.editado_at ?? ""}|${m.eliminado ? 1 : 0}|${m.leido_por}|${m.destinatarios}|${JSON.stringify(
+        `${m.id}|${m.editado_at ?? ""}|${m.eliminado ? 1 : 0}|${m.fijado ? 1 : 0}|${m.destacado ? 1 : 0}|${m.leido_por}|${m.destinatarios}|${JSON.stringify(
           m.reacciones
         )}`
     )
@@ -837,6 +860,20 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
   const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
   const [busca, setBusca] = useState("");
   const [enBusqueda, setEnBusqueda] = useState(false);
+  /** Menú del mensaje (la flechita): dónde se abre y si muestra todas las reacciones. */
+  const [menuMsg, setMenuMsg] = useState<{ m: Mensaje; x: number; y: number; todos: boolean } | null>(null);
+  /** "Info. del mensaje": quién lo leyó y cuándo se mandó. */
+  const [infoMsg, setInfoMsg] = useState<Mensaje | null>(null);
+  /** Mensajes fijados de la sala abierta (el más reciente primero). */
+  const [fijados, setFijados] = useState<Fijado[]>([]);
+  /** Cuál de los fijados se muestra en la barra (se van rotando al tocarla). */
+  const [fijadoVer, setFijadoVer] = useState(0);
+  /** Mensaje recién saltado, para resaltarlo un momento. */
+  const [resaltado, setResaltado] = useState<string | null>(null);
+  /** Mensaje al que se quiere saltar y que todavía no está cargado. */
+  const saltarARef = useRef<{ id: string; intentos: number } | null>(null);
+  /** Aviso corto abajo ("Copiado"). */
+  const [aviso, setAviso] = useState<string | null>(null);
   /** El buscador se despliega: en reposo es un icono, no una caja siempre visible. */
   const [verBuscador, setVerBuscador] = useState(false);
   /** Panel lateral "Acerca del chat": `null` cerrado. */
@@ -970,15 +1007,24 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     const miPedido = ++pedidoRef.current;
     const vigente = () => miPedido === pedidoRef.current;
     try {
-      const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+      const qs =
+        q === VISTA_DESTACADOS
+          ? "?destacados=1"
+          : q && q.trim()
+            ? `?q=${encodeURIComponent(q.trim())}`
+            : "";
       const r = await fetchWithSupabaseSession(`/api/chat-interno/salas/${id}/mensajes${qs}`, {
         cache: "no-store",
       });
       const j = (await r.json().catch(() => ({}))) as {
-        data?: { mensajes?: Mensaje[]; escribiendo?: string[]; hay_mas?: boolean };
+        data?: { mensajes?: Mensaje[]; escribiendo?: string[]; hay_mas?: boolean; fijados?: Fijado[] };
         error?: string;
       };
       if (!vigente()) return;
+      if (r.ok && !q) {
+        const llegan = j?.data?.fijados ?? [];
+        setFijados((prev) => (JSON.stringify(prev) === JSON.stringify(llegan) ? prev : llegan));
+      }
       // Una respuesta fallida NO es "no hay mensajes": antes vaciaba la
       // conversación en pantalla. Se deja lo que había y se avisa.
       if (!r.ok) {
@@ -1101,6 +1147,34 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     anclaScrollRef.current = null;
     cont.scrollTop = cont.scrollHeight - ancla;
   }, [mensajes]);
+
+  // Saltar a un mensaje viejo (un fijado): cada página que llega se revisa hasta encontrarlo.
+  useEffect(() => {
+    const p = saltarARef.current;
+    if (p && !pidiendoAnterioresRef.current) irAMensaje(p.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mensajes]);
+
+  // Al cambiar de conversación, lo fijado y los menús de la anterior no corresponden.
+  useEffect(() => {
+    setFijados([]);
+    setFijadoVer(0);
+    setMenuMsg(null);
+    setInfoMsg(null);
+    saltarARef.current = null;
+  }, [salaId]);
+
+  useEffect(() => {
+    if (!menuMsg && !infoMsg) return;
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuMsg(null);
+        setInfoMsg(null);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [menuMsg, infoMsg]);
 
   useEffect(() => {
     void cargarSalas();
@@ -1556,6 +1630,87 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
     }
     // Guardada: se sostiene unos segundos más, por los refrescos que ya venían en camino.
     if (mia?.quiero === quiero) mia.hasta = Date.now() + 8000;
+  }
+
+  /** Abre el menú del mensaje junto a la flechita (o donde se hizo clic derecho). */
+  function abrirMenu(m: Mensaje, x: number, y: number) {
+    setMenuMsg({ m, x, y, todos: false });
+  }
+
+  /** Fijar / destacar, pintado al instante; si el servidor no lo acepta, vuelve atrás. */
+  async function marcar(m: Mensaje, tipo: "fijar" | "destacar", valor: boolean) {
+    const campo = tipo === "fijar" ? "fijado" : "destacado";
+    const poner = (v: boolean) =>
+      setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, [campo]: v } : x)));
+    poner(valor);
+    if (tipo === "fijar") {
+      setFijados((prev) => {
+        const sin = prev.filter((f) => f.id !== m.id);
+        if (!valor) return sin;
+        const texto = (m.texto ?? "").trim() || (m.adjuntos.length ? "Archivo adjunto" : "Mensaje");
+        return [{ id: m.id, autor: m.autor, texto, created_at: m.created_at }, ...sin].slice(0, 3);
+      });
+      setFijadoVer(0);
+    }
+    const r = await pedir(`/api/chat-interno/mensajes/${m.id}/marca`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo, valor }),
+    });
+    if (!r.ok) {
+      poner(!valor);
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      setErr(j.error ?? "No se pudo guardar");
+    }
+    if (tipo === "fijar" && salaId) void cargarMensajes(salaId, undefined, true);
+    if (tipo === "destacar" && enBusqueda && busca === VISTA_DESTACADOS && !valor) {
+      setMensajes((prev) => prev.filter((x) => x.id !== m.id));
+    }
+  }
+
+  async function copiarMensaje(m: Mensaje) {
+    const texto = (m.texto ?? "").trim() || m.adjuntos.map((a) => a.nombre).join("\n");
+    try {
+      await navigator.clipboard.writeText(texto);
+      mostrarAviso("Mensaje copiado");
+    } catch {
+      setErr("No se pudo copiar");
+    }
+  }
+
+  function mostrarAviso(t: string) {
+    setAviso(t);
+    window.setTimeout(() => setAviso((a) => (a === t ? null : a)), 1800);
+  }
+
+  /** Lleva la vista hasta un mensaje; si es viejo, va trayendo páginas anteriores hasta encontrarlo. */
+  function irAMensaje(id: string) {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setResaltado(id);
+      window.setTimeout(() => setResaltado((r) => (r === id ? null : r)), 1600);
+      saltarARef.current = null;
+      return;
+    }
+    if (hayMas) {
+      saltarARef.current = { id, intentos: (saltarARef.current?.id === id ? saltarARef.current.intentos : 0) + 1 };
+      if (saltarARef.current.intentos > 30) {
+        saltarARef.current = null;
+        return;
+      }
+      void cargarAnteriores();
+    } else {
+      saltarARef.current = null;
+    }
+  }
+
+  function abrirDestacados() {
+    if (!salaId) return;
+    setVerBuscador(false);
+    setBusca(VISTA_DESTACADOS);
+    setEnBusqueda(true);
+    void cargarMensajes(salaId, VISTA_DESTACADOS);
   }
 
   async function borrarMensaje(msgId: string) {
@@ -2712,6 +2867,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   <button
                     type="button"
                     onClick={() => {
+                      if (busca === VISTA_DESTACADOS) setBusca("");
                       setVerBuscador(true);
                       // El foco va al input recien montado, no en el mismo tick.
                       setTimeout(() => buscaRef.current?.focus(), 0);
@@ -2722,6 +2878,18 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     <Search className="h-4 w-4" />
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => (enBusqueda && busca === VISTA_DESTACADOS ? cerrarBusqueda() : abrirDestacados())}
+                  title="Mensajes destacados"
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                    enBusqueda && busca === VISTA_DESTACADOS
+                      ? "bg-amber-100 text-amber-700"
+                      : "text-slate-500 hover:bg-slate-100 hover:text-[#2F6E71]"
+                  }`}
+                >
+                  <Star className="h-4 w-4" />
+                </button>
                 <BotonFondoChat />
                 <button
                   type="button"
@@ -2740,7 +2908,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
             {enBusqueda ? (
               <div className="flex items-center justify-between gap-2 border-b border-amber-100 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-800">
                 <span>
-                  {mensajes.length === 0
+                  {busca === VISTA_DESTACADOS
+                    ? mensajes.length === 0
+                      ? "No destacaste mensajes en esta conversación. Usá la flechita de un mensaje → Destacar."
+                      : `${mensajes.length} ${mensajes.length === 1 ? "mensaje destacado" : "mensajes destacados"}`
+                    : mensajes.length === 0
                     ? `Sin resultados para "${busca}"`
                     : `${mensajes.length} ${mensajes.length === 1 ? "resultado" : "resultados"} para "${busca}"`}
                 </span>
@@ -2754,9 +2926,61 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               </div>
             ) : null}
 
+            {!enBusqueda && fijados.length > 0
+              ? (() => {
+                  const k = Math.min(fijadoVer, fijados.length - 1);
+                  const f = fijados[k];
+                  return (
+                    <div className="flex items-center gap-2 border-b border-slate-200 bg-white/95 px-4 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          irAMensaje(f.id);
+                          if (fijados.length > 1) setFijadoVer((v) => (v + 1) % fijados.length);
+                        }}
+                        title="Ir al mensaje fijado"
+                        className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                      >
+                        {fijados.length > 1 ? (
+                          <span className="flex flex-col gap-0.5 self-stretch py-0.5">
+                            {fijados.map((x, i) => (
+                              <span
+                                key={x.id}
+                                className={`w-[3px] flex-1 rounded-full ${i === k ? "bg-[#2F6E71]" : "bg-slate-300"}`}
+                              />
+                            ))}
+                          </span>
+                        ) : null}
+                        <Pin className="h-4 w-4 shrink-0 text-[#2F6E71]" />
+                        <span className="min-w-0">
+                          <span className="block text-[11px] font-semibold text-[#2F6E71]">
+                            {fijados.length > 1 ? `Mensaje fijado ${k + 1} de ${fijados.length}` : "Mensaje fijado"} ·{" "}
+                            {nombreCorto(f.autor)}
+                          </span>
+                          <span className="block truncate text-[13px] text-slate-600">{f.texto}</span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        title="Desfijar"
+                        onClick={() => {
+                          const m =
+                            mensajes.find((x) => x.id === f.id) ??
+                            ({ id: f.id, texto: f.texto, adjuntos: [], autor: f.autor, created_at: f.created_at } as unknown as Mensaje);
+                          void marcar(m, "fijar", false);
+                        }}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <PinOff className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })()
+              : null}
             <div
               ref={listaRef}
               onScroll={(e) => {
+                if (menuMsg) setMenuMsg(null);
                 // Llegar arriba de todo trae lo anterior, como en cualquier chat.
                 if (e.currentTarget.scrollTop < 60 && hayMas && !enBusqueda) void cargarAnteriores();
               }}
@@ -2846,9 +3070,10 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                         </div>
                       ) : null}
                       <div
-                        className={`group relative flex gap-2 ${
+                        id={`msg-${m.id}`}
+                        className={`group relative flex gap-2 rounded-lg transition-colors duration-700 ${
                           m.propio ? "justify-end" : "justify-start"
-                        }`}
+                        } ${resaltado === m.id ? "bg-[#4FAEB2]/20" : ""}`}
                       >
                         {/* La cara va por fuera del globo y sólo en el último de
                             una tanda: repetirla en cada renglón parte la lectura
@@ -2869,6 +3094,11 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           </span>
                         ) : null}
                         <div
+                          onContextMenu={(e) => {
+                            if (m.eliminado || m.pendiente || editando?.id === m.id) return;
+                            e.preventDefault();
+                            abrirMenu(m, m.propio ? e.clientX + 236 : e.clientX, e.clientY);
+                          }}
                           // Un mensaje que es solo una foto o un video: casi sin margen, para que la
                           // imagen llene el globo en vez de flotar adentro de un recuadro.
                           className={`relative max-w-[78%] rounded-xl text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
@@ -2882,6 +3112,23 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           } ${m.propio ? GLOBO_PROPIO : "bg-white"}`}
                         >
 
+                          {/* La flechita del menú, como en WhatsApp: aparece al pasar el mouse
+                              (en el celular queda siempre a la vista). */}
+                          {!m.eliminado && !m.pendiente && editando?.id !== m.id ? (
+                            <button
+                              type="button"
+                              aria-label="Opciones del mensaje"
+                              onClick={(e) => {
+                                const r = e.currentTarget.getBoundingClientRect();
+                                abrirMenu(m, m.propio ? r.right : r.left, r.bottom);
+                              }}
+                              className={`absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full text-slate-500 shadow-[0_0_6px_4px_rgba(255,255,255,0.35)] transition-opacity hover:text-slate-800 focus:opacity-100 [@media(hover:none)]:opacity-80 ${
+                                m.propio ? GLOBO_PROPIO : "bg-white"
+                              } ${menuMsg?.m.id === m.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </button>
+                          ) : null}
                           {/* El nombre va DENTRO del globo: afuera, sobre el
                               fondo, los colores claros de la paleta no llegan a
                               contrastar y el renglón se pierde. */}
@@ -2947,6 +3194,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                               {m.texto ? (
                                 <p className={`whitespace-pre-wrap break-words text-[14.5px] leading-relaxed ${m.adjuntos.length > 0 ? "mt-1.5 px-0.5" : ""}`}>
                                   <span className="float-right ml-2 mt-[9px] text-[11px] leading-none text-slate-400">
+                                    {m.fijado ? <Pin className="mr-0.5 inline h-3 w-3 -translate-y-px" /> : null}
+                                    {m.destacado ? <Star className="mr-0.5 inline h-3 w-3 -translate-y-px fill-amber-400 text-amber-500" /> : null}
                                     {m.pendiente
                                       ? "enviando…"
                                       : `${m.editado_at ? "editado · " : ""}${hora(m.created_at)}`}
@@ -2971,6 +3220,8 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                           )}
                           {!m.texto || m.eliminado || editando?.id === m.id ? (
                             <div className="mt-1 px-1 text-right text-[11px] text-slate-400">
+                              {m.fijado ? <Pin className="mr-0.5 inline h-3 w-3 -translate-y-px" /> : null}
+                              {m.destacado ? <Star className="mr-0.5 inline h-3 w-3 -translate-y-px fill-amber-400 text-amber-500" /> : null}
                               {m.pendiente ? "enviando… " : m.editado_at ? "editado · " : ""}
                               {m.pendiente ? "" : hora(m.created_at)}
                               {" "}
@@ -3047,53 +3298,23 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                             estén invisibles ocupan su ancho, y puestas después
                             empujaban el globo hacia adentro — nunca llegaba al
                             borde derecho. */}
-                        {!m.eliminado && !enBusqueda && !m.pendiente ? (
+                        {!m.eliminado && !m.pendiente ? (
                           <div
-                            className={`flex shrink-0 items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100 ${
+                            className={`flex shrink-0 items-center self-center opacity-0 transition-opacity group-hover:opacity-100 ${
                               m.propio ? "order-first" : ""
                             }`}
                           >
-                            <div className="flex items-center rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow-sm">
-                              {EMOJIS.map((e) => (
-                                <button
-                                  key={e}
-                                  type="button"
-                                  onClick={() => void reaccionar(m.id, e)}
-                                  title={`Reaccionar ${e}`}
-                                  className="px-0.5 text-[13px] leading-none transition-transform hover:scale-125"
-                                >
-                                  {e}
-                                </button>
-                              ))}
-                            </div>
                             <button
                               type="button"
-                              onClick={() => setCitando(m)}
-                              title="Responder"
-                              className="rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm hover:text-[#4FAEB2]"
+                              title="Reaccionar"
+                              onClick={(e) => {
+                                const r = e.currentTarget.getBoundingClientRect();
+                                abrirMenu(m, m.propio ? r.right : r.left, r.bottom);
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-slate-500 shadow-sm hover:text-[#2F6E71]"
                             >
-                              <Reply className="h-3 w-3" />
+                              <Smile className="h-4 w-4" />
                             </button>
-                            {m.propio ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditando({ id: m.id, texto: m.texto ?? "" })}
-                                  title="Editar"
-                                  className="rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm hover:text-[#4FAEB2]"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void borrarMensaje(m.id)}
-                                  title="Eliminar"
-                                  className="rounded-full border border-slate-200 bg-white p-1 text-slate-500 shadow-sm hover:text-rose-600"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </>
-                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -4081,6 +4302,195 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {/* Menú del mensaje (la flechita o el clic derecho), como en WhatsApp. */}
+      {menuMsg
+        ? (() => {
+            const m = mensajes.find((x) => x.id === menuMsg.m.id) ?? menuMsg.m;
+            const items: { icono: LucideIcon; label: string; accion: () => void; peligro?: boolean; mantener?: boolean }[] = [];
+            if (m.propio) items.push({ icono: Info, label: "Info. del mensaje", accion: () => setInfoMsg(m) });
+            items.push({ icono: Reply, label: "Responder", accion: () => setCitando(m) });
+            if (m.texto || m.adjuntos.length) items.push({ icono: Copy, label: "Copiar", accion: () => void copiarMensaje(m) });
+            items.push({
+              icono: Smile,
+              label: "Reaccionar",
+              mantener: true,
+              accion: () => setMenuMsg({ ...menuMsg, todos: true }),
+            });
+            items.push({
+              icono: m.fijado ? PinOff : Pin,
+              label: m.fijado ? "Desfijar" : "Fijar",
+              accion: () => void marcar(m, "fijar", !m.fijado),
+            });
+            items.push({
+              icono: m.destacado ? StarOff : Star,
+              label: m.destacado ? "Quitar destacado" : "Destacar",
+              accion: () => void marcar(m, "destacar", !m.destacado),
+            });
+            if (m.propio) {
+              items.push({ icono: Pencil, label: "Editar", accion: () => setEditando({ id: m.id, texto: m.texto ?? "" }) });
+            }
+            if (m.propio || salaActual?.mi_rol === "admin") {
+              items.push({ icono: Trash2, label: "Eliminar", peligro: true, accion: () => void borrarMensaje(m.id) });
+            }
+            const W = 236;
+            const alto = 52 + (menuMsg.todos ? 150 : items.length * 40 + 12);
+            const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+            const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+            const left = Math.min(Math.max(8, m.propio ? menuMsg.x - W : menuMsg.x), vw - W - 8);
+            let top = menuMsg.y + 4;
+            if (top + alto > vh - 8) top = Math.max(8, menuMsg.y - alto - 30);
+            const yoId = yoRef.current?.id;
+            const misReacciones = new Set(
+              Object.entries(m.reacciones)
+                .filter(([, q]) => !!yoId && q.includes(yoId))
+                .map(([e]) => e)
+            );
+            const botonEmoji = (e: string, grande = false) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => {
+                  setMenuMsg(null);
+                  void reaccionar(m.id, e);
+                }}
+                title={`Reaccionar ${e}`}
+                className={`flex items-center justify-center rounded-full leading-none transition-transform hover:scale-125 ${
+                  grande ? "h-9 w-9 text-[22px]" : "h-8 w-8 text-[20px]"
+                } ${misReacciones.has(e) ? "bg-slate-200" : ""}`}
+              >
+                {e}
+              </button>
+            );
+            return (
+              <>
+                <div
+                  className="fixed inset-0 z-[60]"
+                  onMouseDown={() => setMenuMsg(null)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenuMsg(null);
+                  }}
+                />
+                <div role="menu" className="fixed z-[61]" style={{ left, top, width: W }}>
+                  <div className="mb-1.5 flex items-center justify-between rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-slate-200">
+                    {EMOJIS.map((e) => botonEmoji(e))}
+                    <button
+                      type="button"
+                      title="Más reacciones"
+                      onClick={() => setMenuMsg({ ...menuMsg, todos: !menuMsg.todos })}
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {menuMsg.todos ? (
+                    <div className="grid grid-cols-6 gap-0.5 rounded-xl bg-white p-2 shadow-xl ring-1 ring-slate-200">
+                      {EMOJIS_REACCION.map((e) => botonEmoji(e, true))}
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl bg-white py-1.5 shadow-xl ring-1 ring-slate-200">
+                      {items.map((it, i) => {
+                        const Icono = it.icono;
+                        return (
+                          <div key={it.label}>
+                            {it.peligro && i > 0 ? <div className="my-1 border-t border-slate-100" /> : null}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                if (!it.mantener) setMenuMsg(null);
+                                it.accion();
+                              }}
+                              className={`flex w-full items-center gap-3 px-4 py-2 text-left text-[14px] transition-colors hover:bg-slate-50 ${
+                                it.peligro ? "text-rose-600" : "text-slate-700"
+                              }`}
+                            >
+                              <Icono className="h-[18px] w-[18px] shrink-0 opacity-80" />
+                              {it.label}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()
+        : null}
+
+      {/* Info. del mensaje: cuándo salió y quién ya lo leyó. */}
+      {infoMsg
+        ? (() => {
+            const m = mensajes.find((x) => x.id === infoMsg.id) ?? infoMsg;
+            const fecha = (s: string) =>
+              new Date(s).toLocaleString("es-PY", { dateStyle: "medium", timeStyle: "short" });
+            const faltan = Math.max(0, m.destinatarios - m.leido_por);
+            return (
+              <div
+                className="fixed inset-0 z-[62] flex items-center justify-center bg-slate-900/40 p-4"
+                onMouseDown={() => setInfoMsg(null)}
+              >
+                <div
+                  className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-[16px] font-semibold text-slate-800">Info. del mensaje</h3>
+                    <button
+                      type="button"
+                      onClick={() => setInfoMsg(null)}
+                      aria-label="Cerrar"
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className={`mb-4 rounded-xl px-3.5 py-2 text-[14px] text-slate-700 ${GLOBO_PROPIO}`}>
+                    <p className="line-clamp-4 whitespace-pre-wrap break-words">
+                      {m.texto || m.adjuntos.map((a) => a.nombre).join(", ") || "Mensaje"}
+                    </p>
+                  </div>
+                  <dl className="space-y-2.5 text-[13px]">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-slate-500">Enviado</dt>
+                      <dd className="text-right text-slate-800">{fecha(m.created_at)}</dd>
+                    </div>
+                    {m.editado_at ? (
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-slate-500">Editado</dt>
+                        <dd className="text-right text-slate-800">{fecha(m.editado_at)}</dd>
+                      </div>
+                    ) : null}
+                    <div>
+                      <dt className="mb-1 flex items-center gap-1.5 text-slate-500">
+                        <CheckCheck className="h-4 w-4 text-sky-500" /> Leído por ({m.leido_por} de {m.destinatarios})
+                      </dt>
+                      <dd className="text-slate-800">
+                        {m.leido_por_nombres.length
+                          ? m.leido_por_nombres.map((n) => nombreCapitular(n)).join(", ")
+                          : "Todavía nadie"}
+                      </dd>
+                    </div>
+                    {faltan > 0 ? (
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <Check className="h-4 w-4" />
+                        {faltan === 1 ? "Falta que lo lea 1 persona" : `Falta que lo lean ${faltan} personas`}
+                      </div>
+                    ) : null}
+                  </dl>
+                </div>
+              </div>
+            );
+          })()
+        : null}
+
+      {aviso ? (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-[63] -translate-x-1/2 rounded-full bg-slate-800 px-4 py-2 text-[13px] font-medium text-white shadow-lg">
+          {aviso}
         </div>
       ) : null}
 

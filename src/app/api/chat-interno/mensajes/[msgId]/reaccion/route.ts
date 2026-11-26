@@ -5,7 +5,10 @@ import { esMiembro, requireChatInterno, respuestaAuth } from "@/lib/chat-interno
 export const runtime = "nodejs";
 
 /** Emojis disponibles. Una lista corta se lee de un vistazo; un selector completo no. */
-const EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🙏"];
+const EMOJIS = [
+  "👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "👀", "🔥", "👏", "💯", "✅",
+  "🙌", "😍", "🤔", "😅", "🥳", "💪", "👌", "😎", "🤝", "⭐", "🙈", "😡",
+];
 
 /**
  * POST — pone o saca una reacción. Es un interruptor: volver a tocar el mismo

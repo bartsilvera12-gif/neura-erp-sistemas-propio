@@ -82,7 +82,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ m
 
     const { error } = await sb
       .from("chat_interno_mensajes")
-      .update({ eliminado_at: new Date().toISOString() })
+      .update({ eliminado_at: new Date().toISOString(), fijado_at: null, fijado_por: null })
       .eq("id", msgId);
     if (error) return NextResponse.json(errorResponse(error.message), { status: 400 });
     return NextResponse.json(successResponse({ ok: true }));

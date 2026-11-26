@@ -247,10 +247,13 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
                 <span className={ET}>Moneda</span>
                 <Segmentado valor={moneda} onChange={(v) => setMoneda(v as "GS" | "USD")} opciones={[["GS", "Guaraníes"], ["USD", "Dólares"]]} />
                 {moneda === "USD" ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-slate-500">1 US$ =</span>
-                    <MontoInput value={cambio} onChange={setCambio} decimals={false} placeholder="7.300" aria-label="Cotización del dólar" className={`${INPUT} w-28 py-2 text-right tabular-nums`} />
-                    <span className="text-sm text-slate-500">Gs.</span>
+                  <div className="mt-3">
+                    <span className={ET}>Cotización del dólar</span>
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 whitespace-nowrap text-sm font-medium text-slate-600">1 US$ =</span>
+                      <MontoInput value={cambio} onChange={setCambio} decimals={false} placeholder="7.300" aria-label="Cotización del dólar" className={`${INPUT} w-32 py-2 text-right tabular-nums`} />
+                      <span className="shrink-0 text-sm text-slate-500">Gs.</span>
+                    </div>
                   </div>
                 ) : null}
               </div>

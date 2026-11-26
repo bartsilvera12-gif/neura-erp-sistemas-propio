@@ -53,20 +53,34 @@ export async function listarPaginado(pool: Pool, empresaId: string, f: FiltrosLi
   // Neura no tiene tipos de producto: todos son "reventa".
   if (f.tipo === "menu" || f.tipo === "materia_prima") where.push("false");
   if (f.q) {
-    // Cada palabra tiene que aparecer (en cualquier orden).
+    // Buscador inteligente: sin tildes (unaccent), cada palabra en cualquier orden,
+    // en nombre/SKU/código, y con tolerancia a errores de tipeo (word_similarity de
+    // pg_trgm) en el nombre para palabras de 4+ letras.
     const palabras = f.q.split(/\s+/).filter(Boolean).slice(0, 8);
-    for (const w of palabras) {
-      const a = arg(`%${w}%`);
-      where.push(`(p.nombre ILIKE ${a} OR p.sku ILIKE ${a} OR COALESCE(p.codigo_barras, '') ILIKE ${a})`);
+    for (const palabra of palabras) {
+      const like = arg(`%${palabra}%`);
+      const tok = arg(palabra);
+      where.push(`(
+        unaccent(lower(p.nombre)) ILIKE unaccent(lower(${like}))
+        OR unaccent(lower(p.sku)) ILIKE unaccent(lower(${like}))
+        OR unaccent(lower(COALESCE(p.codigo_barras, ''))) ILIKE unaccent(lower(${like}))
+        OR (length(${tok}::text) >= 4 AND unaccent(lower(${tok}::text)) <% unaccent(lower(p.nombre)))
+      )`);
     }
   }
   const w = where.join(" AND ");
   const { rows: tot } = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM neura.productos p WHERE ${w}`, args);
-  // SKU o código de barras exacto va primero (el parámetro se agrega después del conteo, que no lo usa).
+  // Relevancia (el parámetro se agrega después del conteo, que no lo usa):
+  // 1) SKU/código exacto · 2) nombre empieza con lo buscado · 3) nombre lo contiene
+  // · 4) parecido (typos) · 5) alfabético.
   const orden = f.q
     ? (() => {
         const q = arg(f.q);
-        return `(lower(p.sku) = lower(${q}::text) OR p.codigo_barras = ${q}::text) DESC, lower(p.nombre)`;
+        return `(lower(p.sku) = lower(${q}::text) OR p.codigo_barras = ${q}::text) DESC,
+                (unaccent(lower(p.nombre)) ILIKE unaccent(lower(${q}::text)) || '%') DESC,
+                (unaccent(lower(p.nombre)) ILIKE '%' || unaccent(lower(${q}::text)) || '%') DESC,
+                word_similarity(unaccent(lower(${q}::text)), unaccent(lower(p.nombre))) DESC,
+                lower(p.nombre)`;
       })()
     : "lower(p.nombre)";
   const limite = arg(f.porPagina);

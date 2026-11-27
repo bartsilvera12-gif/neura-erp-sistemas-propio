@@ -295,6 +295,7 @@ const MENU_STRUCTURE: MenuItem[] = [
       { label: "Ejecución", href: "/dashboard/qa-center/ejecucion" },
       { label: "Resultados", href: "/dashboard/qa-center/resultados" },
       { label: "Historial", href: "/dashboard/qa-center/historial" },
+      { label: "Entregados", href: "/dashboard/qa-center/entregados" },
     ],
   },
   {

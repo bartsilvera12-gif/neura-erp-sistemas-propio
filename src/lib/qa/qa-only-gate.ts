@@ -96,6 +96,13 @@ export function evaluateQaOnlyGate(req: GateRequest): QaOnlyGateDecision {
     return { kind: "redirect", location: "/dashboard/qa-center" };
   }
 
+  // El header de la familia "QA" del Sidebar apunta a /panel/qa (hrefFamilia).
+  // En QA_ONLY_MODE el gate bloquea /panel/* con 404, lo que genera una
+  // pantalla rota al clickear el grupo. Redirigimos al dashboard QA Center.
+  if (pathname === "/panel/qa" || pathname === "/panel/qa/") {
+    return { kind: "redirect", location: "/dashboard/qa-center" };
+  }
+
   if (isPathAllowed(pathname)) {
     return { kind: "pass" };
   }

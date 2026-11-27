@@ -10,9 +10,6 @@ import { useEffect } from "react";
 import type { QaProjectRow } from "@/lib/qa/db";
 import AnalizarErpCard from "./AnalizarErpCard";
 import CredencialesProyecto from "./CredencialesProyecto";
-import SuitesSection from "./SuitesSection";
-import SeccionAvanzado from "./SeccionAvanzado";
-import PermiteLecturaToggle from "./PermiteLecturaToggle";
 import { EstadoBadge } from "./EstadoProyectoDialogs";
 import type { AiEstadoProyecto } from "./QaCenterPanel";
 
@@ -156,19 +153,6 @@ export default function QaProjectDetalleModal({
             </div>
           </details>
 
-          <div className="mt-4">
-            <SeccionAvanzado>
-              <SuitesSection
-                projectId={p.id}
-                projectSlug={p.slug}
-                permiteLecturaSinEnvAssert={p.permite_lectura_sin_env_assert === true}
-              />
-              <PermiteLecturaToggle
-                projectId={p.id}
-                initialValue={p.permite_lectura_sin_env_assert === true}
-              />
-            </SeccionAvanzado>
-          </div>
         </div>
 
         {/* FOOTER con acciones */}

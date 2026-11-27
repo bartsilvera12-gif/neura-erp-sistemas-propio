@@ -282,7 +282,7 @@ function DetalleOrden({ id, onClose, onCambio }: { id: string; onClose: () => vo
             <Dato icono={CalendarDays} l="Creada" v={`${fecha(o.fecha)}${o.usuario_nombre ? ` · ${o.usuario_nombre}` : ""}`} />
             <Dato icono={Truck} l="Entrega esperada" v={o.fecha_entrega ? fechaDia(o.fecha_entrega) : "A coordinar"}
               extra={entrega} />
-            <Dato icono={Wallet} l="Condición" v={o.tipo_pago === "credito" ? `Crédito${o.plazo_dias ? ` ${o.plazo_dias} días` : ""}` : "Contado"} />
+            <Dato icono={Wallet} l="Condición" v={o.tipo_pago === "credito" ? `Crédito${o.plazo_dias ? ` ${o.plazo_dias} días` : ""}${o.cuotas && o.cuotas > 1 ? ` · ${o.cuotas} cuotas` : ""}` : "Contado"} />
             <Dato icono={Building2} l="Proveedor" v={o.proveedor_nombre} />
           </dl>
 

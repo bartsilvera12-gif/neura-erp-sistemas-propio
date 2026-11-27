@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Download, Loader2, Package, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, Loader2, Minus, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { descargarArchivo } from "@/erp2/lib/api/client-blob";
 import { clienteConfig } from "@/erp2/cliente.config";
@@ -22,7 +22,7 @@ import type { ProveedorMin } from "@/erp2/modules/proveedores/tipos";
 import { cargarProveedores } from "@/erp2/modules/proveedores/cache";
 import type { OrdenCompra } from "@/erp2/modules/compras/ordenes";
 import { ProductoForm } from "@/erp2/modules/inventario/ProductoForm";
-import { BuscadorProductos, ET, Fila, gs, INPUT, MiniaturaProducto, Segmentado, Tarjeta, usd } from "@/erp2/modules/compras/partes";
+import { BuscadorProductos, ET, gs, INPUT, MiniaturaProducto, Segmentado, Tarjeta, usd } from "@/erp2/modules/compras/partes";
 import { SelectorFecha } from "@/erp2/components/SelectorFecha";
 
 const TEAL = clienteConfig.color;
@@ -48,6 +48,7 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
   const [entrega, setEntrega] = useState("");
   const [tipoPago, setTipoPago] = useState<"contado" | "credito">("contado");
   const [plazo, setPlazo] = useState("30");
+  const [cuotas, setCuotas] = useState("1");
   const [moneda, setMoneda] = useState<"GS" | "USD">("GS");
   const [cambio, setCambio] = useState(0);
   const [cotiHoy, setCotiHoy] = useState<{ compra: number; venta: number; fecha: string | null; fuente: string } | null>(null);
@@ -83,6 +84,7 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
         setEntrega(o.fecha_entrega ?? "");
         setTipoPago(o.tipo_pago);
         if (o.plazo_dias) setPlazo(String(o.plazo_dias));
+        if (o.cuotas) setCuotas(String(o.cuotas));
         setMoneda(o.moneda);
         if (o.moneda === "USD") setCambio(Number(o.tipo_cambio) || 0);
         setObservacion(o.observacion ?? "");
@@ -160,6 +162,12 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moneda]);
 
+  // Suma/resta a la cantidad de una línea (mínimo 0), redondeando para evitar flotantes.
+  const setCant = (key: string, delta: number) =>
+    setLineas((ls) => ls.map((x) => (x.key === key
+      ? { ...x, cantidad: String(Math.max(0, Math.round(((Number(x.cantidad.replace(",", ".")) || 0) + delta) * 1000) / 1000)) }
+      : x)));
+
   const factor = moneda === "USD" ? cambio : 1;
   const calc = useMemo(() => {
     let total = 0, unidades = 0, totalOrig = 0;
@@ -191,6 +199,7 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
         fecha_entrega: entrega || null,
         tipo_pago: tipoPago,
         plazo_dias: tipoPago === "credito" ? Number(plazo) || null : null,
+        cuotas: tipoPago === "credito" ? Number(cuotas) || null : null,
         moneda,
         tipo_cambio: moneda === "USD" ? cambio : null,
         observacion: observacion.trim() || null,
@@ -275,9 +284,21 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
                 <span className={ET}>Condición</span>
                 <Segmentado valor={tipoPago} onChange={(v) => setTipoPago(v as "contado" | "credito")} opciones={[["contado", "Contado"], ["credito", "Crédito"]]} />
                 {tipoPago === "credito" ? (
-                  <div className="mt-2 flex items-center gap-2">
-                    <input inputMode="numeric" enterKeyHint="done" aria-label="Plazo en días" value={plazo} onChange={(e) => setPlazo(e.target.value.replace(/\D/g, "").slice(0, 4))} className={`${INPUT} w-20 py-2 text-right tabular-nums`} />
-                    <span className="text-sm text-slate-500">días</span>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <label className="block">
+                      <span className="text-[11px] font-medium text-slate-500">Plazo</span>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <input inputMode="numeric" enterKeyHint="next" aria-label="Plazo en días" value={plazo} onChange={(e) => setPlazo(e.target.value.replace(/\D/g, "").slice(0, 4))} className={`${INPUT} w-full py-2 text-right tabular-nums`} />
+                        <span className="shrink-0 text-sm text-slate-500">días</span>
+                      </div>
+                    </label>
+                    <label className="block">
+                      <span className="text-[11px] font-medium text-slate-500">Cuotas</span>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <input inputMode="numeric" enterKeyHint="done" aria-label="Cantidad de cuotas" value={cuotas} onChange={(e) => setCuotas(e.target.value.replace(/\D/g, "").slice(0, 3))} className={`${INPUT} w-full py-2 text-right tabular-nums`} />
+                        <span className="shrink-0 text-sm text-slate-500">{cuotas === "1" ? "cuota" : "cuotas"}</span>
+                      </div>
+                    </label>
                   </div>
                 ) : null}
               </div>
@@ -343,9 +364,15 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
                           className="-mr-1.5 -mt-1.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 md:hidden"><Trash2 className="h-4 w-4" /></button>
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2 md:contents">
-                        <label className="flex flex-col justify-end md:block md:w-24">
+                        <label className="flex flex-col justify-end md:block md:w-auto">
                           <span className={ET}>Cantidad</span>
-                          <input inputMode="decimal" enterKeyHint="next" aria-label={`Cantidad de ${l.prod.nombre}`} value={l.cantidad} onChange={(e) => setLineas((ls) => ls.map((x) => (x.key === l.key ? { ...x, cantidad: e.target.value.replace(/[^\d.,]/g, "") } : x)))} className={`${INPUT} py-2 text-right tabular-nums`} />
+                          <div className="flex items-center gap-1.5">
+                            <button type="button" aria-label={`Restar uno a ${l.prod.nombre}`} onClick={() => setCant(l.key, -1)}
+                              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-[var(--brand)] hover:text-[var(--brand)] active:scale-95"><Minus className="h-4 w-4" /></button>
+                            <input inputMode="decimal" enterKeyHint="next" aria-label={`Cantidad de ${l.prod.nombre}`} value={l.cantidad} onChange={(e) => setLineas((ls) => ls.map((x) => (x.key === l.key ? { ...x, cantidad: e.target.value.replace(/[^\d.,]/g, "") } : x)))} className={`${INPUT} w-16 py-2 text-center tabular-nums`} />
+                            <button type="button" aria-label={`Sumar uno a ${l.prod.nombre}`} onClick={() => setCant(l.key, 1)}
+                              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-[var(--brand)] hover:text-[var(--brand)] active:scale-95"><Plus className="h-4 w-4" /></button>
+                          </div>
                         </label>
                         <label className="flex flex-col justify-end md:block md:w-32">
                           <span className={ET}>Costo estimado {moneda === "USD" ? "(US$)" : ""}</span>
@@ -366,18 +393,26 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
         </div>
 
         <aside className="lg:sticky lg:top-4 lg:self-start">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Resumen del pedido</p>
-            <dl className="mt-3 space-y-1.5 text-sm">
-              <Fila l="Productos" v={String(lineas.length)} />
-              <Fila l="Unidades" v={calc.unidades.toLocaleString("es-PY", { maximumFractionDigits: 3 })} />
+            <dl className="mt-4 divide-y divide-slate-100 text-sm">
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-slate-500">Productos</dt>
+                <dd className="font-semibold tabular-nums text-slate-800">{lineas.length}</dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-slate-500">Unidades</dt>
+                <dd className="font-semibold tabular-nums text-slate-800">{calc.unidades.toLocaleString("es-PY", { maximumFractionDigits: 3 })}</dd>
+              </div>
             </dl>
-            <div className="mt-3 flex items-baseline justify-between border-t border-slate-100 pt-3">
-              <span className="text-sm font-semibold text-slate-800">Total estimado</span>
-              <span className="text-2xl font-extrabold tabular-nums text-slate-900">{gs(calc.total)}</span>
+            <div className="mt-4 rounded-xl bg-[var(--brand)]/5 px-4 py-3.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-semibold text-slate-700">Total estimado</span>
+                <span className="text-2xl font-extrabold tabular-nums text-slate-900">{gs(calc.total)}</span>
+              </div>
+              {moneda === "USD" ? <p className="mt-1 text-right text-xs font-medium text-slate-500">{usd(calc.totalOrig)}</p> : null}
             </div>
-            {moneda === "USD" ? <p className="text-right text-xs text-slate-500">{usd(calc.totalOrig)}</p> : null}
-            <label className="mt-4 block">
+            <label className="mt-6 block">
               <span className={ET}>Observación para el proveedor <span className="font-normal text-slate-400">(opcional)</span></span>
               <textarea value={observacion} onChange={(e) => setObservacion(e.target.value)} rows={3} maxLength={2000} placeholder="Ej: entregar por la mañana, en el depósito de atrás" className={INPUT} />
             </label>

@@ -42,20 +42,22 @@ const SQL_RECIBIDA = `(
                 AND COALESCE(c.estado, '') <> 'anulada'), 0))`;
 
 /** Condición de pago guardada al principio de las observaciones. */
-const RE_COND = /^\[(contado|crédito(?: (\d+) días)?)\]\s*/i;
+const RE_COND = /^\[(contado|crédito(?: (\d+) días)?(?: · (\d+) cuotas?)?)\]\s*/i;
 function leerCondicion(obs: string | null) {
   const m = (obs ?? "").match(RE_COND);
-  if (!m) return { tipo_pago: "contado" as const, plazo_dias: null, observacion: obs };
+  if (!m) return { tipo_pago: "contado" as const, plazo_dias: null, cuotas: null, observacion: obs };
   return {
     tipo_pago: m[1].toLowerCase().startsWith("cr") ? ("credito" as const) : ("contado" as const),
     plazo_dias: m[2] ? Number(m[2]) : null,
+    cuotas: m[3] ? Number(m[3]) : null,
     observacion: (obs ?? "").replace(RE_COND, "") || null,
   };
 }
 function escribirCondicion(b: Record<string, unknown>) {
   const credito = b.tipo_pago === "credito";
   const plazo = Number(b.plazo_dias) || 0;
-  const cond = credito ? `[crédito${plazo ? ` ${plazo} días` : ""}]` : "[contado]";
+  const cuotas = Number(b.cuotas) || 0;
+  const cond = credito ? `[crédito${plazo ? ` ${plazo} días` : ""}${cuotas > 0 ? ` · ${cuotas} cuotas` : ""}]` : "[contado]";
   const obs = typeof b.observacion === "string" ? b.observacion.trim() : "";
   return `${cond}${obs ? ` ${obs}` : ""}`.slice(0, 2000);
 }
@@ -71,6 +73,7 @@ function fila(o: Record<string, unknown>) {
     fecha_entrega: o.fecha_estimada,
     tipo_pago: cond.tipo_pago,
     plazo_dias: cond.plazo_dias,
+    cuotas: cond.cuotas,
     moneda: o.moneda === "USD" ? "USD" : "GS",
     tipo_cambio: Number(o.tipo_cambio) || 1,
     total: Number(o.total_estimado) || 0,

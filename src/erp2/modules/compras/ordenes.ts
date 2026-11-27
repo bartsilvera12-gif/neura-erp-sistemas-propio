@@ -25,6 +25,7 @@ export type OrdenCompra = {
   fecha_entrega: string | null;
   tipo_pago: "contado" | "credito";
   plazo_dias: number | null;
+  cuotas: number | null;
   moneda: "GS" | "USD";
   tipo_cambio: number;
   total: number;

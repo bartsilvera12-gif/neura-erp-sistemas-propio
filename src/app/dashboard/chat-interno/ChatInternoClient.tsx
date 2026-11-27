@@ -3605,7 +3605,7 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                     }
                   }}
                   placeholder="Escribí @ para mencionar a alguien"
-                  className="block min-h-[36px] w-full resize-none bg-transparent py-[6px] text-[14.5px] leading-[24px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  className="chat-scroll block min-h-[36px] w-full resize-none bg-transparent pr-1 py-[6px] text-[14.5px] leading-[24px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
                 </div>
 

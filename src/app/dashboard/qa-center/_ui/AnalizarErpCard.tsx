@@ -11,7 +11,6 @@
  */
 
 import { useState } from "react";
-import PrerequisitosChecklist from "./PrerequisitosChecklist";
 import CoberturaIAViewer, { type CoberturaModulo } from "./CoberturaIAViewer";
 import InformeIaViewer from "./InformeIaViewer";
 
@@ -153,12 +152,6 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
       </div>
 
       <div className="border-t border-slate-100 bg-slate-50/40 px-5 py-4">
-        <PrerequisitosChecklist
-          togglePermiteLectura={props.togglePermiteLectura}
-          anthropicConfigured={props.anthropicConfigured}
-          credencialesRoRunnerConfigured={props.credencialesRoRunnerConfigured}
-        />
-
         <CoberturaIAViewer cobertura={props.cobertura} />
 
         {props.lastInforme && (

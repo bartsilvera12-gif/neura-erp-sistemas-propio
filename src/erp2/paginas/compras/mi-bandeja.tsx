@@ -10,7 +10,7 @@
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronRight, ClipboardCheck, ClipboardList, HelpCircle, Loader2, PackageCheck, Wallet } from "lucide-react";
+import { CheckCircle2, ChevronRight, ClipboardCheck, ClipboardList, HelpCircle, Loader2, PackageCheck, Plus, Wallet } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { montoMoneda } from "@/erp2/modules/compras/partes";
@@ -62,6 +62,7 @@ export default function MiBandejaPage() {
   }, []);
 
   const secciones = DEFS.filter((d) => data && (data[d.key] as Seccion | undefined));
+  const todoVacio = secciones.length > 0 && secciones.every((d) => (data![d.key] as Seccion).total === 0);
 
   return (
     <div className="space-y-5 pb-10 sm:space-y-6">
@@ -78,8 +79,15 @@ export default function MiBandejaPage() {
 
       {cargando ? (
         <p className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</p>
-      ) : secciones.length === 0 ? (
-        <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">No tenés nada pendiente en compras por ahora.</p>
+      ) : todoVacio || secciones.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-14 text-center shadow-sm">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl" style={{ backgroundColor: `${TEAL}14`, color: TEAL }}><CheckCircle2 className="h-7 w-7" /></span>
+          <h2 className="mt-4 text-base font-semibold text-slate-900">Estás al día</h2>
+          <p className="mt-1 max-w-xs text-sm text-slate-500">No tenés nada pendiente en compras según tu rol. Cuando te toque algo, aparece acá.</p>
+          <Link href="/compras/solicitudes/nueva" className="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-white sm:min-h-0" style={{ backgroundColor: TEAL }}>
+            <Plus className="h-4 w-4" /> Nueva solicitud
+          </Link>
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {secciones.map((d) => {
@@ -97,7 +105,7 @@ export default function MiBandejaPage() {
                 </div>
 
                 {s.rows.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-xs text-slate-400">Nada pendiente.</p>
+                  <p className="px-4 py-4 text-center text-xs text-slate-400">Nada pendiente.</p>
                 ) : (
                   <ul className="divide-y divide-slate-100">
                     {s.rows.map((f) => {

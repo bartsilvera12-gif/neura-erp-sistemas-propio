@@ -433,6 +433,11 @@ function esItemVisible(
     return esSuperAdmin || puedeEntrarAlPanelControl(email, rol, esTecnico);
   }
   if (item.key === "propuestas") return puedeVerPropuestas(email) || access(MODULO_QUE_HABILITA);
+  // QA Center es herramienta interna de Neura: siempre visible para
+  // super_admins, y además para empresas que tengan el módulo habilitado.
+  // El gate real (sesión, acceso a QA) lo aplica `resolveQaAccess` en las
+  // rutas de QA Center.
+  if (item.key === "qa_center") return esSuperAdmin || access(item.slug);
   return access(item.slug);
 }
 

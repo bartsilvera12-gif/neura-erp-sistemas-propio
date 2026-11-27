@@ -286,14 +286,14 @@ function DetalleSolicitud({ id, onClose, onCambio }: { id: string; onClose: () =
                         <div className="mt-0.5 flex items-center gap-1.5">
                           <button type="button" onClick={() => setLinea(i, "cantidad", Math.max(0, (Number(l.cantidad) || 0) - 1))} aria-label="Restar uno" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-[var(--brand)] hover:text-[var(--brand)] active:scale-95"><Minus className="h-3.5 w-3.5" /></button>
                           <input type="number" min={0} step="any" value={l.cantidad} onChange={(e) => setLinea(i, "cantidad", Number(e.target.value))}
-                            className="w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
+                            className="sin-flechas w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
                           <button type="button" onClick={() => setLinea(i, "cantidad", (Number(l.cantidad) || 0) + 1)} aria-label="Sumar uno" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-[var(--brand)] hover:text-[var(--brand)] active:scale-95"><Plus className="h-3.5 w-3.5" /></button>
                         </div>
                       </div>
                       <label>
                         <span className="text-[11px] font-medium text-slate-500">Costo unit. ({o.moneda === "USD" ? "US$" : "Gs."})</span>
                         <input type="number" min={0} step="any" value={l.costo_unitario} onChange={(e) => setLinea(i, "costo_unitario", Number(e.target.value))}
-                          className="mt-0.5 block w-32 rounded-lg border border-slate-200 px-2 py-1.5 text-right text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
+                          className="sin-flechas mt-0.5 block w-32 rounded-lg border border-slate-200 px-2 py-1.5 text-right text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
                       </label>
                     </div>
                   ) : (

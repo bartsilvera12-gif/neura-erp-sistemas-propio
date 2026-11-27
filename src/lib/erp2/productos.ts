@@ -18,12 +18,13 @@ export const COLS = `p.id, p.nombre, p.sku, p.codigo_barras, p.categoria_princip
   0::float AS descuento_pct, COALESCE(p.stock_actual, 0)::float AS stock_actual,
   COALESCE(p.stock_minimo, 0)::float AS stock_minimo, COALESCE(NULLIF(p.unidad_medida, ''), 'Unidad') AS unidad_medida,
   '10%'::text AS tipo_iva, 'reventa'::text AS tipo_producto, true AS controla_stock, false AS controla_lotes, true AS es_vendible,
-  COALESCE(p.activo, true) AS activo, p.imagen_url, p.imagen_path`;
+  COALESCE(p.activo, true) AS activo, p.imagen_url, p.imagen_path, p.palabras_clave`;
 
 /** Lo único que se escribe en `neura.productos` (sus columnas de siempre). */
 const COLUMNAS_NEURA = new Set([
   "nombre", "sku", "codigo_barras", "unidad_medida", "imagen_url", "categoria_principal_id",
   "proveedor_principal_id", "costo_promedio", "precio_venta", "stock_minimo", "activo",
+  "palabras_clave",
 ]);
 
 export interface FiltrosLista {
@@ -64,7 +65,8 @@ export async function listarPaginado(pool: Pool, empresaId: string, f: FiltrosLi
         unaccent(lower(p.nombre)) ILIKE unaccent(lower(${like}))
         OR unaccent(lower(p.sku)) ILIKE unaccent(lower(${like}))
         OR unaccent(lower(COALESCE(p.codigo_barras, ''))) ILIKE unaccent(lower(${like}))
-        OR (length(${tok}::text) >= 4 AND unaccent(lower(${tok}::text)) <% unaccent(lower(p.nombre)))
+        OR unaccent(lower(COALESCE(p.palabras_clave, ''))) ILIKE unaccent(lower(${like}))
+        OR (length(${tok}::text) >= 4 AND unaccent(lower(${tok}::text)) <% unaccent(lower(p.nombre || ' ' || COALESCE(p.palabras_clave, ''))))
       )`);
     }
   }
@@ -120,6 +122,7 @@ export function camposProducto(b: Record<string, unknown>, alta: boolean) {
   str("codigo_barras", 60);
   str("unidad_medida", 30);
   str("imagen_url", 1000);
+  str("palabras_clave", 500);
   for (const k of ["categoria_principal_id", "proveedor_principal_id"]) {
     if (b[k] === undefined) continue;
     out[k] = esUuid(b[k]) ? b[k] : null;

@@ -91,6 +91,7 @@ export function ProductoForm({
     nombre: producto?.nombre ?? inicial?.nombre ?? "",
     sku: producto?.sku ?? "",
     codigo_barras: producto?.codigo_barras ?? "",
+    palabras_clave: producto?.palabras_clave ?? "",
     categoria_principal_id: producto?.categoria_principal_id ?? "",
     proveedor_principal_id: producto?.proveedor_principal_id ?? inicial?.proveedor_principal_id ?? null,
     unidad_medida: producto?.unidad_medida ?? "Unidad",
@@ -240,6 +241,7 @@ export function ProductoForm({
       nombre: f.nombre.trim(),
       sku: f.sku.trim(),
       codigo_barras: f.codigo_barras.trim() || null,
+      palabras_clave: f.palabras_clave.trim() || null,
       categoria_principal_id: f.categoria_principal_id || null,
       proveedor_principal_id: f.proveedor_principal_id || null,
       unidad_medida: esMP ? unidadMP(f.unidad_medida) : f.unidad_medida.trim() || "Unidad",
@@ -384,6 +386,12 @@ export function ProductoForm({
                   ? "Código propio del local: se puede escanear e imprimir en etiquetas."
                   : "Si el producto no trae código, generá uno para imprimir etiquetas."}
               </p>
+            </div>
+            <div className="mt-3">
+              <span className={ET}>Palabras clave para búsqueda <span className="font-normal text-slate-400">(opcional)</span></span>
+              <input enterKeyHint="next" autoComplete="off" value={f.palabras_clave} onChange={(e) => set("palabras_clave", e.target.value)} disabled={soloLectura}
+                className={INPUT} placeholder="Ej: efectivo, plata, guardaplata, gaveta" aria-label="Palabras clave" maxLength={500} />
+              <p className="mt-1 text-[11px] text-slate-400">Sinónimos o términos relacionados para que el buscador encuentre el producto aunque no coincida el nombre.</p>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block">

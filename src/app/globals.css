@@ -186,6 +186,17 @@ html:has(#neura-app-shell) body {
   background-color: #94a3b8;
 }
 
+/* Inputs numéricos sin las flechitas (cuando hay botones + / - al lado). */
+input.sin-flechas::-webkit-outer-spin-button,
+input.sin-flechas::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input.sin-flechas {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Soporte: barra fina que recorre el borde mientras se refresca un listado. */
 @keyframes soporteBarra {
   0% { transform: translateX(-100%); }

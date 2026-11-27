@@ -156,9 +156,11 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
       setCargandoCoti(false);
     }
   }
-  // Al pasar a USD, trae la cotización del día para ofrecerla (sin pisar lo cargado).
+  // Al pasar a USD, trae la cotización del día y la AUTOCOMPLETA en el campo si
+  // está vacío (si ya cargaron un valor a mano, no lo pisa). Se puede editar igual.
   useEffect(() => {
-    if (moneda === "USD" && !cotiHoy && !cargandoCoti) void traerCotizacion(false);
+    if (moneda !== "USD" || cargandoCoti) return;
+    void traerCotizacion(cambio === 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moneda]);
 

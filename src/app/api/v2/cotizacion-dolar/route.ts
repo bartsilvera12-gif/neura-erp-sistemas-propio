@@ -1,6 +1,11 @@
+import dns from "node:dns";
 import { ctxV2, ErrorV2, fallo, ok } from "@/lib/erp2/server";
 
 export const runtime = "nodejs";
+
+// El contenedor no tiene IPv6: sin esto, fetch resuelve Cloudflare a IPv6 y falla.
+// Preferir IPv4 (la fuente tiene A record) para que la cotización se pueda traer.
+try { dns.setDefaultResultOrder("ipv4first"); } catch { /* noop */ }
 
 /**
  * GET /api/v2/cotizacion-dolar

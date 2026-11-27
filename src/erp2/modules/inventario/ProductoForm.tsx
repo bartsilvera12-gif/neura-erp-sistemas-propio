@@ -145,6 +145,29 @@ export function ProductoForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generando, setGenerando] = useState<"" | "sku" | "barras">("");
+  const [sugiriendo, setSugiriendo] = useState(false);
+
+  /** Sugiere palabras clave (sinónimos) con IA a partir del nombre y las suma a lo que haya. */
+  async function sugerirPalabras() {
+    if (!f.nombre.trim()) { setError("Escribí primero el nombre del producto: las palabras clave se arman a partir de él."); return; }
+    setSugiriendo(true);
+    setError(null);
+    try {
+      const r = await apiFetch<{ palabras_clave: string }>("/api/productos/sugerir-palabras-clave", {
+        method: "POST",
+        body: JSON.stringify({ nombre: f.nombre.trim() }),
+      });
+      const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+      const existentes = f.palabras_clave.split(/\s+/).filter(Boolean);
+      const vistos = new Set(existentes.map(norm));
+      const nuevas = r.palabras_clave.split(/\s+/).filter((w) => w && !vistos.has(norm(w)));
+      set("palabras_clave", [...existentes, ...nuevas].join(" ").trim());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSugiriendo(false);
+    }
+  }
   const fileRef = useRef<HTMLInputElement>(null);
   // Fuera de Inventario nadie le pasa las categorías: las trae (cacheadas).
   const [cats, setCats] = useState<Categoria[]>(categorias);
@@ -389,9 +412,16 @@ export function ProductoForm({
             </div>
             <div className="mt-3">
               <span className={ET}>Palabras clave para búsqueda <span className="font-normal text-slate-400">(opcional)</span></span>
-              <input enterKeyHint="next" autoComplete="off" value={f.palabras_clave} onChange={(e) => set("palabras_clave", e.target.value)} disabled={soloLectura}
-                className={INPUT} placeholder="Ej: efectivo, plata, guardaplata, gaveta" aria-label="Palabras clave" maxLength={500} />
-              <p className="mt-1 text-[11px] text-slate-400">Sinónimos o términos relacionados para que el buscador encuentre el producto aunque no coincida el nombre.</p>
+              <div className="flex gap-2">
+                <input enterKeyHint="next" autoComplete="off" value={f.palabras_clave} onChange={(e) => set("palabras_clave", e.target.value)} disabled={soloLectura}
+                  className={`${INPUT} min-w-0`} placeholder="Ej: efectivo, plata, guardaplata, gaveta" aria-label="Palabras clave" maxLength={500} />
+                <button type="button" onClick={sugerirPalabras} disabled={sugiriendo || soloLectura}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--brand)]/40 px-3 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand-50)] disabled:opacity-50">
+                  {sugiriendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  <span className="max-sm:hidden">Sugerir con IA</span>
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">Sinónimos o términos relacionados para que el buscador encuentre el producto aunque no coincida el nombre. Tocá “Sugerir con IA” para completarlas desde el nombre.</p>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block">

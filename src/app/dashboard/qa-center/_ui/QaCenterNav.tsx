@@ -20,15 +20,6 @@ const TABS: Array<{ href: string; label: string; icon: ReactElement }> = [
     ),
   },
   {
-    href: "/dashboard/qa-center/ejecucion",
-    label: "Ejecución",
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="6 3 20 12 6 21 6 3" fill="currentColor" fillOpacity="0.15"/>
-      </svg>
-    ),
-  },
-  {
     href: "/dashboard/qa-center/resultados",
     label: "Resultados",
     icon: (

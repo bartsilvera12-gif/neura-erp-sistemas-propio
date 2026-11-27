@@ -292,7 +292,6 @@ const MENU_STRUCTURE: MenuItem[] = [
     icon: ShieldCheck,
     children: [
       { label: "Proyectos", href: "/dashboard/qa-center", exactMatch: true },
-      { label: "Ejecución", href: "/dashboard/qa-center/ejecucion" },
       { label: "Resultados", href: "/dashboard/qa-center/resultados" },
       { label: "Historial", href: "/dashboard/qa-center/historial" },
       { label: "Entregados", href: "/dashboard/qa-center/entregados" },

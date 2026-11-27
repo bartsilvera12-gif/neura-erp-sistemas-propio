@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Download, Loader2, Package, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, Loader2, Package, RefreshCw, Trash2 } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { descargarArchivo } from "@/erp2/lib/api/client-blob";
 import { clienteConfig } from "@/erp2/cliente.config";
@@ -22,7 +22,7 @@ import type { ProveedorMin } from "@/erp2/modules/proveedores/tipos";
 import { cargarProveedores } from "@/erp2/modules/proveedores/cache";
 import type { OrdenCompra } from "@/erp2/modules/compras/ordenes";
 import { ProductoForm } from "@/erp2/modules/inventario/ProductoForm";
-import { BuscadorProductos, ET, Fila, gs, INPUT, Segmentado, Tarjeta, usd } from "@/erp2/modules/compras/partes";
+import { BuscadorProductos, ET, Fila, gs, INPUT, MiniaturaProducto, Segmentado, Tarjeta, usd } from "@/erp2/modules/compras/partes";
 import { SelectorFecha } from "@/erp2/components/SelectorFecha";
 
 const TEAL = clienteConfig.color;
@@ -50,6 +50,8 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
   const [plazo, setPlazo] = useState("30");
   const [moneda, setMoneda] = useState<"GS" | "USD">("GS");
   const [cambio, setCambio] = useState(0);
+  const [cotiHoy, setCotiHoy] = useState<{ compra: number; venta: number; fecha: string | null; fuente: string } | null>(null);
+  const [cargandoCoti, setCargandoCoti] = useState(false);
   const [observacion, setObservacion] = useState("");
   const [creandoProd, setCreandoProd] = useState<string | null>(null);
   const [lineas, setLineas] = useState<Linea[]>([]);
@@ -138,6 +140,25 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cambio, moneda]);
+
+  // Cotización del día (Cambios Chaco). `aplicar`: además la pone en el campo.
+  async function traerCotizacion(aplicar = false) {
+    setCargandoCoti(true);
+    try {
+      const d = await apiFetch<{ compra: number; venta: number; fecha: string | null; fuente: string }>("/api/cotizacion-dolar");
+      setCotiHoy(d);
+      if (aplicar && d.venta > 0) setCambio(d.venta);
+    } catch {
+      /* sin cotización: el usuario la carga a mano */
+    } finally {
+      setCargandoCoti(false);
+    }
+  }
+  // Al pasar a USD, trae la cotización del día para ofrecerla (sin pisar lo cargado).
+  useEffect(() => {
+    if (moneda === "USD" && !cotiHoy && !cargandoCoti) void traerCotizacion(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moneda]);
 
   const factor = moneda === "USD" ? cambio : 1;
   const calc = useMemo(() => {
@@ -271,6 +292,12 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
                       <MontoInput value={cambio} onChange={setCambio} decimals={false} placeholder="7.300" aria-label="Cotización del dólar" className={`${INPUT} w-32 py-2 text-right tabular-nums`} />
                       <span className="shrink-0 text-sm text-slate-500">Gs.</span>
                     </div>
+                    <button type="button" onClick={() => traerCotizacion(true)} disabled={cargandoCoti}
+                      className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand)] hover:underline disabled:opacity-50">
+                      <RefreshCw className={`h-3.5 w-3.5 ${cargandoCoti ? "animate-spin" : ""}`} />
+                      {cargandoCoti ? "Buscando…" : cotiHoy ? `Usar la de hoy — ${cotiHoy.fuente}: ${gs(cotiHoy.venta)}` : "Usar la cotización de hoy"}
+                    </button>
+                    {cotiHoy ? <p className="mt-0.5 text-[11px] text-slate-400">{cotiHoy.fuente} · venta Gs. {cotiHoy.venta.toLocaleString("es-PY")}{cotiHoy.fecha ? ` · ${new Date(cotiHoy.fecha).toLocaleDateString("es-PY")}` : ""}</p> : null}
                   </div>
                 ) : null}
               </div>
@@ -303,6 +330,7 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
                     // columnas, total abajo). Desde md: una fila como siempre (sm/md:contents).
                     <li key={l.key} className="rounded-xl border border-slate-200 p-3 md:flex md:flex-wrap md:items-center md:gap-3">
                       <div className="flex items-start gap-2 md:contents">
+                        <MiniaturaProducto url={l.prod.imagen_url} nombre={l.prod.nombre} clase="h-10 w-10 md:h-11 md:w-11" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-slate-900 max-md:line-clamp-2 max-md:[overflow-wrap:anywhere] md:truncate">{l.prod.nombre}</p>
                           <p className="text-[11px] text-slate-500">

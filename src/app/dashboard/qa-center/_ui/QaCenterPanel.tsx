@@ -15,6 +15,7 @@ import type { QaListResult, QaProjectRow, QaRunRow } from "@/lib/qa/db";
 import type { CoberturaModulo } from "./CoberturaIAViewer";
 import EjecutarQaButton from "./EjecutarQaButton";
 import QaKanbanBoard from "./QaKanbanBoard";
+import QaProjectDetalleModal from "./QaProjectDetalleModal";
 import NuevoProyectoDialog from "./NuevoProyectoDialog";
 import EditarProyectoDialog from "./EditarProyectoDialog";
 import SuitesSection from "./SuitesSection";
@@ -73,9 +74,11 @@ export default function QaCenterPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [autorizandoId, setAutorizandoId] = useState<string | null>(null);
   const [entregandoId, setEntregandoId] = useState<string | null>(null);
+  const [detalleId, setDetalleId] = useState<string | null>(null);
   const editing = editingId ? projects.data.find((p) => p.id === editingId) ?? null : null;
   const autorizando = autorizandoId ? projects.data.find((p) => p.id === autorizandoId) ?? null : null;
   const entregando = entregandoId ? projects.data.find((p) => p.id === entregandoId) ?? null : null;
+  const detalle = detalleId ? projects.data.find((p) => p.id === detalleId) ?? null : null;
 
   const reload = (): void => { window.location.reload(); };
 
@@ -142,9 +145,7 @@ export default function QaCenterPanel({
         ) : (
           <QaKanbanBoard
             projects={projects.data}
-            onEdit={(id) => setEditingId(id)}
-            onAutorizar={(id) => setAutorizandoId(id)}
-            onEntregar={(id) => setEntregandoId(id)}
+            onOpen={(id) => setDetalleId(id)}
           />
         )}
 
@@ -204,6 +205,18 @@ export default function QaCenterPanel({
           projectName={entregando.name}
           onClose={() => setEntregandoId(null)}
           onDone={() => { setEntregandoId(null); reload(); }}
+        />
+      )}
+      {detalle && (
+        <QaProjectDetalleModal
+          project={detalle}
+          aiEstado={aiEstado[detalle.id]}
+          anthropicConfigured={anthropicConfigured}
+          credencialesRoRunnerConfigured={credencialesRoRunnerConfigured}
+          onClose={() => setDetalleId(null)}
+          onEdit={() => { setDetalleId(null); setEditingId(detalle.id); }}
+          onAutorizar={() => { setDetalleId(null); setAutorizandoId(detalle.id); }}
+          onEntregar={() => { setDetalleId(null); setEntregandoId(detalle.id); }}
         />
       )}
     </div>

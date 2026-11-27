@@ -2,12 +2,14 @@
 
 /**
  * Sub-navegación horizontal del QA Center. Reemplaza el scroll largo con
- * secciones diferenciadas: Proyectos, Ejecución, Resultados, Historial.
+ * secciones diferenciadas: Proyectos, Resultados, Historial, Entregados.
+ * Al hacer click, marca el tab como activo ANTES de que el server responda
+ * (useTransition + pending state) para que la UI no se sienta "muerta".
  */
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactElement } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useTransition, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
 
 const TABS: Array<{ href: string; label: string; icon: ReactElement }> = [
   {
@@ -50,8 +52,24 @@ const TABS: Array<{ href: string; label: string; icon: ReactElement }> = [
 
 export default function QaCenterNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const onTab = (e: ReactMouseEvent<HTMLAnchorElement>, href: string): void => {
+    // Interceptamos el click para envolver la navegación en startTransition.
+    // `isPending` queda true hasta que el server component respondió, y el
+    // tab clickeado se marca activo de inmediato (optimistic UI).
+    e.preventDefault();
+    startTransition(() => { router.push(href); });
+  };
+
   return (
     <nav className="sticky top-0 z-10 -mx-4 mb-6 border-b border-slate-200 bg-white/95 px-4 backdrop-blur sm:-mx-6 sm:px-6" aria-label="Secciones de QA Center">
+      {/* Barra de progreso top para "cargando" */}
+      <div className={`absolute inset-x-0 top-0 h-0.5 overflow-hidden ${isPending ? "opacity-100" : "opacity-0"} transition-opacity`}>
+        <div className="h-full w-1/3 animate-[slide_1.2s_linear_infinite] bg-gradient-to-r from-transparent via-[#0EA5E9] to-transparent" />
+      </div>
+      <style>{`@keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(400%)} }`}</style>
       <div className="flex items-end gap-1 overflow-x-auto">
         {TABS.map((tab) => {
           const activo = tab.href === "/dashboard/qa-center"
@@ -61,10 +79,12 @@ export default function QaCenterNav() {
             <Link
               key={tab.href}
               href={tab.href}
+              prefetch
+              onClick={(e) => onTab(e, tab.href)}
               className={`relative flex items-center gap-2 whitespace-nowrap px-3 py-3 text-sm font-medium transition-colors ${
                 activo
                   ? "text-[#0B3A3D]"
-                  : "text-slate-500 hover:text-slate-900"
+                  : "text-slate-500 hover:text-[#0B3A3D]"
               }`}
               data-testid={`qa-tab-${tab.href.split("/").pop() || "home"}`}
             >

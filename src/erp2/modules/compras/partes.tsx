@@ -77,8 +77,16 @@ export function BuscadorProductos({ onElegir, onCrear, mostrarPrecio = false, ti
     ? [...filas.filter((p) => stockEn(p) > 0), ...filas.filter((p) => stockEn(p) <= 0)]
     : filas);
 
-  const consultar = (t: string) =>
-    apiFetch<{ rows: ProductoInventario[] }>(`/api/productos?paginado=1&por_pagina=8&tipo=${filtroTipo}&q=${encodeURIComponent(t)}`).then((r) => ordenar(r.rows));
+  // Cache en memoria por texto: backspace/retipeo no vuelve a pegarle a la API.
+  const cacheRef = useRef(new Map<string, ProductoInventario[]>());
+  const consultar = async (t: string) => {
+    const key = `${filtroTipo}|${t}`;
+    const hit = cacheRef.current.get(key);
+    if (hit) return ordenar(hit);
+    const r = await apiFetch<{ rows: ProductoInventario[] }>(`/api/productos?paginado=1&por_pagina=8&tipo=${filtroTipo}&q=${encodeURIComponent(t)}`);
+    cacheRef.current.set(key, r.rows);
+    return ordenar(r.rows);
+  };
 
   // El lector de códigos tipea y manda Enter enseguida: si los resultados todavía no
   // son de lo escrito, se busca en el momento y se agrega el primero.
@@ -95,6 +103,9 @@ export function BuscadorProductos({ onElegir, onCrear, mostrarPrecio = false, ti
   useEffect(() => {
     const t = q.trim();
     if (!t) { setRes([]); setResDe(""); return; }
+    // Si ya lo buscamos, mostrarlo al instante (sin debounce ni spinner).
+    const hit = cacheRef.current.get(`${filtroTipo}|${t}`);
+    if (hit) { setRes(ordenar(hit)); setResDe(t); setHi(0); setBuscando(false); return; }
     let vivo = true;
     const h = setTimeout(() => {
       setBuscando(true);
@@ -104,6 +115,7 @@ export function BuscadorProductos({ onElegir, onCrear, mostrarPrecio = false, ti
         .finally(() => vivo && setBuscando(false));
     }, 200);
     return () => { vivo = false; clearTimeout(h); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
   function elegir(p: ProductoInventario) {

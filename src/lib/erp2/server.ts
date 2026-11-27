@@ -52,6 +52,12 @@ export interface CtxV2 {
   pool: Pool;
 }
 
+// Caché corta de los módulos efectivos por sesión: resolverlos pega varios
+// queries a la base compartida (lento en type-ahead). Los módulos casi no
+// cambian, así que 30 s de caché bajan mucho la latencia sin riesgo real.
+const modulosCache = new Map<string, { at: number; modulos: Set<string> }>();
+const MODULOS_TTL_MS = 30_000;
+
 /** Sesión + módulo. `modulo` vacío = solo sesión (para /me). */
 export async function ctxV2(request: Request, modulo: string | null): Promise<CtxV2> {
   const auth = await getAuthWithRol(request);
@@ -59,12 +65,20 @@ export async function ctxV2(request: Request, modulo: string | null): Promise<Ct
   if (!auth.usuarioCatalogId) throw new ErrorV2("Tu usuario no está dado de alta en la empresa.", 403);
   const schema = await fetchDataSchemaForEmpresaId(auth.empresa_id);
   if (schema !== "neura") throw new ErrorV2("Esta pantalla todavía no está habilitada para esta empresa.", 403);
-  const mods = await resolveEffectiveModules(createServiceRoleClient(), {
-    id: auth.usuarioCatalogId,
-    empresa_id: auth.empresa_id,
-    rol: auth.rol ?? null,
-  });
-  const modulos = new Set(mods.map((m) => (m.slug ?? "").trim()).filter(Boolean));
+  const claveMods = `${auth.usuarioCatalogId}:${auth.empresa_id}:${auth.rol ?? ""}`;
+  const cm = modulosCache.get(claveMods);
+  let modulos: Set<string>;
+  if (cm && Date.now() - cm.at < MODULOS_TTL_MS) {
+    modulos = cm.modulos;
+  } else {
+    const mods = await resolveEffectiveModules(createServiceRoleClient(), {
+      id: auth.usuarioCatalogId,
+      empresa_id: auth.empresa_id,
+      rol: auth.rol ?? null,
+    });
+    modulos = new Set(mods.map((m) => (m.slug ?? "").trim()).filter(Boolean));
+    modulosCache.set(claveMods, { at: Date.now(), modulos });
+  }
   if (modulo && !modulos.has(modulo)) throw new ErrorV2("No tenés acceso a esta sección.", 403);
   const pool = getChatPostgresPool();
   if (!pool) throw new ErrorV2("Base no disponible.", 500);

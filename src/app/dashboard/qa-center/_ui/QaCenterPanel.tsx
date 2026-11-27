@@ -14,7 +14,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { QaListResult, QaProjectRow, QaRunRow } from "@/lib/qa/db";
 import type { CoberturaModulo } from "./CoberturaIAViewer";
-import EjecutarQaButton from "./EjecutarQaButton";
 import QaKanbanBoard from "./QaKanbanBoard";
 import QaProjectDetalleModal from "./QaProjectDetalleModal";
 import NuevoProyectoDialog from "./NuevoProyectoDialog";
@@ -131,10 +130,6 @@ export default function QaCenterPanel({
                 </svg>
                 Nuevo proyecto
               </button>
-              <EjecutarQaButton
-                projects={projects.data}
-                disabled={projects.migration_status !== "ready"}
-              />
             </div>
           </div>
         </div>

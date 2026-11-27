@@ -163,11 +163,12 @@ export default function QaKanbanBoard({ projects, onOpen, onAutorizar, onEntrega
                     Sin proyectos
                   </div>
                 ) : (
-                  items.map((p) => (
+                  items.map((p, idx) => (
                     <KanbanCard
                       key={p.id}
                       project={p}
                       accent={col.cardAccent}
+                      index={idx}
                       onOpen={() => onOpen(p.id)}
                       onAutorizar={() => onAutorizar(p.id)}
                       onEntregar={() => onEntregar(p.id)}
@@ -187,6 +188,7 @@ export default function QaKanbanBoard({ projects, onOpen, onAutorizar, onEntrega
 function KanbanCard({
   project: p,
   accent,
+  index,
   onOpen,
   onAutorizar,
   onEntregar,
@@ -194,6 +196,7 @@ function KanbanCard({
 }: {
   project: QaProjectRow;
   accent: string;
+  index: number;
   onOpen: () => void;
   onAutorizar: () => void;
   onEntregar: () => void;
@@ -234,6 +237,7 @@ function KanbanCard({
   return (
     <article
       className={`group relative cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-white p-3 pl-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#0EA5E9]/50 hover:shadow-md before:absolute before:inset-y-0 before:left-0 before:w-1.5 ${accent}`}
+      style={{ animation: `qa-k-in 220ms ease-out ${Math.min(index * 25, 240)}ms both` }}
       data-testid={`kanban-card-${p.slug}`}
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
@@ -241,6 +245,7 @@ function KanbanCard({
       role="button"
       aria-label={`Abrir detalle de ${p.name}`}
     >
+      <style>{`@keyframes qa-k-in {from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}`}</style>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold text-slate-900" title={p.name}>

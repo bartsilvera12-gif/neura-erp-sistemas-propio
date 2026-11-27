@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import CoberturaIAViewer, { type CoberturaModulo } from "./CoberturaIAViewer";
 import InformeIaViewer from "./InformeIaViewer";
 
@@ -50,6 +51,7 @@ export type AnalizarErpCardProps = {
 };
 
 export default function AnalizarErpCard(props: AnalizarErpCardProps) {
+  const router = useRouter();
   const [cargando, setCargando] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -70,7 +72,7 @@ export default function AnalizarErpCard(props: AnalizarErpCardProps) {
         return;
       }
       setOk(`Sandbox encolado · run ${body.run_id?.slice(0, 8) ?? "?"}`);
-      setTimeout(() => window.location.reload(), 1200);
+      setTimeout(() => router.refresh(), 1200);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "error de red");
     } finally {

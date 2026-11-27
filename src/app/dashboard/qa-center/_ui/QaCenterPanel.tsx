@@ -10,6 +10,7 @@
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { QaListResult, QaProjectRow, QaRunRow } from "@/lib/qa/db";
 import type { CoberturaModulo } from "./CoberturaIAViewer";
@@ -80,7 +81,11 @@ export default function QaCenterPanel({
   const entregando = entregandoId ? projects.data.find((p) => p.id === entregandoId) ?? null : null;
   const detalle = detalleId ? projects.data.find((p) => p.id === detalleId) ?? null : null;
 
-  const reload = (): void => { window.location.reload(); };
+  const router = useRouter();
+  // Refresca los datos del servidor SIN recargar la página: Next.js
+  // re-ejecuta los server components y la UI se actualiza en su lugar.
+  // Mantiene el scroll y el estado de los modales/formularios abiertos.
+  const reload = (): void => { router.refresh(); };
 
   const totalProyectos = projects.data.length;
   const totalEntregados = projects.data.filter((p) => p.estado_entrega === "entregado").length;
@@ -146,6 +151,8 @@ export default function QaCenterPanel({
           <QaKanbanBoard
             projects={projects.data}
             onOpen={(id) => setDetalleId(id)}
+            onAutorizar={(id) => setAutorizandoId(id)}
+            onEntregar={(id) => setEntregandoId(id)}
             onArchived={reload}
           />
         )}

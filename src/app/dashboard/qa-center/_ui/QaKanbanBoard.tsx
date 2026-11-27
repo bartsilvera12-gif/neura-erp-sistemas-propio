@@ -7,6 +7,7 @@
  */
 
 import { useMemo, useState, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
+import { useRouter } from "next/navigation";
 import type { QaProjectRow } from "@/lib/qa/db";
 import BotonEjecutarRapido from "./BotonEjecutarRapido";
 
@@ -75,10 +76,12 @@ const COLUMNAS: Theme[] = [
 type Props = {
   projects: QaProjectRow[];
   onOpen: (projectId: string) => void;
+  onAutorizar: (projectId: string) => void;
+  onEntregar: (projectId: string) => void;
   onArchived?: () => void;
 };
 
-export default function QaKanbanBoard({ projects, onOpen, onArchived }: Props) {
+export default function QaKanbanBoard({ projects, onOpen, onAutorizar, onEntregar, onArchived }: Props) {
   const [busqueda, setBusqueda] = useState("");
 
   const filtrados = useMemo(() => {
@@ -166,6 +169,8 @@ export default function QaKanbanBoard({ projects, onOpen, onArchived }: Props) {
                       project={p}
                       accent={col.cardAccent}
                       onOpen={() => onOpen(p.id)}
+                      onAutorizar={() => onAutorizar(p.id)}
+                      onEntregar={() => onEntregar(p.id)}
                       onArchived={onArchived}
                     />
                   ))
@@ -183,17 +188,24 @@ function KanbanCard({
   project: p,
   accent,
   onOpen,
+  onAutorizar,
+  onEntregar,
   onArchived,
 }: {
   project: QaProjectRow;
   accent: string;
   onOpen: () => void;
+  onAutorizar: () => void;
+  onEntregar: () => void;
   onArchived?: () => void;
 }) {
+  const router = useRouter();
   const [archivando, setArchivando] = useState(false);
   const [errArch, setErrArch] = useState<string | null>(null);
   const repoCorto = p.repo_url?.replace(/^https?:\/\/(www\.)?github\.com\//, "");
   const urlCorta = (p.target_base_url ?? "").replace(/^https?:\/\/(www\.)?/, "");
+  const esEntregado = p.estado_entrega === "entregado";
+  const esEnQa = p.estado_entrega === "en_qa";
 
   async function archivar(e: ReactMouseEvent): Promise<void> {
     e.stopPropagation();
@@ -211,7 +223,7 @@ function KanbanCard({
         return;
       }
       if (onArchived) onArchived();
-      else window.location.reload();
+      else router.refresh();
     } catch (err) {
       setErrArch(err instanceof Error ? err.message : "error de red");
     } finally {
@@ -288,9 +300,35 @@ function KanbanCard({
         </p>
       )}
 
-      {/* Botón sandbox — no propaga el click a la card */}
-      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+      {/* Acciones — no propagan el click a la card */}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <BotonEjecutarRapido projectId={p.id} projectSlug={p.slug} />
+        {!esEntregado && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onAutorizar(); }}
+            className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            data-testid={`kanban-autorizar-${p.slug}`}
+            title={esEnQa ? "Renovar autorización" : "Autorizar para QA"}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="10" />
+            </svg>
+            {esEnQa ? "Renovar" : "Autorizar"}
+          </button>
+        )}
+        {esEnQa && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEntregar(); }}
+            className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+            data-testid={`kanban-entregar-${p.slug}`}
+            title="Entregar al cliente"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Entregar
+          </button>
+        )}
       </div>
     </article>
   );

@@ -6,12 +6,14 @@
  */
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { QaProjectRow } from "@/lib/qa/db";
 
 type SuiteOpt = { id: string; name: string; slug: string; enabled: boolean; specs: string[] };
 type Props = { projects: ReadonlyArray<QaProjectRow>; disabled?: boolean };
 
 export default function EjecutarQaButton({ projects, disabled }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [projectId, setProjectId] = useState<string>(projects[0]?.id ?? "");
   const [suites, setSuites] = useState<SuiteOpt[]>([]);
@@ -73,7 +75,7 @@ export default function EjecutarQaButton({ projects, disabled }: Props) {
         return;
       }
       setMsg({ kind: "success", text: `Run ${body.run?.id?.slice(0, 8) ?? "?"} encolado.` });
-      setTimeout(() => window.location.reload(), 900);
+      setTimeout(() => router.refresh(), 900);
     } catch (err) {
       setMsg({ kind: "error", text: err instanceof Error ? err.message : "Error de red" });
     } finally {

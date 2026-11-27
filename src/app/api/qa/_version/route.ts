@@ -12,7 +12,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BUILD_MARKER = "v3-claim-guard-rollback-2026-11-23";
+const BUILD_MARKER = "v4-tipo-proyecto-erp-web-2026-11-27";
 
 export async function GET() {
   return NextResponse.json(

@@ -1,21 +1,22 @@
 import { ctxV2, enTransaccion, ErrorV2, esUuid, fallo, ok } from "@/lib/erp2/server";
 import { COLS, crearProducto, listarPaginado } from "@/lib/erp2/productos";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { signProductoImagen } from "@/lib/inventario/imagen-storage";
+import { signProductoImagenesLote } from "@/lib/inventario/imagen-storage";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 export const runtime = "nodejs";
 
-/** Firma la imagen del bucket privado para que la miniatura se vea en listas/buscador. */
+/** Firma la imagen del bucket privado (en UNA llamada) para que se vea la miniatura. */
 async function firmarImagenes<T extends { imagen_url?: string | null; imagen_path?: string | null }>(rows: T[]): Promise<T[]> {
-  const sb = createServiceRoleClient() as Parameters<typeof signProductoImagen>[0];
-  const TOPE = 24; // solo las primeras visibles, para no encarecer la consulta
-  return Promise.all(
-    rows.map(async (r, i) => {
-      if (r.imagen_url || !r.imagen_path || i >= TOPE) return r;
-      const url = await signProductoImagen(sb, r.imagen_path, 3600).catch(() => null);
-      return url ? { ...r, imagen_url: url } : r;
-    })
-  );
+  const TOPE = 24; // solo las primeras visibles
+  const paths = rows.slice(0, TOPE).filter((r) => !r.imagen_url && r.imagen_path).map((r) => r.imagen_path);
+  if (paths.length === 0) return rows;
+  const mapa = await signProductoImagenesLote(createServiceRoleClient() as unknown as AppSupabaseClient, paths, 3600);
+  return rows.map((r, i) => {
+    if (r.imagen_url || !r.imagen_path || i >= TOPE) return r;
+    const url = mapa.get(r.imagen_path);
+    return url ? { ...r, imagen_url: url } : r;
+  });
 }
 
 /**

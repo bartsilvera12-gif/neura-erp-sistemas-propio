@@ -12,7 +12,8 @@
 import type { Pool } from "pg";
 import { cambiarEstadoOrden, createOrden, updateOrden, type IvaTipo } from "@/lib/ordenes/server/ordenes-pg";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { signProductoImagen } from "@/lib/inventario/imagen-storage";
+import { signProductoImagenesLote } from "@/lib/inventario/imagen-storage";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { enTransaccion, ErrorV2, esUuid } from "./server";
 
 const ESTADO_A_20: Record<string, string> = {
@@ -144,13 +145,10 @@ export async function detalleOrden(pool: Pool, empresaId: string, id: string) {
       WHERE i.orden_id = $1::uuid ORDER BY i.orden_linea NULLS LAST, i.created_at`,
     [id]
   );
-  // Firma la imagen del bucket privado para que la miniatura se vea en el detalle.
-  const sbImg = createServiceRoleClient() as Parameters<typeof signProductoImagen>[0];
-  const imagenes = await Promise.all(
-    items.map(async (i) =>
-      i.producto_imagen_url ? i.producto_imagen_url : i.producto_imagen_path ? await signProductoImagen(sbImg, i.producto_imagen_path, 3600).catch(() => null) : null
-    )
-  );
+  // Firma la imagen del bucket privado (en UNA llamada) para la miniatura del detalle.
+  const pathsImg = items.filter((i) => !i.producto_imagen_url && i.producto_imagen_path).map((i) => i.producto_imagen_path);
+  const mapaImg = pathsImg.length ? await signProductoImagenesLote(createServiceRoleClient() as unknown as AppSupabaseClient, pathsImg, 3600) : new Map<string, string>();
+  const imagenes = items.map((i) => (i.producto_imagen_url ?? (i.producto_imagen_path ? mapaImg.get(i.producto_imagen_path) ?? null : null)));
   const { rows: compras } = await pool.query(
     `SELECT id, numero_control, COALESCE(numero_comprobante, '') AS numero_factura, fecha, total::float AS total, estado
        FROM neura.compras WHERE orden_compra_id = $1::uuid AND empresa_id = $2::uuid ORDER BY fecha`,

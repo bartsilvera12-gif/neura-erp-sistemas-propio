@@ -59,6 +59,28 @@ export function buildProductoImagenPath(empresaId: string, productoId: string, m
  * Genera URL firmada para visualizar la imagen. TTL por defecto 1h.
  * Devuelve null si el path es inválido o si falla.
  */
+/**
+ * Firma VARIAS imágenes en UNA sola llamada (createSignedUrls), en vez de N
+ * round-trips. Devuelve un mapa path→URL firmada. Best-effort: nunca lanza.
+ */
+export async function signProductoImagenesLote(
+  supabase: AppSupabaseClient,
+  paths: (string | null | undefined)[],
+  ttlSeconds = 3600
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unicos = [...new Set(paths.filter((p): p is string => !!p))];
+  if (unicos.length === 0) return out;
+  try {
+    const { data, error } = await supabase.storage.from(PRODUCTOS_IMAGENES_BUCKET).createSignedUrls(unicos, ttlSeconds);
+    if (error || !data) return out;
+    for (const d of data) if (d.signedUrl && d.path) out.set(d.path, d.signedUrl);
+  } catch {
+    /* best-effort */
+  }
+  return out;
+}
+
 export async function signProductoImagen(
   supabase: AppSupabaseClient,
   imagenPath: string | null | undefined,

@@ -1,7 +1,8 @@
 import { ctxV2, fallo, ok } from "@/lib/erp2/server";
 import { COLS } from "@/lib/erp2/productos";
 import { createServiceRoleClient } from "@/lib/supabase/service-admin";
-import { signProductoImagen } from "@/lib/inventario/imagen-storage";
+import { signProductoImagenesLote } from "@/lib/inventario/imagen-storage";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 export const runtime = "nodejs";
 
@@ -29,15 +30,11 @@ export async function GET(request: Request) {
       [c.empresaId, ids]
     );
 
-    // Firmar la imagen del bucket privado (best-effort) para que se vea la miniatura.
-    const sb = createServiceRoleClient() as Parameters<typeof signProductoImagen>[0];
-    const productos = await Promise.all(
-      (rows as Array<{ imagen_url?: string | null; imagen_path?: string | null }>).map(async (r) => {
-        if (r.imagen_url || !r.imagen_path) return r;
-        const url = await signProductoImagen(sb, r.imagen_path, 3600).catch(() => null);
-        return url ? { ...r, imagen_url: url } : r;
-      })
-    );
+    // Firmar la imagen del bucket privado (en UNA llamada) para la miniatura.
+    const filas = rows as Array<{ imagen_url?: string | null; imagen_path?: string | null }>;
+    const pathsImg = filas.filter((r) => !r.imagen_url && r.imagen_path).map((r) => r.imagen_path);
+    const mapaImg = pathsImg.length ? await signProductoImagenesLote(createServiceRoleClient() as unknown as AppSupabaseClient, pathsImg, 3600) : new Map<string, string>();
+    const productos = filas.map((r) => (!r.imagen_url && r.imagen_path && mapaImg.get(r.imagen_path) ? { ...r, imagen_url: mapaImg.get(r.imagen_path)! } : r));
 
     // Historial de costos (últimas compras por producto), opcional.
     const costos: Record<string, { compras: { costo: number; fecha: string; proveedor: string | null }[] } | null> = {};

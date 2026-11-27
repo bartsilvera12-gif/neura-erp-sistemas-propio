@@ -15,7 +15,7 @@ import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { Select } from "@/erp2/components/Select";
 import { Drawer } from "@/erp2/components/Drawer";
-import { gs } from "@/erp2/modules/compras/partes";
+import { equivGs, montoMoneda } from "@/erp2/modules/compras/partes";
 
 const TEAL = clienteConfig.color;
 
@@ -27,6 +27,8 @@ type Fila = {
   estado: string;
   pago_estado: string;
   total: number;
+  moneda?: string | null;
+  tipo_cambio?: number | null;
   cantidad_items: number;
   usuario_nombre: string | null;
 };
@@ -132,7 +134,10 @@ export default function PorPagarPage() {
                   <td className="px-3 py-2">{(s.fecha ?? "").slice(0, 10)}</td>
                   <td className="px-3 py-2">{s.proveedor_nombre ?? "—"}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{s.cantidad_items}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{gs(s.total)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {montoMoneda(s.total, s.moneda)}
+                    {equivGs(s.total, s.moneda, s.tipo_cambio) ? <span className="block text-[10px] font-normal text-slate-400">{equivGs(s.total, s.moneda, s.tipo_cambio)}</span> : null}
+                  </td>
                   <td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${p.cls}`}>{p.label}</span></td>
                 </tr>
               );
@@ -203,7 +208,8 @@ function DetallePago({ id, onClose, onCambio }: { id: string; onClose: () => voi
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${(PAGO[o.pago_estado] ?? PAGO.pendiente).cls}`}>{(PAGO[o.pago_estado] ?? PAGO.pendiente).label}</span>
             <div className="text-right">
               <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Total</p>
-              <p className="text-xl font-bold tabular-nums tracking-tight text-slate-900">{o.total ? gs(o.total) : "—"}</p>
+              <p className="text-xl font-bold tabular-nums tracking-tight text-slate-900">{o.total ? montoMoneda(o.total, o.moneda) : "—"}</p>
+              {equivGs(o.total, o.moneda, o.tipo_cambio) ? <p className="text-[11px] font-normal text-slate-400">{equivGs(o.total, o.moneda, o.tipo_cambio)}</p> : null}
             </div>
           </div>
 
@@ -213,7 +219,7 @@ function DetallePago({ id, onClose, onCambio }: { id: string; onClose: () => voi
               {(o.items ?? []).map((l) => (
                 <li key={l.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
                   <span className="min-w-0 text-sm text-slate-700 [overflow-wrap:anywhere]">{l.producto_nombre}</span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-slate-500">{Number(l.cantidad).toLocaleString("es-PY")} × {gs(l.costo_unitario)}</span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-slate-500">{Number(l.cantidad).toLocaleString("es-PY")} × {montoMoneda(l.costo_unitario, o.moneda)}</span>
                 </li>
               ))}
             </ul>

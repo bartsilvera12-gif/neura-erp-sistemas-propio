@@ -15,7 +15,7 @@ import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { Select } from "@/erp2/components/Select";
 import { Drawer } from "@/erp2/components/Drawer";
-import { gs } from "@/erp2/modules/compras/partes";
+import { equivGs, montoMoneda } from "@/erp2/modules/compras/partes";
 
 const TEAL = clienteConfig.color;
 
@@ -26,6 +26,8 @@ type Solicitud = {
   proveedor_nombre: string | null;
   estado: string;
   total: number;
+  moneda?: string | null;
+  tipo_cambio?: number | null;
   cantidad_items: number;
   unidades: number;
   usuario_nombre: string | null;
@@ -141,7 +143,10 @@ export default function SolicitudesPage() {
                   <td className="px-3 py-2">{s.proveedor_nombre ?? "—"}</td>
                   <td className="px-3 py-2 text-slate-600">{s.usuario_nombre ?? "—"}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{s.cantidad_items}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{gs(s.total)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {montoMoneda(s.total, s.moneda)}
+                    {equivGs(s.total, s.moneda, s.tipo_cambio) ? <span className="block text-[10px] font-normal text-slate-400">{equivGs(s.total, s.moneda, s.tipo_cambio)}</span> : null}
+                  </td>
                   <td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${e.cls}`}>{e.label}</span></td>
                 </tr>
               );
@@ -245,7 +250,8 @@ function DetalleSolicitud({ id, onClose, onCambio }: { id: string; onClose: () =
             {estadoChip ? <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${estadoChip.cls}`}>{estadoChip.label}</span> : null}
             <div className="text-right">
               <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Total estimado</p>
-              <p className="text-xl font-bold tabular-nums tracking-tight text-slate-900">{totalEst ? gs(totalEst) : "—"}</p>
+              <p className="text-xl font-bold tabular-nums tracking-tight text-slate-900">{totalEst ? montoMoneda(totalEst, o.moneda) : "—"}</p>
+              {equivGs(totalEst, o.moneda, o.tipo_cambio) ? <p className="text-[11px] font-normal text-slate-400">{equivGs(totalEst, o.moneda, o.tipo_cambio)}</p> : null}
             </div>
           </div>
 
@@ -279,15 +285,15 @@ function DetalleSolicitud({ id, onClose, onCambio }: { id: string; onClose: () =
                           className="mt-0.5 block w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
                       </label>
                       <label className="text-[11px] font-medium text-slate-500">
-                        Costo unit. (Gs.)
+                        Costo unit. ({o.moneda === "USD" ? "US$" : "Gs."})
                         <input type="number" min={0} step="any" value={l.costo_unitario} onChange={(e) => setLinea(i, "costo_unitario", Number(e.target.value))}
                           className="mt-0.5 block w-32 rounded-lg border border-slate-200 px-2 py-1.5 text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
                       </label>
-                      <span className="ml-auto text-sm font-semibold tabular-nums text-slate-700">{gs((Number(l.cantidad) || 0) * (Number(l.costo_unitario) || 0))}</span>
+                      <span className="ml-auto text-sm font-semibold tabular-nums text-slate-700">{montoMoneda((Number(l.cantidad) || 0) * (Number(l.costo_unitario) || 0), o.moneda)}</span>
                     </div>
                   ) : (
                     <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
-                      {Number(l.cantidad).toLocaleString("es-PY")} × {gs(l.costo_unitario)} = {gs((Number(l.cantidad) || 0) * (Number(l.costo_unitario) || 0))}
+                      {Number(l.cantidad).toLocaleString("es-PY")} × {montoMoneda(l.costo_unitario, o.moneda)} = {montoMoneda((Number(l.cantidad) || 0) * (Number(l.costo_unitario) || 0), o.moneda)}
                     </p>
                   )}
                 </li>

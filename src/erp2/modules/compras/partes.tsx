@@ -12,6 +12,11 @@ export const INPUT = "w-full rounded-xl border border-slate-200 px-3 py-2.5 text
 export const ET = "mb-1 block text-xs font-medium text-slate-600";
 export const gs = (v: number) => `Gs. ${Math.round(Number(v) || 0).toLocaleString("es-PY")}`;
 export const usd = (v: number) => `US$ ${Number(v || 0).toLocaleString("es-PY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** Monto en la moneda del documento (US$ si es USD, si no Gs.). */
+export const montoMoneda = (v: number, moneda?: string | null) => (moneda === "USD" ? usd(v) : gs(v));
+/** Equivalente en guaraníes para montos en USD (null en Gs). */
+export const equivGs = (v: number, moneda?: string | null, tipoCambio?: number | null) =>
+  moneda === "USD" && Number(tipoCambio) > 0 ? `≈ ${gs((Number(v) || 0) * Number(tipoCambio))}` : null;
 export const ivaDe = (importe: number, tipo: string) => (tipo === "10%" ? Math.round(importe / 11) : tipo === "5%" ? Math.round(importe / 21) : 0);
 
 export function sumarDias(fecha: string, dias: number) {

@@ -13,11 +13,11 @@ import { useEffect, useState } from "react";
 import { ChevronRight, ClipboardCheck, ClipboardList, HelpCircle, Loader2, PackageCheck, Wallet } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
-import { gs } from "@/erp2/modules/compras/partes";
+import { montoMoneda } from "@/erp2/modules/compras/partes";
 
 const TEAL = clienteConfig.color;
 
-type Fila = { id: string; numero_oc: string; proveedor_nombre: string | null; total: number; estado: string; pago_estado: string };
+type Fila = { id: string; numero_oc: string; proveedor_nombre: string | null; total: number; moneda?: string | null; estado: string; pago_estado: string };
 type Seccion = { total: number; rows: Fila[] };
 type Resp = {
   roles: { confirma: boolean; paga: boolean; recibe: boolean };
@@ -107,7 +107,7 @@ export default function MiBandejaPage() {
                           <Link href={d.rowHref(f.id)} className="flex items-center gap-2 px-4 py-2.5 transition hover:bg-slate-50/70">
                             <span className="font-mono text-[11px] font-semibold text-slate-700">{f.numero_oc}</span>
                             <span className="min-w-0 flex-1 truncate text-[13px] text-slate-700">{f.proveedor_nombre ?? "—"}</span>
-                            <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-800">{gs(f.total)}</span>
+                            <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-800">{montoMoneda(f.total, f.moneda)}</span>
                             <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${c.cls}`}>{c.label}</span>
                           </Link>
                         </li>

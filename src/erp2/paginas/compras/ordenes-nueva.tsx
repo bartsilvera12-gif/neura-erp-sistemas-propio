@@ -115,12 +115,26 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
     try {
       const h = await apiFetch<HistorialCostosData>(`/api/productos/${prod.id}/costos`);
       const u = h.compras[0] ? Number(h.compras[0].costo) : null;
-      const base = u ?? (Number(prod.costo_promedio) || 0);
-      setLineas((ls) => ls.map((l) => (l.key === key ? { ...l, ultima: u, costo: l.costo || (moneda === "GS" ? Math.round(base) : 0) } : l)));
+      const base = u ?? (Number(prod.costo_promedio) || 0); // costo del catálogo en Gs
+      // Autocompleta el costo: en Gs directo; en USD, convierte con la cotización (si ya la cargaron).
+      const prefill = moneda === "GS" ? Math.round(base) : cambio > 0 ? Math.round((base / cambio) * 100) / 100 : 0;
+      setLineas((ls) => ls.map((l) => (l.key === key ? { ...l, ultima: u, costo: l.costo || prefill } : l)));
     } catch {
       /* sin historial */
     }
   }
+
+  // En USD: al cargar/cambiar la cotización, rellena el costo de las líneas que
+  // quedaron en 0 (se agregaron antes de tener el tipo de cambio).
+  useEffect(() => {
+    if (moneda !== "USD" || !(cambio > 0)) return;
+    setLineas((ls) => ls.map((l) => {
+      if (l.costo) return l;
+      const base = l.ultima ?? (Number(l.prod.costo_promedio) || 0);
+      return base > 0 ? { ...l, costo: Math.round((base / cambio) * 100) / 100 } : l;
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cambio, moneda]);
 
   const factor = moneda === "USD" ? cambio : 1;
   const calc = useMemo(() => {

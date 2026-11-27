@@ -15,6 +15,8 @@ export type QaRunStatus =
 
 export type QaTargetEnv = "staging" | "preview" | "local";
 
+export type QaTipoProyecto = "erp" | "web";
+
 export type QaProject = {
   id: string;
   slug: string;
@@ -31,6 +33,16 @@ export type QaProject = {
    * runtime. NUNCA aplica a suites con escritura o lectura no estricta.
    */
   permite_lectura_sin_env_assert?: boolean;
+  /**
+   * Tipo del proyecto para elegir estrategia de descubrimiento de módulos.
+   * - "erp" (default): sólo `<a href>` tradicionales. Comportamiento histórico
+   *   probado con Mevo/Villa Hayes/Diemart.
+   * - "web": agrega detección de tabs/botones SPA (click-text) para paneles
+   *   admin tipo Rincón Alpino.
+   * Opcional en memoria por compatibilidad con tests; cuando falta se trata
+   * como "erp".
+   */
+  tipo_proyecto?: QaTipoProyecto;
 };
 
 export type QaSuite = {
@@ -160,12 +172,13 @@ export interface QaRunsRepo {
     default_branch?: string;
     owner_user_id?: string | null;
     repo_url?: string | null;
+    tipo_proyecto?: QaTipoProyecto;
   }): Promise<QaProject | { conflict: "slug" }>;
 
   /** Actualiza campos editables de un proyecto. No cambia el slug. */
   updateProject(
     projectId: string,
-    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch" | "repo_url">>
+    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch" | "repo_url" | "tipo_proyecto">>
   ): Promise<QaProject | null>;
 
   /** Crea un suite. Duplicados por (project_id, slug) → conflict. */

@@ -16,6 +16,7 @@ export default function NuevoProyectoDialog({ onClose, onCreated }: Props) {
   const [targetBaseUrl, setTargetBaseUrl] = useState("");
   const [targetEnv, setTargetEnv] = useState<"staging" | "preview" | "local">("staging");
   const [defaultBranch, setDefaultBranch] = useState("main");
+  const [tipoProyecto, setTipoProyecto] = useState<"erp" | "web">("erp");
   const [mostrarAvanzado, setMostrarAvanzado] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export default function NuevoProyectoDialog({ onClose, onCreated }: Props) {
           target_base_url: targetBaseUrl,
           target_env: targetEnv,
           default_branch: defaultBranch,
+          tipo_proyecto: tipoProyecto,
         }),
       });
       const text = await res.text();
@@ -154,7 +156,50 @@ export default function NuevoProyectoDialog({ onClose, onCreated }: Props) {
               </div>
             </section>
 
-            {/* Sección 3: Avanzado (colapsable con animación) */}
+            {/* Sección "Tipo de proyecto": decide la estrategia de descubrimiento */}
+            <section className="group rounded-xl border border-slate-200 bg-white p-4 transition-all duration-200 hover:border-[#7DCFD2]/50 hover:shadow-md">
+              <div className="mb-3 flex items-start gap-3">
+                <StepBadge n={3} ok={true} />
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm font-semibold text-slate-900">Tipo de proyecto</h4>
+                  <p className="mt-0.5 text-xs text-slate-500">Elegí según cómo esté construido el panel.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-all ${tipoProyecto === "erp" ? "border-[#0EA5E9] bg-[#0EA5E9]/5 ring-1 ring-[#0EA5E9]/20" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                  data-testid="in-tipo-erp"
+                >
+                  <input
+                    type="radio" name="tipo_proyecto" value="erp"
+                    checked={tipoProyecto === "erp"}
+                    onChange={() => setTipoProyecto("erp")}
+                    className="mt-0.5 accent-[#0EA5E9]"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">ERP</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Menú tradicional con links. Mevo, Villa Hayes, Açaí…</p>
+                  </div>
+                </label>
+                <label
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-all ${tipoProyecto === "web" ? "border-[#0EA5E9] bg-[#0EA5E9]/5 ring-1 ring-[#0EA5E9]/20" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                  data-testid="in-tipo-web"
+                >
+                  <input
+                    type="radio" name="tipo_proyecto" value="web"
+                    checked={tipoProyecto === "web"}
+                    onChange={() => setTipoProyecto("web")}
+                    className="mt-0.5 accent-[#0EA5E9]"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">Página web</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Panel con tabs/botones (SPA). Rincón Alpino, admin de landings…</p>
+                  </div>
+                </label>
+              </div>
+            </section>
+
+            {/* Sección 4: Avanzado (colapsable con animación) */}
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-200 hover:border-slate-300">
               <button
                 type="button"

@@ -39,7 +39,8 @@ export type QaExecutor = {
 
 const PROJECT_COLS =
   "id, slug, name, target_base_url, target_env, default_branch, " +
-  "estado_entrega, autorizacion_qa_hasta, repo_url, permite_lectura_sin_env_assert";
+  "estado_entrega, autorizacion_qa_hasta, repo_url, permite_lectura_sin_env_assert, " +
+  "tipo_proyecto";
 const SUITE_COLS =
   "id, project_id, slug, name, tags, specs, enabled";
 const RUN_COLS =
@@ -62,6 +63,7 @@ function asProject(row: Record<string, unknown> | undefined): QaProject | null {
     autorizacion_qa_hasta: (row.autorizacion_qa_hasta as string | null) ?? null,
     repo_url: (row.repo_url as string | null) ?? null,
     permite_lectura_sin_env_assert: row.permite_lectura_sin_env_assert === true,
+    tipo_proyecto: (row.tipo_proyecto === "web" ? "web" : "erp") as QaProject["tipo_proyecto"],
   };
 }
 function asSuite(row: Record<string, unknown> | undefined): QaSuite | null {
@@ -421,6 +423,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
     default_branch?: string;
     owner_user_id?: string | null;
     repo_url?: string | null;
+    tipo_proyecto?: QaProject["tipo_proyecto"];
   }): Promise<QaProject | { conflict: "slug" }> {
     return this.run(async (c) => {
       const dup = await c.query(
@@ -430,8 +433,8 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       if (dup.rowCount && dup.rowCount > 0) return { conflict: "slug" } as const;
       const r = await c.query(
         `INSERT INTO qa_center.projects
-           (slug, name, target_base_url, target_env, default_branch, owner_user_id, repo_url)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+           (slug, name, target_base_url, target_env, default_branch, owner_user_id, repo_url, tipo_proyecto)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING ${PROJECT_COLS}`,
         [
           input.slug,
@@ -441,6 +444,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
           input.default_branch ?? "main",
           input.owner_user_id ?? null,
           input.repo_url ?? null,
+          input.tipo_proyecto ?? "erp",
         ]
       );
       return asProject(r.rows[0]) as QaProject;
@@ -449,7 +453,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
 
   async updateProject(
     projectId: string,
-    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch" | "repo_url">>
+    patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch" | "repo_url" | "tipo_proyecto">>
   ): Promise<QaProject | null> {
     return this.run(async (c) => {
       const sets: string[] = [];
@@ -460,6 +464,7 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
       if (patch.target_env !== undefined) { sets.push(`target_env = $${i++}`); params.push(patch.target_env); }
       if (patch.default_branch !== undefined) { sets.push(`default_branch = $${i++}`); params.push(patch.default_branch); }
       if (patch.repo_url !== undefined) { sets.push(`repo_url = $${i++}`); params.push(patch.repo_url); }
+      if (patch.tipo_proyecto !== undefined) { sets.push(`tipo_proyecto = $${i++}`); params.push(patch.tipo_proyecto); }
       if (sets.length === 0) return (await this.getProject(projectId));
       sets.push(`updated_at = now()`);
       params.push(projectId);

@@ -82,6 +82,15 @@ export async function PATCH(
       patch.target_base_url = raw;
     }
   }
+  if (body.tipo_proyecto !== undefined) {
+    if (body.tipo_proyecto !== "erp" && body.tipo_proyecto !== "web") {
+      return NextResponse.json(
+        { error: "tipo_proyecto debe ser 'erp' o 'web'", code: "validation", field: "tipo_proyecto" },
+        { status: 400 }
+      );
+    }
+    patch.tipo_proyecto = body.tipo_proyecto;
+  }
   if (body.repo_url !== undefined) {
     const raw = typeof body.repo_url === "string" ? body.repo_url.trim() : "";
     if (raw === "") {

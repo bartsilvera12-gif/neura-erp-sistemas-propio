@@ -109,6 +109,20 @@ export async function POST(request: Request) {
     ? body.default_branch.trim()
     : "main";
 
+  // Tipo del proyecto: "erp" (default, comportamiento clásico) o "web"
+  // (habilita detección SPA de tabs/botones). Si el cliente manda algo
+  // inválido, lo rechazamos para no silenciar un typo.
+  let tipo_proyecto: "erp" | "web" = "erp";
+  if (body.tipo_proyecto !== undefined) {
+    if (body.tipo_proyecto !== "erp" && body.tipo_proyecto !== "web") {
+      return NextResponse.json(
+        { error: "tipo_proyecto debe ser 'erp' o 'web'", code: "validation", field: "tipo_proyecto" },
+        { status: 400 }
+      );
+    }
+    tipo_proyecto = body.tipo_proyecto;
+  }
+
   const result = await repo.createProject({
     slug: slugV.slug,
     name,
@@ -117,6 +131,7 @@ export async function POST(request: Request) {
     default_branch,
     owner_user_id: auth.user.id,
     repo_url: repoUrlFinal,
+    tipo_proyecto,
   });
   if ("conflict" in result) {
     return NextResponse.json(

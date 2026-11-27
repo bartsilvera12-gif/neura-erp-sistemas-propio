@@ -16,6 +16,7 @@ export default function EditarProyectoDialog({ project, onClose, onSaved }: Prop
   const [targetBaseUrl, setTargetBaseUrl] = useState(project.target_base_url);
   const [targetEnv, setTargetEnv] = useState<"staging" | "preview" | "local">(project.target_env);
   const [defaultBranch, setDefaultBranch] = useState(project.default_branch);
+  const [tipoProyecto, setTipoProyecto] = useState<"erp" | "web">(project.tipo_proyecto ?? "erp");
   const [mostrarAvanzado, setMostrarAvanzado] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -32,6 +33,7 @@ export default function EditarProyectoDialog({ project, onClose, onSaved }: Prop
           target_base_url: targetBaseUrl,
           target_env: targetEnv,
           default_branch: defaultBranch,
+          tipo_proyecto: tipoProyecto,
         }),
       });
       const text = await res.text();
@@ -59,6 +61,20 @@ export default function EditarProyectoDialog({ project, onClose, onSaved }: Prop
           <label className="block"><span className="mb-1 block text-slate-600">Nombre</span>
             <input data-testid="ed-name" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded border border-slate-300 px-2 py-1" />
           </label>
+
+          <div>
+            <p className="mb-1 text-slate-600">Tipo de proyecto</p>
+            <div className="grid grid-cols-2 gap-2">
+              <label className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-xs ${tipoProyecto === "erp" ? "border-sky-500 bg-sky-50" : "border-slate-300 bg-white"}`} data-testid="ed-tipo-erp">
+                <input type="radio" name="ed_tipo_proyecto" value="erp" checked={tipoProyecto === "erp"} onChange={() => setTipoProyecto("erp")} className="accent-sky-600" />
+                <span><strong>ERP</strong> — menú con links</span>
+              </label>
+              <label className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-xs ${tipoProyecto === "web" ? "border-sky-500 bg-sky-50" : "border-slate-300 bg-white"}`} data-testid="ed-tipo-web">
+                <input type="radio" name="ed_tipo_proyecto" value="web" checked={tipoProyecto === "web"} onChange={() => setTipoProyecto("web")} className="accent-sky-600" />
+                <span><strong>Web</strong> — tabs/SPA</span>
+              </label>
+            </div>
+          </div>
 
           <div className="rounded border border-slate-200">
             <button

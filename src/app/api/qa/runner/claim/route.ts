@@ -121,6 +121,7 @@ export async function POST(request: Request) {
     skip_env_assert: skip_env_assert_final,
     ...(repo_url ? { repo_url, repo_branch: project.default_branch ?? "main" } : {}),
     codebase,
+    tipo_proyecto: project.tipo_proyecto ?? "erp",
     specs: suite.specs,
     created_at:
       typeof job.created_at === "string"

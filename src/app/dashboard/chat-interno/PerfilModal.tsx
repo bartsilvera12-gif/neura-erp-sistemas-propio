@@ -2,18 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Briefcase,
   Building2,
   Cake,
   Camera,
-  Clock,
   ImagePlus,
+  Info,
   Loader2,
   MessageSquare,
   Network,
   Palette,
   Pencil,
-  Users,
   X,
 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
@@ -216,19 +214,32 @@ export default function PerfilModal({
 
   const propio = !!p?.propio;
   const nombre = p ? nombreCapitular(p.nombre) : "";
-  const fondo = p?.banner_url ? undefined : p?.banner_color || BANNER_POR_DEFECTO;
+  /** El color de la persona: pinta el banner, el botón y los recuadros. */
+  const acento = p?.banner_color || BANNER_POR_DEFECTO;
+  const fondo = p?.banner_url ? undefined : acento;
+  const suave = `color-mix(in srgb, ${acento} 10%, white)`;
+  const area = p?.area ? p.area.charAt(0).toUpperCase() + p.area.slice(1) : null;
+  const subtitulo = [p?.cargo, area].filter(Boolean).join(" · ");
+  const vieneDelOrganigrama = !!p && (!!p.cargo || p.supervisores.length > 0 || p.equipo.length > 0);
 
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/45 p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}
     >
-      <div className="relative w-full max-w-[24rem] overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="relative max-h-[92vh] w-full max-w-[24rem] overflow-y-auto rounded-[20px] bg-white shadow-2xl">
         {/* Banner */}
         <div
           className="relative h-28 bg-cover bg-center"
           style={{ background: fondo, backgroundImage: p?.banner_url ? `url(${p.banner_url})` : undefined }}
         >
+          {!p?.banner_url ? (
+            <div
+              aria-hidden
+              className="absolute inset-0 opacity-20"
+              style={{ backgroundImage: "radial-gradient(#fff 1.5px, transparent 1.5px)", backgroundSize: "14px 14px" }}
+            />
+          ) : null}
           <button
             type="button"
             onClick={onCerrar}
@@ -282,22 +293,55 @@ export default function PerfilModal({
           ) : null}
         </div>
 
-        {/* Foto, nombre, cargo y estado */}
-        <div className="-mt-11 flex flex-col items-center px-5 text-center">
-          <div className="relative rounded-full border-4 border-white bg-white">
-            {p ? <Cara nombre={p.nombre} url={p.avatar_url} size={84} /> : <span className="block h-[84px] w-[84px] rounded-full bg-slate-100" />}
-            {propio ? (
-              <button
-                type="button"
-                onClick={() => fotoRef.current?.click()}
-                title="Cambiar mi foto"
-                className="absolute -bottom-0.5 -right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#7C6FD8] text-white hover:opacity-90"
-              >
-                {ocupado === "foto" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-              </button>
+        <div className="px-5 pb-5">
+          {/* Foto a la izquierda y las acciones a la derecha, sobre el borde del banner */}
+          <div className="-mt-10 flex items-end justify-between gap-3">
+            <div className="relative rounded-full border-4 border-white bg-white">
+              {p ? <Cara nombre={p.nombre} url={p.avatar_url} size={80} /> : <span className="block h-20 w-20 rounded-full bg-slate-100" />}
+              {p ? (
+                <span
+                  title={p.en_linea ? "En línea" : haceCuanto(p.ultima_actividad)}
+                  className={`absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full border-[3px] border-white ${
+                    p.en_linea || propio ? "bg-emerald-500" : "bg-slate-400"
+                  }`}
+                />
+              ) : null}
+              {propio ? (
+                <button
+                  type="button"
+                  onClick={() => fotoRef.current?.click()}
+                  title="Cambiar mi foto"
+                  style={{ background: acento }}
+                  className="absolute -left-0.5 -bottom-0.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-white hover:opacity-90"
+                >
+                  {ocupado === "foto" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                </button>
+              ) : null}
+            </div>
+            {p ? (
+              <div className="mb-1.5 flex items-center gap-1.5">
+                {!propio && onEnviarMensaje ? (
+                  <button
+                    type="button"
+                    onClick={() => onEnviarMensaje(p.usuario_id, p.nombre)}
+                    style={{ background: acento }}
+                    className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold text-white shadow-sm hover:opacity-90"
+                  >
+                    <MessageSquare className="h-4 w-4" /> Mensaje
+                  </button>
+                ) : null}
+                <a
+                  href="/organigrama"
+                  title="Ver en el organigrama"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                >
+                  <Network className="h-4 w-4" />
+                </a>
+              </div>
             ) : null}
           </div>
 
+          {/* Nombre, cargo · área y actividad */}
           {editNombre !== null ? (
             <input
               autoFocus
@@ -310,7 +354,8 @@ export default function PerfilModal({
                 if (e.key === "Escape") setEditNombre(null);
               }}
               placeholder={p?.nombre_completo ?? ""}
-              className="mt-2 w-full rounded-lg border border-[#7C6FD8] px-2 py-1 text-center text-[17px] font-semibold text-slate-800 focus:outline-none"
+              style={{ borderColor: acento }}
+              className="mt-2.5 w-full rounded-lg border px-2 py-1 text-[18px] font-semibold text-slate-800 focus:outline-none"
             />
           ) : (
             <button
@@ -318,104 +363,84 @@ export default function PerfilModal({
               disabled={!propio}
               onClick={() => setEditNombre(p?.nombre ?? "")}
               title={propio ? "Cambiar cómo me ven en el chat" : undefined}
-              className="mt-2 inline-flex items-center gap-1.5 text-[18px] font-semibold text-slate-800 disabled:cursor-default"
+              className="group/nombre mt-2.5 flex items-center gap-1.5 text-left text-[19px] font-semibold leading-tight text-slate-800 disabled:cursor-default"
             >
               {p ? nombre : "…"}
-              {propio ? <Pencil className="h-3.5 w-3.5 text-slate-300" /> : null}
+              {propio ? <Pencil className="h-3.5 w-3.5 text-slate-300 group-hover/nombre:text-slate-500" /> : null}
             </button>
           )}
-          {p?.cargo ? <p className="text-[13px] font-medium text-[#6A5CC9]">{p.cargo}</p> : null}
-          {p ? (
-            <span
-              className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium ${
-                p.en_linea ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-              }`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${p.en_linea ? "bg-emerald-500" : "bg-slate-400"}`} />
-              {p.en_linea ? "En línea" : haceCuanto(p.ultima_actividad)}
-            </span>
+          {subtitulo ? (
+            <p className="mt-0.5 text-[13.5px] font-medium" style={{ color: acento }}>
+              {subtitulo}
+            </p>
           ) : null}
-        </div>
+          {p ? (
+            <p className="mt-1 text-[12px] text-slate-500">
+              {propio ? "En línea" : p.en_linea ? "En línea" : haceCuanto(p.ultima_actividad)}
+            </p>
+          ) : null}
 
-        {/* Datos */}
-        <div className="px-5 pb-5 pt-3">
-          {err ? <p className="mb-2 rounded-lg bg-rose-50 px-3 py-1.5 text-[12px] text-rose-600">{err}</p> : null}
+          {err ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-1.5 text-[12px] text-rose-600">{err}</p> : null}
           {!p && !err ? (
             <p className="flex items-center justify-center gap-2 py-6 text-[13px] text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
             </p>
           ) : null}
+
           {p ? (
-            <ul className="divide-y divide-slate-100">
-              <Fila icono={<Briefcase className="h-4 w-4" />} etiqueta="Cargo" fuente="Organigrama">
-                {p.cargo ?? <span className="text-slate-400">Sin puesto en el organigrama</span>}
-              </Fila>
-              <Fila icono={<Network className="h-4 w-4" />} etiqueta={p.supervisores.length > 1 ? "Supervisores" : "Supervisor"} fuente="Organigrama">
-                {p.supervisores.length === 0 ? (
-                  <span className="text-slate-400">—</span>
-                ) : (
-                  <span className="flex flex-col gap-1.5 py-0.5">
-                    {p.supervisores.map((s) => (
-                      <PersonaChip key={`${s.cargo}-${s.nombre}`} persona={s} onAbrir={onAbrirPerfil} />
-                    ))}
-                  </span>
-                )}
-              </Fila>
-              {p.equipo.length > 0 ? (
-                <Fila icono={<Users className="h-4 w-4" />} etiqueta={`A cargo (${p.equipo.length})`} fuente="Organigrama">
-                  <span className="flex flex-wrap gap-1">
-                    {p.equipo.map((s) => (
-                      <PersonaChip key={`${s.cargo}-${s.nombre}`} persona={s} onAbrir={onAbrirPerfil} compacto />
-                    ))}
-                  </span>
-                </Fila>
-              ) : null}
-              <Fila icono={<Cake className="h-4 w-4" />} etiqueta={propio ? "Fecha de nacimiento" : "Cumpleaños"}>
-                {editCumple !== null ? (
-                  <span className="flex items-center gap-1.5">
-                    <input
-                      type="date"
-                      value={editCumple}
-                      min="1920-01-01"
-                      max={new Date().toISOString().slice(0, 10)}
-                      onChange={(e) => setEditCumple(e.target.value)}
-                      className="rounded-md border border-slate-200 px-1.5 py-0.5 text-[13px]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void guardar({ fecha_nacimiento: editCumple || null }, "cumple").then((ok) => ok && setEditCumple(null))
-                      }
-                      className="rounded-md bg-[#7C6FD8] px-2 py-0.5 text-[12px] font-semibold text-white"
-                    >
-                      {ocupado === "cumple" ? "…" : "Listo"}
-                    </button>
-                    <button type="button" onClick={() => setEditCumple(null)} className="text-[12px] text-slate-400">
-                      Cancelar
-                    </button>
-                  </span>
-                ) : propio && p.fecha_nacimiento ? (
-                  fechaLarga(p.fecha_nacimiento)
-                ) : p.cumple_mes && p.cumple_dia ? (
-                  `${p.cumple_dia} de ${MESES[p.cumple_mes - 1]}`
-                ) : (
-                  <span className="text-slate-400">Sin cargar</span>
-                )}
-                {propio && p.cumple_disponible && editCumple === null ? (
-                  <button
-                    type="button"
-                    onClick={() => setEditCumple(p.fecha_nacimiento ?? "")}
-                    aria-label="Cambiar mi fecha de nacimiento"
-                    className="ml-auto text-slate-300 hover:text-slate-500"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-              </Fila>
-              {p.area || propio ? (
-                <Fila icono={<Building2 className="h-4 w-4" />} etiqueta="Área">
+            <>
+              {/* Cumpleaños y área, en dos recuadros */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Recuadro
+                  icono={<Cake className="h-3.5 w-3.5" />}
+                  etiqueta={propio ? "Nacimiento" : "Cumpleaños"}
+                  acento={acento}
+                  suave={suave}
+                  ancho={editCumple !== null}
+                  onEditar={propio && p.cumple_disponible && editCumple === null ? () => setEditCumple(p.fecha_nacimiento ?? "") : undefined}
+                >
+                  {editCumple !== null ? (
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <input
+                        type="date"
+                        value={editCumple}
+                        min="1920-01-01"
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => setEditCumple(e.target.value)}
+                        className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[13px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void guardar({ fecha_nacimiento: editCumple || null }, "cumple").then((ok) => ok && setEditCumple(null))
+                        }
+                        style={{ background: acento }}
+                        className="rounded-md px-2 py-0.5 text-[12px] font-semibold text-white"
+                      >
+                        {ocupado === "cumple" ? "…" : "Listo"}
+                      </button>
+                      <button type="button" onClick={() => setEditCumple(null)} className="text-[12px] text-slate-400">
+                        Cancelar
+                      </button>
+                    </span>
+                  ) : propio && p.fecha_nacimiento ? (
+                    fechaLarga(p.fecha_nacimiento)
+                  ) : p.cumple_mes && p.cumple_dia ? (
+                    `${p.cumple_dia} de ${MESES[p.cumple_mes - 1]}`
+                  ) : (
+                    <span className="font-normal text-slate-400">Sin cargar</span>
+                  )}
+                </Recuadro>
+                <Recuadro
+                  icono={<Building2 className="h-3.5 w-3.5" />}
+                  etiqueta="Área"
+                  acento={acento}
+                  suave={suave}
+                  ancho={editArea !== null}
+                  onEditar={propio && editArea === null ? () => setEditArea(p.area ?? "") : undefined}
+                >
                   {editArea !== null ? (
-                    <span className="flex w-full items-center gap-1.5">
+                    <span className="mt-1 flex items-center gap-1.5">
                       <input
                         autoFocus
                         value={editArea}
@@ -426,47 +451,59 @@ export default function PerfilModal({
                           if (e.key === "Escape") setEditArea(null);
                         }}
                         placeholder="Ej: Soporte"
-                        className="min-w-0 flex-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[13px]"
+                        className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[13px] font-normal"
                       />
                       <button
                         type="button"
                         onClick={() => void guardar({ area: editArea }, "area").then((ok) => ok && setEditArea(null))}
-                        className="rounded-md bg-[#7C6FD8] px-2 py-0.5 text-[12px] font-semibold text-white"
+                        style={{ background: acento }}
+                        className="rounded-md px-2 py-0.5 text-[12px] font-semibold text-white"
                       >
                         {ocupado === "area" ? "…" : "Listo"}
                       </button>
                     </span>
-                  ) : p.area ? (
-                    p.area.charAt(0).toUpperCase() + p.area.slice(1)
                   ) : (
-                    <span className="text-slate-400">Sin cargar</span>
+                    area ?? <span className="font-normal text-slate-400">Sin cargar</span>
                   )}
-                  {propio && editArea === null ? (
-                    <button
-                      type="button"
-                      onClick={() => setEditArea(p.area ?? "")}
-                      aria-label="Cambiar mi área"
-                      className="ml-auto text-slate-300 hover:text-slate-500"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  ) : null}
-                </Fila>
-              ) : null}
-              <Fila icono={<Clock className="h-4 w-4" />} etiqueta="Última vez activo">
-                {propio ? "Ahora" : haceCuanto(p.ultima_actividad).replace(/^Activo /, "")}
-              </Fila>
-            </ul>
-          ) : null}
+                </Recuadro>
+              </div>
 
-          {p && !propio && onEnviarMensaje ? (
-            <button
-              type="button"
-              onClick={() => onEnviarMensaje(p.usuario_id, p.nombre)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#7C6FD8] py-2.5 text-[13.5px] font-semibold text-white hover:opacity-90"
-            >
-              <MessageSquare className="h-4 w-4" /> Enviar mensaje
-            </button>
+              {/* A quién reporta */}
+              {p.supervisores.length > 0 ? (
+                <>
+                  <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Reporta a</p>
+                  <div className="flex flex-col gap-2">
+                    {p.supervisores.map((s) => (
+                      <PersonaChip key={`${s.cargo}-${s.nombre}`} persona={s} onAbrir={onAbrirPerfil} />
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
+              {/* Su equipo */}
+              {p.equipo.length > 0 ? (
+                <>
+                  <p className="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                    A su cargo · {p.equipo.length}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.equipo.map((s) => (
+                      <PersonaChip key={`${s.cargo}-${s.nombre}`} persona={s} onAbrir={onAbrirPerfil} compacto />
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
+              {vieneDelOrganigrama ? (
+                <p className="mt-5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <Info className="h-3.5 w-3.5" /> Cargo y supervisores salen del organigrama
+                </p>
+              ) : propio ? (
+                <p className="mt-5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <Info className="h-3.5 w-3.5" /> Todavía no estás en el organigrama
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
 
@@ -501,31 +538,42 @@ export default function PerfilModal({
   );
 }
 
-function Fila({
+/** Un dato en un recuadro de color suave (cumpleaños, área). Al editar ocupa todo el ancho. */
+function Recuadro({
   icono,
   etiqueta,
-  fuente,
+  acento,
+  suave,
+  ancho,
+  onEditar,
   children,
 }: {
   icono: React.ReactNode;
   etiqueta: string;
-  fuente?: string;
+  acento: string;
+  suave: string;
+  ancho?: boolean;
+  onEditar?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <li className="flex items-start gap-3 py-2.5">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">{icono}</span>
-      <div className="min-w-0 flex-1">
-        {/* La fuente va al lado del título y no en una columna aparte: ahí se encimaba con el dato. */}
-        <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
-          {etiqueta}
-          {fuente ? (
-            <span className="rounded-full bg-violet-50 px-1.5 py-px text-[9.5px] font-medium text-violet-500">{fuente}</span>
-          ) : null}
-        </p>
-        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-[13.5px] text-slate-700">{children}</div>
-      </div>
-    </li>
+    <div className={`group/rec relative rounded-xl px-3 py-2.5 ${ancho ? "col-span-2" : ""}`} style={{ background: suave }}>
+      <p className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: acento }}>
+        {icono}
+        {etiqueta}
+      </p>
+      <div className="mt-0.5 text-[13.5px] font-semibold leading-snug text-slate-800">{children}</div>
+      {onEditar ? (
+        <button
+          type="button"
+          onClick={onEditar}
+          aria-label={`Cambiar ${etiqueta.toLowerCase()}`}
+          className="absolute right-2 top-2 rounded-md p-1 text-slate-400 opacity-60 hover:bg-white/70 hover:text-slate-700 group-hover/rec:opacity-100"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -545,17 +593,17 @@ function PersonaChip({
       disabled={!puede}
       onClick={() => persona.usuario_id && onAbrir?.(persona.usuario_id)}
       title={persona.cargo}
-      className={`inline-flex min-w-0 max-w-full items-center gap-2 text-left ${
-        compacto ? "rounded-full bg-slate-50 py-0.5 pl-0.5 pr-2" : ""
-      } ${puede ? "hover:text-[#6A5CC9]" : "cursor-default"}`}
+      className={`inline-flex min-w-0 max-w-full items-center text-left ${
+        compacto ? "gap-1.5 rounded-full border border-slate-200 py-0.5 pl-0.5 pr-2.5" : "gap-2.5 rounded-xl px-1 py-0.5 -mx-1"
+      } ${puede ? "hover:bg-slate-50" : "cursor-default"}`}
     >
-      <Cara nombre={persona.nombre} url={persona.avatar_url} size={compacto ? 20 : 28} />
+      <Cara nombre={persona.nombre} url={persona.avatar_url} size={compacto ? 22 : 34} />
       {compacto ? (
-        <span className="truncate text-[12.5px]">{nombreCorto(persona.nombre)}</span>
+        <span className="truncate text-[12.5px] text-slate-700">{nombreCorto(persona.nombre)}</span>
       ) : (
         <span className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate text-[13px] font-medium">{nombreCorto(persona.nombre)}</span>
-          <span className="truncate text-[11.5px] text-slate-400">{persona.cargo}</span>
+          <span className="truncate text-[13.5px] font-medium text-slate-800">{nombreCorto(persona.nombre)}</span>
+          <span className="truncate text-[11.5px] text-slate-500">{persona.cargo}</span>
         </span>
       )}
     </button>

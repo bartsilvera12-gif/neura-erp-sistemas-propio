@@ -47,6 +47,12 @@ export async function POST(request: Request) {
 
     return ok({ palabras_clave: palabras.join(" ") });
   } catch (err) {
+    if (err instanceof Anthropic.APIError) {
+      const msg = /credit|balance|billing/i.test(err.message)
+        ? "La sugerencia por IA no está disponible: la cuenta de IA se quedó sin saldo."
+        : "La IA no pudo generar sugerencias ahora. Probá de nuevo en un rato.";
+      return fallo(new ErrorV2(msg, 503), "POST /productos/sugerir-palabras-clave");
+    }
     return fallo(err, "POST /productos/sugerir-palabras-clave");
   }
 }

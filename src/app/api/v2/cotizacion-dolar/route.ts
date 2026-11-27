@@ -24,10 +24,15 @@ export async function GET(request: Request) {
     if (cache && Date.now() - cache.at < TTL) return ok(cache.data);
 
     const r = await fetch(FUENTE_URL, {
-      headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        accept: "application/json, text/plain, */*",
+        "accept-language": "es-PY,es;q=0.9",
+        referer: "https://www.cambioschaco.com.py/",
+      },
       signal: AbortSignal.timeout(8000),
     });
-    if (!r.ok) throw new ErrorV2("No se pudo obtener la cotización del día.", 502);
+    if (!r.ok) throw new ErrorV2(`No se pudo obtener la cotización del día (fuente respondió ${r.status}).`, 502);
     const j = (await r.json()) as { updateTs?: string; items?: { isoCode: string; purchasePrice: number; salePrice: number }[] };
     const usd = (j.items ?? []).find((x) => x.isoCode === "USD");
     if (!usd) throw new ErrorV2("La fuente no devolvió la cotización del dólar.", 502);

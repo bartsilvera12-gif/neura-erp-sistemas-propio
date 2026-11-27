@@ -101,7 +101,10 @@ function NuevaOrden({ modo }: { modo?: "solicitud" }) {
     }
     setTipoPago(p.condicion_pago);
     if (p.plazo_pago_dias) setPlazo(String(p.plazo_pago_dias));
-    setMoneda(p.moneda);
+    // En una solicitud no forzamos la moneda del proveedor (p. ej. Fastrax = USD):
+    // queda en Guaraníes para no exigir la cotización en un simple pedido. Se puede
+    // cambiar a Dólares a mano. En una orden normal sí se respeta la del proveedor.
+    if (!esSolicitud) setMoneda(p.moneda);
   }
 
   async function agregar(prod: ProductoInventario) {

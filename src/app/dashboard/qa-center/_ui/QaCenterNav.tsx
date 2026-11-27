@@ -46,6 +46,15 @@ const TABS: Array<{ href: string; label: string; icon: ReactElement }> = [
       </svg>
     ),
   },
+  {
+    href: "/dashboard/qa-center/entregados",
+    label: "Entregados",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><path d="m9 11 2 2 4-4"/>
+      </svg>
+    ),
+  },
 ];
 
 export default function QaCenterNav() {

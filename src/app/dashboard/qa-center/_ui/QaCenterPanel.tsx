@@ -14,6 +14,7 @@ import { useState } from "react";
 import type { QaListResult, QaProjectRow, QaRunRow } from "@/lib/qa/db";
 import type { CoberturaModulo } from "./CoberturaIAViewer";
 import EjecutarQaButton from "./EjecutarQaButton";
+import QaKanbanBoard from "./QaKanbanBoard";
 import NuevoProyectoDialog from "./NuevoProyectoDialog";
 import EditarProyectoDialog from "./EditarProyectoDialog";
 import SuitesSection from "./SuitesSection";
@@ -134,41 +135,18 @@ export default function QaCenterPanel({
       <main className="mx-auto max-w-6xl px-6 py-6">
         {migrationPending && <MigrationPendingBanner projects={projects} runs={runs} />}
 
-        <section className="mb-8">
-          <div className="mb-4 flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Proyectos</h2>
-              <p className="text-xs text-slate-500">
-                Cada proyecto representa un ERP bajo QA. Tocá <span className="font-semibold text-[#0EA5E9]">Ejecutar sandbox</span> para que el agente IA recorra el sistema.
-              </p>
-            </div>
-            {projects.data.length > 0 && (
-              <span className="hidden text-[11px] text-slate-400 sm:block">
-                {projects.data.length} proyecto{projects.data.length === 1 ? "" : "s"}
-              </span>
-            )}
-          </div>
-
-          {projects.data.length === 0 ? (
+        {projects.data.length === 0 ? (
+          <section className="mb-8">
             <EmptyProjectsState onNew={() => setShowNew(true)} />
-          ) : (
-            <ul className="space-y-4" data-testid="lista-proyectos">
-              {projects.data.map((p) => (
-                <li key={p.id} data-testid={`row-proy-${p.slug}`}>
-                  <ProjectCard
-                    project={p}
-                    aiEstado={aiEstado[p.id]}
-                    anthropicConfigured={anthropicConfigured}
-                    credencialesRoRunnerConfigured={credencialesRoRunnerConfigured}
-                    onEdit={() => setEditingId(p.id)}
-                    onAutorizar={() => setAutorizandoId(p.id)}
-                    onEntregar={() => setEntregandoId(p.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          </section>
+        ) : (
+          <QaKanbanBoard
+            projects={projects.data}
+            onEdit={(id) => setEditingId(id)}
+            onAutorizar={(id) => setAutorizandoId(id)}
+            onEntregar={(id) => setEntregandoId(id)}
+          />
+        )}
 
         {runs.data.length > 0 && (
           <section className="mt-4 overflow-hidden rounded-xl border border-[#7DCFD2]/30 bg-gradient-to-r from-[#7DCFD2]/10 via-white to-white">

@@ -11,6 +11,8 @@
  */
 import type { Pool } from "pg";
 import { cambiarEstadoOrden, createOrden, updateOrden, type IvaTipo } from "@/lib/ordenes/server/ordenes-pg";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+import { signProductoImagen } from "@/lib/inventario/imagen-storage";
 import { enTransaccion, ErrorV2, esUuid } from "./server";
 
 const ESTADO_A_20: Record<string, string> = {
@@ -136,10 +138,18 @@ export async function detalleOrden(pool: Pool, empresaId: string, id: string) {
   if (!rows[0]) throw new ErrorV2("Orden de compra no encontrada", 404);
   const { rows: items } = await pool.query(
     `SELECT i.id, i.producto_id, i.producto_nombre, p.sku AS producto_sku, i.cantidad::float AS cantidad,
-            ${SQL_RECIBIDA}::float AS cantidad_recibida, i.costo_unitario_estimado::float AS costo, i.iva_tipo
+            ${SQL_RECIBIDA}::float AS cantidad_recibida, i.costo_unitario_estimado::float AS costo, i.iva_tipo,
+            p.imagen_url AS producto_imagen_url, p.imagen_path AS producto_imagen_path
        FROM neura.orden_compra_items i LEFT JOIN neura.productos p ON p.id = i.producto_id
       WHERE i.orden_id = $1::uuid ORDER BY i.orden_linea NULLS LAST, i.created_at`,
     [id]
+  );
+  // Firma la imagen del bucket privado para que la miniatura se vea en el detalle.
+  const sbImg = createServiceRoleClient() as Parameters<typeof signProductoImagen>[0];
+  const imagenes = await Promise.all(
+    items.map(async (i) =>
+      i.producto_imagen_url ? i.producto_imagen_url : i.producto_imagen_path ? await signProductoImagen(sbImg, i.producto_imagen_path, 3600).catch(() => null) : null
+    )
   );
   const { rows: compras } = await pool.query(
     `SELECT id, numero_control, COALESCE(numero_comprobante, '') AS numero_factura, fecha, total::float AS total, estado
@@ -148,11 +158,12 @@ export async function detalleOrden(pool: Pool, empresaId: string, id: string) {
   );
   return {
     ...fila(rows[0]),
-    items: items.map((i) => ({
+    items: items.map((i, k) => ({
       id: i.id,
       producto_id: i.producto_id,
       producto_nombre: i.producto_nombre,
       producto_sku: i.producto_sku,
+      imagen_url: imagenes[k],
       cantidad: i.cantidad,
       cantidad_recibida: Math.min(i.cantidad, i.cantidad_recibida),
       costo_unitario_original: i.costo,

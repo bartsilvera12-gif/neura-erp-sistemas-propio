@@ -15,7 +15,7 @@ import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { Select } from "@/erp2/components/Select";
 import { Drawer } from "@/erp2/components/Drawer";
-import { equivGs, montoMoneda } from "@/erp2/modules/compras/partes";
+import { equivGs, MiniaturaProducto, montoMoneda } from "@/erp2/modules/compras/partes";
 
 const TEAL = clienteConfig.color;
 
@@ -32,7 +32,7 @@ type Fila = {
   cantidad_items: number;
   usuario_nombre: string | null;
 };
-type ItemDetalle = { id: string; producto_nombre: string; cantidad: number; costo_unitario: number };
+type ItemDetalle = { id: string; producto_nombre: string; producto_sku?: string | null; imagen_url?: string | null; cantidad: number; costo_unitario: number };
 type Detalle = Fila & {
   observacion: string | null;
   pago_metodo: string | null;
@@ -217,9 +217,10 @@ function DetallePago({ id, onClose, onCambio }: { id: string; onClose: () => voi
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Productos ({(o.items ?? []).length})</p>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
               {(o.items ?? []).map((l) => (
-                <li key={l.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
-                  <span className="min-w-0 text-sm text-slate-700 [overflow-wrap:anywhere]">{l.producto_nombre}</span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-slate-500">{Number(l.cantidad).toLocaleString("es-PY")} × {montoMoneda(l.costo_unitario, o.moneda)}</span>
+                <li key={l.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <MiniaturaProducto url={l.imagen_url} nombre={l.producto_nombre} clase="h-10 w-10" />
+                  <span className="min-w-0 flex-1 text-sm text-slate-700 [overflow-wrap:anywhere]">{l.producto_nombre}</span>
+                  <span className="shrink-0 text-right text-[11px] tabular-nums text-slate-500">{Number(l.cantidad).toLocaleString("es-PY")} × {montoMoneda(l.costo_unitario, o.moneda)}</span>
                 </li>
               ))}
             </ul>

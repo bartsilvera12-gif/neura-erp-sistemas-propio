@@ -10,12 +10,12 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Ban, CheckCircle2, ClipboardList, HelpCircle, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Ban, CheckCircle2, ClipboardList, HelpCircle, Loader2, Minus, Plus, Trash2, X } from "lucide-react";
 import { apiFetch } from "@/erp2/lib/api/client-fetch";
 import { clienteConfig } from "@/erp2/cliente.config";
 import { Select } from "@/erp2/components/Select";
 import { Drawer } from "@/erp2/components/Drawer";
-import { equivGs, montoMoneda } from "@/erp2/modules/compras/partes";
+import { equivGs, MiniaturaProducto, montoMoneda } from "@/erp2/modules/compras/partes";
 
 const TEAL = clienteConfig.color;
 
@@ -38,6 +38,7 @@ type ItemDetalle = {
   producto_id: string | null;
   producto_nombre: string;
   producto_sku: string | null;
+  imagen_url?: string | null;
   cantidad: number;
   costo_unitario: number;
 };
@@ -262,35 +263,42 @@ function DetalleSolicitud({ id, onClose, onCambio }: { id: string; onClose: () =
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Productos ({lineas.length})</p>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
               {lineas.map((l, i) => (
-                <li key={l.id} className="px-3 py-3">
-                  <div className="flex items-start gap-2">
+                <li key={l.id} className="px-3 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <MiniaturaProducto url={l.imagen_url} nombre={l.producto_nombre} clase="h-11 w-11" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-slate-800 [overflow-wrap:anywhere]">{l.producto_nombre}</p>
                       {l.producto_sku ? <p className="mt-0.5 text-[11px] text-slate-400">SKU {l.producto_sku}</p> : null}
                     </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-bold tabular-nums text-slate-900">{montoMoneda((Number(l.cantidad) || 0) * (Number(l.costo_unitario) || 0), o.moneda)}</p>
+                    </div>
                     {porConfirmar ? (
-                      <button onClick={() => quitar(i)} aria-label="Quitar" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+                      <button onClick={() => quitar(i)} aria-label="Quitar" className="-mr-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     ) : null}
                   </div>
                   {porConfirmar ? (
-                    <div className="mt-2 flex flex-wrap items-end gap-3">
-                      <label className="text-[11px] font-medium text-slate-500">
-                        Cantidad
-                        <input type="number" min={0} step="any" value={l.cantidad} onChange={(e) => setLinea(i, "cantidad", Number(e.target.value))}
-                          className="mt-0.5 block w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
-                      </label>
-                      <label className="text-[11px] font-medium text-slate-500">
-                        Costo unit. ({o.moneda === "USD" ? "US$" : "Gs."})
+                    <div className="mt-3 flex flex-wrap items-end gap-x-5 gap-y-3 sm:pl-14">
+                      <div>
+                        <span className="text-[11px] font-medium text-slate-500">Cantidad</span>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <button type="button" onClick={() => setLinea(i, "cantidad", Math.max(0, (Number(l.cantidad) || 0) - 1))} aria-label="Restar uno" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-[var(--brand)] hover:text-[var(--brand)] active:scale-95"><Minus className="h-3.5 w-3.5" /></button>
+                          <input type="number" min={0} step="any" value={l.cantidad} onChange={(e) => setLinea(i, "cantidad", Number(e.target.value))}
+                            className="w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
+                          <button type="button" onClick={() => setLinea(i, "cantidad", (Number(l.cantidad) || 0) + 1)} aria-label="Sumar uno" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-[var(--brand)] hover:text-[var(--brand)] active:scale-95"><Plus className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </div>
+                      <label>
+                        <span className="text-[11px] font-medium text-slate-500">Costo unit. ({o.moneda === "USD" ? "US$" : "Gs."})</span>
                         <input type="number" min={0} step="any" value={l.costo_unitario} onChange={(e) => setLinea(i, "costo_unitario", Number(e.target.value))}
-                          className="mt-0.5 block w-32 rounded-lg border border-slate-200 px-2 py-1.5 text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
+                          className="mt-0.5 block w-32 rounded-lg border border-slate-200 px-2 py-1.5 text-right text-sm tabular-nums outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand-100)]" />
                       </label>
-                      <span className="ml-auto text-sm font-semibold tabular-nums text-slate-700">{montoMoneda((Number(l.cantidad) || 0) * (Number(l.costo_unitario) || 0), o.moneda)}</span>
                     </div>
                   ) : (
-                    <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
-                      {Number(l.cantidad).toLocaleString("es-PY")} × {montoMoneda(l.costo_unitario, o.moneda)} = {montoMoneda((Number(l.cantidad) || 0) * (Number(l.costo_unitario) || 0), o.moneda)}
+                    <p className="mt-1 text-[11px] text-slate-500 tabular-nums sm:pl-14">
+                      {Number(l.cantidad).toLocaleString("es-PY")} × {montoMoneda(l.costo_unitario, o.moneda)}
                     </p>
                   )}
                 </li>

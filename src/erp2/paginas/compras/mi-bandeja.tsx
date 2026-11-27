@@ -17,7 +17,7 @@ import { montoMoneda } from "@/erp2/modules/compras/partes";
 
 const TEAL = clienteConfig.color;
 
-type Fila = { id: string; numero_oc: string; proveedor_nombre: string | null; total: number; moneda?: string | null; estado: string; pago_estado: string };
+type Fila = { id: string; numero_oc: string; proveedor_nombre: string | null; fecha?: string | null; total: number; moneda?: string | null; estado: string; pago_estado: string };
 type Seccion = { total: number; rows: Fila[] };
 type Resp = {
   roles: { confirma: boolean; paga: boolean; recibe: boolean };
@@ -51,6 +51,7 @@ export default function MiBandejaPage() {
   const [data, setData] = useState<Resp | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<keyof Resp | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -88,51 +89,80 @@ export default function MiBandejaPage() {
             <Plus className="h-4 w-4" /> Nueva solicitud
           </Link>
         </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {secciones.map((d) => {
-            const s = data![d.key] as Seccion;
-            const Icono = d.icono;
-            return (
-              <section key={String(d.key)} className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${TEAL}1a`, color: TEAL }}><Icono className="h-4.5 w-4.5" /></span>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-sm font-semibold text-slate-900">{d.titulo}</h2>
-                    <p className="truncate text-[11px] text-slate-500">{d.subtitulo}</p>
-                  </div>
-                  <span className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums text-white" style={{ backgroundColor: s.total > 0 ? TEAL : "#cbd5e1" }}>{s.total}</span>
+      ) : (() => {
+        const activaKey = tab ?? secciones.find((d) => (data![d.key] as Seccion).total > 0)?.key ?? secciones[0].key;
+        const def = DEFS.find((d) => d.key === activaKey)!;
+        const s = data![activaKey] as Seccion;
+        return (
+          <div className="space-y-4">
+            {/* Selector de secciones (uno al lado del otro) */}
+            <div className="flex flex-wrap gap-2">
+              {secciones.map((d) => {
+                const sec = data![d.key] as Seccion;
+                const act = d.key === activaKey;
+                const Icono = d.icono;
+                return (
+                  <button key={String(d.key)} type="button" onClick={() => setTab(d.key)}
+                    className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold transition ${act ? "border-transparent text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-800"}`}
+                    style={act ? { backgroundColor: TEAL } : undefined}>
+                    <Icono className="h-4 w-4" />
+                    <span className="max-sm:hidden">{d.titulo}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${act ? "bg-white/25 text-white" : sec.total > 0 ? "text-[var(--brand)]" : "text-slate-400"}`} style={!act && sec.total > 0 ? { backgroundColor: `${TEAL}1a` } : !act ? { backgroundColor: "#f1f5f9" } : undefined}>{sec.total}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Listado de la sección elegida */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-4 py-2.5 sm:px-5">
+                <h2 className="text-sm font-semibold text-slate-900">{def.titulo}</h2>
+                <p className="text-[11px] text-slate-500">{def.subtitulo}</p>
+              </div>
+              {s.rows.length === 0 ? (
+                <p className="px-4 py-14 text-center text-sm text-slate-400">Nada pendiente acá por ahora.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead className="border-b bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left font-semibold sm:px-5">Nº</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Proveedor</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Fecha</th>
+                        <th className="px-3 py-2.5 text-right font-semibold">Total</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Estado</th>
+                        <th className="px-3 py-2.5" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.rows.map((f) => {
+                        const c = def.chip(f);
+                        return (
+                          <tr key={f.id} onClick={() => { window.location.href = def.rowHref(f.id); }}
+                            className="cursor-pointer border-b border-slate-100 last:border-0 transition hover:bg-[var(--brand)]/[0.04]">
+                            <td className="px-4 py-2.5 font-mono text-xs font-semibold text-slate-800 sm:px-5">{f.numero_oc}</td>
+                            <td className="px-3 py-2.5 text-slate-700">{f.proveedor_nombre ?? "—"}</td>
+                            <td className="px-3 py-2.5 text-xs text-slate-500">{(f.fecha ?? "").slice(0, 10)}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-800">{montoMoneda(f.total, f.moneda)}</td>
+                            <td className="px-3 py-2.5"><span className={`rounded px-2 py-0.5 text-[11px] font-medium ${c.cls}`}>{c.label}</span></td>
+                            <td className="px-3 py-2.5 text-right"><ChevronRight className="inline h-4 w-4 text-slate-300" /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-
-                {s.rows.length === 0 ? (
-                  <p className="px-4 py-4 text-center text-xs text-slate-400">Nada pendiente.</p>
-                ) : (
-                  <ul className="divide-y divide-slate-100">
-                    {s.rows.map((f) => {
-                      const c = d.chip(f);
-                      return (
-                        <li key={f.id}>
-                          <Link href={d.rowHref(f.id)} className="flex items-center gap-2 px-4 py-2.5 transition hover:bg-slate-50/70">
-                            <span className="font-mono text-[11px] font-semibold text-slate-700">{f.numero_oc}</span>
-                            <span className="min-w-0 flex-1 truncate text-[13px] text-slate-700">{f.proveedor_nombre ?? "—"}</span>
-                            <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-800">{montoMoneda(f.total, f.moneda)}</span>
-                            <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${c.cls}`}>{c.label}</span>
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-
-                <Link href={d.verHref} className="mt-auto flex items-center justify-between border-t border-slate-100 px-4 py-2.5 text-xs font-semibold hover:bg-slate-50" style={{ color: TEAL }}>
-                  Ver todas{s.total > s.rows.length ? ` (${s.total})` : ""}
+              )}
+              {s.total > s.rows.length ? (
+                <Link href={def.verHref} className="flex items-center justify-between border-t border-slate-100 px-4 py-2.5 text-xs font-semibold hover:bg-slate-50 sm:px-5" style={{ color: TEAL }}>
+                  Ver las {s.total} en la bandeja completa
                   <ChevronRight className="h-4 w-4" />
                 </Link>
-              </section>
-            );
-          })}
-        </div>
-      )}
+              ) : null}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

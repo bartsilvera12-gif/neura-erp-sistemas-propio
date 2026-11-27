@@ -357,7 +357,7 @@ export async function miBandejaCompra(
     const [{ rows }, { rows: tot }] = await Promise.all([
       pool.query(
         `SELECT o.*, (SELECT count(*) FROM neura.orden_compra_items i WHERE i.orden_id = o.id)::int AS cantidad_items
-           FROM neura.ordenes_compra o WHERE ${where} ORDER BY o.fecha DESC, o.numero DESC LIMIT 6`,
+           FROM neura.ordenes_compra o WHERE ${where} ORDER BY o.fecha DESC, o.numero DESC LIMIT 12`,
         args
       ),
       pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM neura.ordenes_compra o WHERE ${where}`, args),

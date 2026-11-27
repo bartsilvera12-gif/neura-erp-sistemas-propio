@@ -246,14 +246,11 @@ function DetalleSolicitud({ id, onClose, onCambio }: { id: string; onClose: () =
         error ? <p className="text-sm text-rose-600">{error}</p> : <p className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</p>
       ) : (
         <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/80 p-4">
-            {estadoChip ? <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${estadoChip.cls}`}>{estadoChip.label}</span> : null}
-            <div className="text-right">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Total estimado</p>
-              <p className="text-xl font-bold tabular-nums tracking-tight text-slate-900">{totalEst ? montoMoneda(totalEst, o.moneda) : "—"}</p>
-              {equivGs(totalEst, o.moneda, o.tipo_cambio) ? <p className="text-[11px] font-normal text-slate-400">{equivGs(totalEst, o.moneda, o.tipo_cambio)}</p> : null}
+          {estadoChip ? (
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${estadoChip.cls}`}>{estadoChip.label}</span>
             </div>
-          </div>
+          ) : null}
 
           {porConfirmar ? (
             <p className="rounded-xl border border-amber-200/70 bg-amber-50/50 px-3 py-2 text-xs text-amber-800">
@@ -300,6 +297,15 @@ function DetalleSolicitud({ id, onClose, onCambio }: { id: string; onClose: () =
               ))}
               {lineas.length === 0 ? <li className="px-3 py-6 text-center text-xs text-slate-400">Sin líneas. Volvé a agregar o cerrá sin aprobar.</li> : null}
             </ul>
+          </div>
+
+          {/* Total abajo, después de los productos */}
+          <div className="flex items-baseline justify-between gap-3 rounded-2xl border border-[var(--brand)]/20 bg-[var(--brand)]/5 px-4 py-3.5">
+            <span className="text-sm font-semibold text-slate-700">Total estimado</span>
+            <span className="text-right">
+              <span className="block text-xl font-bold tabular-nums tracking-tight text-slate-900">{totalEst ? montoMoneda(totalEst, o.moneda) : "—"}</span>
+              {equivGs(totalEst, o.moneda, o.tipo_cambio) ? <span className="block text-[11px] font-medium text-slate-500">{equivGs(totalEst, o.moneda, o.tipo_cambio)}</span> : null}
+            </span>
           </div>
 
           {o.observacion ? (

@@ -95,7 +95,25 @@ type Sala = {
   cumple_hoy?: boolean;
   /** En un directo: la otra persona (para abrir su perfil). */
   otro_usuario_id?: string | null;
+  /** En un directo: lo último que hizo la otra persona (usar el ERP o leer). */
+  otro_activo_at?: string | null;
 };
+
+/** "En línea" si estuvo activa en los últimos 2 minutos; si no, hace cuánto. */
+function estadoActividad(iso: string | null | undefined): { enLinea: boolean; texto: string } | null {
+  if (!iso) return null;
+  const min = Math.floor((Date.now() - Date.parse(iso)) / 60000);
+  if (min < 2) return { enLinea: true, texto: "En línea" };
+  if (min < 60) return { enLinea: false, texto: `activo hace ${min} min` };
+  const h = Math.floor(min / 60);
+  if (h < 24) return { enLinea: false, texto: `activo hace ${h} h` };
+  const d = new Date(iso);
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  const hora = d.toLocaleTimeString("es-PY", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === ayer.toDateString()) return { enLinea: false, texto: `activo ayer a las ${hora}` };
+  return { enLinea: false, texto: `activo el ${d.toLocaleDateString("es-PY", { day: "numeric", month: "short" })}` };
+}
 
 type Adjunto = {
   path: string;
@@ -2857,9 +2875,19 @@ export default function ChatInternoClient({ mobile = false }: { mobile?: boolean
                   {salaActual.cumple_hoy ? (
                     <span className="shrink-0 text-[14px]" title="Hoy cumple años">🎁</span>
                   ) : null}
-                  {salaActual.tipo !== "grupo" ? (
-                    <span className="shrink-0 text-[12.5px] italic text-slate-400">En línea</span>
-                  ) : null}
+                  {salaActual.tipo !== "grupo"
+                    ? (() => {
+                        const est = estadoActividad(salaActual.otro_activo_at);
+                        if (!est) return null;
+                        return est.enLinea ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-medium text-emerald-600">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500" /> En línea
+                          </span>
+                        ) : (
+                          <span className="shrink-0 text-[12.5px] text-slate-400">{est.texto}</span>
+                        );
+                      })()
+                    : null}
                 </h2>
                 {/* Quién escribe reemplaza al subtítulo mientras dura: es lo
                     que está pasando ahora, y el cargo no se va a ningún lado. */}

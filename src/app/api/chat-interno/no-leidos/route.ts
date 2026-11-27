@@ -1,6 +1,21 @@
 import { NextResponse } from "next/server";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { requireChatInterno, respuestaAuth } from "@/lib/chat-interno/core";
+import { createServiceRoleClient } from "@/lib/supabase/service-admin";
+
+/**
+ * Marca que la persona está usando el ERP ahora ("En línea" / "Activo hace…").
+ * Como mucho una escritura por minuto: el filtro deja la fila quieta si ya se marcó.
+ */
+async function marcarActividad(usuarioId: string) {
+  const ahora = new Date();
+  const hace50s = new Date(ahora.getTime() - 50_000).toISOString();
+  await createServiceRoleClient()
+    .from("usuarios")
+    .update({ ultima_actividad_at: ahora.toISOString() })
+    .eq("id", usuarioId)
+    .or(`ultima_actividad_at.is.null,ultima_actividad_at.lt.${hace50s}`);
+}
 
 export const runtime = "nodejs";
 
@@ -31,6 +46,11 @@ export async function GET(request: Request) {
   const auth = await requireChatInterno(request);
   if (!auth.ok) return respuestaAuth(auth);
   const { sb, usuarioId } = auth;
+
+  // La pantalla avisa con ?activo=1 sólo si la pestaña está a la vista.
+  if (new URL(request.url).searchParams.get("activo") === "1") {
+    void marcarActividad(usuarioId).catch(() => {});
+  }
 
   try {
     const { data: mis } = await sb

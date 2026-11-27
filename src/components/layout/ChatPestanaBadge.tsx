@@ -105,7 +105,9 @@ export default function ChatPestanaBadge() {
   const contar = useCallback(async () => {
     if (!habilitadoRef.current) return;
     try {
-      const r = await fetchWithSupabaseSession("/api/chat-interno/no-leidos", {
+      // Con la pestaña a la vista, de paso cuenta como "estoy usando el ERP".
+      const activo = document.visibilityState === "visible" ? "?activo=1" : "";
+      const r = await fetchWithSupabaseSession(`/api/chat-interno/no-leidos${activo}`, {
         cache: "no-store",
       });
       // 403 = sin acceso al módulo. No es un error a mostrar: simplemente esta

@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     const { data: usuarios } = idsUsuarios.length
       ? await catalog
           .from("usuarios")
-          .select("id, nombre, nombre_chat, area, avatar_path")
+          .select("id, nombre, nombre_chat, area, avatar_path, ultima_actividad_at")
           .in("id", idsUsuarios)
       : { data: [] as {
           id: string;
@@ -78,7 +78,9 @@ export async function GET(request: Request) {
       nombre_chat: string | null;
       area: string | null;
       avatar_path: string | null;
+      ultima_actividad_at?: string | null;
     }[];
+    const actividadDe = new Map(personas.map((u) => [u.id, u.ultima_actividad_at ?? null]));
     const nombreDe = new Map(personas.map((u) => [u.id, nombreVisible(u)]));
     const areaDe = new Map(personas.map((u) => [u.id, (u.area ?? "").trim()]));
     const avatarDe = await firmarAvatares(sb, personas);
@@ -152,6 +154,14 @@ export async function GET(request: Request) {
             : avatarDeSala.get(id) ?? null,
         mi_rol: miRolEn.get(id) ?? "miembro",
         otro_usuario_id: s.tipo === "directo" ? otro ?? null : null,
+        // Lo último que hizo la otra persona: usar el ERP o leer esta conversación.
+        otro_activo_at:
+          s.tipo === "directo" && otro
+            ? [actividadDe.get(otro), ...(lecturasDe.get(id) ?? [])]
+                .filter((x): x is string => !!x)
+                .sort()
+                .at(-1) ?? null
+            : null,
         // Sólo en el directo: en un grupo no se sabe a quién señala el regalo.
         cumple_hoy: s.tipo === "directo" && !!otro && cumplenHoy.has(otro),
         // El cargo se muestra mientras no haya nada que previsualizar: una fila

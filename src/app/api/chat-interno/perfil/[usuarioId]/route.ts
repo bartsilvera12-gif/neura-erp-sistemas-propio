@@ -144,7 +144,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ usua
         .order("ultima_lectura_at", { ascending: false, nullsFirst: false })
         .limit(1),
     ]);
+    const { data: act } = await catalog
+      .from("usuarios")
+      .select("ultima_actividad_at")
+      .eq("id", usuarioId)
+      .maybeSingle();
     const fechas = [
+      (act as { ultima_actividad_at?: string | null } | null)?.ultima_actividad_at,
       (ultMsg as { created_at?: string }[] | null)?.[0]?.created_at,
       (ultLect as { ultima_lectura_at?: string | null }[] | null)?.[0]?.ultima_lectura_at,
     ].filter((x): x is string => !!x);

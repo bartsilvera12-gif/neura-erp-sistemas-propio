@@ -231,6 +231,9 @@ export class SupabaseQaRunsRepo implements QaRunsRepo {
   ): ReturnType<QaRunsRepo["updateProject"]> {
     throw new Error("SupabaseQaRunsRepo.updateProject no implementado — usar PostgresQaRunsRepo");
   }
+  async archiveProject(_projectId: string): Promise<boolean> {
+    throw new Error("SupabaseQaRunsRepo.archiveProject no implementado — usar PostgresQaRunsRepo");
+  }
   async createSuite(_input: Parameters<QaRunsRepo["createSuite"]>[0]): ReturnType<QaRunsRepo["createSuite"]> {
     throw new Error("SupabaseQaRunsRepo.createSuite no implementado — usar PostgresQaRunsRepo");
   }

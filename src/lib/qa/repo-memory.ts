@@ -190,6 +190,9 @@ export class InMemoryQaRunsRepo implements QaRunsRepo {
   ): ReturnType<QaRunsRepo["updateProject"]> {
     throw new Error("InMemoryQaRunsRepo.updateProject no implementado — usar PostgresQaRunsRepo");
   }
+  async archiveProject(_projectId: string): Promise<boolean> {
+    throw new Error("InMemoryQaRunsRepo.archiveProject no implementado — usar PostgresQaRunsRepo");
+  }
   async createSuite(_input: Parameters<QaRunsRepo["createSuite"]>[0]): ReturnType<QaRunsRepo["createSuite"]> {
     throw new Error("InMemoryQaRunsRepo.createSuite no implementado — usar PostgresQaRunsRepo");
   }

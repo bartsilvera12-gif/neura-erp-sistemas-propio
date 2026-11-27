@@ -181,6 +181,13 @@ export interface QaRunsRepo {
     patch: Partial<Pick<QaProject, "name" | "target_base_url" | "target_env" | "default_branch" | "repo_url" | "tipo_proyecto">>
   ): Promise<QaProject | null>;
 
+  /**
+   * Soft-delete: setea archived_at = now(). El proyecto deja de aparecer en
+   * el listado activo pero los datos quedan en DB. Devuelve true si archivó
+   * algo, false si no existía o ya estaba archivado.
+   */
+  archiveProject(projectId: string): Promise<boolean>;
+
   /** Crea un suite. Duplicados por (project_id, slug) → conflict. */
   createSuite(input: {
     project_id: string;

@@ -146,6 +146,7 @@ export default function QaCenterPanel({
           <QaKanbanBoard
             projects={projects.data}
             onOpen={(id) => setDetalleId(id)}
+            onArchived={reload}
           />
         )}
 

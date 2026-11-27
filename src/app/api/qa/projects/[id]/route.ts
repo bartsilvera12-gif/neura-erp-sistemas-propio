@@ -118,3 +118,25 @@ export async function PATCH(
   if (!updated) return NextResponse.json({ error: "no existe", code: "not_found" }, { status: 404 });
   return NextResponse.json({ data: updated }, { status: 200 });
 }
+
+/**
+ * DELETE /api/qa/projects/[id] — soft-delete: marca archived_at = now().
+ * El proyecto deja de aparecer en el tablero pero los datos quedan en DB.
+ */
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const auth = await assertQaCenterAccess(request);
+  if (!auth.ok) return auth.response;
+  const { id } = await context.params;
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: "id debe ser UUID", code: "validation" }, { status: 400 });
+  }
+  const repo = buildQaRepo();
+  if (!repo) return NextResponse.json({ error: "QA_DB_URL no configurada", code: "internal" }, { status: 500 });
+
+  const archived = await repo.archiveProject(id);
+  if (!archived) return NextResponse.json({ error: "no existe", code: "not_found" }, { status: 404 });
+  return NextResponse.json({ data: { id, archived: true } }, { status: 200 });
+}

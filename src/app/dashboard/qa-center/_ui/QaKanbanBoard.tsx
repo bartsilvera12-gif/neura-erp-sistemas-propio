@@ -6,7 +6,7 @@
  * en la card abre el modal de detalle con "Ejecutar sandbox".
  */
 
-import { useMemo, useState, type ReactElement } from "react";
+import { useMemo, useState, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
 import type { QaProjectRow } from "@/lib/qa/db";
 import BotonEjecutarRapido from "./BotonEjecutarRapido";
 
@@ -75,9 +75,10 @@ const COLUMNAS: Theme[] = [
 type Props = {
   projects: QaProjectRow[];
   onOpen: (projectId: string) => void;
+  onArchived?: () => void;
 };
 
-export default function QaKanbanBoard({ projects, onOpen }: Props) {
+export default function QaKanbanBoard({ projects, onOpen, onArchived }: Props) {
   const [busqueda, setBusqueda] = useState("");
 
   const filtrados = useMemo(() => {
@@ -165,6 +166,7 @@ export default function QaKanbanBoard({ projects, onOpen }: Props) {
                       project={p}
                       accent={col.cardAccent}
                       onOpen={() => onOpen(p.id)}
+                      onArchived={onArchived}
                     />
                   ))
                 )}
@@ -181,13 +183,41 @@ function KanbanCard({
   project: p,
   accent,
   onOpen,
+  onArchived,
 }: {
   project: QaProjectRow;
   accent: string;
   onOpen: () => void;
+  onArchived?: () => void;
 }) {
+  const [archivando, setArchivando] = useState(false);
+  const [errArch, setErrArch] = useState<string | null>(null);
   const repoCorto = p.repo_url?.replace(/^https?:\/\/(www\.)?github\.com\//, "");
   const urlCorta = (p.target_base_url ?? "").replace(/^https?:\/\/(www\.)?/, "");
+
+  async function archivar(e: ReactMouseEvent): Promise<void> {
+    e.stopPropagation();
+    if (archivando) return;
+    const ok = window.confirm(
+      `¿Eliminar "${p.name}" del tablero?\n\nSe archiva (soft-delete): deja de aparecer pero los datos quedan en DB.`
+    );
+    if (!ok) return;
+    setArchivando(true); setErrArch(null);
+    try {
+      const res = await fetch(`/api/qa/projects/${p.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setErrArch(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      if (onArchived) onArchived();
+      else window.location.reload();
+    } catch (err) {
+      setErrArch(err instanceof Error ? err.message : "error de red");
+    } finally {
+      setArchivando(false);
+    }
+  }
 
   return (
     <article
@@ -206,14 +236,33 @@ function KanbanCard({
           </h3>
           <p className="truncate font-mono text-[10px] text-slate-500">{p.slug}</p>
         </div>
-        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ring-1 ${
-          p.tipo_proyecto === "web"
-            ? "bg-violet-50 text-violet-700 ring-violet-200"
-            : "bg-sky-50 text-sky-700 ring-sky-200"
-        }`}>
-          {p.tipo_proyecto === "web" ? "Web" : "ERP"}
-        </span>
+        <div className="flex shrink-0 items-start gap-1">
+          <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ring-1 ${
+            p.tipo_proyecto === "web"
+              ? "bg-violet-50 text-violet-700 ring-violet-200"
+              : "bg-sky-50 text-sky-700 ring-sky-200"
+          }`}>
+            {p.tipo_proyecto === "web" ? "Web" : "ERP"}
+          </span>
+          <button
+            onClick={archivar}
+            disabled={archivando}
+            className="rounded p-1 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+            title="Eliminar del tablero (soft-delete)"
+            aria-label={`Eliminar ${p.name} del tablero`}
+            data-testid={`kanban-del-${p.slug}`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
       </div>
+      {errArch && (
+        <p className="mt-1 text-[10px] text-rose-700" onClick={(e) => e.stopPropagation()}>
+          No se pudo archivar: {errArch}
+        </p>
+      )}
 
       {(repoCorto || urlCorta) && (
         <div className="mt-2 space-y-1">

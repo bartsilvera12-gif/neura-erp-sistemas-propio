@@ -478,6 +478,18 @@ export class PostgresQaRunsRepo implements QaRunsRepo {
     });
   }
 
+  async archiveProject(projectId: string): Promise<boolean> {
+    return this.run(async (c) => {
+      const r = await c.query(
+        `UPDATE qa_center.projects
+           SET archived_at = now(), updated_at = now()
+         WHERE id = $1 AND archived_at IS NULL`,
+        [projectId]
+      );
+      return (r.rowCount ?? 0) > 0;
+    }, /* tx = */ true);
+  }
+
   async createSuite(input: {
     project_id: string;
     slug: string;

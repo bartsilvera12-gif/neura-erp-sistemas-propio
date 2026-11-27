@@ -1,7 +1,11 @@
+import dns from "node:dns";
 import Anthropic from "@anthropic-ai/sdk";
 import { ctxV2, ErrorV2, fallo, ok } from "@/lib/erp2/server";
 
 export const runtime = "nodejs";
+
+// El contenedor no tiene IPv6: sin esto, la API de Anthropic se resuelve a IPv6 y falla.
+try { dns.setDefaultResultOrder("ipv4first"); } catch { /* noop */ }
 
 const MODEL = process.env.PRODUCTOS_IA_MODEL?.trim() || "claude-haiku-4-5";
 const sinTildes = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
